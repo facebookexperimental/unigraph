@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- <link href="./output.css" rel="stylesheet"> -->
+    <!-- <script src="./index.tsx" type="module"></script> -->
+    <style>{{ css }}</style>
+    <script type="application/json" id="map-graph-json">{{ map_graph_json }}</script>
+    <script type="module" type="text/javascript">
+        {{ js }}
+    </script>
+    <title>Unigraph</title>
+</head>
+
+<body class="dark">
+    <div id="root" />
+</body>
+
+</html>
