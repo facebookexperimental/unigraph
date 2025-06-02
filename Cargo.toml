@@ -1,0 +1,6 @@
+[workspace]
+resolver = "2"
+members = ["u-be/*"]
+
+[workspace.dependencies]
+tokio = { version = "1.38", features = ["full", "rt"] }

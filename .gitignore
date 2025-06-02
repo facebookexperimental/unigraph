@@ -1,0 +1,5 @@
+/wasm_build/
+/node_modules/
+.parcel-cache/
+.build/
+dist/
