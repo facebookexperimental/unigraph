@@ -158,7 +158,7 @@ impl MapGraph {
         let reverse_edges = forward_edges.reverse();
 
         Ok(ArrayGraph {
-            node_names: node_names_ordered,
+            node_names_ordered,
             node_flags: vec![NodeFlags::empty(); forward_edges.node_count()],
             edges_forward: forward_edges,
             edges_reverse: reverse_edges,

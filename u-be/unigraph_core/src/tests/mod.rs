@@ -11,8 +11,11 @@ use k9::assert_equal;
 use k9::snapshot;
 use maplit::btreemap;
 use test_utils::idx_to_names;
+use test_utils::print_all_node_names;
+use test_utils::print_edges;
 
 use crate::ArrayGraph;
+use crate::ArrayGraphSerializable;
 use crate::MapGraph;
 use crate::traversal::Decision;
 use crate::traversal::ForceDynamic;
@@ -85,13 +88,13 @@ fn test_edge_flags() -> Result<()> {
 
     let get_flags = |node_name: &str| {
         g.edges_forward
-            .edges(g.node_names.name_to_idx_log(node_name).unwrap())
+            .edges(g.node_names_ordered.name_to_idx_log(node_name).unwrap())
             .into_iter()
             .map(|e| {
                 format!(
                     "{} -> {}: {}",
                     node_name,
-                    g.node_names.idx_to_name(e.points_to),
+                    g.node_names_ordered.idx_to_name(e.points_to),
                     e.flags.to_binary_string()
                 )
             })
@@ -462,6 +465,60 @@ Node: J, Tier: T3
 "
     );
 
+    Ok(())
+}
+
+#[test]
+fn test_serializable() -> Result<()> {
+    let g = make_test_array_graph()?;
+    let original_names = print_all_node_names(&g);
+    let original_edges = print_edges(&g);
+    let s = g.into_serializable();
+    let json_zstd = s.to_json_zstd_base64()?;
+    let original: ArrayGraphSerializable =
+        ArrayGraphSerializable::from_json_zstd_base64(&json_zstd)?;
+    let roundtrip = original.to_array_graph();
+    let rountrip_names = print_all_node_names(&roundtrip);
+    let roundtrip_edges = print_edges(&roundtrip);
+
+    snapshot!(&rountrip_names, "A B C D E F G H I J");
+    snapshot!(
+        &original_edges,
+        "
+A -> B
+A -> D
+B -> C [T]
+B -> J [T]
+D -> F
+D -> E [T]
+F -> G [D]
+F -> H [D]
+F -> I [D]
+"
+    );
+    snapshot!(
+        &roundtrip_edges,
+        "
+A -> B
+A -> D
+B -> C [T]
+B -> J [T]
+D -> F
+D -> E [T]
+F -> G [D]
+F -> H [D]
+F -> I [D]
+"
+    );
+
+    assert_equal!(
+        k9::MultilineString(original_names),
+        k9::MultilineString(rountrip_names)
+    );
+    assert_equal!(
+        k9::MultilineString(original_edges),
+        k9::MultilineString(roundtrip_edges)
+    );
     Ok(())
 }
 

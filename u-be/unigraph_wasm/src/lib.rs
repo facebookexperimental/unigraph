@@ -137,7 +137,7 @@ pub fn node_idx_to_name(idx: usize) -> Result<String, WasmJSError> {
         .graph_state
         .get()
         .array_graph
-        .node_names
+        .node_names_ordered
         .idx_to_name(NodeIDX::from(idx))
         .to_string())
 }
@@ -148,7 +148,7 @@ pub fn node_name_to_idx_log(name: &str) -> Result<Option<u32>, WasmJSError> {
         .graph_state
         .get()
         .array_graph
-        .node_names
+        .node_names_ordered
         .name_to_idx_log(name)
         .map(|idx| idx.0))
 }

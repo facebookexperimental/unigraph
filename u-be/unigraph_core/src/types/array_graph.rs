@@ -1,5 +1,6 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
+pub mod array_graph_serializable;
 pub(crate) mod node_names_ordered;
 pub(crate) mod offset_graph;
 
@@ -18,12 +19,13 @@ use super::MetricName;
 use super::NodeIDX;
 use super::Tag;
 use super::TagSetName;
+use crate::ArrayGraphSerializable;
 use crate::GraphBuilder;
 use crate::traversal::TraversalConfig;
 use crate::traversal::tiered_traversal::TieredTraversalConfig;
 
 pub struct ArrayGraph {
-    pub node_names: NodeNamesOrdered,
+    pub node_names_ordered: NodeNamesOrdered,
     pub node_flags: Vec<NodeFlags>,
 
     pub edges_forward: OffsetGraph,
@@ -54,6 +56,7 @@ bitflags::bitflags! {
     }
 }
 
+#[derive(serde::Deserialize, serde::Serialize)]
 pub struct ArrayGraphDynamicEdge {
     pub branches: BTreeMap<DynamicBranchName, BTreeSet<NodeIDX>>,
     pub properties: BTreeMap<String, String>,
@@ -64,12 +67,16 @@ impl ArrayGraph {
         GraphBuilder::new().build().to_array_graph()
     }
 
+    pub fn into_serializable(self) -> ArrayGraphSerializable {
+        self.into()
+    }
+
     pub fn nodes_len(&self) -> usize {
-        self.node_names.nodes_len()
+        self.node_names_ordered.nodes_len()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.node_names.nodes_len() == 0
+        self.node_names_ordered.nodes_len() == 0
     }
 
     pub fn children(&self, node_idx: NodeIDX) -> &[Edge] {
@@ -77,16 +84,16 @@ impl ArrayGraph {
     }
 
     pub fn node_idx_iter(&self) -> impl Iterator<Item = NodeIDX> {
-        (0..self.node_names.nodes_len()).map(NodeIDX::from)
+        (0..self.node_names_ordered.nodes_len()).map(NodeIDX::from)
     }
 
     pub fn idx_to_name(&self, idx: NodeIDX) -> &str {
-        self.node_names.idx_to_name(idx)
+        self.node_names_ordered.idx_to_name(idx)
     }
 
     pub fn idxs_to_names(&self, idxs: &[NodeIDX]) -> Vec<&str> {
         idxs.iter()
-            .map(|idx| self.node_names.idx_to_name(*idx))
+            .map(|idx| self.node_names_ordered.idx_to_name(*idx))
             .collect()
     }
 
@@ -261,13 +268,13 @@ mod tests {
                 .collect::<Vec<_>>()
         };
 
-        assert_equal!(array_graph.node_names.node_names, "ABCDEF");
+        assert_equal!(array_graph.node_names_ordered.node_names, "ABCDEF");
         assert_equal!(children_names(0), vec!["B", "C"]);
         assert_equal!(children_names(5), vec!["D", "E"]);
 
         let find_name = |name: &str| {
             array_graph
-                .node_names
+                .node_names_ordered
                 .name_to_idx_log(name)
                 .map(|idx| idx.0)
         };

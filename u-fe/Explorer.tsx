@@ -15,20 +15,30 @@ import GraphTreeTable from "./tree_table/GraphTreeTable";
 import Sidebar from "./Sidebar";
 import initWasm from "./init_wasm";
 
+export type InputGraph =
+  | {
+      t: "MapGraphJSON";
+      mapGraphJSON: string;
+    }
+  | {
+      t: "ArrayGraphSerializable_json_zstd_base64";
+      arrayGraphSerializable_json_zstd_base64: string;
+    };
+
 export function Explorer({
   onPageParamsChange,
   initialPageParams = {},
-  mapGraphJSON,
+  graph,
 }: {
   onPageParamsChange?: (params: PageParams) => void;
   initialPageParams?: PageParams;
-  mapGraphJSON: string;
+  graph: InputGraph;
 }) {
   return (
     <ExplorerImpl
       onPageParamsChange={onPageParamsChange}
       initialPageParams={initialPageParams}
-      mapGraphJSON={mapGraphJSON}
+      graph={graph}
     />
   );
 }
@@ -36,16 +46,16 @@ export function Explorer({
 function ExplorerImpl({
   onPageParamsChange,
   initialPageParams = {},
-  mapGraphJSON,
+  graph,
 }: {
   onPageParamsChange?: (params: PageParams) => void;
   initialPageParams?: PageParams;
-  mapGraphJSON: string;
+  graph: InputGraph;
 }) {
   initWasm();
 
   const [nativeGraph, setNativeGraph] = useState<NativeGraph>(() =>
-    NativeGraph.fromMapGraphJSON(mapGraphJSON),
+    initNativeGraph(graph),
   );
 
   const [tvc, setTvc] = useState<TraversalConfig>({
@@ -65,8 +75,8 @@ function ExplorerImpl({
   );
 
   useEffect(() => {
-    setNativeGraph(NativeGraph.fromMapGraphJSON(mapGraphJSON));
-  }, [mapGraphJSON]);
+    setNativeGraph(initNativeGraph(graph));
+  }, [graph]);
 
   return (
     <TraversalConfigContextProvider tvc={tvc} setTvc={setTvcCb}>
@@ -130,4 +140,13 @@ function Page({ nativeGraph }: { nativeGraph: NativeGraph }) {
       </div>
     </div>
   );
+}
+
+function initNativeGraph(graph: InputGraph): NativeGraph {
+  switch (graph.t) {
+    case "ArrayGraphSerializable_json_zstd_base64":
+      throw new Error("not implemented yet");
+    case "MapGraphJSON":
+      return NativeGraph.fromMapGraphJSON(graph.mapGraphJSON);
+  }
 }

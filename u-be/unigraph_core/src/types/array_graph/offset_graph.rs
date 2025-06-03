@@ -12,9 +12,9 @@ use super::Arrow;
 use crate::types::NodeIDX;
 
 pub struct OffsetGraph {
-    edge_offsets: Vec<usize>,
-    edges: Vec<Edge>,
-    non_directed_edges_metadata: Vec<NonDirectedEdgeMetadata>,
+    pub(super) edges: Vec<Edge>,
+    pub(super) edge_offsets: Vec<usize>,
+    pub(super) non_directed_edges_metadata: Vec<NonDirectedEdgeMetadata>,
 }
 
 /// Metadata for non-directed edges in the graph that contains
@@ -59,6 +59,25 @@ impl Edge {
 
     pub fn new_with_flags(points_to: NodeIDX, flags: EdgeFlags) -> Self {
         Edge { points_to, flags }
+    }
+
+    pub fn new_tagged(points_to: NodeIDX) -> Self {
+        Edge {
+            points_to,
+            flags: EdgeFlags::IS_TAGGED,
+        }
+    }
+
+    pub fn new_dynamic(points_to: NodeIDX) -> Self {
+        Edge {
+            points_to,
+            flags: EdgeFlags::IS_DYNAMIC,
+        }
+    }
+
+    pub fn is_tagged_or_dynamic(&self) -> bool {
+        self.flags
+            .intersects(EdgeFlags::IS_TAGGED | EdgeFlags::IS_DYNAMIC)
     }
 }
 

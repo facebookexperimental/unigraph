@@ -35,7 +35,7 @@ function Root() {
     <Explorer
       onPageParamsChange={updateURLParams}
       initialPageParams={initialParams}
-      mapGraphJSON={mapGraphJSON}
+      graph={{ t: "MapGraphJSON", mapGraphJSON }}
     />
   );
 }

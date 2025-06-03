@@ -117,16 +117,21 @@ impl TraversalConfig {
     pub fn index(&self, array_graph: &ArrayGraph) -> TraversalConfigIDX {
         let mut force_nodes = BTreeMap::new();
         for (name, decision) in &self.force_nodes {
-            if let Some(idx) = array_graph.node_names.name_to_idx_log(name) {
+            if let Some(idx) = array_graph.node_names_ordered.name_to_idx_log(name) {
                 force_nodes.insert(idx, decision.clone());
             }
         }
         let mut force_edges = BTreeMap::new();
         for (from_node_name, decisions) in &self.force_edges {
-            if let Some(from_idx) = array_graph.node_names.name_to_idx_log(from_node_name) {
+            if let Some(from_idx) = array_graph
+                .node_names_ordered
+                .name_to_idx_log(from_node_name)
+            {
                 let inner_map = force_edges.entry(from_idx).or_insert(BTreeMap::new());
                 for (to_node_name, decision) in decisions {
-                    if let Some(to_idx) = array_graph.node_names.name_to_idx_log(to_node_name) {
+                    if let Some(to_idx) =
+                        array_graph.node_names_ordered.name_to_idx_log(to_node_name)
+                    {
                         inner_map.insert(to_idx, decision.clone());
                     }
                 }
@@ -140,7 +145,7 @@ impl TraversalConfig {
                 from_node: dynamic
                     .from_node
                     .as_ref()
-                    .and_then(|name| array_graph.node_names.name_to_idx_log(name)),
+                    .and_then(|name| array_graph.node_names_ordered.name_to_idx_log(name)),
                 match_properties: dynamic.match_properties.clone(),
                 branch: dynamic.branch.clone(),
                 decision: dynamic.decision.clone(),
