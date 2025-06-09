@@ -1,10 +1,10 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 import { createRoot } from "react-dom/client";
-import { useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type { PageParams } from "./PageParams";
-import { Explorer } from "./Explorer";
+import { Explorer, type InputGraph } from "./Explorer";
 
 window.onload = () => {
   const rootDiv = document.getElementById("root");
@@ -18,6 +18,21 @@ window.onload = () => {
 
 function Root() {
   const initialParams = useMemo(() => parseURLParams(), []);
+  const [tvcUrlParam, setTvcUrlParam] = useState<string | null>(() =>
+    getQueryParam("tvc"),
+  );
+
+  useEffect(() => {
+    const urlHandler = () => {
+      const newTvcUrlParam = getQueryParam("tvc");
+      setTvcUrlParam(newTvcUrlParam);
+    };
+
+    window.addEventListener("popstate", urlHandler);
+    return () => {
+      window.removeEventListener("popstate", urlHandler);
+    };
+  }, []);
 
   const array_graph_json_zstd_base64 = useMemo(() => {
     const array_graph_json_zstd_base64_Element = document.getElementById(
@@ -33,14 +48,35 @@ function Root() {
     return arrayGraphJSON;
   }, []);
 
+  const onTraversalConfigZSTDBase64UrlSafeNoPaddingChange = useCallback(
+    (newTvcUrlParam: string) => {
+      if (newTvcUrlParam === tvcUrlParam) {
+        return; // No change, do nothing
+      }
+      setTvcUrlParam(newTvcUrlParam);
+      const url = new URL(window.location.href);
+      url.searchParams.set("tvc", newTvcUrlParam);
+      window.history.pushState({}, "", url.toString());
+    },
+    [tvcUrlParam],
+  );
+
+  const graph: InputGraph = useMemo(() => {
+    return {
+      t: "array_graph_json_zstd_base64",
+      array_graph_json_zstd_base64,
+    };
+  }, [array_graph_json_zstd_base64]);
+
   return (
     <Explorer
       onPageParamsChange={updateURLParams}
-      initialPageParams={initialParams}
-      graph={{
-        t: "array_graph_json_zstd_base64",
-        array_graph_json_zstd_base64,
-      }}
+      pageParams={initialParams}
+      traversalConfigZSTDBase64UrlSafeNoPadding={tvcUrlParam}
+      onTraversalConfigZSTDBase64UrlSafeNoPaddingChange={
+        onTraversalConfigZSTDBase64UrlSafeNoPaddingChange
+      }
+      graph={graph}
     />
   );
 }
@@ -53,8 +89,7 @@ function updateURLParams(params: PageParams) {
 }
 
 function parseURLParams(): PageParams {
-  const url = new URL(window.location.href);
-  const params = url.searchParams.get("page_params");
+  const params = getQueryParam("page_params");
   if (params == null) {
     return {};
   }
@@ -68,4 +103,10 @@ function parseURLParams(): PageParams {
     console.error("Failed to parse URL params", e);
     return {};
   }
+}
+
+function getQueryParam(name: string): string | null {
+  const url = new URL(window.location.href);
+  const value = url.searchParams.get(name);
+  return value;
 }

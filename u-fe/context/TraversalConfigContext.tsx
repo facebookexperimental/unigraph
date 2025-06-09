@@ -29,7 +29,6 @@ export function TraversalConfigContextProvider({
   setTvc: (tvc: TraversalConfig) => void;
 }) {
   const value = useMemo(() => ({ tvc, setTvc }), [tvc, setTvc]);
-
   return (
     <TraversalConfigContext.Provider value={value}>
       {children}

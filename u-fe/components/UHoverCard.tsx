@@ -14,7 +14,6 @@ export default function UHoverCard({
   const container = usePortalContainer();
   const [open, setOpen] = useState(false);
 
-  console.log({ container });
   return (
     <HoverCard openDelay={0} onOpenChange={() => setOpen(!open)} open={open}>
       <HoverCardTrigger className="cursor-pointer">{children}</HoverCardTrigger>

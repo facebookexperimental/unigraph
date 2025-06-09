@@ -95,6 +95,11 @@ impl NodeFlags {
         }
         result
     }
+
+    #[inline(always)]
+    pub fn is_node_unreachable(self) -> bool {
+        self.intersects(NodeFlags::UNREACHABLE)
+    }
 }
 
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -138,7 +143,7 @@ impl ArrayGraph {
 
     #[inline(always)]
     pub fn is_node_unreachable(&self, node_idx: NodeIDX) -> bool {
-        self.node_flags[node_idx].contains(NodeFlags::UNREACHABLE)
+        self.node_flags[node_idx].is_node_unreachable()
     }
 
     pub fn idxs_to_names(&self, idxs: &[NodeIDX]) -> Vec<&str> {

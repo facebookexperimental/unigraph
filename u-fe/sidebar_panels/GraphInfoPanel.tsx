@@ -1,12 +1,10 @@
+import { useNativeGraph } from "../context/NativeGraphContext";
 import { Separator } from "../components/ui/separator";
 import formatNumber from "../lib/formatNumber";
-import type NativeGraph from "../NativeGraph";
 import { SidebarPanel, SidebarPanelHeader } from "./SidebarPanel";
 
-export default function GraphInfoPanel({
-  nativeGraph,
-}: { nativeGraph: NativeGraph }) {
-  const stats = nativeGraph.stats();
+export default function GraphInfoPanel() {
+  const stats = useNativeGraph().stats();
 
   return (
     <SidebarPanel>

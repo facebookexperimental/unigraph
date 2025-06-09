@@ -251,6 +251,7 @@ pub fn apply_traversal_config(traversal_config_json: String) -> Result<(), WasmJ
         .array_graph
         .apply_traversal_config(traversal_config)
         .context("Failed to apply traversal config")?;
+
     Ok(())
 }
 
@@ -278,8 +279,8 @@ pub fn get_array_graph_stats() -> Result<String, WasmJSError> {
 /// Takes a base64-encoded (url safe no pad) zstd compressed string and returns it.
 /// MUST be a valid string (likely JSON) that can be converted to a UTF-8 string.
 pub fn from_zstd_base64_url_safe_no_pad(zstd_base64: &str) -> Result<String, WasmJSError> {
-    let bytes = serialization::from_zstd_base64(zstd_base64)
-        .context("Failed to decode zstd base64 string")?;
+    let bytes = serialization::from_zstd_base64_url_safe_no_pad(zstd_base64)
+        .context("Failed to decode zstd base64 string (url safe, no pad)")?;
 
     let str = String::from_utf8(bytes).context("Failed to convert bytes to UTF-8 string")?;
     Ok(str)

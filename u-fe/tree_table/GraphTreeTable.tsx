@@ -7,14 +7,14 @@ import { useCallback, useEffect, useRef } from "react";
 import { usePageParams } from "../PageParams";
 import type NativeGraph from "../NativeGraph";
 import { useGraphTreeTableColumns } from "../context/GraphTreeTableColumnsContext";
+import { useNativeGraph } from "../context/NativeGraphContext";
 
 export default function GraphTreeTable(props: {
   roots: NodeIDX[];
   focusOnMount?: boolean;
-  nativeGraph: NativeGraph;
 }) {
-  //
   const [pageParams, setPageParams] = usePageParams();
+  const nativeGraph = useNativeGraph();
 
   const onSortChange = useCallback(
     (sort: Sort | null) => {
@@ -27,28 +27,28 @@ export default function GraphTreeTable(props: {
 
   const onSelectedNodeIDXPathChange = useCallback(
     (path: NodeIDX[]) => {
-      syncSelectedPathToURLHash(props.nativeGraph, path);
+      syncSelectedPathToURLHash(nativeGraph, path);
     },
-    [props.nativeGraph],
+    [nativeGraph],
   );
 
   const pathSelector = useRef(
-    new TreeTablePathSelector(parseSelectedPathFromURLHash(props.nativeGraph)),
+    new TreeTablePathSelector(parseSelectedPathFromURLHash(nativeGraph)),
   );
   useEffect(() => {
-    const path = parseSelectedPathFromURLHash(props.nativeGraph);
+    const path = parseSelectedPathFromURLHash(nativeGraph);
     if (path) {
       pathSelector.current.setNewSelectedPath(path);
     }
-  }, [props.nativeGraph]);
+  }, [nativeGraph]);
 
   const { columnDefinitions } = useGraphTreeTableColumns();
 
   const getArrows = useCallback(
     (nodeIDX: NodeIDX) => {
-      return props.nativeGraph.getArrowsForward(nodeIDX);
+      return nativeGraph.getArrowsForward(nodeIDX);
     },
-    [props.nativeGraph],
+    [nativeGraph],
   );
 
   return (

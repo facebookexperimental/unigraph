@@ -4,6 +4,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
 } from "react";
@@ -18,6 +19,7 @@ import formatNumber from "../lib/formatNumber";
 import type { Arrow } from "u-be/unigraph_core/bindings/Arrow";
 import type { NodeIDX } from "u-be/unigraph_core/bindings/NodeIDX";
 import ContextMenuCell from "../tree_table/ContextMenuCell";
+import { useNativeGraph } from "./NativeGraphContext";
 
 export type GraphTreeTableColumnsContextType = {
   columnDefinitions: ColumnDefinitions;
@@ -29,14 +31,21 @@ const GraphTreeTableColumnsContext =
 
 export function GraphTreeTableColumnsContextProvider({
   children,
-  nativeGraph,
 }: {
   children: React.ReactNode;
-  nativeGraph: NativeGraph;
 }) {
+  const nativeGraph = useNativeGraph();
   const [columnDefinitions, setColumnDefinitions] = useState(() =>
     defaultColumnDefinitions(nativeGraph),
   );
+
+  useEffect(() => {
+    // we need to reset the whole thing if the native grpah changes, because
+    // the columns will otherwise have references to the old graph and
+    // the values will not be correct.
+    // In the future we need to defive the columns from graph UI/Metircs settings
+    setColumnDefinitions(defaultColumnDefinitions(nativeGraph));
+  }, [nativeGraph]);
 
   const setDefinitionsCb = useCallback((newDefinitions: ColumnDefinitions) => {
     setColumnDefinitions(newDefinitions);
@@ -100,9 +109,7 @@ function defaultColumnDefinitions(nativeGraph: NativeGraph): ColumnDefinitions {
   columnDefinitions.context_menu = {
     t: "non_sortable_column",
     label: "More Menu",
-    renderer: (arrow: Arrow) => (
-      <ContextMenuCell arrow={arrow} nativeGraph={nativeGraph} />
-    ),
+    renderer: (arrow: Arrow) => <ContextMenuCell arrow={arrow} />,
     isHidden: false,
     isLabelHidden: true,
   };

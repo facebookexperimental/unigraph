@@ -104,7 +104,10 @@ export function TreeTable(props: {
   onSortChange: (sort: Sort | null) => void;
   getArrows: (idx: NodeIDX) => Arrow[];
 }) {
-  const forceUpdate = useReducer((x) => x + 1, 0)[1];
+  const forceUpdate = useReducer((x) => {
+    return x + 1;
+  }, 0)[1];
+
   const columns = useMakeInternalColumns(props.columnDefinitions);
 
   // Initial setup of stateful context. This runs only once
@@ -117,9 +120,9 @@ export function TreeTable(props: {
     const ctx = new TreeTableCtx(
       columns,
       props.roots,
-      props.getArrows,
       props.pathSelector.initialPath ?? [],
     );
+    ctx.getArrows = props.getArrows;
     ctx.updateSortState(props.sortColumnID, props.sortOrder);
     ctx.forceUpdate = forceUpdate;
     return ctx;
@@ -141,10 +144,11 @@ export function TreeTable(props: {
   }, [props.pathSelector, ctx]);
 
   useEffect(() => {
-    ctx.setColumns(columns);
+    ctx.getArrows = props.getArrows;
+    ctx.columns = columns;
     ctx.updateSortState(props.sortColumnID, props.sortOrder);
     ctx.resortRows();
-  }, [props.sortColumnID, props.sortOrder, ctx, columns]);
+  }, [props.sortColumnID, props.sortOrder, ctx, columns, props.getArrows]);
 
   useEffect(() => {
     props.onSelectedNodeIDXPathChange(ctx.selectedNodeIDXPath);
@@ -396,7 +400,7 @@ class TreeTableCtx {
   columns: ColumnInternal[];
   forceUpdate: () => void;
   sortState: SortState | null;
-  getArrows: (idx: NodeIDX) => Arrow[];
+  getArrows: (idx: NodeIDX) => Arrow[] = () => [];
   selectedRowIDX: number | null;
   selectedNodeIDXPath: NodeIDX[];
   scrollToIndex: (index: number, options: { align: "center" }) => void;
@@ -404,10 +408,8 @@ class TreeTableCtx {
   constructor(
     columns: ColumnInternal[],
     roots: NodeIDX[],
-    getArrows: (idx: NodeIDX) => Arrow[],
     selectedNodeIDXPath: NodeIDX[],
   ) {
-    this.getArrows = getArrows;
     this.columns = columns;
     this.rows = [];
     this.forceUpdate = () => {};
@@ -416,10 +418,6 @@ class TreeTableCtx {
     this.selectedRowIDX = null;
     this.scrollToIndex = () => {};
     this.selectedNodeIDXPath = selectedNodeIDXPath;
-  }
-
-  setColumns(columns: ColumnInternal[]) {
-    this.columns = columns;
   }
 
   updateSortState(

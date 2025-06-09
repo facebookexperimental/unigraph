@@ -22,6 +22,10 @@ pub fn apply_traversal_config_to_array_graph(
     let indexed_config = traversal_config.index(ag);
 
     for (parent_idx, edge, metadata) in ag.edges_forward.iter_edges_mut() {
+        // we need to start fresh and make sure all edges that were previously excluded
+        // are reset.
+        edge.flags.remove(EdgeFlags::EXCLUDED);
+
         match_dynamic_edges(&indexed_config, parent_idx, edge, metadata);
         if let Some(tag_sets_for_node) = ag.tag_sets.get(&edge.points_to) {
             match_tag_sets(&indexed_config, edge, tag_sets_for_node);

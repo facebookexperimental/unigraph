@@ -289,7 +289,7 @@ impl ApplicationHandler<UserEvent> for WGPUApplication {
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: UserEvent) {
         match event {
             UserEvent::WakeUp => {
-                log::info!("Waking up");
+                log::trace!("Waking up");
                 self.init_state(event_loop);
             }
         }
@@ -322,7 +322,7 @@ impl ApplicationHandler<UserEvent> for WGPUApplication {
 
         match event {
             WindowEvent::Resized(new_size) => {
-                log::info!("Resized to {new_size:?}");
+                log::trace!("Resized to {new_size:?}");
                 state.resize(new_size);
             }
             WindowEvent::RedrawRequested => {

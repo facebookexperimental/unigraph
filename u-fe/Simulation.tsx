@@ -320,7 +320,6 @@ function useDefaultSimulationParams(): SimulationParams {
     const defaultSimulationParams: SimulationParams = JSON.parse(
       defaultSimulationParamsJSON,
     );
-    console.log("defaultSimulationParams", defaultSimulationParams);
     const simulationParams: SimulationParams = {
       ...defaultSimulationParams,
       colors: {

@@ -10,14 +10,15 @@ import {
 import { useTVC } from "../context/TraversalConfigContext";
 import type NativeGraph from "../NativeGraph";
 import { UDropdownMenu } from "../components/UDropdownMenu";
+import { useNativeGraph } from "../context/NativeGraphContext";
 
 export default function ContextMenuCell(props: {
   arrow: Arrow;
-  nativeGraph: NativeGraph;
 }) {
+  const nativeGraph = useNativeGraph();
   return (
     <UDropdownMenu
-      content={<Content arrow={props.arrow} nativeGraph={props.nativeGraph} />}
+      content={<Content arrow={props.arrow} nativeGraph={nativeGraph} />}
     >
       <Ellipsis className="cursor-pointer hover:bg-primary rounded transition-all p-1" />
     </UDropdownMenu>

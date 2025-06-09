@@ -1,6 +1,6 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type { TraversalConfig } from "u-be/unigraph_core/bindings/TraversalConfig";
 import { TraversalConfigContextProvider } from "./context/TraversalConfigContext";
 import {
@@ -18,6 +18,14 @@ import GraphInfoPanel from "./sidebar_panels/GraphInfoPanel";
 import { PortalContextProvider } from "./components/PortalContext";
 import ColumnsPanel from "./sidebar_panels/ColumnsPanel";
 import { GraphTreeTableColumnsContextProvider } from "./context/GraphTreeTableColumnsContext";
+import {
+  from_zstd_base64_url_safe_no_pad,
+  to_zstd_base64_url_safe_no_pad,
+} from "../.build/wasm/unigraph_wasm";
+import {
+  NativeGraphContextProvider,
+  useNativeGraph,
+} from "./context/NativeGraphContext";
 
 export type InputGraph =
   | {
@@ -31,55 +39,71 @@ export type InputGraph =
 
 export function Explorer({
   onPageParamsChange,
-  initialPageParams = {},
+  pageParams = {},
   graph,
   header,
+  traversalConfigZSTDBase64UrlSafeNoPadding,
+  onTraversalConfigZSTDBase64UrlSafeNoPaddingChange,
 }: {
   onPageParamsChange?: (params: PageParams) => void;
-  initialPageParams?: PageParams;
+  pageParams?: PageParams;
   graph: InputGraph;
   header?: React.ReactNode;
+  traversalConfigZSTDBase64UrlSafeNoPadding?: string | null;
+  onTraversalConfigZSTDBase64UrlSafeNoPaddingChange?: (v: string) => void;
 }) {
   initWasm();
 
-  const [tvc, setTvc] = useState<TraversalConfig>({ ...DEFAULT_TVC });
+  /// This graph initializes a new native graph every time the raw data changes.
+  const nativeGraphNoTVC = useMemo(() => initNativeGraph(graph), [graph]);
 
-  const [nativeGraph, setNativeGraph] = useState<NativeGraph>(() =>
-    initNativeGraph(graph).getApplyTraversalConfig(tvc),
-  );
+  /// This hook will NOT re-initialize the native graph if the traversal config changes.
+  /// We modify it in place and return a new nativeGraph reference with all caches busted.
+  const [tvc, nativeGraph] = useMemo(() => {
+    const tvc: TraversalConfig =
+      traversalConfigZSTDBase64UrlSafeNoPadding == null
+        ? { ...DEFAULT_TVC }
+        : JSON.parse(
+            from_zstd_base64_url_safe_no_pad(
+              traversalConfigZSTDBase64UrlSafeNoPadding,
+            ),
+          );
+
+    return [tvc, nativeGraphNoTVC.getApplyTraversalConfig(tvc)];
+  }, [traversalConfigZSTDBase64UrlSafeNoPadding, nativeGraphNoTVC]);
 
   const setTvcCb = useCallback(
     (tvc: TraversalConfig) => {
-      setTvc(tvc);
-      setNativeGraph(nativeGraph.getApplyTraversalConfig(tvc));
+      const traversal_config_zstd_base64_url_safe_no_padding =
+        to_zstd_base64_url_safe_no_pad(JSON.stringify(tvc));
+
+      onTraversalConfigZSTDBase64UrlSafeNoPaddingChange?.(
+        traversal_config_zstd_base64_url_safe_no_padding,
+      );
     },
-    [nativeGraph],
+    [onTraversalConfigZSTDBase64UrlSafeNoPaddingChange],
   );
 
-  useEffect(() => {
-    setTvc({ ...DEFAULT_TVC });
-    setNativeGraph(
-      initNativeGraph(graph).getApplyTraversalConfig({ ...DEFAULT_TVC }),
-    );
-  }, [graph]);
-
   return (
-    <TraversalConfigContextProvider tvc={tvc} setTvc={setTvcCb}>
-      <PageParamsProvider
-        onPageParamsChange={onPageParamsChange}
-        initialParams={initialPageParams}
-      >
-        <div className="h-screen flex flex-col">
-          {header}
-          <Page nativeGraph={nativeGraph} />
-        </div>
-      </PageParamsProvider>
-    </TraversalConfigContextProvider>
+    <NativeGraphContextProvider nativeGraph={nativeGraph}>
+      <TraversalConfigContextProvider tvc={tvc} setTvc={setTvcCb}>
+        <PageParamsProvider
+          onPageParamsChange={onPageParamsChange}
+          initialParams={pageParams}
+        >
+          <div className="h-screen flex flex-col">
+            {header}
+            <Page />
+          </div>
+        </PageParamsProvider>
+      </TraversalConfigContextProvider>
+    </NativeGraphContextProvider>
   );
 }
 
-function Page({ nativeGraph }: { nativeGraph: NativeGraph }) {
+function Page() {
   const [selectedNodeIDXs, setSelectedNodeIDXs] = useState<NodeIDX[]>([]);
+  const nativeGraph = useNativeGraph();
 
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -106,7 +130,7 @@ function Page({ nativeGraph }: { nativeGraph: NativeGraph }) {
       case "None":
         return null;
       case "GraphInfo":
-        return <GraphInfoPanel nativeGraph={nativeGraph} />;
+        return <GraphInfoPanel />;
       case "Columns":
         return <ColumnsPanel />;
       default: {
@@ -123,7 +147,7 @@ function Page({ nativeGraph }: { nativeGraph: NativeGraph }) {
 
   return (
     <PortalContextProvider containerRef={containerRef?.current}>
-      <GraphTreeTableColumnsContextProvider nativeGraph={nativeGraph}>
+      <GraphTreeTableColumnsContextProvider>
         <div
           className="flex grow-1 shrink flex-row bg-background text-foreground unigraph-explorer min-h-0"
           ref={containerRef}
@@ -131,11 +155,7 @@ function Page({ nativeGraph }: { nativeGraph: NativeGraph }) {
           <Sidebar selectedPanelTab={selectedPanelTab} />
           {panelTab}
           <div className="flex h-full grow-1">
-            <GraphTreeTable
-              focusOnMount={true}
-              roots={roots}
-              nativeGraph={nativeGraph}
-            />
+            <GraphTreeTable focusOnMount={true} roots={roots} />
           </div>
         </div>
       </GraphTreeTableColumnsContextProvider>
