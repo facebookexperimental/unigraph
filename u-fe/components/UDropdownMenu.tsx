@@ -22,7 +22,9 @@ export function UDropdownMenu({
     <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
       <DropdownMenuTrigger asChild>{children}</DropdownMenuTrigger>
       {isOpen && (
-        <DropdownMenuPortal container={container}>{content}</DropdownMenuPortal>
+        <DropdownMenuPortal container={container?.current}>
+          {content}
+        </DropdownMenuPortal>
       )}
     </DropdownMenu>
   );

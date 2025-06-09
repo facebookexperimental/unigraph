@@ -1,8 +1,8 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-import { createContext, useContext } from "react";
+import { createContext, type RefObject, useContext } from "react";
 
-export type PortalContextType = HTMLDivElement;
+export type PortalContextType = RefObject<HTMLDivElement | null>;
 
 const PortalContext = createContext<PortalContextType | null>(null);
 
@@ -10,7 +10,7 @@ export function PortalContextProvider({
   containerRef,
   children,
 }: {
-  containerRef: HTMLDivElement | null;
+  containerRef: PortalContextType;
   children: React.ReactNode;
 }) {
   return (

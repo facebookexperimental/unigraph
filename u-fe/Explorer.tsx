@@ -165,7 +165,7 @@ function Page() {
       : nativeGraph.determineEntrypoints();
 
   return (
-    <PortalContextProvider containerRef={containerRef?.current}>
+    <PortalContextProvider containerRef={containerRef}>
       <GraphTreeTableColumnsContextProvider>
         <div
           className="flex grow-1 shrink flex-row bg-background text-foreground unigraph-explorer min-h-0"
