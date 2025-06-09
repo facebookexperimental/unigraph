@@ -1,10 +1,8 @@
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
-use std::io::Read;
 
 use anyhow::Context;
 use anyhow::Result;
-use base64::Engine;
 
 use super::ArrayGraph;
 use super::ArrayGraphDynamicEdge;
@@ -78,24 +76,9 @@ impl ArrayGraphSerializable {
     pub fn from_json(json: &str) -> Result<Self> {
         serde_json::from_str(json).context("Failed to deserialize ArrayGraphSerializable from JSON")
     }
-
-    pub fn from_json_zstd(compressed: &[u8]) -> Result<Self> {
-        let mut decoder = ruzstd::decoding::StreamingDecoder::new(compressed).unwrap();
-
-        let mut decompressed = Vec::new();
-        decoder
-            .read_to_end(&mut decompressed)
-            .context("Failed to decompress JSON")?;
-
-        serde_json::from_slice(&decompressed)
-            .context("Failed to deserialize ArrayGraphSerializable from decompressed JSON")
-    }
-
-    pub fn from_json_zstd_base64(base64_str: &str) -> Result<Self> {
-        let compressed = base64::engine::general_purpose::STANDARD
-            .decode(base64_str)
-            .context("Failed to decode base64 string")?;
-        Self::from_json_zstd(&compressed)
+    pub fn from_json_bytes(json: &[u8]) -> Result<Self> {
+        serde_json::from_slice(json)
+            .context("Failed to deserialize ArrayGraphSerializable from JSON bytes")
     }
 }
 

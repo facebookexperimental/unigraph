@@ -9,6 +9,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 anyhow = "1.0.98"
+base64 = "0.22.1"
 console_error_panic_hook = "0.1.7"
 console_log = "1"
 getrandom = { version = "0.3", features = ["wasm_js"] }

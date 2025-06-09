@@ -1,5 +1,6 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
+mod serialization;
 mod wasm_error;
 
 use std::vec;
@@ -119,9 +120,11 @@ pub fn set_map_graph(graph_json: Option<String>) -> Result<(), WasmJSError> {
 pub fn set_array_graph_json_zstd_base64(
     array_graph_json_zstd_base64: String,
 ) -> Result<(), WasmJSError> {
-    let array_graph_serializable =
-        ArrayGraphSerializable::from_json_zstd_base64(&array_graph_json_zstd_base64)
-            .context("Failed to deserialize ArrayGraph from zstd base64")?;
+    let json_bytes = serialization::from_zstd_base64(&array_graph_json_zstd_base64)
+        .context("Failed to decode array_graph_json_zstd_base64")?;
+
+    let array_graph_serializable = ArrayGraphSerializable::from_json_bytes(&json_bytes)
+        .context("Failed to deserialize ArrayGraph JSON bytes")?;
     let array_graph = array_graph_serializable.into();
     GlobalState::graph_state().replace_graph(array_graph);
     Ok(())

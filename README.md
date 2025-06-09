@@ -14,6 +14,24 @@ feel free to nuke the whole thing
 ## install wasm-bindgen
 > cargo install wasm-bindgen-cli
 
+## install llvm
+by default on macs wasm won't be able to build `zstd`. to fix it you can install llvm
+> brew install llvm
+
+and set env variables:
+```
+export PATH="/opt/homebrew/opt/llvm/bin/:$PATH"
+export CC=/opt/homebrew/opt/llvm/bin/clang
+export AR=/opt/homebrew/opt/llvm/bin/llvm-ar
+
+# for fish: config.fish
+set -x PATH /opt/homebrew/opt/llvm/bin $PATH
+set -x CC /opt/homebrew/opt/llvm/bin/clang
+set -x AR /opt/homebrew/opt/llvm/bin/llvm-ar
+```
+
+see https://github.com/gyscos/zstd-rs/issues/93#issuecomment-2110684816
+
 ## Build wasm target
 > ./bin/build_wasm
 
