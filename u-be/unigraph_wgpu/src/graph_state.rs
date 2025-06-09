@@ -428,6 +428,10 @@ impl GraphState {
     pub fn compute_next_frame(&mut self) {
         let mut quad_tree = QuadTree::new(300);
         for (idx, node) in self.node_attributes.iter().enumerate() {
+            if node.flags.contains(NodeAttributesFlags::UNREACHABLE) {
+                continue;
+            }
+
             quad_tree.add_body(BHGraphNode {
                 position: node.position,
                 idx,
@@ -438,7 +442,7 @@ impl GraphState {
         const TERMINAL_VELOCITY: f32 = 0.01;
         let params = global_state().simulation_params.get();
 
-        let gravity_forces = quad_tree.compute_forces();
+        let gravity_forces = quad_tree.compute_forces(self.array_graph.nodes_len());
         let edge_forces = self.get_edge_forces();
         let center_pull_forces = self.forces_pull_towards_center();
         // update node positions based on forces
@@ -532,6 +536,25 @@ impl GraphState {
                 anyhow::bail!("Line selection not implemented yet");
             }
         }
+    }
+
+    // syncs flags from the array graph to the node attributes that we'll
+    // then be able to pass to the shader.
+    pub fn sync_node_attributes(&mut self) -> Result<()> {
+        for node_idx in self.array_graph.node_idx_iter() {
+            let unreachable = self.array_graph.node_flags[node_idx].is_node_unreachable();
+            if unreachable {
+                self.node_attributes[node_idx]
+                    .flags
+                    .insert(NodeAttributesFlags::UNREACHABLE);
+            } else {
+                self.node_attributes[node_idx]
+                    .flags
+                    .remove(NodeAttributesFlags::UNREACHABLE);
+            }
+        }
+
+        Ok(())
     }
 }
 

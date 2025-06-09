@@ -63,8 +63,8 @@ impl QuadTree {
         }
     }
 
-    pub fn compute_forces(&self) -> Vec<Vec2> {
-        let mut forces = vec![Vec2::ZERO; self.bodies];
+    pub fn compute_forces(&self, len: usize) -> Vec<Vec2> {
+        let mut forces = vec![Vec2::ZERO; len];
 
         for quad_node in &self.quad_nodes {
             if !quad_node.is_leaf() {
@@ -328,7 +328,7 @@ mod tests {
     fn barnes_hut() {
         let nodes = make_test_graph();
         let mut quad_tree = QuadTree::new(2);
-        for graph_node in nodes {
+        for graph_node in nodes.clone() {
             quad_tree.add_body(graph_node);
         }
 
@@ -613,7 +613,7 @@ mod tests {
 "
         );
 
-        let forces = quad_tree.compute_forces();
+        let forces = quad_tree.compute_forces(nodes.len());
         k9::snapshot!(
             forces,
             "

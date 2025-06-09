@@ -47,6 +47,7 @@ struct NodeVertexOutput {
     @location(1) node_color: vec3<f32>,
     @location(2) frag_pos: vec2<f32>,
     @location(3) node_pos: vec2<f32>,
+    @location(4) @interpolate(flat) node_attributes_flags: u32,
 }
 
 
@@ -56,9 +57,9 @@ fn vs_node(
     @builtin(instance_index) instance_index: u32,
 ) -> NodeVertexOutput {
     // Access the node attributes using the instance index
-    let node = nodeAttributes[instance_index];
+    let node_attibutes = nodeAttributes[instance_index];
 
-    let node_position = vec2<f32>(node.position.x, node.position.y);
+    let node_position = vec2<f32>(node_attibutes.position.x, node_attibutes.position.y);
 
      // Create a square around each ball position
     var pos = array<vec2<f32>, 6>(
@@ -79,7 +80,7 @@ fn vs_node(
     // be disproportionately large since the radius will grow
     // logarithmically with size.
     let pi: f32 = 3.141592653589793;
-    let radius = sqrt(node.adjusted_size / pi);
+    let radius = sqrt(node_attibutes.adjusted_size / pi);
 
     let scaled_radius = radius * adjusted_scale;
 
@@ -91,8 +92,9 @@ fn vs_node(
     output.position = vec4<f32>(vert_pos * vec2<f32>(1.0 / aspect_ratio, 1.0), 0.0, 1.0);
     output.node_radius = scaled_radius;
     output.node_pos = node_position;
+    output.node_attributes_flags = node_attibutes.flags;
     // output.node_color = vec3<f32>(0.4654, 0.0091, 0.0480);
-    if is_flag_set(node.flags, NODE_SELECTED) {
+    if is_flag_set(node_attibutes.flags, NODE_SELECTED) {
         output.node_color = basic_uniforms.node_selected_color;
     } else {
         output.node_color = basic_uniforms.node_main_color;
@@ -107,6 +109,12 @@ fn fs_node(in: NodeVertexOutput) -> @location(0) vec4<f32> {
   // Calculate distance from fragment to ball center
     let dist = distance(in.frag_pos, in.node_pos);
 
+    if is_flag_set(in.node_attributes_flags, NODE_UNREACHABLE) {
+        // If the node is unreachable, discard it
+        discard;
+    }
+
+
     // Discard fragments outside the ball radius
     if dist > in.node_radius {
         discard;
@@ -117,6 +125,7 @@ fn fs_node(in: NodeVertexOutput) -> @location(0) vec4<f32> {
 
 struct EdgeVertexOutput {
     @builtin(position) position: vec4<f32>,
+    @location(0) @interpolate(flat) points_to_node_attributes_flags: u32,
 }
 
 
@@ -127,12 +136,12 @@ fn vs_edge(
 ) -> EdgeVertexOutput {
     // Access the edge and node attributes using the instance index
     let edge = edgeAttributes[instance_index];
-    let from_node = nodeAttributes[edge.from_node];
-    let to_node = nodeAttributes[edge.to_node];
+    let from_node_attributes = nodeAttributes[edge.from_node];
+    let to_node_attributes = nodeAttributes[edge.to_node];
 
     // Positions of the nodes
-    let from_position = vec2<f32>(from_node.position.x, from_node.position.y);
-    let to_position = vec2<f32>(to_node.position.x, to_node.position.y);
+    let from_position = vec2<f32>(from_node_attributes.position.x, from_node_attributes.position.y);
+    let to_position = vec2<f32>(to_node_attributes.position.x, to_node_attributes.position.y);
 
     // Interpolate between the two positions to create the line
     var pos = array<vec2<f32>, 2>(
@@ -145,11 +154,17 @@ fn vs_edge(
 
     var output: EdgeVertexOutput;
     output.position = vec4<f32>(vert_pos * vec2<f32>(1.0 / basic_uniforms.aspect_ratio, 1.0), 0.0, 1.0);
+    output.points_to_node_attributes_flags = to_node_attributes.flags;
     return output;
 }
 
 @fragment
 fn fs_edge(in: EdgeVertexOutput) -> @location(0) vec4<f32> {
+    if is_flag_set(in.points_to_node_attributes_flags, NODE_UNREACHABLE) {
+        // If the edge points to an unreachable node, discard it
+        discard;
+    }
+    
     // Using a fixed width white line with slightly increased opacity
     return vec4<f32>(1.0, 1.0, 1.0, 0.08);
 }

@@ -251,7 +251,7 @@ pub fn apply_traversal_config(traversal_config_json: String) -> Result<(), WasmJ
         .array_graph
         .apply_traversal_config(traversal_config)
         .context("Failed to apply traversal config")?;
-
+    GlobalState::graph_state_mut().sync_node_attributes()?;
     Ok(())
 }
 
