@@ -20,7 +20,15 @@ struct NodeAttributes {
     position: vec2<f32>,
     velocity: vec2<f32>,
     adjusted_size: f32,
-    is_selected: u32,
+    flags: u32,
+}
+
+const NODE_UNREACHABLE:  u32 = 256;     // in binary 0001_0000_0000
+const NODE_SELECTED:     u32 = 512;     // in binary 0010_0000_0000
+const NODE_FOCUSED:      u32 = 1024;    // in binary 0100_0000_0000
+
+fn is_flag_set(flags: u32, flag: u32) -> bool {
+    return (flags & flag) != 0;
 }
 
 @group(1) @binding(0) var<storage, read> nodeAttributes: array<NodeAttributes>;
@@ -84,7 +92,7 @@ fn vs_node(
     output.node_radius = scaled_radius;
     output.node_pos = node_position;
     // output.node_color = vec3<f32>(0.4654, 0.0091, 0.0480);
-    if node.is_selected == 1 {
+    if is_flag_set(node.flags, NODE_SELECTED) {
         output.node_color = basic_uniforms.node_selected_color;
     } else {
         output.node_color = basic_uniforms.node_main_color;

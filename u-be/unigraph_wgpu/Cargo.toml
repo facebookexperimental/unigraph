@@ -6,6 +6,10 @@ version = "0.0.0"
 
 [dependencies]
 anyhow = "1.0.98"
+bitflags = { version = "2.6", features = [
+    "serde",
+    "std",
+], default-features = false }
 bytemuck = "1.22.0"
 glam = { version = "0.30.2", features = ["bytemuck", "serde"] }
 log = "0.4"

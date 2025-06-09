@@ -71,10 +71,23 @@ pub struct NodeAttributes {
     // value between 0 and 100 that is proportional to
     // the node size but fits between 0 and 100.
     pub adjusted_size: f32,
-    pub is_selected: u32,
+    pub flags: NodeAttributesFlags,
     // padding to make the struct size a multiple of 16 bytes
     pub _padding: (),
 }
+
+bitflags::bitflags! {
+    #[repr(transparent)]
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub struct NodeAttributesFlags: u32 {
+        const UNREACHABLE = 256;    // 0b0001_0000_0000;
+        const SELECTED    = 512;    // 0b0010_0000_0000;
+        const FOCUSED     = 1024;   // 0b0100_0000_0000;
+    }
+}
+
+unsafe impl Zeroable for NodeAttributesFlags {}
+unsafe impl Pod for NodeAttributesFlags {}
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
@@ -399,7 +412,7 @@ impl GraphState {
                 }
                 .clamp_length_max(0.0001),
                 adjusted_size: 1.0,
-                is_selected: 0,
+                flags: NodeAttributesFlags::empty(),
                 _padding: Default::default(),
             });
         }
@@ -507,10 +520,10 @@ impl GraphState {
                 let mut selected_nodes = vec![];
                 for (idx, node) in self.node_attributes.iter_mut().enumerate() {
                     if selection.within_box_bounds(node.position, aspect_ratio) {
-                        node.is_selected = 1;
+                        node.flags.insert(NodeAttributesFlags::SELECTED);
                         selected_nodes.push(idx);
                     } else {
-                        node.is_selected = 0;
+                        node.flags.remove(NodeAttributesFlags::SELECTED);
                     }
                 }
                 Ok(selected_nodes)
