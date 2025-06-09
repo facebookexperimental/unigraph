@@ -31,7 +31,9 @@ function Content({
 }: { arrow: Arrow; nativeGraph: NativeGraph }) {
   const { tvc, setTvc } = useTVC();
 
-  const disableForce = arrow.points_from === -1;
+  const disableForce = nativeGraph
+    .determineEntrypoints()
+    .set.has(arrow.points_to);
 
   return (
     <DropdownMenuContent

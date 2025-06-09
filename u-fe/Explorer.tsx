@@ -162,7 +162,7 @@ function Page() {
   const roots =
     selectedNodeIDXs.length > 0
       ? selectedNodeIDXs
-      : nativeGraph.determineEntrypoints();
+      : nativeGraph.determineEntrypoints().vec;
 
   return (
     <PortalContextProvider containerRef={containerRef}>

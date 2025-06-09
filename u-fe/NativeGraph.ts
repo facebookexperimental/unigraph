@@ -24,7 +24,7 @@ import type { TraversalConfig } from "u-be/unigraph_core/bindings/TraversalConfi
 
 // It serves as a bridge/cache layer between JS and WASM.
 export default class NativeGraph {
-  private entrypoints: NodeIDX[] | null = null;
+  private entrypoints: { vec: NodeIDX[]; set: Set<NodeIDX> } | null = null;
 
   readonly nodeCount: number;
   readonly metricNames: string[] = [];
@@ -83,9 +83,10 @@ export default class NativeGraph {
     return parsed as Arrow[];
   }
 
-  determineEntrypoints(): NodeIDX[] {
+  determineEntrypoints(): { vec: NodeIDX[]; set: Set<NodeIDX> } {
     if (this.entrypoints == null) {
-      this.entrypoints = Array.from(determine_entrypoints());
+      const result = determine_entrypoints();
+      this.entrypoints = { vec: Array.from(result), set: new Set(result) };
     }
     return this.entrypoints;
   }
