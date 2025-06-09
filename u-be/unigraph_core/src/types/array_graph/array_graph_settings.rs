@@ -1,20 +1,47 @@
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 
 use ts_rs::TS;
+
+use crate::types::TierName;
 
 #[derive(serde::Serialize, serde::Deserialize, TS)]
 #[ts(export)]
 pub struct ArrayGraphSettings {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub metric_settings: Option<BTreeMap<String, MetricSettings>>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub ui_settings: Option<ArrayGraphUISettings>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, TS)]
 #[ts(export)]
 pub struct MetricSettings {
-    pub description: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub description: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub format: Option<MetricFormat>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    /// Hide table column that displays the metric itself.
+    pub column_hide_self: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    /// hide the column that displays transitive value for the metric.
+    pub column_hide_transitive: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    /// Hide columns that display transitive tiered value for provided tier names.
+    pub column_hide_trantitive_tiered: Option<BTreeSet<TierName>>,
 }
+
 #[derive(serde::Serialize, serde::Deserialize, TS)]
 #[ts(export)]
 /// Value that defines how to format metric values (in the UI or CLI output)
@@ -100,6 +127,10 @@ pub enum SidebarPanel {
 #[derive(serde::Serialize, serde::Deserialize, TS)]
 #[ts(export)]
 pub struct ArrayGraphUISettings {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     selected_sidebar_panel: Option<SidebarPanel>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     graph_table_sort: Option<GraphTableSort>,
 }

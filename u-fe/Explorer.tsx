@@ -3,11 +3,6 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { TraversalConfig } from "u-be/unigraph_core/bindings/TraversalConfig";
 import { TraversalConfigContextProvider } from "./context/TraversalConfigContext";
-import {
-  type PageParams,
-  PageParamsProvider,
-  usePageParams,
-} from "./PageParams";
 import NativeGraph from "./NativeGraph";
 import type { NodeIDX } from "./types";
 import Simulation from "./Simulation";
@@ -26,6 +21,11 @@ import {
   NativeGraphContextProvider,
   useNativeGraph,
 } from "./context/NativeGraphContext";
+import {
+  GraphSettingsContextProvider,
+  useGraphSettings,
+} from "./context/GraphSettingsContext";
+import type { ArrayGraphSettings } from "../u-be/unigraph_core/bindings/ArrayGraphSettings";
 
 export type InputGraph =
   | {
@@ -38,19 +38,19 @@ export type InputGraph =
     };
 
 export function Explorer({
-  onPageParamsChange,
-  pageParams = {},
   graph,
   header,
   traversalConfigZSTDBase64UrlSafeNoPadding,
   onTraversalConfigZSTDBase64UrlSafeNoPaddingChange,
+  graphSettingsZSTDBase64UrlSafeNoPadding,
+  onGraphSettingsZSTDBase64UrlSafeNoPaddingChange,
 }: {
-  onPageParamsChange?: (params: PageParams) => void;
-  pageParams?: PageParams;
   graph: InputGraph;
   header?: React.ReactNode;
   traversalConfigZSTDBase64UrlSafeNoPadding?: string | null;
   onTraversalConfigZSTDBase64UrlSafeNoPaddingChange?: (v: string) => void;
+  graphSettingsZSTDBase64UrlSafeNoPadding?: string | null;
+  onGraphSettingsZSTDBase64UrlSafeNoPaddingChange?: (v: string) => void;
 }) {
   initWasm();
 
@@ -72,6 +72,16 @@ export function Explorer({
     return [tvc, nativeGraphNoTVC.getApplyTraversalConfig(tvc)];
   }, [traversalConfigZSTDBase64UrlSafeNoPadding, nativeGraphNoTVC]);
 
+  const settings = useMemo(() => {
+    return graphSettingsZSTDBase64UrlSafeNoPadding == null
+      ? {}
+      : JSON.parse(
+          from_zstd_base64_url_safe_no_pad(
+            graphSettingsZSTDBase64UrlSafeNoPadding,
+          ),
+        );
+  }, [graphSettingsZSTDBase64UrlSafeNoPadding]);
+
   const setTvcCb = useCallback(
     (tvc: TraversalConfig) => {
       const traversal_config_zstd_base64_url_safe_no_padding =
@@ -84,18 +94,26 @@ export function Explorer({
     [onTraversalConfigZSTDBase64UrlSafeNoPaddingChange],
   );
 
+  const setSettingsCb = useCallback(
+    (settings: ArrayGraphSettings) => {
+      const base64 = to_zstd_base64_url_safe_no_pad(JSON.stringify(settings));
+      onGraphSettingsZSTDBase64UrlSafeNoPaddingChange?.(base64);
+    },
+    [onGraphSettingsZSTDBase64UrlSafeNoPaddingChange],
+  );
+
   return (
     <NativeGraphContextProvider nativeGraph={nativeGraph}>
       <TraversalConfigContextProvider tvc={tvc} setTvc={setTvcCb}>
-        <PageParamsProvider
-          onPageParamsChange={onPageParamsChange}
-          initialParams={pageParams}
+        <GraphSettingsContextProvider
+          settings={settings}
+          setSettings={setSettingsCb}
         >
           <div className="h-screen flex flex-col">
             {header}
             <Page />
           </div>
-        </PageParamsProvider>
+        </GraphSettingsContextProvider>
       </TraversalConfigContextProvider>
     </NativeGraphContextProvider>
   );
@@ -104,6 +122,7 @@ export function Explorer({
 function Page() {
   const [selectedNodeIDXs, setSelectedNodeIDXs] = useState<NodeIDX[]>([]);
   const nativeGraph = useNativeGraph();
+  const [settings] = useGraphSettings();
 
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -120,21 +139,21 @@ function Page() {
     [selectedNodeIDXs],
   );
 
-  const [pageParams] = usePageParams();
-  const selectedPanelTab = pageParams.panelTab ?? "Simulation";
+  const selectedSidebarPanel =
+    settings.ui_settings?.selected_sidebar_panel ?? "Simulation";
 
   const panelTab: React.ReactNode = (() => {
-    switch (selectedPanelTab) {
+    switch (selectedSidebarPanel) {
       case "Simulation":
         return <Simulation setSelectedNodeIDXs={setSelectedNodeIDXsCb} />;
       case "None":
         return null;
       case "GraphInfo":
         return <GraphInfoPanel />;
-      case "Columns":
+      case "ColumnsSettings":
         return <ColumnsPanel />;
       default: {
-        const exhaustiveCheck: never = selectedPanelTab;
+        const exhaustiveCheck: never = selectedSidebarPanel;
         throw new Error(`Unexpected panel tab: ${exhaustiveCheck}`);
       }
     }
@@ -152,7 +171,7 @@ function Page() {
           className="flex grow-1 shrink flex-row bg-background text-foreground unigraph-explorer min-h-0"
           ref={containerRef}
         >
-          <Sidebar selectedPanelTab={selectedPanelTab} />
+          <Sidebar selectedPanelTab={selectedSidebarPanel} />
           {panelTab}
           <div className="flex h-full grow-1">
             <GraphTreeTable focusOnMount={true} roots={roots} />

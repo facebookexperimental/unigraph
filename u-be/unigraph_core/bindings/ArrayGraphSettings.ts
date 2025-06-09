@@ -2,4 +2,4 @@
 import type { ArrayGraphUISettings } from "./ArrayGraphUISettings";
 import type { MetricSettings } from "./MetricSettings";
 
-export type ArrayGraphSettings = { metric_settings: { [key in string]?: MetricSettings } | null, ui_settings: ArrayGraphUISettings | null, };
+export type ArrayGraphSettings = { metric_settings?: { [key in string]?: MetricSettings }, ui_settings?: ArrayGraphUISettings, };

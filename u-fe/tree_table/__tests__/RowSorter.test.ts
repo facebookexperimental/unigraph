@@ -1,9 +1,9 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 import { expect, test } from "vitest";
-import type { SortOrder } from "../TreeTable";
 import { type Row, sortRows } from "../TreeTableRows";
 import type { Arrow } from "u-be/unigraph_core/bindings/Arrow";
+import type { SortOrder } from "u-be/unigraph_core/bindings/SortOrder";
 
 function arrow(fromIDX: number, toIDX: number): Arrow {
   return {
@@ -246,20 +246,20 @@ function printRows(rows: Row[]): string {
 }
 
 function asc(rows: Row[]): Row[] {
-  const sortFn = (a: Row, b: Row) => compare(a, b, "asc");
+  const sortFn = (a: Row, b: Row) => compare(a, b, "Asc");
   return sortRows(rows, sortFn);
 }
 
 function desc(rows: Row[]): Row[] {
-  const sortFn = (a: Row, b: Row) => compare(a, b, "desc");
+  const sortFn = (a: Row, b: Row) => compare(a, b, "Desc");
   return sortRows(rows, sortFn);
 }
 
 function compare(a: Row, b: Row, order: SortOrder): 0 | -1 | 1 {
   if (a.arrow.points_to < b.arrow.points_to) {
-    return order === "asc" ? -1 : 1;
+    return order === "Asc" ? -1 : 1;
   } else if (a.arrow.points_to > b.arrow.points_to) {
-    return order === "asc" ? 1 : -1;
+    return order === "Asc" ? 1 : -1;
   }
   return 0;
 }

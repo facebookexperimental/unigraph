@@ -1,12 +1,13 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 import { Info, TableProperties, Waypoints } from "lucide-react";
-import { type PanelTab, usePageParams } from "./PageParams";
 import { Button } from "./components/ui/button";
+import type { SidebarPanel } from "u-be/unigraph_core/bindings/SidebarPanel";
+import { useGraphSettings } from "./context/GraphSettingsContext";
 
 export default function Sidebar({
   selectedPanelTab,
-}: { selectedPanelTab: PanelTab }) {
+}: { selectedPanelTab: SidebarPanel }) {
   return (
     <div className="flex h-full flex-col items-center gap-2 py-4 px-2 bg-sidebar border-r">
       <TabSelector tabName="Simulation" selectedPanelTab={selectedPanelTab}>
@@ -15,7 +16,10 @@ export default function Sidebar({
       <TabSelector tabName="GraphInfo" selectedPanelTab={selectedPanelTab}>
         <Info />
       </TabSelector>
-      <TabSelector tabName="Columns" selectedPanelTab={selectedPanelTab}>
+      <TabSelector
+        tabName="ColumnsSettings"
+        selectedPanelTab={selectedPanelTab}
+      >
         <TableProperties />
       </TabSelector>
     </div>
@@ -28,12 +32,12 @@ function TabSelector({
 
   children,
 }: {
-  tabName: PanelTab;
-  selectedPanelTab: PanelTab;
+  tabName: SidebarPanel;
+  selectedPanelTab: SidebarPanel;
   children: React.ReactNode;
 }) {
   const selected = selectedPanelTab === tabName;
-  const [_pageParams, setPageParams] = usePageParams();
+  const [settings, setSettings] = useGraphSettings();
 
   return (
     <div className="flex flex-col gap-2">
@@ -44,9 +48,21 @@ function TabSelector({
         onClick={() => {
           const selected = selectedPanelTab === tabName;
           if (selected) {
-            setPageParams({ panelTab: "None" });
+            setSettings({
+              ...settings,
+              ui_settings: {
+                ...settings.ui_settings,
+                selected_sidebar_panel: "None",
+              },
+            });
           } else {
-            setPageParams({ panelTab: tabName });
+            setSettings({
+              ...settings,
+              ui_settings: {
+                ...settings.ui_settings,
+                selected_sidebar_panel: tabName,
+              },
+            });
           }
         }}
       >

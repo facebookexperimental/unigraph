@@ -21,6 +21,8 @@ import {
 } from "./TreeTableRows";
 import type { Arrow } from "../../u-be/unigraph_core/bindings/Arrow";
 import TreeCell from "./TreeCell";
+import type { SortOrder } from "u-be/unigraph_core/bindings/SortOrder";
+import type { GraphTableSort } from "u-be/unigraph_core/bindings/GraphTableSort";
 
 export type TreeColumnID = "__tree_column__";
 export type ColumnID = string;
@@ -59,12 +61,6 @@ export type NonTreeColumnDefinition =
   | NumericValueColumnDefinition
   | NonSortableColumnDefinition;
 
-export type SortOrder = "asc" | "desc" | "none";
-export type Sort = {
-  order: SortOrder;
-  columnID: TreeColumnID | ColumnID;
-};
-
 export type TreeColumnDefinition = {
   label: string;
   getNodeName: (idx: NodeIDX) => string;
@@ -101,7 +97,7 @@ export function TreeTable(props: {
   pathSelector: TreeTablePathSelector;
   sortColumnID: TreeColumnID | string | null;
   sortOrder: SortOrder | null;
-  onSortChange: (sort: Sort | null) => void;
+  onSortChange: (sort: GraphTableSort | null) => void;
   getArrows: (idx: NodeIDX) => Arrow[];
 }) {
   const forceUpdate = useReducer((x) => {
@@ -109,7 +105,6 @@ export function TreeTable(props: {
   }, 0)[1];
 
   const columns = useMakeInternalColumns(props.columnDefinitions);
-
   // Initial setup of stateful context. This runs only once
   // when the component is mounted and is never updated again.
   // We mutate it directly and manage the state of the table
@@ -275,23 +270,27 @@ export function TreeTable(props: {
       if (isSortable === false) {
         return null;
       }
-      if (sortOrder === "asc") {
+      if (sortOrder === "Asc") {
         const Icon = isNumeric ? ArrowDown01 : ArrowDownAZ;
 
         return (
           <Icon
             size={16}
             className="mx-2 cursor-pointer"
-            onClick={() => props.onSortChange({ columnID, order: "desc" })}
+            onClick={() =>
+              props.onSortChange({ column_id: columnID, order: "Desc" })
+            }
           />
         );
-      } else if (sortOrder === "desc") {
+      } else if (sortOrder === "Desc") {
         const Icon = isNumeric ? ArrowUp10 : ArrowUpZA;
         return (
           <Icon
             size={16}
             className="mx-2 cursor-pointer"
-            onClick={() => props.onSortChange({ columnID, order: "asc" })}
+            onClick={() =>
+              props.onSortChange({ column_id: columnID, order: "Asc" })
+            }
           />
         );
       } else {
@@ -299,7 +298,9 @@ export function TreeTable(props: {
           <ArrowDownUp
             size={16}
             className="mx-2 cursor-pointer"
-            onClick={() => props.onSortChange({ columnID, order: "asc" })}
+            onClick={() =>
+              props.onSortChange({ column_id: columnID, order: "Asc" })
+            }
           />
         );
       }
@@ -464,10 +465,10 @@ class TreeTableCtx {
         const aValue = getSortValue(a.arrow.points_to);
         const bValue = getSortValue(b.arrow.points_to);
         if (aValue < bValue) {
-          return order === "desc" ? 1 : -1;
+          return order === "Desc" ? 1 : -1;
         }
         if (aValue > bValue) {
-          return order === "desc" ? -1 : 1;
+          return order === "Desc" ? -1 : 1;
         }
         return 0;
       },
@@ -557,7 +558,9 @@ class TreeTableCtx {
     }
     const selectedRow =
       this.selectedRowIDX != null ? this.rows[this.selectedRowIDX] : null;
+
     this.rows = sortRows(this.rows, this.sortState.sortFn);
+
     if (selectedRow != null) {
       // If we have a selected row we need to find it in the new
       // order and set the selectedRowIDX to it.

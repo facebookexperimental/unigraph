@@ -2,4 +2,4 @@
 import type { GraphTableSort } from "./GraphTableSort";
 import type { SidebarPanel } from "./SidebarPanel";
 
-export type ArrayGraphUISettings = { selected_sidebar_panel: SidebarPanel | null, graph_table_sort: GraphTableSort | null, };
+export type ArrayGraphUISettings = { selected_sidebar_panel?: SidebarPanel, graph_table_sort?: GraphTableSort, };

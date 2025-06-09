@@ -3,7 +3,6 @@
 import { createRoot } from "react-dom/client";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import type { PageParams } from "./PageParams";
 import { Explorer, type InputGraph } from "./Explorer";
 
 window.onload = () => {
@@ -17,10 +16,12 @@ window.onload = () => {
 };
 
 function Root() {
-  const initialParams = useMemo(() => parseURLParams(), []);
   const [tvcUrlParam, setTvcUrlParam] = useState<string | null>(() =>
     getQueryParam("tvc"),
   );
+  const [graphSettingsURLParam, setGraphSettingsURLParam] = useState<
+    string | null
+  >(() => getQueryParam("graph_settings"));
 
   useEffect(() => {
     const urlHandler = () => {
@@ -61,6 +62,19 @@ function Root() {
     [tvcUrlParam],
   );
 
+  const onGraphSettingsZSTDBase64UrlSafeNoPaddingChange = useCallback(
+    (newGraphSettingsUrlParam: string) => {
+      if (newGraphSettingsUrlParam === graphSettingsURLParam) {
+        return; // No change, do nothing
+      }
+      setGraphSettingsURLParam(newGraphSettingsUrlParam);
+      const url = new URL(window.location.href);
+      url.searchParams.set("graph_settings", newGraphSettingsUrlParam);
+      window.history.pushState({}, "", url.toString());
+    },
+    [graphSettingsURLParam],
+  );
+
   const graph: InputGraph = useMemo(() => {
     return {
       t: "array_graph_json_zstd_base64",
@@ -70,39 +84,17 @@ function Root() {
 
   return (
     <Explorer
-      onPageParamsChange={updateURLParams}
-      pageParams={initialParams}
       traversalConfigZSTDBase64UrlSafeNoPadding={tvcUrlParam}
       onTraversalConfigZSTDBase64UrlSafeNoPaddingChange={
         onTraversalConfigZSTDBase64UrlSafeNoPaddingChange
       }
+      graphSettingsZSTDBase64UrlSafeNoPadding={graphSettingsURLParam}
+      onGraphSettingsZSTDBase64UrlSafeNoPaddingChange={
+        onGraphSettingsZSTDBase64UrlSafeNoPaddingChange
+      }
       graph={graph}
     />
   );
-}
-
-function updateURLParams(params: PageParams) {
-  const url = new URL(window.location.href);
-  const json = JSON.stringify(params);
-  url.searchParams.set("page_params", json);
-  window.history.pushState({}, "", url.toString());
-}
-
-function parseURLParams(): PageParams {
-  const params = getQueryParam("page_params");
-  if (params == null) {
-    return {};
-  }
-  try {
-    const parsedParams = JSON.parse(params);
-    if (typeof parsedParams !== "object") {
-      throw new Error("Parsed params is not an object");
-    }
-    return parsedParams;
-  } catch (e) {
-    console.error("Failed to parse URL params", e);
-    return {};
-  }
 }
 
 function getQueryParam(name: string): string | null {

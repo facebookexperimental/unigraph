@@ -8,16 +8,9 @@ export type TraversalConfigContextType = {
   setTvc: (tvc: TraversalConfig) => void;
 };
 
-const TraversalConfigContext = createContext<TraversalConfigContextType>({
-  tvc: {
-    force_nodes: {},
-    force_edges: {},
-    tag_sets: [],
-    force_dynamic: [],
-    tiered_traversal: null,
-  },
-  setTvc: () => {},
-});
+const TraversalConfigContext = createContext<TraversalConfigContextType | null>(
+  null,
+);
 
 export function TraversalConfigContextProvider({
   children,
@@ -39,7 +32,7 @@ export function TraversalConfigContextProvider({
 export function useTVC(): TraversalConfigContextType {
   const context = useContext(TraversalConfigContext);
 
-  if (context === undefined) {
+  if (context == null) {
     throw new Error("useTVC must be used within a TraversalConfigProvider");
   }
   return context;

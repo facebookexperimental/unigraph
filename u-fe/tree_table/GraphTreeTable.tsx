@@ -1,28 +1,33 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 import type { NodeIDX } from "../types";
-import { type Sort, TreeTable, TreeTablePathSelector } from "./TreeTable";
+import { TreeTable, TreeTablePathSelector } from "./TreeTable";
 
 import { useCallback, useEffect, useRef } from "react";
-import { usePageParams } from "../PageParams";
 import type NativeGraph from "../NativeGraph";
 import { useGraphTreeTableColumns } from "../context/GraphTreeTableColumnsContext";
 import { useNativeGraph } from "../context/NativeGraphContext";
+import { useGraphSettings } from "../context/GraphSettingsContext";
+import type { GraphTableSort } from "u-be/unigraph_core/bindings/GraphTableSort";
 
 export default function GraphTreeTable(props: {
   roots: NodeIDX[];
   focusOnMount?: boolean;
 }) {
-  const [pageParams, setPageParams] = usePageParams();
   const nativeGraph = useNativeGraph();
+  const [settings, setSettings] = useGraphSettings();
 
   const onSortChange = useCallback(
-    (sort: Sort | null) => {
-      setPageParams({
-        graphTableSort: sort == null ? undefined : sort,
+    (sort: GraphTableSort | null) => {
+      setSettings({
+        ...settings,
+        ui_settings: {
+          ...settings.ui_settings,
+          graph_table_sort: sort == null ? undefined : sort,
+        },
       });
     },
-    [setPageParams],
+    [settings, setSettings],
   );
 
   const onSelectedNodeIDXPathChange = useCallback(
@@ -58,8 +63,8 @@ export default function GraphTreeTable(props: {
       getArrows={getArrows}
       focusOnMount={props.focusOnMount}
       onSortChange={onSortChange}
-      sortColumnID={pageParams.graphTableSort?.columnID ?? null}
-      sortOrder={pageParams.graphTableSort?.order ?? null}
+      sortColumnID={settings?.ui_settings?.graph_table_sort?.column_id ?? null}
+      sortOrder={settings?.ui_settings?.graph_table_sort?.order ?? null}
       pathSelector={pathSelector.current}
       onSelectedNodeIDXPathChange={onSelectedNodeIDXPathChange}
     />
