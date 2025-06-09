@@ -1,0 +1,277 @@
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
+
+use anyhow::Context;
+use anyhow::Result;
+
+use crate::ArrayGraphDynamicEdge;
+use crate::NodeIDX;
+use crate::NodeNamesOrdered;
+use crate::types::Tag;
+use crate::types::array_graph::array_graph_serializable::ArrayGraphSerializableEdges;
+use crate::types::array_graph::array_graph_serializable::ArrayGraphSerializableNodeMetadata;
+
+/// Utility that takes a vec of sortable values, sorts the original vec in-place and returns
+/// the context of original positions + mapping to the new positions.
+pub fn sort_and_return_mapping<T: Ord>(vec: &mut Vec<T>) -> RemapContext {
+    let new_vec = std::mem::take(vec);
+    let mut vec_with_indices: Vec<(usize, T)> = new_vec.into_iter().enumerate().collect();
+    vec_with_indices.sort_by(|a, b| a.1.cmp(&b.1));
+
+    let mut sorted_vec = Vec::with_capacity(vec_with_indices.len());
+    let mut mappings = vec![0; vec_with_indices.len()];
+    let mut original_positions = Vec::with_capacity(vec_with_indices.len());
+
+    for (new_position, (original_position, value)) in vec_with_indices.into_iter().enumerate() {
+        sorted_vec.push(value);
+        original_positions.push(original_position);
+        mappings[original_position] = new_position;
+    }
+
+    std::mem::swap(vec, &mut sorted_vec);
+
+    RemapContext {
+        original_positions,
+        mappings,
+    }
+}
+
+pub struct RemapContext {
+    pub original_positions: Vec<usize>,
+    pub mappings: Vec<usize>,
+}
+
+pub fn remap_edges(
+    edges: &ArrayGraphSerializableEdges,
+    remap_context: &RemapContext,
+) -> Result<ArrayGraphSerializableEdges> {
+    let (directed, directed_offsets) =
+        remap_directed_edges(&edges.directed, &edges.directed_offsets, remap_context);
+
+    Ok(ArrayGraphSerializableEdges {
+        directed,
+        directed_offsets,
+        tagged: remap_tagged_edges(&edges.tagged, remap_context)
+            .context("Failed to remap tagged edges")?,
+        dynamic: remap_dynamic_edges(&edges.dynamic, remap_context)
+            .context("Failed to remap dynamic edges")?,
+    })
+}
+
+pub fn remap_directed_edges(
+    edges: &[NodeIDX],
+    offsets: &[usize],
+    remap_context: &RemapContext,
+) -> (Vec<NodeIDX>, Vec<usize>) {
+    let mut remapped_edges = Vec::with_capacity(edges.len());
+    let mut remapped_offsets = Vec::with_capacity(offsets.len());
+    remapped_offsets.push(0);
+
+    for &original_position in &remap_context.mappings {
+        let node_edges = &edges[offsets[original_position]..offsets[original_position + 1]];
+        for &old_points_to in node_edges {
+            let new_points_to = NodeIDX::from(remap_context.mappings[old_points_to]);
+            remapped_edges.push(new_points_to);
+        }
+        remapped_offsets.push(remapped_edges.len());
+    }
+
+    (remapped_edges, remapped_offsets)
+}
+
+fn remap_tagged_edges(
+    tagged: &BTreeMap<NodeIDX, BTreeMap<Tag, BTreeSet<NodeIDX>>>,
+    remap_context: &RemapContext,
+) -> Result<BTreeMap<NodeIDX, BTreeMap<Tag, BTreeSet<NodeIDX>>>> {
+    let mut result: BTreeMap<NodeIDX, BTreeMap<String, BTreeSet<NodeIDX>>> = BTreeMap::new();
+
+    for (old_node_idx, edges) in tagged {
+        let new_node_idx = NodeIDX::from(remap_context.mappings[*old_node_idx]);
+        for (tag, points_to_set) in edges {
+            for old_points_to in points_to_set {
+                result
+                    .entry(new_node_idx)
+                    .or_default()
+                    .entry(tag.clone())
+                    .or_default()
+                    .insert(NodeIDX::from(remap_context.mappings[*old_points_to]));
+            }
+        }
+    }
+    Ok(result)
+}
+
+pub fn make_remapped_node_names_ordered(new_node_names: &[String]) -> NodeNamesOrdered {
+    let mut names = String::new();
+    let mut offsets = vec![0];
+
+    for node_name in new_node_names {
+        names.push_str(node_name);
+        offsets.push(names.len());
+    }
+
+    NodeNamesOrdered::from_parts(names, offsets)
+}
+
+fn remap_dynamic_edges(
+    dynamic: &BTreeMap<NodeIDX, Vec<ArrayGraphDynamicEdge>>,
+    remap_context: &RemapContext,
+) -> Result<BTreeMap<NodeIDX, Vec<ArrayGraphDynamicEdge>>> {
+    let mut result: BTreeMap<NodeIDX, Vec<ArrayGraphDynamicEdge>> = BTreeMap::new();
+
+    for (old_node_idx, edges) in dynamic {
+        let new_node_idx = NodeIDX::from(remap_context.mappings[*old_node_idx]);
+        for edge in edges {
+            let new_branches = edge
+                .branches
+                .iter()
+                .map(|(branch, node_idxs)| {
+                    let new_node_idxs: BTreeSet<NodeIDX> = node_idxs
+                        .iter()
+                        .map(|&node_idx| NodeIDX::from(remap_context.mappings[node_idx]))
+                        .collect();
+                    (branch.clone(), new_node_idxs)
+                })
+                .collect();
+            result
+                .entry(new_node_idx)
+                .or_default()
+                .push(ArrayGraphDynamicEdge {
+                    properties: edge.properties.clone(),
+                    branches: new_branches,
+                });
+        }
+    }
+    Ok(result)
+}
+
+pub fn remap_node_metadata(
+    metadata: &ArrayGraphSerializableNodeMetadata,
+    ctx: &RemapContext,
+) -> Result<ArrayGraphSerializableNodeMetadata> {
+    let mut new_metrics = BTreeMap::new();
+    let mut new_tag_sets = BTreeMap::new();
+
+    for (metric_name, metrics) in &metadata.metrics {
+        let mut new_vec = Vec::with_capacity(metrics.len());
+        for &old_position in &ctx.mappings {
+            new_vec.push(metrics[old_position])
+        }
+        new_metrics.insert(metric_name.clone(), new_vec);
+    }
+
+    for (old_node_idx, tag_sets) in &metadata.tag_sets {
+        new_tag_sets.insert(NodeIDX::from(ctx.mappings[*old_node_idx]), tag_sets.clone());
+    }
+
+    Ok(ArrayGraphSerializableNodeMetadata {
+        metrics: new_metrics,
+        tag_sets: new_tag_sets,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use anyhow::Result;
+    use k9::assert_equal;
+    use k9::snapshot;
+
+    use super::*;
+    use crate::ArrayGraphSerializable;
+    use crate::tests::make_test_array_graph_1;
+    use crate::types::array_graph::array_graph_debug_utils::ArrayGraphDebugUtils;
+
+    #[test]
+    fn test_sort_and_return_mapping() {
+        let mut input = vec![3, 1, 2];
+        let ctx = sort_and_return_mapping(&mut input);
+        assert_equal!(input, vec![1, 2, 3]);
+        assert_equal!(ctx.mappings, vec![2, 0, 1]);
+        assert_equal!(ctx.original_positions, vec![1, 2, 0]);
+    }
+
+    #[test]
+    fn test_graph_remapping() -> Result<()> {
+        let g = make_test_array_graph_1()?;
+        snapshot!(
+            g.to_edges_string()?,
+            "
+A:
+  - B
+  - D
+B:
+  - C [T]
+  - J [T]
+C (tag sets: disallow_tags: [b, c]):
+D:
+  - F
+  - E [T]
+E:
+F:
+  - G [D]
+  - H [D]
+  - I [D]
+G:
+H:
+I:
+J (tag sets: assert_tags: [a, b]):
+"
+        );
+
+        // Make a new set of names prefixed with reverse indexes
+        // to test the remapping functionality.
+        let mut new_node_names = g
+            .node_names_ordered
+            .iter_names()
+            .collect::<Vec<&str>>()
+            .into_iter()
+            .rev()
+            .enumerate()
+            .map(|(rev_idx, name)| format!("{rev_idx}_{name}"))
+            .rev()
+            .collect::<Vec<_>>();
+
+        let sg = g.into_serializable();
+
+        snapshot!(
+            new_node_names.join(" "),
+            "9_A 8_B 7_C 6_D 5_E 4_F 3_G 2_H 1_I 0_J"
+        );
+
+        let ctx = sort_and_return_mapping(&mut new_node_names);
+
+        let new_sg = ArrayGraphSerializable {
+            node_names_ordered: make_remapped_node_names_ordered(&new_node_names),
+            edges: remap_edges(&sg.edges, &ctx)?,
+            node_metadata: remap_node_metadata(&sg.node_metadata, &ctx)?,
+        };
+
+        let new_g = new_sg.to_array_graph();
+        snapshot!(
+            new_g.to_edges_string()?,
+            "
+0_J (tag sets: assert_tags: [a, b]):
+1_I:
+2_H:
+3_G:
+4_F:
+  - 2_H [D]
+  - 3_G [D]
+  - 1_I [D]
+5_E:
+6_D:
+  - 4_F
+  - 5_E [T]
+7_C (tag sets: disallow_tags: [b, c]):
+8_B:
+  - 7_C [T]
+  - 0_J [T]
+9_A:
+  - 8_B
+  - 6_D
+"
+        );
+
+        Ok(())
+    }
+}

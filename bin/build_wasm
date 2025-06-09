@@ -1,0 +1,26 @@
+#!/bin/bash
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+
+BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+OUT_DIR=${BIN_DIR}/../.build/wasm
+mkdir -p $OUT_DIR
+
+WASM_ARTIFACT=${OUT_DIR}/unigraph_wasm_bg.wasm
+WASM_BASE64_PATH=${OUT_DIR}/unigraph_wasm_bg.wasm.base64
+TARGET_DIR=/tmp/unigraph-target
+
+
+# Build wasm target
+CMD="cargo build --package unigraph_wasm --release --target wasm32-unknown-unknown"
+echo $CMD && $CMD
+
+# Build wasm + glue
+CMD="wasm-bindgen --target web ${TARGET_DIR}/wasm32-unknown-unknown/release/unigraph_wasm.wasm --out-dir ${OUT_DIR}"
+echo $CMD && $CMD
+
+# Encode wasm to base64 and create TypeScript file that inlines and exports it
+WASM_TS_PATH=${OUT_DIR}/unigraph_wasm_base64.ts
+cat $WASM_ARTIFACT | base64 > $WASM_BASE64_PATH
+echo "export default \`" > $WASM_TS_PATH
+cat $WASM_BASE64_PATH >> $WASM_TS_PATH
+echo "\`;" >> $WASM_TS_PATH
