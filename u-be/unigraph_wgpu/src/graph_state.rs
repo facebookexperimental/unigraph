@@ -471,6 +471,13 @@ impl GraphState {
         let mut forces = vec![Vec2::ZERO; self.node_attributes.len()];
 
         for from in self.array_graph.node_idx_iter() {
+            if self.node_attributes[from]
+                .flags
+                .contains(NodeAttributesFlags::UNREACHABLE)
+            {
+                continue;
+            }
+
             for to in self.array_graph.edges_forward.edges(from) {
                 let dx = self.node_attributes[to.points_to].position.x
                     - self.node_attributes[from].position.x;

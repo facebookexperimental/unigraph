@@ -125,7 +125,8 @@ fn fs_node(in: NodeVertexOutput) -> @location(0) vec4<f32> {
 
 struct EdgeVertexOutput {
     @builtin(position) position: vec4<f32>,
-    @location(0) @interpolate(flat) points_to_node_attributes_flags: u32,
+    @location(0) @interpolate(flat) points_from_node_attributes_flags: u32,
+    @location(1) @interpolate(flat) points_to_node_attributes_flags: u32,
 }
 
 
@@ -154,6 +155,7 @@ fn vs_edge(
 
     var output: EdgeVertexOutput;
     output.position = vec4<f32>(vert_pos * vec2<f32>(1.0 / basic_uniforms.aspect_ratio, 1.0), 0.0, 1.0);
+    output.points_from_node_attributes_flags = from_node_attributes.flags;
     output.points_to_node_attributes_flags = to_node_attributes.flags;
     return output;
 }
@@ -161,7 +163,9 @@ fn vs_edge(
 @fragment
 fn fs_edge(in: EdgeVertexOutput) -> @location(0) vec4<f32> {
     if is_flag_set(in.points_to_node_attributes_flags, NODE_UNREACHABLE) {
-        // If the edge points to an unreachable node, discard it
+        discard;
+    }
+    if is_flag_set(in.points_from_node_attributes_flags, NODE_UNREACHABLE) {
         discard;
     }
     
