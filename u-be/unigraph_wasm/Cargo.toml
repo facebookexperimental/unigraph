@@ -19,6 +19,7 @@ unigraph_wgpu = { path = "../unigraph_wgpu" }
 wasm-bindgen = "*"
 wasm-bindgen-futures = "0.4.45"
 winit = "0.30.9"
+zstd = "0.13.3" # NOTE: zstdmt feature is not supported in wasm (no thread support)
 
 [dependencies.web-sys]
 features = [

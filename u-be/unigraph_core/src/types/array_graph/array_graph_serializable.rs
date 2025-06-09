@@ -13,6 +13,8 @@ use super::node_names_ordered::NodeNamesOrdered;
 use super::offset_graph::Edge;
 use super::offset_graph::NonDirectedEdgeMetadata;
 use super::offset_graph::OffsetGraph;
+use crate::TraversalConfig;
+use crate::array_graph_settings::ArrayGraphSettings;
 use crate::remap_utils::RemapContext;
 use crate::remap_utils::remap_edges;
 use crate::remap_utils::remap_node_metadata;
@@ -28,6 +30,9 @@ pub struct ArrayGraphSerializable {
     pub node_names_ordered: NodeNamesOrdered,
     pub edges: ArrayGraphSerializableEdges,
     pub node_metadata: ArrayGraphSerializableNodeMetadata,
+
+    pub array_graph_settings: Option<ArrayGraphSettings>,
+    pub traversal_config: Option<TraversalConfig>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -126,6 +131,8 @@ impl From<ArrayGraph> for ArrayGraphSerializable {
                 metrics: graph.metrics,
                 tag_sets: graph.tag_sets,
             },
+            array_graph_settings: None,
+            traversal_config: None,
         }
     }
 }

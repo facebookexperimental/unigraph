@@ -244,6 +244,8 @@ J (tag sets: assert_tags: [a, b]):
             node_names_ordered: make_remapped_node_names_ordered(&new_node_names),
             edges: remap_edges(&sg.edges, &ctx)?,
             node_metadata: remap_node_metadata(&sg.node_metadata, &ctx)?,
+            array_graph_settings: None,
+            traversal_config: None,
         };
 
         let new_g = new_sg.to_array_graph();

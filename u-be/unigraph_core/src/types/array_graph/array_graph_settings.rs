@@ -1,19 +1,21 @@
 use std::collections::BTreeMap;
 
 use ts_rs::TS;
-#[derive(serde::Serialize, TS)]
+
+#[derive(serde::Serialize, serde::Deserialize, TS)]
 #[ts(export)]
 pub struct ArrayGraphSettings {
     pub metric_settings: Option<BTreeMap<String, MetricSettings>>,
+    pub ui_settings: Option<ArrayGraphUISettings>,
 }
 
-#[derive(serde::Serialize, TS)]
+#[derive(serde::Serialize, serde::Deserialize, TS)]
 #[ts(export)]
 pub struct MetricSettings {
     pub description: String,
     pub format: Option<MetricFormat>,
 }
-#[derive(serde::Serialize, TS)]
+#[derive(serde::Serialize, serde::Deserialize, TS)]
 #[ts(export)]
 /// Value that defines how to format metric values (in the UI or CLI output)
 /// This value is cross platform enum type which is represented as an object/shape
@@ -49,7 +51,7 @@ pub enum MetricFormat {
     },
 }
 
-#[derive(serde::Serialize, TS)]
+#[derive(serde::Serialize, serde::Deserialize, TS)]
 #[ts(export)]
 /// Configuration for size formatting
 pub enum SizeConfig {
@@ -70,4 +72,34 @@ pub enum SizeConfig {
     /// Forces the units to be in Gigibytes. Please consider using ForceGB instead
     /// https://fburl.com/workplace/2bl6qcmn
     ForceGiB {},
+}
+
+#[derive(serde::Serialize, serde::Deserialize, TS)]
+#[ts(export)]
+pub enum SortOrder {
+    Asc,
+    Desc,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, TS)]
+#[ts(export)]
+pub struct GraphTableSort {
+    pub column_id: String,
+    pub order: SortOrder,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, TS)]
+#[ts(export)]
+pub enum SidebarPanel {
+    None,
+    Simulation,
+    GraphInfo,
+    ColumnsSettings,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, TS)]
+#[ts(export)]
+pub struct ArrayGraphUISettings {
+    selected_sidebar_panel: Option<SidebarPanel>,
+    graph_table_sort: Option<GraphTableSort>,
 }
