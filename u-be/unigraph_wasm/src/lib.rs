@@ -249,7 +249,7 @@ pub fn apply_traversal_config(traversal_config_json: String) -> Result<(), WasmJ
         serde_json::from_str(&traversal_config_json).context("Failed to parse traversal config")?;
     GlobalState::graph_state_mut()
         .array_graph
-        .apply_traversal_config(&traversal_config)
+        .apply_traversal_config(traversal_config)
         .context("Failed to apply traversal config")?;
     Ok(())
 }
@@ -272,4 +272,22 @@ pub fn determine_entrypoints() -> Result<Vec<u32>, WasmJSError> {
 pub fn get_array_graph_stats() -> Result<String, WasmJSError> {
     let stats = &GlobalState::graph_state().get().array_graph.stats();
     Ok(serde_json::to_string(&stats).context("Failed to serialize graph stats")?)
+}
+
+#[wasm_bindgen]
+/// Takes a base64-encoded (url safe no pad) zstd compressed string and returns it.
+/// MUST be a valid string (likely JSON) that can be converted to a UTF-8 string.
+pub fn from_zstd_base64_url_safe_no_pad(zstd_base64: &str) -> Result<String, WasmJSError> {
+    let bytes = serialization::from_zstd_base64(zstd_base64)
+        .context("Failed to decode zstd base64 string")?;
+
+    let str = String::from_utf8(bytes).context("Failed to convert bytes to UTF-8 string")?;
+    Ok(str)
+}
+
+#[wasm_bindgen]
+pub fn to_zstd_base64_url_safe_no_pad(s: &str) -> Result<String, WasmJSError> {
+    let r = serialization::to_zstd_base64_url_safe_no_pad(s.as_bytes(), 10)
+        .context("Failed to compress string to zstd base64 URL-safe no pad")?;
+    Ok(r)
 }

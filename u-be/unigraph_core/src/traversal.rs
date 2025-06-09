@@ -39,7 +39,7 @@ impl Decision {
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Default)]
+#[derive(serde::Serialize, serde::Deserialize, Default, Clone)]
 #[derive(ts_rs::TS)]
 #[ts(export)]
 pub struct TraversalConfig {
@@ -67,7 +67,7 @@ pub struct TraversalConfigIDX {
     pub tiered_traversal: Option<TieredTraversalConfig>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
 #[derive(ts_rs::TS)]
 #[ts(export)]
 pub struct ForceDynamic {

@@ -240,7 +240,7 @@ F -> I: 0000_0000_0000_0010 (Dynamic { properties: {"type": "DDD"}, branch: "b2"
 "#
     );
 
-    g.apply_traversal_config(&TraversalConfig {
+    g.apply_traversal_config(TraversalConfig {
         force_nodes: btreemap! { "I".into() => Decision { include: false, message: None } },
         ..Default::default()
     })?;
@@ -273,7 +273,7 @@ fn test_dfs_with_traversal_config() -> Result<()> {
 
     snapshot!(dfs_configured(&g), "A B C D E F G H I J");
 
-    g.apply_traversal_config(&traversal_config)?;
+    g.apply_traversal_config(traversal_config)?;
 
     snapshot!(dfs_configured(&g), "A B J");
     Ok(())
@@ -300,7 +300,7 @@ fn test_dfs_with_traversal_config_on_dynamic_edges() -> Result<()> {
     let mut g = make_test_array_graph_1()?;
     let mut traversal_config = TraversalConfig::default();
 
-    g.apply_traversal_config(&traversal_config)?;
+    g.apply_traversal_config(traversal_config.clone())?;
     snapshot!(dfs_configured(&g), "A B C D E F G H I J");
 
     traversal_config.force_dynamic = vec![ForceDynamic {
@@ -313,7 +313,7 @@ fn test_dfs_with_traversal_config_on_dynamic_edges() -> Result<()> {
         },
     }];
 
-    g.apply_traversal_config(&traversal_config)?;
+    g.apply_traversal_config(traversal_config.clone())?;
     snapshot!(dfs_configured(&g), "A B C D E F I J");
 
     traversal_config.force_dynamic = vec![ForceDynamic {
@@ -326,7 +326,7 @@ fn test_dfs_with_traversal_config_on_dynamic_edges() -> Result<()> {
         },
     }];
 
-    g.apply_traversal_config(&traversal_config)?;
+    g.apply_traversal_config(traversal_config.clone())?;
     snapshot!(dfs_configured(&g), "A B C D E F G H J");
 
     // Set a default branch to follow for DDD
@@ -351,7 +351,7 @@ fn test_dfs_with_traversal_config_on_dynamic_edges() -> Result<()> {
         },
     ];
 
-    g.apply_traversal_config(&traversal_config)?;
+    g.apply_traversal_config(traversal_config.clone())?;
     snapshot!(dfs_configured(&g), "A B C D E F I J");
 
     // follow nothing
@@ -365,7 +365,7 @@ fn test_dfs_with_traversal_config_on_dynamic_edges() -> Result<()> {
         },
     }];
 
-    g.apply_traversal_config(&traversal_config)?;
+    g.apply_traversal_config(traversal_config)?;
     snapshot!(dfs_configured(&g), "A B C D E F J");
 
     Ok(())
@@ -406,15 +406,15 @@ fn test_dfs_with_traversal_config_tag_sets() -> Result<()> {
     };
 
     set_global_value(&mut traversal_config, "a");
-    g.apply_traversal_config(&traversal_config)?;
+    g.apply_traversal_config(traversal_config.clone())?;
     snapshot!(dfs_configured(&g), "A B C D E F G H I J");
 
     set_global_value(&mut traversal_config, "b");
-    g.apply_traversal_config(&traversal_config)?;
+    g.apply_traversal_config(traversal_config.clone())?;
     snapshot!(dfs_configured(&g), "A B D E F G H I J");
 
     set_global_value(&mut traversal_config, "c");
-    g.apply_traversal_config(&traversal_config)?;
+    g.apply_traversal_config(traversal_config)?;
     snapshot!(dfs_configured(&g), "A B D E F G H I");
     snapshot!(dfs_unconfigured(&g), "A B C D E F G H I J");
 
@@ -475,7 +475,7 @@ fn test_tiered_traversal() -> Result<()> {
         ..Default::default()
     };
 
-    g.apply_traversal_config(&traversal_config)?;
+    g.apply_traversal_config(traversal_config)?;
 
     let mut result = String::new();
     for node_idx in g.node_idx_iter() {

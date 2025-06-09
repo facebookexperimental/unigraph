@@ -16,7 +16,7 @@ use crate::types::array_graph::offset_graph::NonDirectedEdgeMetadata;
 /// it has a tiered traversal and add all node metadata
 pub fn apply_traversal_config_to_array_graph(
     ag: &mut ArrayGraph,
-    traversal_config: &TraversalConfig,
+    traversal_config: TraversalConfig,
 ) -> Result<()> {
     let entry_points = ag.determine_entrypoints();
     let indexed_config = traversal_config.index(ag);
@@ -32,8 +32,7 @@ pub fn apply_traversal_config_to_array_graph(
 
     apply_tiers(ag, &indexed_config, &entry_points)?;
     apply_node_reachability(ag, entry_points);
-
-    ag.traversal_config = Some(indexed_config);
+    ag.traversal_config = Some(traversal_config);
     Ok(())
 }
 

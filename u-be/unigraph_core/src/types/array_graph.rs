@@ -26,7 +26,6 @@ use super::TagSetName;
 use crate::ArrayGraphSerializable;
 use crate::GraphBuilder;
 use crate::traversal::TraversalConfig;
-use crate::traversal::TraversalConfigIDX;
 use crate::traversal::apply_to_array_graph::apply_traversal_config_to_array_graph;
 use crate::traversal::tiered_traversal::TieredTraversalConfig;
 use crate::types::TierName;
@@ -45,7 +44,7 @@ pub struct ArrayGraph {
     pub metrics: BTreeMap<MetricName, Vec<f32>>,
     pub tag_sets: BTreeMap<NodeIDX, BTreeMap<TagSetName, BTreeSet<Tag>>>,
 
-    pub traversal_config: Option<TraversalConfigIDX>,
+    pub traversal_config: Option<TraversalConfig>,
 }
 
 bitflags::bitflags! {
@@ -148,7 +147,7 @@ impl ArrayGraph {
             .collect()
     }
 
-    pub fn apply_traversal_config(&mut self, traversal_config: &TraversalConfig) -> Result<()> {
+    pub fn apply_traversal_config(&mut self, traversal_config: TraversalConfig) -> Result<()> {
         apply_traversal_config_to_array_graph(self, traversal_config)?;
         Ok(())
     }
@@ -184,7 +183,7 @@ impl ArrayGraph {
 
     pub fn get_tiers_names(&self) -> Vec<TierName> {
         match &self.traversal_config {
-            Some(TraversalConfigIDX {
+            Some(TraversalConfig {
                 tiered_traversal: Some(TieredTraversalConfig::AscendingTiers(ascending_tiers)),
                 ..
             }) => ascending_tiers
@@ -192,7 +191,7 @@ impl ArrayGraph {
                 .iter()
                 .map(|tier| tier.name.clone())
                 .collect(),
-            Some(TraversalConfigIDX {
+            Some(TraversalConfig {
                 tiered_traversal: None,
                 ..
             }) => vec![],
