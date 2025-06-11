@@ -127,7 +127,7 @@ impl From<ArrayGraph> for ArrayGraphSerializable {
                 tag_sets: graph.tag_sets,
             },
             array_graph_settings: None,
-            traversal_config: None,
+            traversal_config: graph.traversal_config,
         }
     }
 }
@@ -207,7 +207,7 @@ impl From<ArrayGraphSerializable> for ArrayGraph {
             metrics: serializable.node_metadata.metrics,
             tag_sets: serializable.node_metadata.tag_sets,
             node_flags,
-            traversal_config: None,
+            traversal_config: serializable.traversal_config.clone(),
         }
     }
 }

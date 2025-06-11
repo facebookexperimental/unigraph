@@ -29,13 +29,13 @@ import type { ArrayGraphSettings } from "../u-be/unigraph_core/bindings/ArrayGra
 
 export type InputGraph =
   | {
-      t: "MapGraphJSON";
-      mapGraphJSON: string;
-    }
+    t: "MapGraphJSON";
+    mapGraphJSON: string;
+  }
   | {
-      t: "array_graph_json_zstd_base64";
-      array_graph_json_zstd_base64: string;
-    };
+    t: "array_graph_json_zstd_base64";
+    array_graph_json_zstd_base64: string;
+  };
 
 export function Explorer({
   graph,
@@ -62,12 +62,12 @@ export function Explorer({
   const [tvc, nativeGraph] = useMemo(() => {
     const tvc: TraversalConfig =
       traversalConfigZSTDBase64UrlSafeNoPadding == null
-        ? { ...DEFAULT_TVC }
+        ? nativeGraphNoTVC.getTraversalConfig()
         : JSON.parse(
-            from_zstd_base64_url_safe_no_pad(
-              traversalConfigZSTDBase64UrlSafeNoPadding,
-            ),
-          );
+          from_zstd_base64_url_safe_no_pad(
+            traversalConfigZSTDBase64UrlSafeNoPadding,
+          ),
+        );
 
     return [tvc, nativeGraphNoTVC.getApplyTraversalConfig(tvc)];
   }, [traversalConfigZSTDBase64UrlSafeNoPadding, nativeGraphNoTVC]);
@@ -76,10 +76,10 @@ export function Explorer({
     return graphSettingsZSTDBase64UrlSafeNoPadding == null
       ? {}
       : JSON.parse(
-          from_zstd_base64_url_safe_no_pad(
-            graphSettingsZSTDBase64UrlSafeNoPadding,
-          ),
-        );
+        from_zstd_base64_url_safe_no_pad(
+          graphSettingsZSTDBase64UrlSafeNoPadding,
+        ),
+      );
   }, [graphSettingsZSTDBase64UrlSafeNoPadding]);
 
   const setTvcCb = useCallback(
@@ -193,31 +193,3 @@ function initNativeGraph(graph: InputGraph): NativeGraph {
   }
 }
 
-const DEFAULT_TVC: TraversalConfig = {
-  force_nodes: {},
-  force_edges: {},
-  force_dynamic: [],
-  tag_sets: [],
-  tiered_traversal: {
-    AscendingTiers: {
-      tiers: [
-        {
-          name: "T1",
-          tags_that_transition_to_this_tier: [],
-        },
-        {
-          name: "T2",
-          tags_that_transition_to_this_tier: ["RDFD"],
-        },
-        {
-          name: "T3",
-          tags_that_transition_to_this_tier: ["RD"],
-        },
-        {
-          name: "T4",
-          tags_that_transition_to_this_tier: ["BL"],
-        },
-      ],
-    },
-  },
-};

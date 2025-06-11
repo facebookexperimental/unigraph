@@ -165,7 +165,7 @@ impl MapGraph {
             edges_tagged: all_tagged_edges,
             edges_dynamic: all_dynamic_edges,
             tag_sets: all_tag_sets,
-            traversal_config: None,
+            traversal_config: self.traversal_config.clone(),
         })
     }
 

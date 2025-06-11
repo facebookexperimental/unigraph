@@ -8,6 +8,7 @@ import {
   get_array_graph_stats,
   get_arrows_forward,
   get_graph_node_count,
+  get_graph_traversal_config,
   get_metric_names,
   get_node_metrics,
   get_transitive_metrics,
@@ -57,6 +58,14 @@ export default class NativeGraph {
   stats(): ArrayGraphStats {
     this.statsCache ??= JSON.parse(get_array_graph_stats());
     return this.statsCache as ArrayGraphStats;
+  }
+
+  /// Get the current traversal config that's set on the grpaph.
+  /// This will usually return the default traversal config encoded
+  /// on the graph if nothing else was explicitly set.
+  getTraversalConfig(): TraversalConfig {
+    let tvcJSON = get_graph_traversal_config();
+    return JSON.parse(tvcJSON) as TraversalConfig;
   }
 
   /// This function changes the traversal config and returns a new
