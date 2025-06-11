@@ -19,13 +19,13 @@ pub fn sort_and_return_mapping<T: Ord>(vec: &mut Vec<T>) -> RemapContext {
     vec_with_indices.sort_by(|a, b| a.1.cmp(&b.1));
 
     let mut sorted_vec = Vec::with_capacity(vec_with_indices.len());
-    let mut mappings = vec![0; vec_with_indices.len()];
+    let mut mappings = vec![0usize.into(); vec_with_indices.len()];
     let mut original_positions = Vec::with_capacity(vec_with_indices.len());
 
     for (new_position, (original_position, value)) in vec_with_indices.into_iter().enumerate() {
         sorted_vec.push(value);
-        original_positions.push(original_position);
-        mappings[original_position] = new_position;
+        original_positions.push(original_position.into());
+        mappings[original_position] = new_position.into();
     }
 
     std::mem::swap(vec, &mut sorted_vec);
@@ -37,8 +37,25 @@ pub fn sort_and_return_mapping<T: Ord>(vec: &mut Vec<T>) -> RemapContext {
 }
 
 pub struct RemapContext {
-    pub original_positions: Vec<usize>,
-    pub mappings: Vec<usize>,
+    /// Original positions of the nodes in the new vec.
+    /// if we have a vec like this:
+    ///     vec!["C", "A", "B"];
+    /// then we want to sort it and remap the indexes to make
+    ///     vec!["A", "B", "C"];
+    /// the original_positions vec will be:
+    ///    vec![1, 2, 0];
+    pub original_positions: Vec<NodeIDX>,
+    /// Mappings represent the new positions of the original nodes.
+    /// if we have a vec like this:
+    ///     vec!["C", "A", "B"];
+    /// then we want to sort it and remap the indexes to make
+    ///     vec!["A", "B", "C"];
+    /// the mappings vec will be:
+    ///     vec![Some(2), Some(0), Some(1)];
+    /// In the resulting vec, the position of the mapping element represents
+    /// the original position of the thing in the original vec. The value represents
+    /// the new position of the element in the new (sorted) vec (if any).
+    pub mappings: Vec<NodeIDX>,
 }
 
 pub fn remap_edges(
@@ -67,10 +84,10 @@ pub fn remap_directed_edges(
     let mut remapped_offsets = Vec::with_capacity(offsets.len());
     remapped_offsets.push(0);
 
-    for &original_position in &remap_context.mappings {
+    for &original_position in &remap_context.original_positions {
         let node_edges = &edges[offsets[original_position]..offsets[original_position + 1]];
         for &old_points_to in node_edges {
-            let new_points_to = NodeIDX::from(remap_context.mappings[old_points_to]);
+            let new_points_to = remap_context.mappings[old_points_to];
             remapped_edges.push(new_points_to);
         }
         remapped_offsets.push(remapped_edges.len());
@@ -86,7 +103,7 @@ fn remap_tagged_edges(
     let mut result: BTreeMap<NodeIDX, BTreeMap<String, BTreeSet<NodeIDX>>> = BTreeMap::new();
 
     for (old_node_idx, edges) in tagged {
-        let new_node_idx = NodeIDX::from(remap_context.mappings[*old_node_idx]);
+        let new_node_idx = remap_context.mappings[*old_node_idx];
         for (tag, points_to_set) in edges {
             for old_points_to in points_to_set {
                 result
@@ -94,7 +111,7 @@ fn remap_tagged_edges(
                     .or_default()
                     .entry(tag.clone())
                     .or_default()
-                    .insert(NodeIDX::from(remap_context.mappings[*old_points_to]));
+                    .insert(remap_context.mappings[*old_points_to]);
             }
         }
     }
@@ -120,7 +137,7 @@ fn remap_dynamic_edges(
     let mut result: BTreeMap<NodeIDX, Vec<ArrayGraphDynamicEdge>> = BTreeMap::new();
 
     for (old_node_idx, edges) in dynamic {
-        let new_node_idx = NodeIDX::from(remap_context.mappings[*old_node_idx]);
+        let new_node_idx = remap_context.mappings[*old_node_idx];
         for edge in edges {
             let new_branches = edge
                 .branches
@@ -128,7 +145,7 @@ fn remap_dynamic_edges(
                 .map(|(branch, node_idxs)| {
                     let new_node_idxs: BTreeSet<NodeIDX> = node_idxs
                         .iter()
-                        .map(|&node_idx| NodeIDX::from(remap_context.mappings[node_idx]))
+                        .map(|&node_idx| remap_context.mappings[node_idx])
                         .collect();
                     (branch.clone(), new_node_idxs)
                 })
@@ -161,7 +178,7 @@ pub fn remap_node_metadata(
     }
 
     for (old_node_idx, tag_sets) in &metadata.tag_sets {
-        new_tag_sets.insert(NodeIDX::from(ctx.mappings[*old_node_idx]), tag_sets.clone());
+        new_tag_sets.insert(ctx.mappings[*old_node_idx], tag_sets.clone());
     }
 
     Ok(ArrayGraphSerializableNodeMetadata {
@@ -186,8 +203,22 @@ mod tests {
         let mut input = vec![3, 1, 2];
         let ctx = sort_and_return_mapping(&mut input);
         assert_equal!(input, vec![1, 2, 3]);
-        assert_equal!(ctx.mappings, vec![2, 0, 1]);
-        assert_equal!(ctx.original_positions, vec![1, 2, 0]);
+        assert_equal!(
+            ctx.mappings,
+            vec![
+                NodeIDX::from(2u32),
+                NodeIDX::from(0u32),
+                NodeIDX::from(1u32)
+            ]
+        );
+        assert_equal!(
+            ctx.original_positions,
+            vec![
+                NodeIDX::from(1u32),
+                NodeIDX::from(2u32),
+                NodeIDX::from(0u32)
+            ]
+        );
     }
 
     #[test]

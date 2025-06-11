@@ -48,6 +48,14 @@ impl<T> Index<NodeIDX> for Vec<T> {
     }
 }
 
+impl<T> Index<NodeIDX> for [T] {
+    type Output = T;
+
+    fn index(&self, idx: NodeIDX) -> &Self::Output {
+        &self[idx.0 as usize]
+    }
+}
+
 impl<T> IndexMut<NodeIDX> for Vec<T> {
     fn index_mut(&mut self, idx: NodeIDX) -> &mut Self::Output {
         &mut self[idx.0 as usize]
@@ -91,5 +99,11 @@ impl Sub<u32> for NodeIDX {
 
     fn sub(self, rhs: u32) -> Self::Output {
         NodeIDX(self.0 - rhs)
+    }
+}
+
+impl From<NodeIDX> for usize {
+    fn from(val: NodeIDX) -> Self {
+        val.0 as usize
     }
 }

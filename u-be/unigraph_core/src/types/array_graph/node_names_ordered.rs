@@ -31,9 +31,13 @@ impl NodeNamesOrdered {
     }
 
     #[inline]
-    pub fn idx_to_name(&self, node_idx: NodeIDX) -> &str {
-        let start = self.offsets[node_idx];
-        let end = self.offsets[node_idx + 1];
+    pub fn idx_to_name<I>(&self, node_idx: I) -> &str
+    where
+        I: Into<usize> + Copy,
+    {
+        let idx: usize = node_idx.into();
+        let start = self.offsets[idx];
+        let end = self.offsets[idx + 1];
         &self.node_names[start..end]
     }
 
