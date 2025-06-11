@@ -7,6 +7,8 @@ pub mod types;
 
 pub use map_graph_builder::GraphBuilder;
 pub use test_graph::make_test_graph;
+pub use traversal::Decision;
+pub use traversal::ForceDynamic;
 pub use traversal::TraversalConfig;
 pub use types::NodeIDX;
 pub use types::array_graph::ArrayGraph;
