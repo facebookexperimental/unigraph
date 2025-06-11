@@ -18,12 +18,14 @@ use super::array_graph::Arrow;
 use super::array_graph::NodeFlags;
 use super::array_graph::node_names_ordered::NodeNamesOrderedBuilder;
 use super::array_graph::offset_graph::OffsetGraphBuilder;
+use crate::TraversalConfig;
 
 type NodeName = String;
 
 #[derive(serde::Deserialize, serde::Serialize)]
 pub struct MapGraph {
     pub nodes: BTreeMap<NodeName, GraphNode>,
+    pub traversal_config: Option<TraversalConfig>,
 }
 
 #[derive(serde::Deserialize, serde::Serialize, Default)]

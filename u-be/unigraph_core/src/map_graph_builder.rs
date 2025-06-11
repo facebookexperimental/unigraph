@@ -18,6 +18,7 @@ impl GraphBuilder {
         GraphBuilder {
             graph: MapGraph {
                 nodes: BTreeMap::new(),
+                traversal_config: Default::default(),
             },
         }
     }

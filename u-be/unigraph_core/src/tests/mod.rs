@@ -727,7 +727,8 @@ fn test_graph() {
         "size": 1.0
       }
     }
-  }
+  },
+  "traversal_config": null
 }
 "#
     );

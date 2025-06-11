@@ -12,6 +12,7 @@ use crate::types::map_graph::MapGraphEdges;
 pub fn to_map_graph(graph: &ArrayGraph) -> Result<MapGraph> {
     let mut result = MapGraph {
         nodes: Default::default(),
+        traversal_config: graph.traversal_config.clone(),
     };
 
     for node_idx in graph.node_idx_iter() {
@@ -246,7 +247,8 @@ mod tests {
         "size": 1.0
       }
     }
-  }
+  },
+  "traversal_config": null
 }
 "#
         );
