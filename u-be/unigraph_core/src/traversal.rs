@@ -1,6 +1,7 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 pub(crate) mod apply_to_array_graph;
+pub(crate) mod reachable_subgraph;
 pub mod tiered_traversal;
 
 use std::collections::BTreeMap;

@@ -538,7 +538,7 @@ fn test_serializable() -> Result<()> {
     let s = g.into_serializable();
     let json_zstd = s.to_json()?;
     let original: ArrayGraphSerializable = ArrayGraphSerializable::from_json(&json_zstd)?;
-    let roundtrip = original.to_array_graph();
+    let roundtrip = original.into_array_graph();
     let rountrip_names = print_all_node_names(&roundtrip);
     let roundtrip_edges = print_edges(&roundtrip);
 
@@ -583,6 +583,30 @@ F -> I [D]
     Ok(())
 }
 
+#[test]
+fn test_reacable_subgraph_unconfigured() -> Result<()> {
+    let g = make_test_array_graph_1()?;
+    let d = g.node_names_ordered.name_to_idx_log("D").unwrap();
+    let sg = g.get_reachable_subgraph_unconfigured(&[d])?;
+    let reachable = sg.into_array_graph();
+    snapshot!(
+        reachable.to_edges_string()?,
+        "
+D:
+  - F
+  - E [T]
+E:
+F:
+  - G [D]
+  - H [D]
+  - I [D]
+G:
+H:
+I:
+"
+    );
+    Ok(())
+}
 #[test]
 fn test_graph() {
     let graph = make_test_graph_1();

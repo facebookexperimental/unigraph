@@ -16,6 +16,7 @@ use crate::array_graph_settings::ArrayGraphSettings;
 use crate::remap_utils::RemapContext;
 use crate::remap_utils::remap_edges;
 use crate::remap_utils::remap_node_metadata;
+use crate::remap_utils::remap_node_names_ordered;
 use crate::types::MetricName;
 use crate::types::NodeIDX;
 use crate::types::Tag;
@@ -65,7 +66,7 @@ impl ArrayGraphSerializable {
     }
 
     /// Converts this serializable representation back into an `ArrayGraph`.
-    pub fn to_array_graph(self) -> ArrayGraph {
+    pub fn into_array_graph(self) -> ArrayGraph {
         self.into()
     }
 
@@ -76,9 +77,20 @@ impl ArrayGraphSerializable {
     pub fn from_json(json: &str) -> Result<Self> {
         serde_json::from_str(json).context("Failed to deserialize ArrayGraphSerializable from JSON")
     }
+
     pub fn from_json_bytes(json: &[u8]) -> Result<Self> {
         serde_json::from_slice(json)
             .context("Failed to deserialize ArrayGraphSerializable from JSON bytes")
+    }
+
+    pub fn remap(self, ctx: &RemapContext) -> Result<Self> {
+        Ok(ArrayGraphSerializable {
+            node_names_ordered: remap_node_names_ordered(&self.node_names_ordered, ctx),
+            edges: self.edges.remap(ctx)?,
+            node_metadata: self.node_metadata.remap(ctx)?,
+            array_graph_settings: self.array_graph_settings,
+            traversal_config: self.traversal_config,
+        })
     }
 }
 

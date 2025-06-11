@@ -27,6 +27,7 @@ use crate::ArrayGraphSerializable;
 use crate::GraphBuilder;
 use crate::traversal::TraversalConfig;
 use crate::traversal::apply_to_array_graph::apply_traversal_config_to_array_graph;
+use crate::traversal::reachable_subgraph::get_reachable_subgraph_unconfigured;
 use crate::traversal::tiered_traversal::TieredTraversalConfig;
 use crate::types::TierName;
 use crate::types::array_graph::array_graph_stats::ArrayGraphStats;
@@ -150,6 +151,13 @@ impl ArrayGraph {
         idxs.iter()
             .map(|idx| self.node_names_ordered.idx_to_name(*idx))
             .collect()
+    }
+
+    pub fn get_reachable_subgraph_unconfigured(
+        self,
+        roots: &[NodeIDX],
+    ) -> Result<ArrayGraphSerializable> {
+        get_reachable_subgraph_unconfigured(self, roots)
     }
 
     pub fn apply_traversal_config(&mut self, traversal_config: TraversalConfig) -> Result<()> {

@@ -62,6 +62,22 @@ pub struct RemapContext {
     pub mappings: Vec<Option<NodeIDX>>,
 }
 
+pub fn remap_node_names_ordered(
+    node_names_ordered: &NodeNamesOrdered,
+    remap_context: &RemapContext,
+) -> NodeNamesOrdered {
+    let mut names = String::new();
+    let mut offsets = vec![0];
+
+    for &original_position in &remap_context.original_positions {
+        let name = node_names_ordered.idx_to_name(original_position);
+        names.push_str(name);
+        offsets.push(names.len());
+    }
+
+    NodeNamesOrdered::from_parts(names, offsets)
+}
+
 pub fn remap_edges(
     edges: &ArrayGraphSerializableEdges,
     remap_context: &RemapContext,
@@ -293,7 +309,7 @@ J (tag sets: assert_tags: [a, b]):
             traversal_config: None,
         };
 
-        let new_g = new_sg.to_array_graph();
+        let new_g = new_sg.into_array_graph();
         snapshot!(
             new_g.to_edges_string()?,
             "
