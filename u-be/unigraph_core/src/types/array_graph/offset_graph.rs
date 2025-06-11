@@ -81,6 +81,11 @@ impl Edge {
         self.flags
             .intersects(EdgeFlags::IS_TAGGED | EdgeFlags::IS_DYNAMIC)
     }
+
+    #[inline(always)]
+    pub fn is_excluded(&self) -> bool {
+        self.flags.contains(EdgeFlags::EXCLUDED)
+    }
 }
 
 impl EdgeFlags {

@@ -16,6 +16,8 @@ export default function GraphInfoPanel() {
         <DataCell label="Dynamic Edges" value={stats.num_dynamic_edges} />
         <DataCell label="Node Count" value={stats.num_all_nodes} />
         <DataCell label="All Edges" value={stats.num_all_edges} />
+        <DataCell label="Excluded Edges" value={stats.num_excluded_edges} />
+        <DataCell label="Unreachable Nodes" value={stats.num_unreachable_nodes} />
       </div>
     </SidebarPanel>
   );
