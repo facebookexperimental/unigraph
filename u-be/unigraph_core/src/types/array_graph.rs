@@ -105,7 +105,7 @@ impl NodeFlags {
     }
 }
 
-#[derive(serde::Deserialize, serde::Serialize)]
+#[derive(serde::Deserialize, serde::Serialize, Debug)]
 pub struct ArrayGraphDynamicEdge {
     pub branches: BTreeMap<DynamicBranchName, BTreeSet<NodeIDX>>,
     pub properties: BTreeMap<String, String>,

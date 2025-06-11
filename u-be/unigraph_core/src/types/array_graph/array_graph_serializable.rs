@@ -133,7 +133,7 @@ impl From<ArrayGraph> for ArrayGraphSerializable {
 }
 
 impl From<ArrayGraphSerializable> for ArrayGraph {
-    fn from(mut serializable: ArrayGraphSerializable) -> Self {
+    fn from(serializable: ArrayGraphSerializable) -> Self {
         // make an offset graph containing only directed edges so we
         // can use its functions to build the ArrayGraph
         let directed_only_offset_graph = OffsetGraph {
@@ -164,9 +164,9 @@ impl From<ArrayGraphSerializable> for ArrayGraph {
                     .push(NonDirectedEdgeMetadata::Directed);
             }
 
-            if let Some(tagged) = serializable.edges.tagged.remove(&node_idx) {
+            if let Some(tagged) = serializable.edges.tagged.get(&node_idx) {
                 for (tag, points_to_set) in tagged {
-                    for points_to in points_to_set {
+                    for &points_to in points_to_set {
                         edges_forward.edges.push(Edge::new_tagged(points_to));
                         edges_forward
                             .non_directed_edges_metadata
@@ -175,10 +175,10 @@ impl From<ArrayGraphSerializable> for ArrayGraph {
                 }
             }
 
-            if let Some(dynamic) = serializable.edges.dynamic.remove(&node_idx) {
+            if let Some(dynamic) = serializable.edges.dynamic.get(&node_idx) {
                 for dynamic_edge in dynamic {
-                    for (branch, node_idxs) in dynamic_edge.branches {
-                        for points_to in node_idxs {
+                    for (branch, node_idxs) in &dynamic_edge.branches {
+                        for &points_to in node_idxs {
                             edges_forward.edges.push(Edge::new_dynamic(points_to));
                             edges_forward.non_directed_edges_metadata.push(
                                 NonDirectedEdgeMetadata::Dynamic {
