@@ -7,6 +7,7 @@ mod array_graph_stats;
 pub(crate) mod node_names_ordered;
 pub(crate) mod offset_graph;
 pub mod remap_utils;
+mod to_map_graph;
 
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
@@ -25,6 +26,7 @@ use super::Tag;
 use super::TagSetName;
 use crate::ArrayGraphSerializable;
 use crate::GraphBuilder;
+use crate::MapGraph;
 use crate::traversal::TraversalConfig;
 use crate::traversal::apply_to_array_graph::apply_traversal_config_to_array_graph;
 use crate::traversal::reachable_subgraph::get_reachable_subgraph_unconfigured;
@@ -120,6 +122,10 @@ impl ArrayGraph {
 
     pub fn into_serializable(self) -> ArrayGraphSerializable {
         self.into()
+    }
+
+    pub fn to_map_graph(&self) -> Result<MapGraph> {
+        to_map_graph::to_map_graph(self)
     }
 
     pub fn nodes_len(&self) -> usize {
