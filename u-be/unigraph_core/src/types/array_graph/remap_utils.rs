@@ -19,13 +19,13 @@ pub fn sort_and_return_mapping<T: Ord>(vec: &mut Vec<T>) -> RemapContext {
     vec_with_indices.sort_by(|a, b| a.1.cmp(&b.1));
 
     let mut sorted_vec = Vec::with_capacity(vec_with_indices.len());
-    let mut mappings = vec![0usize.into(); vec_with_indices.len()];
+    let mut mappings = vec![None; vec_with_indices.len()];
     let mut original_positions = Vec::with_capacity(vec_with_indices.len());
 
     for (new_position, (original_position, value)) in vec_with_indices.into_iter().enumerate() {
         sorted_vec.push(value);
         original_positions.push(original_position.into());
-        mappings[original_position] = new_position.into();
+        mappings[original_position] = Some(new_position.into());
     }
 
     std::mem::swap(vec, &mut sorted_vec);
@@ -55,7 +55,11 @@ pub struct RemapContext {
     /// In the resulting vec, the position of the mapping element represents
     /// the original position of the thing in the original vec. The value represents
     /// the new position of the element in the new (sorted) vec (if any).
-    pub mappings: Vec<NodeIDX>,
+    ///
+    /// For cases where we remap to a smaller graph (e.g. filtering a subgraph) we will
+    /// have some nodes map to None, meaning that this node/idx should not appear in the
+    /// new graph.
+    pub mappings: Vec<Option<NodeIDX>>,
 }
 
 pub fn remap_edges(
@@ -87,8 +91,9 @@ pub fn remap_directed_edges(
     for &original_position in &remap_context.original_positions {
         let node_edges = &edges[offsets[original_position]..offsets[original_position + 1]];
         for &old_points_to in node_edges {
-            let new_points_to = remap_context.mappings[old_points_to];
-            remapped_edges.push(new_points_to);
+            if let Some(new_points_to) = remap_context.mappings[old_points_to] {
+                remapped_edges.push(new_points_to);
+            }
         }
         remapped_offsets.push(remapped_edges.len());
     }
@@ -103,18 +108,22 @@ fn remap_tagged_edges(
     let mut result: BTreeMap<NodeIDX, BTreeMap<String, BTreeSet<NodeIDX>>> = BTreeMap::new();
 
     for (old_node_idx, edges) in tagged {
-        let new_node_idx = remap_context.mappings[*old_node_idx];
-        for (tag, points_to_set) in edges {
-            for old_points_to in points_to_set {
-                result
-                    .entry(new_node_idx)
-                    .or_default()
-                    .entry(tag.clone())
-                    .or_default()
-                    .insert(remap_context.mappings[*old_points_to]);
+        if let Some(new_node_idx) = remap_context.mappings[*old_node_idx] {
+            for (tag, points_to_set) in edges {
+                for old_points_to in points_to_set {
+                    if let Some(new_points_to) = remap_context.mappings[*old_points_to] {
+                        result
+                            .entry(new_node_idx)
+                            .or_default()
+                            .entry(tag.clone())
+                            .or_default()
+                            .insert(new_points_to);
+                    }
+                }
             }
         }
     }
+
     Ok(result)
 }
 
@@ -137,26 +146,27 @@ fn remap_dynamic_edges(
     let mut result: BTreeMap<NodeIDX, Vec<ArrayGraphDynamicEdge>> = BTreeMap::new();
 
     for (old_node_idx, edges) in dynamic {
-        let new_node_idx = remap_context.mappings[*old_node_idx];
-        for edge in edges {
-            let new_branches = edge
-                .branches
-                .iter()
-                .map(|(branch, node_idxs)| {
-                    let new_node_idxs: BTreeSet<NodeIDX> = node_idxs
-                        .iter()
-                        .map(|&node_idx| remap_context.mappings[node_idx])
-                        .collect();
-                    (branch.clone(), new_node_idxs)
-                })
-                .collect();
-            result
-                .entry(new_node_idx)
-                .or_default()
-                .push(ArrayGraphDynamicEdge {
-                    properties: edge.properties.clone(),
-                    branches: new_branches,
-                });
+        if let Some(new_node_idx) = remap_context.mappings[*old_node_idx] {
+            for edge in edges {
+                let new_branches = edge
+                    .branches
+                    .iter()
+                    .map(|(branch, node_idxs)| {
+                        let new_node_idxs: BTreeSet<NodeIDX> = node_idxs
+                            .iter()
+                            .filter_map(|&node_idx| remap_context.mappings[node_idx])
+                            .collect();
+                        (branch.clone(), new_node_idxs)
+                    })
+                    .collect();
+                result
+                    .entry(new_node_idx)
+                    .or_default()
+                    .push(ArrayGraphDynamicEdge {
+                        properties: edge.properties.clone(),
+                        branches: new_branches,
+                    });
+            }
         }
     }
     Ok(result)
@@ -171,14 +181,18 @@ pub fn remap_node_metadata(
 
     for (metric_name, metrics) in &metadata.metrics {
         let mut new_vec = Vec::with_capacity(metrics.len());
-        for &old_position in &ctx.mappings {
-            new_vec.push(metrics[old_position])
+        for &original_position in &ctx.original_positions {
+            new_vec.push(metrics[original_position])
         }
         new_metrics.insert(metric_name.clone(), new_vec);
     }
 
     for (old_node_idx, tag_sets) in &metadata.tag_sets {
-        new_tag_sets.insert(ctx.mappings[*old_node_idx], tag_sets.clone());
+        if let Some(new_node_idx) = ctx.mappings[*old_node_idx] {
+            // If the node was remapped, we need to insert it into the new tag sets.
+            // We will use the new node index as the key.
+            new_tag_sets.insert(new_node_idx, tag_sets.clone());
+        }
     }
 
     Ok(ArrayGraphSerializableNodeMetadata {
@@ -206,9 +220,9 @@ mod tests {
         assert_equal!(
             ctx.mappings,
             vec![
-                NodeIDX::from(2u32),
-                NodeIDX::from(0u32),
-                NodeIDX::from(1u32)
+                Some(NodeIDX::from(2u32)),
+                Some(NodeIDX::from(0u32)),
+                Some(NodeIDX::from(1u32))
             ]
         );
         assert_equal!(
