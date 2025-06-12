@@ -80,7 +80,10 @@ impl QuadTree {
     }
 
     fn compute_force_for_node(&self, graph_node: &BHGraphNode) -> Vec2 {
-        const THETA: f32 = 0.9; // threshold for using quad node
+        // by controling the THETA we can control the accuracy of the simulation.
+        // if THETA is 0 then every node is treated as a leaf node and
+        // the algorithm becomes O(n^2).
+        const THETA: f32 = 1.0; // threshold for using quad node
 
         let mut stack = vec![0]; // start from root
 

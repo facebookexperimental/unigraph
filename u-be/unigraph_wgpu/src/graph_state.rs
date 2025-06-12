@@ -25,6 +25,7 @@ use crate::ts_types::SelectionType;
 pub struct GraphState {
     pub array_graph: ArrayGraph,
     pub node_attributes: Vec<NodeAttributes>,
+    pub forces: Vec<Vec2>,
     pub selected_metric: Option<String>,
     // since this requires some initialization logic to run let's
     // make sure it can't be created outside of this module
@@ -56,9 +57,9 @@ impl SharedGraphState {
         *inner = new_state;
     }
 
-    pub fn compute_next_frame(&self) {
+    pub fn compute_next_frame(&self, update_forces: bool) {
         let mut graph_state = self.get_mut();
-        graph_state.compute_next_frame();
+        graph_state.compute_next_frame(update_forces);
     }
 }
 
@@ -322,10 +323,12 @@ impl GraphState {
         // by default we'll grab whatever metric is first in the list
         let selected_metric = array_graph.metrics.keys().next().cloned();
         let node_attributes = Self::initialize_node_attributes(&array_graph);
+        let forces = vec![Vec2::ZERO; array_graph.nodes_len()];
 
         let mut result = Self {
             array_graph,
             node_attributes,
+            forces,
             selected_metric,
             _phantom: (),
         };
@@ -425,31 +428,17 @@ impl GraphState {
 
     // Process the next iteration of the simulation, which involves calculating all
     // forces and adjusting node velocities and positions accordingly.
-    pub fn compute_next_frame(&mut self) {
-        let mut quad_tree = QuadTree::new(300);
-        for (idx, node) in self.node_attributes.iter().enumerate() {
-            if node.flags.contains(NodeAttributesFlags::UNREACHABLE) {
-                continue;
-            }
-
-            quad_tree.add_body(BHGraphNode {
-                position: node.position,
-                idx,
-                mass: node.adjusted_size,
-            });
-        }
-
+    pub fn compute_next_frame(&mut self, compute_forces: bool) {
         const TERMINAL_VELOCITY: f32 = 0.01;
         let params = global_state().simulation_params.get();
 
-        let gravity_forces = quad_tree.compute_forces(self.array_graph.nodes_len());
-        let edge_forces = self.get_edge_forces();
-        let center_pull_forces = self.forces_pull_towards_center();
+        if compute_forces {
+            self.compute_forces();
+        }
+
         // update node positions based on forces
         for (idx, node) in self.node_attributes.iter_mut().enumerate() {
-            // Apply the force to the node's velocity
-            let force = edge_forces[idx] * params.edge_force_multiplier + center_pull_forces[idx]
-                - gravity_forces[idx] * params.gravity_force_multiplier;
+            let force = self.forces[idx];
 
             node.velocity += force * params.max_velocity_multiplier;
             node.velocity = node.velocity.clamp_length_max(TERMINAL_VELOCITY);
@@ -463,6 +452,37 @@ impl GraphState {
 
             node.position = node.position.clamp(Vec2::splat(-0.95), Vec2::splat(0.95));
         }
+    }
+
+    fn compute_forces(&mut self) {
+        let gravity_forces = self.compute_gravity_forces();
+        let edge_forces = self.get_edge_forces();
+        let center_pull_forces = self.forces_pull_towards_center();
+        let mut forces = vec![Vec2::ZERO; self.node_attributes.len()];
+
+        let params = global_state().simulation_params.get();
+        for node_idx in self.array_graph.node_idx_iter() {
+            forces[node_idx] = edge_forces[node_idx] * params.edge_force_multiplier
+                + center_pull_forces[node_idx]
+                - gravity_forces[node_idx] * params.gravity_force_multiplier;
+        }
+        self.forces = forces;
+    }
+
+    fn compute_gravity_forces(&self) -> Vec<Vec2> {
+        let mut quad_tree = QuadTree::new(300);
+        for (idx, node) in self.node_attributes.iter().enumerate() {
+            if node.flags.contains(NodeAttributesFlags::UNREACHABLE) {
+                continue;
+            }
+
+            quad_tree.add_body(BHGraphNode {
+                position: node.position,
+                idx,
+                mass: node.adjusted_size,
+            });
+        }
+        quad_tree.compute_forces(self.array_graph.nodes_len())
     }
 
     pub fn get_edge_forces(&self) -> Vec<Vec2> {

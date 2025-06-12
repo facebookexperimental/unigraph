@@ -7,6 +7,7 @@ mod graph_state;
 mod shared;
 pub mod ts_types;
 pub mod unigraph_error;
+use std::cmp;
 use std::sync::Arc;
 
 use anyhow::Context;
@@ -44,6 +45,7 @@ pub struct WGPUApplication {
     queue: wgpu::Queue,
     graph_shader: wgpu::ShaderModule,
     window_attributes_factory: Box<dyn WindowAttributesFactory>,
+    frame_counter: u64,
 }
 
 struct WGPUState {
@@ -331,8 +333,11 @@ impl ApplicationHandler<UserEvent> for WGPUApplication {
 
                 let params = global_state().simulation_params.get();
                 if params.active {
+                    let update_forces = self.frame_counter
+                        % cmp::max(params.compute_forces_every_n_frames as u64, 1)
+                        == 0;
                     // NOTE: this requires a write lock on the graph state
-                    global_state().graph_state.compute_next_frame();
+                    global_state().graph_state.compute_next_frame(update_forces);
 
                     let graph_state = global_state().graph_state.get();
                     state.queue.write_buffer(
@@ -353,6 +358,7 @@ impl ApplicationHandler<UserEvent> for WGPUApplication {
                     // );
                 }
                 state.window.request_redraw();
+                self.frame_counter += 1;
             }
             WindowEvent::CloseRequested => {
                 event_loop.exit();
@@ -403,6 +409,7 @@ pub async fn create_application(
         queue,
         graph_shader,
         window_attributes_factory,
+        frame_counter: 0,
     })
 }
 

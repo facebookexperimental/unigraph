@@ -251,6 +251,34 @@ function ParamsPanel(props: {
               }}
             />
           </div>
+          <div>
+            <Label
+              htmlFor="compute-forces-every-x-frames-slider"
+              className="text-sm font-medium mb-2"
+            >
+              Compute forces every{" "}
+              {props.simulationParams.compute_forces_every_n_frames} frames
+            </Label>
+            <Slider
+              id="compute-forces-every-x-frames-slider"
+              defaultValue={[
+                props.simulationParams.compute_forces_every_n_frames,
+              ]}
+              min={1}
+              max={20}
+              step={1}
+              onValueChange={(values) => {
+                const compute_forces_every_n_frames = values[0];
+                if (compute_forces_every_n_frames == null) {
+                  return;
+                }
+                props.setSimulationParams({
+                  ...props.simulationParams,
+                  compute_forces_every_n_frames,
+                });
+              }}
+            />
+          </div>
         </div>
       </div>
     </div>

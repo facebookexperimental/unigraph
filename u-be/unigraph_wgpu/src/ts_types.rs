@@ -88,6 +88,15 @@ pub struct SimulationParams {
 
     pub selection: Selection,
     pub colors: SimulationColors,
+
+    /// Calculating gravity forces is the most expensive part of the simulation.
+    /// Ideally we would want to compute forces every frame, but on large graphs
+    /// it becomes extremely expensive. To optimize this we can skip some frames
+    /// and only update the forces every n frames. In the skipped frames we would
+    /// compute the positions based on the previous forces/velocities.
+    /// This make the visualization much more jittery but it's better then
+    /// having 0.5 fps.
+    pub compute_forces_every_n_frames: u32,
 }
 
 impl SimulationParams {
@@ -138,6 +147,7 @@ impl Default for SimulationParams {
             gravity_force_multiplier: 1.0,
             edge_force_multiplier: 1.0,
             max_velocity_multiplier: 1.0,
+            compute_forces_every_n_frames: 1,
         }
     }
 }

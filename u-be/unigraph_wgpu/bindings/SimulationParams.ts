@@ -2,4 +2,14 @@
 import type { Selection } from "./Selection";
 import type { SimulationColors } from "./SimulationColors";
 
-export type SimulationParams = { active: boolean, render_edges: boolean, node_size_scale: number, gravity_force_multiplier: number, edge_force_multiplier: number, max_velocity_multiplier: number, selection: Selection, colors: SimulationColors, };
+export type SimulationParams = { active: boolean, render_edges: boolean, node_size_scale: number, gravity_force_multiplier: number, edge_force_multiplier: number, max_velocity_multiplier: number, selection: Selection, colors: SimulationColors, 
+/**
+ * Calculating gravity forces is the most expensive part of the simulation.
+ * Ideally we would want to compute forces every frame, but on large graphs
+ * it becomes extremely expensive. To optimize this we can skip some frames
+ * and only update the forces every n frames. In the skipped frames we would
+ * compute the positions based on the previous forces/velocities.
+ * This make the visualization much more jittery but it's better then
+ * having 0.5 fps.
+ */
+compute_forces_every_n_frames: number, };
