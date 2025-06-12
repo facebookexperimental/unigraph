@@ -90,7 +90,7 @@ type ColumnInternal =
 
 export function TreeTable(props: {
   columnDefinitions: ColumnDefinitions;
-  roots: NodeIDX[];
+  roots: Readonly<NodeIDX[]>;
   headerHeight?: number;
   focusOnMount?: boolean;
   onSelectedNodeIDXPathChange: (path: NodeIDX[]) => void;
@@ -408,7 +408,7 @@ class TreeTableCtx {
 
   constructor(
     columns: ColumnInternal[],
-    roots: NodeIDX[],
+    roots: Readonly<NodeIDX[]>,
     selectedNodeIDXPath: NodeIDX[],
   ) {
     this.columns = columns;
@@ -475,7 +475,7 @@ class TreeTableCtx {
     };
   }
 
-  updateRoots(roots: NodeIDX[]) {
+  updateRoots(roots: Readonly<NodeIDX[]>) {
     this.rows = roots.map((nodeIDX) => {
       return {
         depth: 0,

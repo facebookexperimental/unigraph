@@ -27,16 +27,22 @@ import type { ArrayGraphStats } from "../u-be/unigraph_core/bindings/ArrayGraphS
 import type { Arrow } from "../u-be/unigraph_core/bindings/Arrow";
 import type { NodeIDX } from "./types";
 
+type NodeIDXVecSet = Readonly<{
+  vec: Readonly<NodeIDX[]>;
+  set: Readonly<Set<NodeIDX>>;
+}>;
+
 // It serves as a bridge/cache layer between JS and WASM.
 export default class NativeGraph {
-  private entrypoints: { vec: NodeIDX[]; set: Set<NodeIDX> } | null = null;
-
   readonly nodeCount: number;
   readonly metricNames: string[] = [];
   private metricCaches: MetricCaches;
   private statsCache: ArrayGraphStats | null = null;
   private parentsCountCache: MetricsCache;
-  private allReacahableNodeIDXsCache: NodeIDX[] | null = null;
+
+  private entrypointsCache: NodeIDXVecSet | null = null;
+
+  private allReacahableNodeIDXsCache: NodeIDXVecSet | null = null;
 
   static fromMapGraphJSON(mapGraphJSON: string): NativeGraph {
     set_map_graph(mapGraphJSON);
@@ -56,7 +62,6 @@ export default class NativeGraph {
   /// tied to the previous graph.
   constructor() {
     this.nodeCount = get_graph_node_count();
-    this.entrypoints = null;
     this.metricNames = get_metric_names();
     this.metricCaches = new MetricCaches(this.nodeCount);
     this.parentsCountCache = new MetricsCache(
@@ -108,19 +113,27 @@ export default class NativeGraph {
     return parsed as Arrow[];
   }
 
-  determineEntrypoints(): { vec: NodeIDX[]; set: Set<NodeIDX> } {
-    if (this.entrypoints == null) {
+  determineEntrypoints(): NodeIDXVecSet {
+    if (this.entrypointsCache == null) {
       const result = determine_entrypoints();
-      this.entrypoints = { vec: Array.from(result), set: new Set(result) };
+      this.entrypointsCache = { vec: Array.from(result), set: new Set(result) };
     }
-    return this.entrypoints;
+    return this.entrypointsCache;
   }
 
-  getAllReachableNodeIDXs(): NodeIDX[] {
-    this.allReacahableNodeIDXsCache ??= Array.from(
-      get_all_reachable_node_idxs(),
-    );
+  getAllReachableNodeIDXs(): NodeIDXVecSet {
+    if (this.allReacahableNodeIDXsCache == null) {
+      const result = get_all_reachable_node_idxs();
+      this.allReacahableNodeIDXsCache = {
+        vec: Array.from(result),
+        set: new Set(result),
+      };
+    }
     return this.allReacahableNodeIDXsCache;
+  }
+
+  isNodeReachable(nodeIDX: NodeIDX): boolean {
+    return this.getAllReachableNodeIDXs().set.has(nodeIDX);
   }
 
   getNodeMetric(nodeIDX: NodeIDX, metricName: string): number {

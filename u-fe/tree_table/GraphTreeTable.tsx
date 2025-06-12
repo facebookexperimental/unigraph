@@ -11,7 +11,7 @@ import { useNativeGraph } from "../context/NativeGraphContext";
 import useGraphTreeTableColumns from "./useGraphTreeTableColumns";
 
 export default function GraphTreeTable(props: {
-  roots: NodeIDX[];
+  roots: Readonly<NodeIDX[]>;
   focusOnMount?: boolean;
 }) {
   const nativeGraph = useNativeGraph();

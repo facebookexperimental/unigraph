@@ -98,7 +98,7 @@ function createMetricColumn(
     t: "numeric_value_column",
     label: metricName,
     renderer: (arrow: Arrow) => {
-      const value = arrow.points_to_unreachable
+      const value = !nativeGraph.isNodeReachable(arrow.points_to)
         ? "-"
         : formatMetric(
             nativeGraph.getNodeMetric(arrow.points_to, metricName),
@@ -125,7 +125,7 @@ function createTransitiveMetricColumn(
     t: "numeric_value_column",
     label: columnID,
     renderer: (arrow: Arrow) => {
-      const value = arrow.points_to_unreachable
+      const value = !nativeGraph.isNodeReachable(arrow.points_to)
         ? "-"
         : formatMetric(
             nativeGraph.getTransitiveMetric(arrow.points_to, metricName),
@@ -161,7 +161,7 @@ function createTieredTransitiveMetricColumn(
       t: "numeric_value_column",
       label: tierName,
       renderer: (arrow: Arrow) => {
-        const value = arrow.points_to_unreachable
+        const value = !nativeGraph.isNodeReachable(arrow.points_to)
           ? "-"
           : formatMetric(
               nativeGraph.getTieredTransitiveMetric(

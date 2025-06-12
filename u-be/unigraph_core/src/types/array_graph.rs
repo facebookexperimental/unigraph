@@ -307,7 +307,6 @@ impl ArrayGraph {
                         properties: None,
                         points_from: node_idx,
                         points_to: edge.points_to,
-                        points_to_unreachable: self.is_node_unreachable(edge.points_to),
                         excluded,
                     })
                 } else {
@@ -321,7 +320,6 @@ impl ArrayGraph {
                             properties: None,
                             points_from: node_idx,
                             points_to: edge.points_to,
-                            points_to_unreachable: self.is_node_unreachable(edge.points_to),
                             excluded,
                         }),
                         NonDirectedEdgeMetadata::Dynamic { properties, branch } => Ok(Arrow {
@@ -330,7 +328,6 @@ impl ArrayGraph {
                             properties: Some(properties.clone()),
                             points_from: node_idx,
                             points_to: edge.points_to,
-                            points_to_unreachable: self.is_node_unreachable(edge.points_to),
                             excluded,
                         }),
                     }
@@ -355,9 +352,6 @@ pub struct Arrow {
     pub properties: Option<BTreeMap<String, String>>,
     pub points_from: NodeIDX,
     pub points_to: NodeIDX,
-    /// Whether the node that this edge points to is unreachable from the
-    /// graph entrypoints using configured traversal.
-    pub points_to_unreachable: bool,
     pub excluded: bool,
 }
 

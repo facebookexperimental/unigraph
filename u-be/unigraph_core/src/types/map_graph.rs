@@ -136,7 +136,6 @@ impl MapGraph {
                     properties: a.properties,
                     points_from: node_idx,
                     points_to: name_to_idx_map.get(&a.points_to).copied().unwrap(),
-                    points_to_unreachable: false,
                     excluded: false,
                 }));
                 sizes.push(

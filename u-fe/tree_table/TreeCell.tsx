@@ -11,6 +11,7 @@ import {
 import type { Arrow } from "u-be/unigraph_core/bindings/Arrow";
 import UHoverCard from "../components/UHoverCard";
 import { Badge } from "../components/ui/badge";
+import { useNativeGraph } from "../context/NativeGraphContext";
 import type { Row } from "./TreeTableRows";
 
 export default function TreeCell(props: {
@@ -20,6 +21,11 @@ export default function TreeCell(props: {
   minDepth: number;
   nodeName: string;
 }) {
+  const nativeGraph = useNativeGraph();
+  const isNodeReachable = nativeGraph.isNodeReachable(
+    props.row.arrow.points_to,
+  );
+
   const chevron = (() => {
     if (props.canExpand) {
       if (props.row.isCycle) {
@@ -79,20 +85,22 @@ export default function TreeCell(props: {
         className={clsx(
           "pe-4",
           props.row.arrow.excluded && "text-foreground/50",
-          props.row.arrow.points_to_unreachable &&
-            "text-foreground/50 line-through",
+          !isNodeReachable && "text-foreground/50 line-through",
         )}
       >
         {props.nodeName}
       </p>
-      <InfoIcon arrow={props.row.arrow} />
+      <InfoIcon arrow={props.row.arrow} isNodeReachable={isNodeReachable} />
     </div>
   );
 }
 
-function InfoIcon({ arrow }: { arrow: Arrow }) {
+function InfoIcon({
+  arrow,
+  isNodeReachable,
+}: { arrow: Arrow; isNodeReachable: boolean }) {
   let content = null;
-  if (arrow.points_to_unreachable) {
+  if (!isNodeReachable) {
     content =
       "This edge points to a node that is not reachable from the root node because all edges that lead to it are excluded.";
   } else if (arrow.excluded) {

@@ -9,9 +9,4 @@ import type { NodeIDX } from "./NodeIDX";
  * are not fit for heavy computations, like DFS/BFS, computing transitive
  * metrics, etc.
  */
-export type Arrow = { tag: string | null, branch: string | null, properties: { [key in string]?: string } | null, points_from: NodeIDX, points_to: NodeIDX, 
-/**
- * Whether the node that this edge points to is unreachable from the
- * graph entrypoints using configured traversal.
- */
-points_to_unreachable: boolean, excluded: boolean, };
+export type Arrow = { tag: string | null, branch: string | null, properties: { [key in string]?: string } | null, points_from: NodeIDX, points_to: NodeIDX, excluded: boolean, };

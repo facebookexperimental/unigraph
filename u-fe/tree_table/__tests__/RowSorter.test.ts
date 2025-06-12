@@ -12,7 +12,6 @@ function arrow(fromIDX: number, toIDX: number): Arrow {
     properties: null,
     points_from: fromIDX,
     points_to: toIDX,
-    points_to_unreachable: false,
     excluded: false,
   };
 }

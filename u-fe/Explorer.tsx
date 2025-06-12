@@ -164,7 +164,7 @@ function Page() {
       return selectedNodeIDXs;
     }
     if (graphSettings.ui_settings?.show_as_a_flat_list) {
-      return nativeGraph.getAllReachableNodeIDXs();
+      return nativeGraph.getAllReachableNodeIDXs().vec;
     } else {
       return nativeGraph.determineEntrypoints().vec;
     }
