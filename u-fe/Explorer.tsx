@@ -121,6 +121,7 @@ export function Explorer({
 function Page() {
   const [selectedNodeIDXs, setSelectedNodeIDXs] = useState<NodeIDX[]>([]);
   const nativeGraph = useNativeGraph();
+  const [graphSettings] = useGraphSettings();
   const [settings] = useGraphSettings();
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -158,10 +159,20 @@ function Page() {
     }
   })();
 
-  const roots =
-    selectedNodeIDXs.length > 0
-      ? selectedNodeIDXs
-      : nativeGraph.determineEntrypoints().vec;
+  const roots = useMemo(() => {
+    if (selectedNodeIDXs.length > 0) {
+      return selectedNodeIDXs;
+    }
+    if (graphSettings.ui_settings?.show_as_a_flat_list) {
+      return nativeGraph.getAllReachableNodeIDXs();
+    } else {
+      return nativeGraph.determineEntrypoints().vec;
+    }
+  }, [
+    nativeGraph,
+    selectedNodeIDXs,
+    graphSettings.ui_settings?.show_as_a_flat_list,
+  ]);
 
   return (
     <PortalContextProvider containerRef={containerRef}>

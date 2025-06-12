@@ -7,6 +7,7 @@ import type { TraversalConfig } from "u-be/unigraph_core/bindings/TraversalConfi
 import {
   apply_traversal_config,
   determine_entrypoints,
+  get_all_reachable_node_idxs,
   get_array_graph_stats,
   get_arrows_forward,
   get_graph_node_count,
@@ -35,6 +36,7 @@ export default class NativeGraph {
   private metricCaches: MetricCaches;
   private statsCache: ArrayGraphStats | null = null;
   private parentsCountCache: MetricsCache;
+  private allReacahableNodeIDXsCache: NodeIDX[] | null = null;
 
   static fromMapGraphJSON(mapGraphJSON: string): NativeGraph {
     set_map_graph(mapGraphJSON);
@@ -112,6 +114,13 @@ export default class NativeGraph {
       this.entrypoints = { vec: Array.from(result), set: new Set(result) };
     }
     return this.entrypoints;
+  }
+
+  getAllReachableNodeIDXs(): NodeIDX[] {
+    this.allReacahableNodeIDXsCache ??= Array.from(
+      get_all_reachable_node_idxs(),
+    );
+    return this.allReacahableNodeIDXsCache;
   }
 
   getNodeMetric(nodeIDX: NodeIDX, metricName: string): number {

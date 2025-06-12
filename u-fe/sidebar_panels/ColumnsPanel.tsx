@@ -18,7 +18,7 @@ export default function ColumnsPanel() {
   return (
     <SidebarPanel>
       <SidebarPanelHeader>Columns</SidebarPanelHeader>
-      <div className="mb-8">
+      <div className="mb-8 flex flex-col gap-4">
         <USwitch
           label="Show Parent Counts"
           checked={
@@ -33,6 +33,19 @@ export default function ColumnsPanel() {
                   ...graphSettings.ui_settings?.columns,
                   show_parents_count: checked,
                 },
+              },
+            });
+          }}
+        />
+        <USwitch
+          label="Show As A Flat List"
+          checked={graphSettings.ui_settings?.show_as_a_flat_list === true}
+          onCheckedChange={(checked) => {
+            setGraphSettings({
+              ...graphSettings,
+              ui_settings: {
+                ...graphSettings.ui_settings,
+                show_as_a_flat_list: checked,
               },
             });
           }}

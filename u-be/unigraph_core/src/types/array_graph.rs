@@ -286,6 +286,12 @@ impl ArrayGraph {
         count
     }
 
+    pub fn all_reachable_node_idxs(&self) -> Vec<NodeIDX> {
+        self.node_idx_iter()
+            .filter(|&node_idx| !self.is_node_unreachable(node_idx))
+            .collect()
+    }
+
     pub fn get_arrows_forward(&self, node_idx: NodeIDX) -> Result<Vec<Arrow>> {
         self.edges_forward
             .edges_with_metadata(node_idx)

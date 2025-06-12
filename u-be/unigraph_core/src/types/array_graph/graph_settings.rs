@@ -139,6 +139,10 @@ pub struct ArrayGraphUISettings {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub columns: Option<ColumnSettings>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub show_as_a_flat_list: Option<bool>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, TS, Clone)]
