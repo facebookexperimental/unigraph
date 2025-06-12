@@ -143,8 +143,11 @@ pub fn get_simulation_params() -> Result<String, WasmJSError> {
 }
 
 #[wasm_bindgen]
-pub fn get_selected_node_idxs() -> Result<Vec<usize>, WasmJSError> {
-    Ok(unigraph_wgpu::get_selected_node_idxs()?)
+pub fn get_selected_node_idxs() -> Result<Vec<u32>, WasmJSError> {
+    Ok(unigraph_wgpu::get_selected_node_idxs()?
+        .into_iter()
+        .map(|idx| idx.0)
+        .collect())
 }
 
 #[wasm_bindgen]

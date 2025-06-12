@@ -9,10 +9,13 @@ use unigraph_core::ArrayGraph;
 use unigraph_core::NodeIDX;
 use unigraph_core::remap_utils::RemapContext;
 
+use crate::GlobalState;
 use crate::barnes_hut::BHGraphNode;
 use crate::barnes_hut::QuadTree;
 use crate::global_state;
 use crate::graph_state::NodeAttributesFlags;
+use crate::ts_types::Selection;
+use crate::ts_types::SelectionType;
 
 /// Stripped version of the ArrayGraph that is used for running simulations.
 /// It contains all the needed node/edges attributes and logic for how to
@@ -280,6 +283,36 @@ impl SimulationGraph {
                 normalized_size * 99.0 + 1.0
             };
             self.nodes_gpu[sim_node_idx].adjusted_size = adjusted_size;
+        }
+    }
+
+    /// Returns ORIGINAL node indexes from the ArrayGraph
+    pub fn mark_nodes_as_selected(&mut self, selection: &Selection) -> Result<Vec<NodeIDX>> {
+        let aspect_ratio = GlobalState::surface_size().aspect_ratio();
+
+        match selection.selection_type {
+            SelectionType::None => Ok(vec![]),
+            SelectionType::Box => {
+                let mut selected_nodes = vec![];
+                for sim_node_idx in self.node_idx_iter() {
+                    if selection
+                        .within_box_bounds(self.nodes_gpu[sim_node_idx].position, aspect_ratio)
+                    {
+                        self.nodes_gpu[sim_node_idx]
+                            .flags
+                            .insert(NodeAttributesFlags::SELECTED);
+                        selected_nodes.push(self.remap_ctx.original_positions[sim_node_idx]);
+                    } else {
+                        self.nodes_gpu[sim_node_idx]
+                            .flags
+                            .remove(NodeAttributesFlags::SELECTED);
+                    }
+                }
+                Ok(selected_nodes)
+            }
+            SelectionType::Line => {
+                anyhow::bail!("Line selection not implemented yet");
+            }
         }
     }
 }

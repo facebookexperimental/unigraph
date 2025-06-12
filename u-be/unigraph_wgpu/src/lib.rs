@@ -22,6 +22,7 @@ use graph_state::WGPUGraphState;
 use shared::create_shader;
 use ts_types::SelectionType;
 use unigraph_core::ArrayGraph;
+use unigraph_core::NodeIDX;
 use unigraph_error::UnigraphError;
 use wgpu::TextureFormat;
 use winit::application::ApplicationHandler;
@@ -434,10 +435,11 @@ pub async fn start(array_graph: ArrayGraph) -> Result<(), UnigraphError> {
     Ok(())
 }
 
-pub fn get_selected_node_idxs() -> Result<Vec<usize>> {
-    // let selection = GlobalState::simulation_params().selection;
-    // GlobalState::graph_state_mut().mark_nodes_as_selected(&selection)
-    Ok(vec![])
+pub fn get_selected_node_idxs() -> Result<Vec<NodeIDX>> {
+    let selection = GlobalState::simulation_params().selection;
+    GlobalState::graph_state_mut()
+        .simulation_graph
+        .mark_nodes_as_selected(&selection)
 }
 
 pub fn set_event_loop_active(active: bool) -> Result<()> {
