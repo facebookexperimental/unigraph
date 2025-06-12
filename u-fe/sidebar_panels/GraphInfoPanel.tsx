@@ -1,6 +1,6 @@
 import { Separator } from "../components/ui/separator";
 import { useNativeGraph } from "../context/NativeGraphContext";
-import formatNumber from "../lib/formatNumber";
+import { formatPlainNumber } from "../lib/formatNumber";
 import { SidebarPanel, SidebarPanelHeader } from "./SidebarPanel";
 
 export default function GraphInfoPanel() {
@@ -35,7 +35,7 @@ function DataCell({
 }) {
   return (
     <div className="flex flex-col items-center">
-      <span className="text-3xl">{formatNumber(value, 0)}</span>
+      <span className="text-3xl">{formatPlainNumber(value, 0)}</span>
       <span className="text-xs text-primary font-medium">{label}</span>
     </div>
   );

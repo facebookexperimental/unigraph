@@ -1,6 +1,6 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-export default function formatNumber(
+export function formatPlainNumber(
   number: number,
   decimalPlaces = 2,
   useDelimitor = true,
