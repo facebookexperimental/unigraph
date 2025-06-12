@@ -2,8 +2,8 @@
 
 pub mod array_graph_debug_utils;
 pub mod array_graph_serializable;
-pub mod array_graph_settings;
 mod array_graph_stats;
+pub mod graph_settings;
 pub(crate) mod node_names_ordered;
 pub(crate) mod offset_graph;
 pub mod remap_utils;
@@ -27,6 +27,7 @@ use super::TagSetName;
 use crate::ArrayGraphSerializable;
 use crate::GraphBuilder;
 use crate::MapGraph;
+use crate::graph_settings::GraphSettings;
 use crate::traversal::TraversalConfig;
 use crate::traversal::apply_to_array_graph::apply_traversal_config_to_array_graph;
 use crate::traversal::reachable_subgraph::get_reachable_subgraph_unconfigured;
@@ -48,6 +49,7 @@ pub struct ArrayGraph {
     pub tag_sets: BTreeMap<NodeIDX, BTreeMap<TagSetName, BTreeSet<Tag>>>,
 
     pub traversal_config: Option<TraversalConfig>,
+    pub graph_settings: Option<GraphSettings>,
 }
 
 bitflags::bitflags! {

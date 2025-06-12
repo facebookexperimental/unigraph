@@ -7,9 +7,9 @@ use ts_rs::TS;
 
 use crate::types::TierName;
 
-#[derive(serde::Serialize, serde::Deserialize, TS)]
+#[derive(serde::Serialize, serde::Deserialize, TS, Clone, Default)]
 #[ts(export)]
-pub struct ArrayGraphSettings {
+pub struct GraphSettings {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub metric_settings: Option<BTreeMap<String, MetricSettings>>,
@@ -19,7 +19,7 @@ pub struct ArrayGraphSettings {
     pub ui_settings: Option<ArrayGraphUISettings>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, TS)]
+#[derive(serde::Serialize, serde::Deserialize, TS, Clone)]
 #[ts(export)]
 pub struct MetricSettings {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -44,7 +44,7 @@ pub struct MetricSettings {
     pub column_hide_trantitive_tiered: Option<BTreeSet<TierName>>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, TS)]
+#[derive(serde::Serialize, serde::Deserialize, TS, Clone)]
 #[ts(export)]
 /// Value that defines how to format metric values (in the UI or CLI output)
 /// This value is cross platform enum type which is represented as an object/shape
@@ -80,7 +80,7 @@ pub enum MetricFormat {
     },
 }
 
-#[derive(serde::Serialize, serde::Deserialize, TS)]
+#[derive(serde::Serialize, serde::Deserialize, TS, Clone, Copy)]
 #[ts(export)]
 /// Configuration for size formatting
 pub enum SizeConfig {
@@ -103,21 +103,21 @@ pub enum SizeConfig {
     ForceGiB {},
 }
 
-#[derive(serde::Serialize, serde::Deserialize, TS)]
+#[derive(serde::Serialize, serde::Deserialize, TS, Clone, Copy)]
 #[ts(export)]
 pub enum SortOrder {
     Asc,
     Desc,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, TS)]
+#[derive(serde::Serialize, serde::Deserialize, TS, Clone)]
 #[ts(export)]
 pub struct GraphTableSort {
     pub column_id: String,
     pub order: SortOrder,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, TS)]
+#[derive(serde::Serialize, serde::Deserialize, TS, Clone, Copy)]
 #[ts(export)]
 pub enum SidebarPanel {
     None,
@@ -126,13 +126,13 @@ pub enum SidebarPanel {
     ColumnsSettings,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, TS)]
+#[derive(serde::Serialize, serde::Deserialize, TS, Clone)]
 #[ts(export)]
 pub struct ArrayGraphUISettings {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
-    selected_sidebar_panel: Option<SidebarPanel>,
+    pub selected_sidebar_panel: Option<SidebarPanel>,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
-    graph_table_sort: Option<GraphTableSort>,
+    pub graph_table_sort: Option<GraphTableSort>,
 }

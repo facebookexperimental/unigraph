@@ -6,7 +6,7 @@ import {
   from_zstd_base64_url_safe_no_pad,
   to_zstd_base64_url_safe_no_pad,
 } from "../.build/wasm/unigraph_wasm";
-import type { ArrayGraphSettings } from "../u-be/unigraph_core/bindings/ArrayGraphSettings";
+import type { GraphSettings } from "../u-be/unigraph_core/bindings/GraphSettings";
 import NativeGraph from "./NativeGraph";
 import Sidebar from "./Sidebar";
 import Simulation from "./Simulation";
@@ -74,13 +74,13 @@ export function Explorer({
 
   const settings = useMemo(() => {
     return graphSettingsZSTDBase64UrlSafeNoPadding == null
-      ? {}
+      ? nativeGraphNoTVC.getGraphSettings() // default settings come from the native graph
       : JSON.parse(
           from_zstd_base64_url_safe_no_pad(
             graphSettingsZSTDBase64UrlSafeNoPadding,
           ),
         );
-  }, [graphSettingsZSTDBase64UrlSafeNoPadding]);
+  }, [graphSettingsZSTDBase64UrlSafeNoPadding, nativeGraphNoTVC]);
 
   const setTvcCb = useCallback(
     (tvc: TraversalConfig) => {
@@ -95,7 +95,7 @@ export function Explorer({
   );
 
   const setSettingsCb = useCallback(
-    (settings: ArrayGraphSettings) => {
+    (settings: GraphSettings) => {
       const base64 = to_zstd_base64_url_safe_no_pad(JSON.stringify(settings));
       onGraphSettingsZSTDBase64UrlSafeNoPaddingChange?.(base64);
     },

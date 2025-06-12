@@ -19,6 +19,7 @@ use super::array_graph::NodeFlags;
 use super::array_graph::node_names_ordered::NodeNamesOrderedBuilder;
 use super::array_graph::offset_graph::OffsetGraphBuilder;
 use crate::TraversalConfig;
+use crate::graph_settings::GraphSettings;
 
 type NodeName = String;
 
@@ -26,6 +27,7 @@ type NodeName = String;
 pub struct MapGraph {
     pub nodes: BTreeMap<NodeName, GraphNode>,
     pub traversal_config: Option<TraversalConfig>,
+    pub graph_settings: Option<GraphSettings>,
 }
 
 #[derive(serde::Deserialize, serde::Serialize, Default)]
@@ -166,6 +168,7 @@ impl MapGraph {
             edges_dynamic: all_dynamic_edges,
             tag_sets: all_tag_sets,
             traversal_config: self.traversal_config.clone(),
+            graph_settings: self.graph_settings.clone(),
         })
     }
 

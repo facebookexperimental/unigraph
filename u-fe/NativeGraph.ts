@@ -2,6 +2,7 @@
 
 // This is a wrapper class over the state of the graph on the WASM side.
 
+import type { GraphSettings } from "u-be/unigraph_core/bindings/GraphSettings";
 import type { TraversalConfig } from "u-be/unigraph_core/bindings/TraversalConfig";
 import {
   apply_traversal_config,
@@ -9,6 +10,7 @@ import {
   get_array_graph_stats,
   get_arrows_forward,
   get_graph_node_count,
+  get_graph_settings,
   get_graph_traversal_config,
   get_metric_names,
   get_node_metrics,
@@ -66,6 +68,11 @@ export default class NativeGraph {
   getTraversalConfig(): TraversalConfig {
     const tvcJSON = get_graph_traversal_config();
     return JSON.parse(tvcJSON) as TraversalConfig;
+  }
+
+  getGraphSettings(): GraphSettings {
+    const graphSettingsJSON = get_graph_settings();
+    return JSON.parse(graphSettingsJSON) as GraphSettings;
   }
 
   /// This function changes the traversal config and returns a new

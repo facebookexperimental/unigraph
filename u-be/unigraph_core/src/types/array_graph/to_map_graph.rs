@@ -13,6 +13,7 @@ pub fn to_map_graph(graph: &ArrayGraph) -> Result<MapGraph> {
     let mut result = MapGraph {
         nodes: Default::default(),
         traversal_config: graph.traversal_config.clone(),
+        graph_settings: graph.graph_settings.clone(),
     };
 
     for node_idx in graph.node_idx_iter() {
@@ -248,7 +249,8 @@ mod tests {
       }
     }
   },
-  "traversal_config": null
+  "traversal_config": null,
+  "graph_settings": null
 }
 "#
         );

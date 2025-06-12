@@ -748,7 +748,8 @@ fn test_graph() {
       }
     }
   },
-  "traversal_config": null
+  "traversal_config": null,
+  "graph_settings": null
 }
 "#
     );

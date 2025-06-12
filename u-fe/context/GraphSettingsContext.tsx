@@ -2,11 +2,11 @@
 
 import { createContext, useContext, useMemo } from "react";
 
-import type { ArrayGraphSettings } from "../../u-be/unigraph_core/bindings/ArrayGraphSettings";
+import type { GraphSettings } from "../../u-be/unigraph_core/bindings/GraphSettings";
 
 export type GraphSettingsContextType = [
-  ArrayGraphSettings,
-  (settings: ArrayGraphSettings) => void,
+  GraphSettings,
+  (settings: GraphSettings) => void,
 ];
 
 const GraphSettingsContext = createContext<GraphSettingsContextType | null>(
@@ -19,8 +19,8 @@ export function GraphSettingsContextProvider({
   setSettings,
 }: {
   children: React.ReactNode;
-  settings: ArrayGraphSettings;
-  setSettings: (settings: ArrayGraphSettings) => void;
+  settings: GraphSettings;
+  setSettings: (settings: GraphSettings) => void;
 }) {
   const value: GraphSettingsContextType = useMemo(
     () => [settings, setSettings],

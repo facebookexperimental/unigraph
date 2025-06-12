@@ -258,6 +258,17 @@ pub fn get_graph_traversal_config() -> Result<String, WasmJSError> {
 }
 
 #[wasm_bindgen]
+pub fn get_graph_settings() -> Result<String, WasmJSError> {
+    let graph_settings = GlobalState::graph_state()
+        .get()
+        .array_graph
+        .graph_settings
+        .clone()
+        .unwrap_or_default();
+    Ok(serde_json::to_string(&graph_settings).context("Failed to serialize Graph Settings")?)
+}
+
+#[wasm_bindgen]
 pub fn apply_traversal_config(traversal_config_json: String) -> Result<(), WasmJSError> {
     let traversal_config: TraversalConfig =
         serde_json::from_str(&traversal_config_json).context("Failed to parse traversal config")?;
