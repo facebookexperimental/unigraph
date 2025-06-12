@@ -14,6 +14,8 @@ use unigraph_core::ArrayGraph;
 use unigraph_core::types::NodeIDX;
 use wgpu::util::DeviceExt;
 
+use crate::GlobalState;
+use crate::UserEvent;
 use crate::basic_uniforms::BasicUniforms;
 use crate::global_state;
 use crate::simulation_graph::SimulationGraph;
@@ -342,6 +344,6 @@ impl GraphState {
 
     pub fn sync_node_attributes(&mut self) -> Result<()> {
         self.simulation_graph = SimulationGraph::new(&self.array_graph, &self.selected_metric)?;
-        Ok(())
+        GlobalState::send_event_loop_event(UserEvent::GraphUpdated)
     }
 }

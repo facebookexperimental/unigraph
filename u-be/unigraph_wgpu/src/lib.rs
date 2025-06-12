@@ -11,7 +11,6 @@ pub mod unigraph_error;
 use std::cmp;
 use std::sync::Arc;
 
-use anyhow::Context;
 use anyhow::Result;
 use basic_uniforms::BasicUniforms;
 use basic_uniforms::UniformsStruct;
@@ -36,6 +35,7 @@ use winit::window::WindowAttributes;
 #[derive(Debug, Clone, Copy)]
 pub enum UserEvent {
     WakeUp,
+    GraphUpdated,
 }
 
 pub struct WGPUApplication {
@@ -134,6 +134,28 @@ impl WGPUState {
             queue,
         };
         Ok(state)
+    }
+
+    fn write_nodes_buffer(&self) {
+        let graph_state = global_state().graph_state.get();
+        self.queue.write_buffer(
+            &self.wgpu_graph_state.nodes_buffer,
+            0,
+            graph_state.simulation_graph.nodes_bytes(),
+        );
+    }
+
+    /// Edges buffer is generally immutable, since it only stores where
+    /// the edges point to and the positions come from nodes buffer,
+    /// but if the graph structure changes we'd need to update the
+    /// edges buffer as well.
+    fn write_edges_buffer(&self) {
+        let graph_state = global_state().graph_state.get();
+        self.queue.write_buffer(
+            &self.wgpu_graph_state.edges_buffer,
+            0,
+            graph_state.simulation_graph.edges_bytes(),
+        );
     }
 
     fn render(&self) {
@@ -295,6 +317,16 @@ impl ApplicationHandler<UserEvent> for WGPUApplication {
             UserEvent::WakeUp => {
                 log::trace!("Waking up");
                 self.init_state(event_loop);
+                if let Some(state) = &self.state {
+                    // there could be some grpah sturcture changes while
+                    // it was sleeping, so we need to update the edges buffer
+                    state.write_edges_buffer();
+                }
+            }
+            UserEvent::GraphUpdated => {
+                if let Some(state) = &self.state {
+                    state.write_edges_buffer();
+                }
             }
         }
     }
@@ -330,9 +362,6 @@ impl ApplicationHandler<UserEvent> for WGPUApplication {
                 state.resize(new_size);
             }
             WindowEvent::RedrawRequested => {
-                state.update_uniforms();
-                state.render();
-
                 let params = global_state().simulation_params.get();
                 if params.active {
                     let update_forces = self.frame_counter
@@ -344,24 +373,11 @@ impl ApplicationHandler<UserEvent> for WGPUApplication {
                         .compute_next_frame(update_forces)
                         .unwrap();
 
-                    let graph_state = global_state().graph_state.get();
-                    state.queue.write_buffer(
-                        &state.wgpu_graph_state.nodes_buffer,
-                        0,
-                        graph_state.simulation_graph.nodes_bytes(),
-                    );
-
-                    // NOTE: we don't modify the edges buffer, because
-                    // they are normally immutable. If we start modifying them
-                    // (including/excluding edges) we will need to update the buffer
-                    // here as well
-
-                    // state.queue.write_buffer(
-                    //     &state.graph_state.edges_buffer,
-                    //     0,
-                    //     state.graph_state.attributes.edges_bytes(),
-                    // );
+                    state.write_nodes_buffer();
                 }
+                state.update_uniforms();
+                state.render();
+
                 state.window.request_redraw();
                 self.frame_counter += 1;
             }
@@ -449,13 +465,7 @@ pub fn set_event_loop_active(active: bool) -> Result<()> {
 
     if active {
         // wake up the event loop if it was waiting
-        global_state()
-            .event_loop_proxy
-            .read()
-            .unwrap()
-            .as_ref()
-            .context("EventLoopProxy is missing")?
-            .send_event(UserEvent::WakeUp)?;
+        GlobalState::send_event_loop_event(UserEvent::WakeUp)?;
     }
     Ok(())
 }

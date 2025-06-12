@@ -7,6 +7,8 @@ use std::sync::RwLockWriteGuard;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicU32;
 
+use anyhow::Context;
+use anyhow::Result;
 use unigraph_core::ArrayGraph;
 
 use crate::UserEvent;
@@ -52,6 +54,17 @@ impl GlobalState {
             .write()
             .unwrap()
             .replace(event_loop_proxy);
+    }
+
+    pub fn send_event_loop_event(event: UserEvent) -> Result<()> {
+        Self::get()
+            .event_loop_proxy
+            .read()
+            .unwrap()
+            .as_ref()
+            .context("EventLoopProxy is missing")?
+            .send_event(event)?;
+        Ok(())
     }
 
     pub fn init() {
