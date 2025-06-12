@@ -299,7 +299,7 @@ export function TreeTable(props: {
             size={16}
             className="mx-2 cursor-pointer"
             onClick={() =>
-              props.onSortChange({ column_id: columnID, order: "Asc" })
+              props.onSortChange({ column_id: columnID, order: "Desc" })
             }
           />
         );
