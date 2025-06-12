@@ -58,7 +58,7 @@ struct SimulationEdge {
 }
 
 impl SimulationGraph {
-    pub fn new(array_graph: &ArrayGraph) -> Result<Self> {
+    pub fn new(array_graph: &ArrayGraph, selected_metric: &Option<String>) -> Result<Self> {
         let mut nodes_local = vec![];
         let mut nodes_gpu = vec![];
         let mut edges = vec![];
@@ -95,7 +95,7 @@ impl SimulationGraph {
             }
         }
 
-        Ok(SimulationGraph {
+        let mut graph = SimulationGraph {
             nodes_local,
             nodes_gpu,
             edges,
@@ -103,7 +103,16 @@ impl SimulationGraph {
                 original_positions,
                 mappings,
             },
-        })
+        };
+
+        if let Some(selected_metrics) = selected_metric
+            .as_ref()
+            .and_then(|m| array_graph.metrics.get(m))
+        {
+            graph.recalculate_adjusted_sizes(selected_metrics);
+        }
+
+        Ok(graph)
     }
 
     pub fn nodes_len(&self) -> usize {
@@ -237,6 +246,42 @@ impl SimulationGraph {
         }
         Ok(())
     }
+
+    pub fn recalculate_adjusted_sizes(&mut self, selected_metrics: &[f32]) {
+        let nodes_len = self.nodes_len();
+        if nodes_len == 0 {
+            return;
+        }
+        let mut all_sizes = Vec::with_capacity(nodes_len);
+
+        for sim_node_idx in self.node_idx_iter() {
+            let original_node_idx = self.remap_ctx.original_positions[sim_node_idx];
+            all_sizes.push(selected_metrics[original_node_idx]);
+        }
+
+        if all_sizes.is_empty() {
+            return;
+        }
+
+        let mut sorted = all_sizes.clone();
+        sort_vec_f32(&mut sorted);
+
+        let min_size = sorted[0];
+        let max_size = sorted[sorted.len() - 1];
+
+        for sim_node_idx in self.node_idx_iter() {
+            let size = all_sizes[sim_node_idx];
+            let adjusted_size = if size == 0.0 {
+                1.0
+            } else {
+                // Normalize the size to be between 0 and 1
+                let normalized_size = (size - min_size) / (max_size - min_size);
+                // Scale it to be between 1 and 100
+                normalized_size * 99.0 + 1.0
+            };
+            self.nodes_gpu[sim_node_idx].adjusted_size = adjusted_size;
+        }
+    }
 }
 
 impl SimulationNodeGPU {
@@ -252,4 +297,8 @@ impl SimulationNodeGPU {
             flags: NodeAttributesFlags::empty(),
         }
     }
+}
+
+fn sort_vec_f32(vec: &mut [f32]) {
+    vec.sort_by(|a, b| a.partial_cmp(b).unwrap());
 }

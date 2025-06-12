@@ -321,7 +321,7 @@ impl GraphState {
     pub fn new(array_graph: ArrayGraph) -> Result<Self> {
         // by default we'll grab whatever metric is first in the list
         let selected_metric = array_graph.metrics.keys().next().cloned();
-        let simulation_graph = SimulationGraph::new(&array_graph)?;
+        let simulation_graph = SimulationGraph::new(&array_graph, &selected_metric)?;
 
         let result = Self {
             array_graph,
@@ -340,75 +340,8 @@ impl GraphState {
         }
     }
 
-    // pub fn recalculate_adjusted_sizes(&mut self) {
-    //     let nodes_len = self.array_graph.nodes_len();
-    //     if nodes_len == 0 {
-    //         return;
-    //     }
-    //     let mut all_sizes = Vec::with_capacity(nodes_len);
-
-    //     if let Some(selected_metrics) = self.get_selected_metrics_vec() {
-    //         for idx in self.array_graph.node_idx_iter() {
-    //             all_sizes.push(selected_metrics[idx]);
-    //         }
-    //     }
-
-    //     if all_sizes.is_empty() {
-    //         return;
-    //     }
-
-    //     let mut sorted = all_sizes.clone();
-    //     sort_vec_f32(&mut sorted);
-
-    //     let min_size = sorted[0];
-    //     let max_size = sorted[sorted.len() - 1];
-
-    //     for idx in self.array_graph.node_idx_iter() {
-    //         let size = all_sizes[idx];
-    //         let adjusted_size = if size == 0.0 {
-    //             1.0
-    //         } else {
-    //             // Normalize the size to be between 0 and 1
-    //             let normalized_size = (size - min_size) / (max_size - min_size);
-    //             // Scale it to be between 1 and 100
-    //             normalized_size * 99.0 + 1.0
-    //         };
-    //         self.node_attributes[idx].adjusted_size = adjusted_size;
-    //     }
-    // }
-
-    // pub fn mark_nodes_as_selected(&mut self, selection: &Selection) -> Result<Vec<usize>> {
-    // let aspect_ratio = GlobalState::surface_size().aspect_ratio();
-
-    // match selection.selection_type {
-    //     SelectionType::None => Ok(vec![]),
-    //     SelectionType::Box => {
-    //         let mut selected_nodes = vec![];
-    //         for (idx, node) in self.node_attributes.iter_mut().enumerate() {
-    //             if selection.within_box_bounds(node.position, aspect_ratio) {
-    //                 node.flags.insert(NodeAttributesFlags::SELECTED);
-    //                 selected_nodes.push(idx);
-    //             } else {
-    //                 node.flags.remove(NodeAttributesFlags::SELECTED);
-    //             }
-    //         }
-    //         Ok(selected_nodes)
-    //     }
-    //     SelectionType::Line => {
-    //         anyhow::bail!("Line selection not implemented yet");
-    //     }
-    // }
-    // }
-
-    // syncs flags from the array graph to the node attributes that we'll
-    // then be able to pass to the shader.
     pub fn sync_node_attributes(&mut self) -> Result<()> {
-        self.simulation_graph = SimulationGraph::new(&self.array_graph)?;
-
+        self.simulation_graph = SimulationGraph::new(&self.array_graph, &self.selected_metric)?;
         Ok(())
     }
 }
-
-// fn sort_vec_f32(vec: &mut [f32]) {
-//     vec.sort_by(|a, b| a.partial_cmp(b).unwrap());
-// }
