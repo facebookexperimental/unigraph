@@ -58,7 +58,7 @@ impl GlobalState {
         GLOBAL_STATE
             .set(GlobalState {
                 simulation_params: SharedSimulationParams::new(SimulationParams::default()),
-                graph_state: SharedGraphState::new(ArrayGraph::empty().unwrap()),
+                graph_state: SharedGraphState::new(ArrayGraph::empty().unwrap()).unwrap(),
                 surface_size: Arc::new(AtomicPhysicalSize::new(0, 0)),
                 event_loop_proxy: Default::default(),
                 event_loop_active: AtomicBool::new(false),

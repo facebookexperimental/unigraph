@@ -19,6 +19,7 @@ use crate::barnes_hut::QuadTree;
 use crate::basic_uniforms::BasicUniforms;
 use crate::global_state;
 use crate::global_state::GlobalState;
+use crate::simulation_graph::SimulationGraph;
 use crate::ts_types::Selection;
 use crate::ts_types::SelectionType;
 
@@ -27,6 +28,7 @@ pub struct GraphState {
     pub node_attributes: Vec<NodeAttributes>,
     pub forces: Vec<Vec2>,
     pub selected_metric: Option<String>,
+    pub(crate) simulation_graph: SimulationGraph,
     // since this requires some initialization logic to run let's
     // make sure it can't be created outside of this module
     _phantom: (),
@@ -37,10 +39,10 @@ pub struct SharedGraphState {
 }
 
 impl SharedGraphState {
-    pub fn new(array_graph: ArrayGraph) -> Self {
-        Self {
-            inner: Arc::new(RwLock::new(GraphState::new(array_graph))),
-        }
+    pub fn new(array_graph: ArrayGraph) -> Result<Self> {
+        Ok(Self {
+            inner: Arc::new(RwLock::new(GraphState::new(array_graph)?)),
+        })
     }
 
     pub fn get(&self) -> RwLockReadGuard<GraphState> {
@@ -51,10 +53,11 @@ impl SharedGraphState {
         self.inner.write().unwrap()
     }
 
-    pub fn replace_graph(&self, new_graph: ArrayGraph) {
-        let new_state = GraphState::new(new_graph);
+    pub fn replace_graph(&self, new_graph: ArrayGraph) -> Result<()> {
+        let new_state = GraphState::new(new_graph)?;
         let mut inner = self.get_mut();
         *inner = new_state;
+        Ok(())
     }
 
     pub fn compute_next_frame(&self, update_forces: bool) {
@@ -79,7 +82,7 @@ pub struct NodeAttributes {
 
 bitflags::bitflags! {
     #[repr(transparent)]
-    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
     pub struct NodeAttributesFlags: u32 {
         const UNREACHABLE = 256;    // 0b0001_0000_0000;
         const SELECTED    = 512;    // 0b0010_0000_0000;
@@ -319,21 +322,23 @@ impl WGPUGraphState {
 }
 
 impl GraphState {
-    pub fn new(array_graph: ArrayGraph) -> Self {
+    pub fn new(array_graph: ArrayGraph) -> Result<Self> {
         // by default we'll grab whatever metric is first in the list
         let selected_metric = array_graph.metrics.keys().next().cloned();
         let node_attributes = Self::initialize_node_attributes(&array_graph);
         let forces = vec![Vec2::ZERO; array_graph.nodes_len()];
+        let simulation_graph = SimulationGraph::new(&array_graph)?;
 
         let mut result = Self {
             array_graph,
             node_attributes,
             forces,
             selected_metric,
+            simulation_graph,
             _phantom: (),
         };
         result.recalculate_adjusted_sizes();
-        result
+        Ok(result)
     }
 
     pub fn get_selected_metrics_vec(&self) -> Option<&Vec<f32>> {
@@ -568,6 +573,8 @@ impl GraphState {
     // syncs flags from the array graph to the node attributes that we'll
     // then be able to pass to the shader.
     pub fn sync_node_attributes(&mut self) -> Result<()> {
+        self.simulation_graph = SimulationGraph::new(&self.array_graph)?;
+
         for node_idx in self.array_graph.node_idx_iter() {
             let unreachable = self.array_graph.node_flags[node_idx].is_node_unreachable();
             if unreachable {

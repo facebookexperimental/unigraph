@@ -5,6 +5,7 @@ mod basic_uniforms;
 mod global_state;
 mod graph_state;
 mod shared;
+mod simulation_graph;
 pub mod ts_types;
 pub mod unigraph_error;
 use std::cmp;
