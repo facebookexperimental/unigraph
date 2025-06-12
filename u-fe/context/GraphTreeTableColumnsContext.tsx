@@ -11,7 +11,7 @@ import {
 import type { Arrow } from "u-be/unigraph_core/bindings/Arrow";
 import type { NodeIDX } from "u-be/unigraph_core/bindings/NodeIDX";
 import type NativeGraph from "../NativeGraph";
-import { formatPlainNumber } from "../lib/formatNumber";
+import formatNumber from "../lib/formatNumber";
 import ContextMenuCell from "../tree_table/ContextMenuCell";
 import type {
   ColumnDefinitions,
@@ -131,8 +131,9 @@ function createMetricColumn(
     renderer: (arrow: Arrow) => {
       const value = arrow.points_to_unreachable
         ? "-"
-        : formatPlainNumber(
+        : formatNumber(
             nativeGraph.getNodeMetric(arrow.points_to, metricName),
+            0,
             0,
             true,
           );
@@ -158,8 +159,9 @@ function createTransitiveMetricColumn(
     renderer: (arrow: Arrow) => {
       const value = arrow.points_to_unreachable
         ? "-"
-        : formatPlainNumber(
+        : formatNumber(
             nativeGraph.getTransitiveMetric(arrow.points_to, metricName),
+            0,
             0,
             true,
           );
@@ -187,11 +189,12 @@ function createTieredTransitiveMetricColumn(
       renderer: (arrow: Arrow) => {
         const value = arrow.points_to_unreachable
           ? "-"
-          : formatPlainNumber(
+          : formatNumber(
               nativeGraph.getTieredTransitiveMetric(
                 arrow.points_to,
                 metricName,
               )?.[tierName] ?? 0,
+              0,
               0,
               true,
             );

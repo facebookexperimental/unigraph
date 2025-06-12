@@ -32,7 +32,8 @@
         "useKeyWithClickEvents": "off"
       },
       "style": {
-        "noUselessElse": "off"
+        "noUselessElse": "off",
+        "useTemplate": "off"
       }
     }
   },
