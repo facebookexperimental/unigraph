@@ -605,11 +605,18 @@ F -> I [D]
 
 #[test]
 fn test_edges_len() -> Result<()> {
-    let g = make_test_array_graph_1()?;
-    let d = g.node_names_ordered.name_to_idx_log("D").unwrap();
+    let mut g = make_test_array_graph_1()?;
+    let node_e = g.node_names_ordered.name_to_idx_log("E").unwrap();
 
-    assert_equal!(g.edges_forward.edges_len_for_node(d), 2);
-    assert_equal!(g.edges_reverse.edges_len_for_node(d), 1);
+    assert_equal!(g.parents_len_configured(node_e), 1);
+
+    g.apply_traversal_config(TraversalConfig {
+        force_nodes: btreemap! { "D".into() => Decision { include: false, message: None } },
+        ..Default::default()
+    })?;
+
+    assert_equal!(g.parents_len_configured(node_e), 0);
+
     Ok(())
 }
 

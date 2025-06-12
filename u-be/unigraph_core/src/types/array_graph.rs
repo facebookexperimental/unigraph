@@ -263,6 +263,29 @@ impl ArrayGraph {
         }
     }
 
+    /// How many parents does this node have in the conrigured traversal?
+    /// NOTE: the edge might be included, but if the parent node is unreachable,
+    /// we won't count it.
+    pub fn parents_len_configured(&self, node_idx: NodeIDX) -> usize {
+        if self.is_node_unreachable(node_idx) {
+            return 0;
+        }
+
+        let mut count = 0;
+        for edge in self.edges_reverse.edges(node_idx) {
+            if edge.flags.is_excluded() {
+                continue;
+            }
+
+            if self.node_flags[edge.points_to].is_node_unreachable() {
+                continue;
+            }
+            count += 1;
+        }
+
+        count
+    }
+
     pub fn get_arrows_forward(&self, node_idx: NodeIDX) -> Result<Vec<Arrow>> {
         self.edges_forward
             .edges_with_metadata(node_idx)

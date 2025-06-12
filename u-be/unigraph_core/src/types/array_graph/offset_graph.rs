@@ -100,6 +100,11 @@ impl EdgeFlags {
         }
         result
     }
+
+    #[inline(always)]
+    pub fn is_excluded(&self) -> bool {
+        self.contains(EdgeFlags::EXCLUDED)
+    }
 }
 
 pub struct OffsetGraphBuilder {
@@ -164,7 +169,7 @@ impl OffsetGraph {
         self.edges.len()
     }
 
-    pub fn edges_len_for_node(&self, node_idx: NodeIDX) -> usize {
+    pub fn edges_len_for_node_configured(&self, node_idx: NodeIDX) -> usize {
         let start = self.edge_offsets[node_idx];
         let end = self.edge_offsets[node_idx + 1];
         end - start
