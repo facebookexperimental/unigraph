@@ -19,7 +19,6 @@ export default function useGraphTreeTableColumns(): ColumnDefinitions {
   const nativeGraph = useNativeGraph();
   const [graphSettings] = useGraphSettings();
 
-  console.log({ graphSettings });
   return useMemo(() => {
     return defaultColumnDefinitions(nativeGraph, graphSettings);
   }, [nativeGraph, graphSettings]);
