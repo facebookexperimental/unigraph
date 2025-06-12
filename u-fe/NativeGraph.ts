@@ -14,6 +14,7 @@ import {
   get_graph_traversal_config,
   get_metric_names,
   get_node_metrics,
+  get_reverse_edges_len,
   get_transitive_metrics,
   get_transitive_tiered_metrics,
   node_idx_to_name,
@@ -33,6 +34,7 @@ export default class NativeGraph {
   readonly metricNames: string[] = [];
   private metricCaches: MetricCaches;
   private statsCache: ArrayGraphStats | null = null;
+  private parentsCountCache: MetricsCache;
 
   static fromMapGraphJSON(mapGraphJSON: string): NativeGraph {
     set_map_graph(mapGraphJSON);
@@ -55,6 +57,11 @@ export default class NativeGraph {
     this.entrypoints = null;
     this.metricNames = get_metric_names();
     this.metricCaches = new MetricCaches(this.nodeCount);
+    this.parentsCountCache = new MetricsCache(
+      this.nodeCount,
+      (nodeIDXs: NodeIDX[]) =>
+        new Float32Array(get_reverse_edges_len(new Uint32Array(nodeIDXs))),
+    );
   }
 
   stats(): ArrayGraphStats {
@@ -116,6 +123,10 @@ export default class NativeGraph {
 
   getNodeMetricBatched(nodeIDXs: NodeIDX[], metricName: string): Float32Array {
     return this.metricCaches.getOrInitForPlain(metricName).getForIDXs(nodeIDXs);
+  }
+
+  getParentsCount(nodeIDX: NodeIDX[]): Float32Array {
+    return this.parentsCountCache.getForIDXs(nodeIDX);
   }
 
   getTransitiveMetric(nodeIDX: NodeIDX, metricName: string): number {

@@ -135,4 +135,16 @@ pub struct ArrayGraphUISettings {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub graph_table_sort: Option<GraphTableSort>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub columns: Option<ColumnSettings>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, TS, Clone)]
+#[ts(export)]
+pub struct ColumnSettings {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    show_parents_count: Option<bool>,
 }

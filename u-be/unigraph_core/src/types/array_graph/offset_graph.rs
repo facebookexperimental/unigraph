@@ -164,6 +164,12 @@ impl OffsetGraph {
         self.edges.len()
     }
 
+    pub fn edges_len_for_node(&self, node_idx: NodeIDX) -> usize {
+        let start = self.edge_offsets[node_idx];
+        let end = self.edge_offsets[node_idx + 1];
+        end - start
+    }
+
     pub fn node_idx_iter(&self) -> impl Iterator<Item = NodeIDX> {
         (0..self.node_count()).map(NodeIDX::from)
     }

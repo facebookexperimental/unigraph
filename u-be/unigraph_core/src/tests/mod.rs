@@ -604,6 +604,16 @@ F -> I [D]
 }
 
 #[test]
+fn test_edges_len() -> Result<()> {
+    let g = make_test_array_graph_1()?;
+    let d = g.node_names_ordered.name_to_idx_log("D").unwrap();
+
+    assert_equal!(g.edges_forward.edges_len_for_node(d), 2);
+    assert_equal!(g.edges_reverse.edges_len_for_node(d), 1);
+    Ok(())
+}
+
+#[test]
 fn test_reacable_subgraph_unconfigured() -> Result<()> {
     let g = make_test_array_graph_1()?;
     let d = g.node_names_ordered.name_to_idx_log("D").unwrap();

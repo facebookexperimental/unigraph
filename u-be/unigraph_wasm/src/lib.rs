@@ -247,6 +247,40 @@ pub fn get_arrows_forward(node_idx: usize) -> Result<String, WasmJSError> {
 }
 
 #[wasm_bindgen]
+pub fn get_forward_edges_len(node_idxs: Vec<u32>) -> Result<Vec<usize>, WasmJSError> {
+    let graph_state = GlobalState::graph_state().get();
+
+    let result = node_idxs
+        .into_iter()
+        .map(|node_idx| {
+            graph_state
+                .array_graph
+                .edges_forward
+                .edges_len_for_node(node_idx.into())
+        })
+        .collect::<Vec<usize>>();
+
+    Ok(result)
+}
+
+#[wasm_bindgen]
+pub fn get_reverse_edges_len(node_idxs: Vec<u32>) -> Result<Vec<usize>, WasmJSError> {
+    let graph_state = GlobalState::graph_state().get();
+
+    let result = node_idxs
+        .into_iter()
+        .map(|node_idx| {
+            graph_state
+                .array_graph
+                .edges_reverse
+                .edges_len_for_node(node_idx.into())
+        })
+        .collect::<Vec<usize>>();
+
+    Ok(result)
+}
+
+#[wasm_bindgen]
 pub fn get_graph_traversal_config() -> Result<String, WasmJSError> {
     let traversal_config = GlobalState::graph_state()
         .get()

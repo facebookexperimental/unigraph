@@ -7,6 +7,7 @@ import type NativeGraph from "../NativeGraph";
 import { useGraphSettings } from "../context/GraphSettingsContext";
 import { useNativeGraph } from "../context/NativeGraphContext";
 import formatMetric from "../lib/formatMetric";
+import formatNumber from "../lib/formatNumber";
 import ContextMenuCell from "./ContextMenuCell";
 import type {
   ColumnDefinitions,
@@ -58,6 +59,12 @@ function defaultColumnDefinitions(
 
     for (const { columnID, definition } of tieredTransitiveColumns) {
       columnDefinitions[columnID] = definition;
+    }
+
+    if (graphSettings.ui_settings?.columns?.show_parents_count === true) {
+      const [parentsCountColumnID, parentsCountColumnDefinition] =
+        createParentsCountColumn(nativeGraph);
+      columnDefinitions[parentsCountColumnID] = parentsCountColumnDefinition;
     }
   }
 
@@ -183,4 +190,29 @@ function createTieredTransitiveMetricColumn(
       },
     ];
   });
+}
+
+function createParentsCountColumn(
+  nativeGraph: NativeGraph,
+): [string, NumericValueColumnDefinition] {
+  const columnID = "Parents #";
+  const definition: NumericValueColumnDefinition = {
+    t: "numeric_value_column",
+    label: columnID,
+    renderer: (arrow: Arrow) => {
+      const value = formatNumber(
+        nativeGraph.getParentsCount([arrow.points_to])[0] ?? 0,
+        0,
+        0,
+        true,
+      );
+      return <p className="px-4 text-right tabular-nums w-full">{value}</p>;
+    },
+    getNumericValues: (idxs: NodeIDX[]) => {
+      return nativeGraph.getParentsCount(idxs);
+    },
+    sortable: true,
+    isHidden: false,
+  };
+  return [columnID, definition];
 }

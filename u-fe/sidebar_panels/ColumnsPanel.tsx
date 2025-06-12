@@ -9,6 +9,7 @@ import { SidebarPanel, SidebarPanelHeader } from "./SidebarPanel";
 export default function ColumnsPanel() {
   const nativeGraph = useNativeGraph();
   const metricNames = nativeGraph.metricNames;
+  const [graphSettings, setGraphSettings] = useGraphSettings();
 
   const cards = metricNames.map((metricName) => {
     return <MetricSettingsCard key={metricName} metricName={metricName} />;
@@ -17,6 +18,27 @@ export default function ColumnsPanel() {
   return (
     <SidebarPanel>
       <SidebarPanelHeader>Columns</SidebarPanelHeader>
+      <div className="mb-8">
+        <USwitch
+          label="Show Parent Counts"
+          checked={
+            graphSettings.ui_settings?.columns?.show_parents_count === true
+          }
+          onCheckedChange={(checked) => {
+            setGraphSettings({
+              ...graphSettings,
+              ui_settings: {
+                ...graphSettings.ui_settings,
+                columns: {
+                  ...graphSettings.ui_settings?.columns,
+                  show_parents_count: checked,
+                },
+              },
+            });
+          }}
+        />
+      </div>
+      <SidebarPanelHeader>Metrics</SidebarPanelHeader>
       <div className="flex flex-col gap-2">{cards}</div>
     </SidebarPanel>
   );
