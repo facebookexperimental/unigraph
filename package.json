@@ -6,6 +6,7 @@
     "tailwind": "tailwindcss -i ./input.css -o ../.build/output.css --watch --cwd u-fe",
     "build-js": "rolldown -c ./rolldown.config.ts",
     "ts": "tsc --noEmit --project ./tsconfig.json",
+    "lint": "biome check",
     "test": "vitest"
   },
   "keywords": [],

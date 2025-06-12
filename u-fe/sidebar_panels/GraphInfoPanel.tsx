@@ -1,5 +1,5 @@
-import { useNativeGraph } from "../context/NativeGraphContext";
 import { Separator } from "../components/ui/separator";
+import { useNativeGraph } from "../context/NativeGraphContext";
 import formatNumber from "../lib/formatNumber";
 import { SidebarPanel, SidebarPanelHeader } from "./SidebarPanel";
 
@@ -17,7 +17,10 @@ export default function GraphInfoPanel() {
         <DataCell label="Node Count" value={stats.num_all_nodes} />
         <DataCell label="All Edges" value={stats.num_all_edges} />
         <DataCell label="Excluded Edges" value={stats.num_excluded_edges} />
-        <DataCell label="Unreachable Nodes" value={stats.num_unreachable_nodes} />
+        <DataCell
+          label="Unreachable Nodes"
+          value={stats.num_unreachable_nodes}
+        />
       </div>
     </SidebarPanel>
   );

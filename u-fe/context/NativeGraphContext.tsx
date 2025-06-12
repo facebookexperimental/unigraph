@@ -1,7 +1,7 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-import type NativeGraph from "../NativeGraph";
 import { createContext, useContext } from "react";
+import type NativeGraph from "../NativeGraph";
 
 const NativeGraphContext = createContext<NativeGraph | null>(null);
 

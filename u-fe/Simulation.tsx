@@ -1,19 +1,19 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-import type { SimulationParams } from "../u-be/unigraph_wgpu/bindings/SimulationParams";
-import type { TsVec2 } from "../u-be/unigraph_wgpu/bindings/TsVec2.js";
-import type { SelectionType } from "../u-be/unigraph_wgpu/bindings/SelectionType.js";
-import { Toggle } from "./components/ui/toggle";
 import { Play, Split } from "lucide-react";
-import { Label } from "./components/ui/label";
-import { Slider } from "./components/ui/slider";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  get_simulation_params,
   get_selected_node_idxs,
-  set_simulation_params,
+  get_simulation_params,
   set_event_loop_active,
+  set_simulation_params,
 } from "../.build/wasm/unigraph_wasm.js";
+import type { SelectionType } from "../u-be/unigraph_wgpu/bindings/SelectionType.js";
+import type { SimulationParams } from "../u-be/unigraph_wgpu/bindings/SimulationParams";
+import type { TsVec2 } from "../u-be/unigraph_wgpu/bindings/TsVec2.js";
+import { Label } from "./components/ui/label";
+import { Slider } from "./components/ui/slider";
+import { Toggle } from "./components/ui/toggle";
 import type { NodeIDX } from "./types";
 
 export default function Simulation(props: {

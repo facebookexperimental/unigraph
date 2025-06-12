@@ -4,11 +4,11 @@ import type { NodeIDX } from "../types";
 import { TreeTable, TreeTablePathSelector } from "./TreeTable";
 
 import { useCallback, useEffect, useRef } from "react";
+import type { GraphTableSort } from "u-be/unigraph_core/bindings/GraphTableSort";
 import type NativeGraph from "../NativeGraph";
+import { useGraphSettings } from "../context/GraphSettingsContext";
 import { useGraphTreeTableColumns } from "../context/GraphTreeTableColumnsContext";
 import { useNativeGraph } from "../context/NativeGraphContext";
-import { useGraphSettings } from "../context/GraphSettingsContext";
-import type { GraphTableSort } from "u-be/unigraph_core/bindings/GraphTableSort";
 
 export default function GraphTreeTable(props: {
   roots: NodeIDX[];

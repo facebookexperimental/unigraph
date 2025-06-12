@@ -2,6 +2,7 @@
 
 // This is a wrapper class over the state of the graph on the WASM side.
 
+import type { TraversalConfig } from "u-be/unigraph_core/bindings/TraversalConfig";
 import {
   apply_traversal_config,
   determine_entrypoints,
@@ -18,10 +19,9 @@ import {
   set_array_graph_json_zstd_base64,
   set_map_graph,
 } from "../.build/wasm/unigraph_wasm";
-import type { NodeIDX } from "./types";
-import type { Arrow } from "../u-be/unigraph_core/bindings/Arrow";
 import type { ArrayGraphStats } from "../u-be/unigraph_core/bindings/ArrayGraphStats";
-import type { TraversalConfig } from "u-be/unigraph_core/bindings/TraversalConfig";
+import type { Arrow } from "../u-be/unigraph_core/bindings/Arrow";
+import type { NodeIDX } from "./types";
 
 // It serves as a bridge/cache layer between JS and WASM.
 export default class NativeGraph {
@@ -64,7 +64,7 @@ export default class NativeGraph {
   /// This will usually return the default traversal config encoded
   /// on the graph if nothing else was explicitly set.
   getTraversalConfig(): TraversalConfig {
-    let tvcJSON = get_graph_traversal_config();
+    const tvcJSON = get_graph_traversal_config();
     return JSON.parse(tvcJSON) as TraversalConfig;
   }
 

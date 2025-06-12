@@ -1,7 +1,7 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-import { createRoot } from "react-dom/client";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { createRoot } from "react-dom/client";
 
 import { Explorer, type InputGraph } from "./Explorer";
 

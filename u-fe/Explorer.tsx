@@ -2,40 +2,40 @@
 
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { TraversalConfig } from "u-be/unigraph_core/bindings/TraversalConfig";
-import { TraversalConfigContextProvider } from "./context/TraversalConfigContext";
-import NativeGraph from "./NativeGraph";
-import type { NodeIDX } from "./types";
-import Simulation from "./Simulation";
-import GraphTreeTable from "./tree_table/GraphTreeTable";
-import Sidebar from "./Sidebar";
-import initWasm from "./init_wasm";
-import GraphInfoPanel from "./sidebar_panels/GraphInfoPanel";
-import { PortalContextProvider } from "./components/PortalContext";
-import ColumnsPanel from "./sidebar_panels/ColumnsPanel";
-import { GraphTreeTableColumnsContextProvider } from "./context/GraphTreeTableColumnsContext";
 import {
   from_zstd_base64_url_safe_no_pad,
   to_zstd_base64_url_safe_no_pad,
 } from "../.build/wasm/unigraph_wasm";
-import {
-  NativeGraphContextProvider,
-  useNativeGraph,
-} from "./context/NativeGraphContext";
+import type { ArrayGraphSettings } from "../u-be/unigraph_core/bindings/ArrayGraphSettings";
+import NativeGraph from "./NativeGraph";
+import Sidebar from "./Sidebar";
+import Simulation from "./Simulation";
+import { PortalContextProvider } from "./components/PortalContext";
 import {
   GraphSettingsContextProvider,
   useGraphSettings,
 } from "./context/GraphSettingsContext";
-import type { ArrayGraphSettings } from "../u-be/unigraph_core/bindings/ArrayGraphSettings";
+import { GraphTreeTableColumnsContextProvider } from "./context/GraphTreeTableColumnsContext";
+import {
+  NativeGraphContextProvider,
+  useNativeGraph,
+} from "./context/NativeGraphContext";
+import { TraversalConfigContextProvider } from "./context/TraversalConfigContext";
+import initWasm from "./init_wasm";
+import ColumnsPanel from "./sidebar_panels/ColumnsPanel";
+import GraphInfoPanel from "./sidebar_panels/GraphInfoPanel";
+import GraphTreeTable from "./tree_table/GraphTreeTable";
+import type { NodeIDX } from "./types";
 
 export type InputGraph =
   | {
-    t: "MapGraphJSON";
-    mapGraphJSON: string;
-  }
+      t: "MapGraphJSON";
+      mapGraphJSON: string;
+    }
   | {
-    t: "array_graph_json_zstd_base64";
-    array_graph_json_zstd_base64: string;
-  };
+      t: "array_graph_json_zstd_base64";
+      array_graph_json_zstd_base64: string;
+    };
 
 export function Explorer({
   graph,
@@ -64,10 +64,10 @@ export function Explorer({
       traversalConfigZSTDBase64UrlSafeNoPadding == null
         ? nativeGraphNoTVC.getTraversalConfig()
         : JSON.parse(
-          from_zstd_base64_url_safe_no_pad(
-            traversalConfigZSTDBase64UrlSafeNoPadding,
-          ),
-        );
+            from_zstd_base64_url_safe_no_pad(
+              traversalConfigZSTDBase64UrlSafeNoPadding,
+            ),
+          );
 
     return [tvc, nativeGraphNoTVC.getApplyTraversalConfig(tvc)];
   }, [traversalConfigZSTDBase64UrlSafeNoPadding, nativeGraphNoTVC]);
@@ -76,10 +76,10 @@ export function Explorer({
     return graphSettingsZSTDBase64UrlSafeNoPadding == null
       ? {}
       : JSON.parse(
-        from_zstd_base64_url_safe_no_pad(
-          graphSettingsZSTDBase64UrlSafeNoPadding,
-        ),
-      );
+          from_zstd_base64_url_safe_no_pad(
+            graphSettingsZSTDBase64UrlSafeNoPadding,
+          ),
+        );
   }, [graphSettingsZSTDBase64UrlSafeNoPadding]);
 
   const setTvcCb = useCallback(
@@ -192,4 +192,3 @@ function initNativeGraph(graph: InputGraph): NativeGraph {
       return NativeGraph.fromMapGraphJSON(graph.mapGraphJSON);
   }
 }
-

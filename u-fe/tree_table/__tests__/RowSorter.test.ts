@@ -1,9 +1,9 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-import { expect, test } from "vitest";
-import { type Row, sortRows } from "../TreeTableRows";
 import type { Arrow } from "u-be/unigraph_core/bindings/Arrow";
 import type { SortOrder } from "u-be/unigraph_core/bindings/SortOrder";
+import { expect, test } from "vitest";
+import { type Row, sortRows } from "../TreeTableRows";
 
 function arrow(fromIDX: number, toIDX: number): Arrow {
   return {

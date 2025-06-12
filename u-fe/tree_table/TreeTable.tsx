@@ -1,8 +1,6 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-import { useVirtualizer, type VirtualItem } from "@tanstack/react-virtual";
-import type { NodeIDX } from "../types";
-import { useEffect, useMemo, useReducer, useRef } from "react";
+import { type VirtualItem, useVirtualizer } from "@tanstack/react-virtual";
 import clsx from "clsx";
 import {
   ArrowDown01,
@@ -11,18 +9,20 @@ import {
   ArrowUp10,
   ArrowUpZA,
 } from "lucide-react";
+import { useEffect, useMemo, useReducer, useRef } from "react";
+import type { GraphTableSort } from "u-be/unigraph_core/bindings/GraphTableSort";
+import type { SortOrder } from "u-be/unigraph_core/bindings/SortOrder";
+import type { Arrow } from "../../u-be/unigraph_core/bindings/Arrow";
+import type { NodeIDX } from "../types";
+import TreeCell from "./TreeCell";
 import {
+  type Row,
+  type SortFn,
   collapseRow,
   expandRow,
   expandToPath,
-  type Row,
-  type SortFn,
   sortRows,
 } from "./TreeTableRows";
-import type { Arrow } from "../../u-be/unigraph_core/bindings/Arrow";
-import TreeCell from "./TreeCell";
-import type { SortOrder } from "u-be/unigraph_core/bindings/SortOrder";
-import type { GraphTableSort } from "u-be/unigraph_core/bindings/GraphTableSort";
 
 export type TreeColumnID = "__tree_column__";
 export type ColumnID = string;

@@ -2,15 +2,15 @@
 
 import { Ellipsis } from "lucide-react";
 import type { Arrow } from "u-be/unigraph_core/bindings/Arrow";
+import type NativeGraph from "../NativeGraph";
+import { UDropdownMenu } from "../components/UDropdownMenu";
 import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuShortcut,
 } from "../components/ui/dropdown-menu";
-import { useTVC } from "../context/TraversalConfigContext";
-import type NativeGraph from "../NativeGraph";
-import { UDropdownMenu } from "../components/UDropdownMenu";
 import { useNativeGraph } from "../context/NativeGraphContext";
+import { useTVC } from "../context/TraversalConfigContext";
 
 export default function ContextMenuCell(props: {
   arrow: Arrow;

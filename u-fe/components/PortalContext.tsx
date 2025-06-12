@@ -1,6 +1,6 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-import { createContext, type RefObject, useContext } from "react";
+import { type RefObject, createContext, useContext } from "react";
 
 export type PortalContextType = RefObject<HTMLDivElement | null>;
 

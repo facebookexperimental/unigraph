@@ -1,12 +1,12 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 import { useState } from "react";
+import { usePortalContainer } from "./PortalContext";
 import {
   DropdownMenu,
   DropdownMenuPortal,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
-import { usePortalContainer } from "./PortalContext";
 
 export function UDropdownMenu({
   children,

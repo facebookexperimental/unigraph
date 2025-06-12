@@ -1,5 +1,6 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
+import clsx from "clsx";
 import {
   BadgeInfo,
   ChevronDown,
@@ -7,11 +8,10 @@ import {
   Dot,
   RefreshCw,
 } from "lucide-react";
-import type { Row } from "./TreeTableRows";
-import { Badge } from "../components/ui/badge";
-import clsx from "clsx";
-import UHoverCard from "../components/UHoverCard";
 import type { Arrow } from "u-be/unigraph_core/bindings/Arrow";
+import UHoverCard from "../components/UHoverCard";
+import { Badge } from "../components/ui/badge";
+import type { Row } from "./TreeTableRows";
 
 export default function TreeCell(props: {
   row: Row;

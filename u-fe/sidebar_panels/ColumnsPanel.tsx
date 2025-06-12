@@ -1,11 +1,11 @@
-import { useState } from "react";
-import { useGraphTreeTableColumns } from "../context/GraphTreeTableColumnsContext";
-import { SidebarPanel, SidebarPanelHeader } from "./SidebarPanel";
-import { Collapsible, CollapsibleTrigger } from "../components/ui/collapsible";
 import type { NonTreeColumnDefinition } from "@/tree_table/TreeTable";
 import { ChevronDown, ChevronRight } from "lucide-react";
-import { Switch } from "../components/ui/switch";
+import { useState } from "react";
+import { Collapsible, CollapsibleTrigger } from "../components/ui/collapsible";
 import { Label } from "../components/ui/label";
+import { Switch } from "../components/ui/switch";
+import { useGraphTreeTableColumns } from "../context/GraphTreeTableColumnsContext";
+import { SidebarPanel, SidebarPanelHeader } from "./SidebarPanel";
 
 export default function ColumnsPanel() {
   const { columnDefinitions, setColumnDefinitions } =

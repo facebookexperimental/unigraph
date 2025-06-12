@@ -1,8 +1,8 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 import { Info, TableProperties, Waypoints } from "lucide-react";
-import { Button } from "./components/ui/button";
 import type { SidebarPanel } from "u-be/unigraph_core/bindings/SidebarPanel";
+import { Button } from "./components/ui/button";
 import { useGraphSettings } from "./context/GraphSettingsContext";
 
 export default function Sidebar({

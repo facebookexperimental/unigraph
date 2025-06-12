@@ -35,12 +35,6 @@
     // JSX configuration (if needed)
     "jsx": "react-jsx"
   },
-  "include": [
-    "u-fe/**/*.ts",
-    "u-fe/**/*.tsx"
-  ],
-  "exclude": [
-    "node_modules",
-    "build"
-  ]
+  "include": ["u-fe/**/*.ts", "u-fe/**/*.tsx"],
+  "exclude": ["node_modules", "build"]
 }

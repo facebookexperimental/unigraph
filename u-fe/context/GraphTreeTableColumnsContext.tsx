@@ -8,17 +8,17 @@ import {
   useMemo,
   useState,
 } from "react";
+import type { Arrow } from "u-be/unigraph_core/bindings/Arrow";
+import type { NodeIDX } from "u-be/unigraph_core/bindings/NodeIDX";
+import type NativeGraph from "../NativeGraph";
+import formatNumber from "../lib/formatNumber";
+import ContextMenuCell from "../tree_table/ContextMenuCell";
 import type {
   ColumnDefinitions,
   NonTreeColumnDefinition,
   NumericValueColumnDefinition,
   TreeColumnDefinition,
 } from "../tree_table/TreeTable";
-import type NativeGraph from "../NativeGraph";
-import formatNumber from "../lib/formatNumber";
-import type { Arrow } from "u-be/unigraph_core/bindings/Arrow";
-import type { NodeIDX } from "u-be/unigraph_core/bindings/NodeIDX";
-import ContextMenuCell from "../tree_table/ContextMenuCell";
 import { useNativeGraph } from "./NativeGraphContext";
 
 export type GraphTreeTableColumnsContextType = {
