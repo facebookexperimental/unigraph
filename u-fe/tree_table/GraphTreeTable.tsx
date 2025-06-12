@@ -7,8 +7,8 @@ import { useCallback, useEffect, useRef } from "react";
 import type { GraphTableSort } from "u-be/unigraph_core/bindings/GraphTableSort";
 import type NativeGraph from "../NativeGraph";
 import { useGraphSettings } from "../context/GraphSettingsContext";
-import { useGraphTreeTableColumns } from "../context/GraphTreeTableColumnsContext";
 import { useNativeGraph } from "../context/NativeGraphContext";
+import useGraphTreeTableColumns from "./useGraphTreeTableColumns";
 
 export default function GraphTreeTable(props: {
   roots: NodeIDX[];
@@ -47,7 +47,7 @@ export default function GraphTreeTable(props: {
     }
   }, [nativeGraph]);
 
-  const { columnDefinitions } = useGraphTreeTableColumns();
+  const columnDefinitions = useGraphTreeTableColumns();
 
   const getArrows = useCallback(
     (nodeIDX: NodeIDX) => {

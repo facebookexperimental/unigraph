@@ -15,7 +15,6 @@ import {
   GraphSettingsContextProvider,
   useGraphSettings,
 } from "./context/GraphSettingsContext";
-import { GraphTreeTableColumnsContextProvider } from "./context/GraphTreeTableColumnsContext";
 import {
   NativeGraphContextProvider,
   useNativeGraph,
@@ -166,18 +165,16 @@ function Page() {
 
   return (
     <PortalContextProvider containerRef={containerRef}>
-      <GraphTreeTableColumnsContextProvider>
-        <div
-          className="flex grow-1 shrink flex-row bg-background text-foreground unigraph-explorer min-h-0"
-          ref={containerRef}
-        >
-          <Sidebar selectedPanelTab={selectedSidebarPanel} />
-          {panelTab}
-          <div className="flex h-full grow-1">
-            <GraphTreeTable focusOnMount={true} roots={roots} />
-          </div>
+      <div
+        className="flex grow-1 shrink flex-row bg-background text-foreground unigraph-explorer min-h-0"
+        ref={containerRef}
+      >
+        <Sidebar selectedPanelTab={selectedSidebarPanel} />
+        {panelTab}
+        <div className="flex h-full grow-1">
+          <GraphTreeTable focusOnMount={true} roots={roots} />
         </div>
-      </GraphTreeTableColumnsContextProvider>
+      </div>
     </PortalContextProvider>
   );
 }

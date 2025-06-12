@@ -1,98 +1,60 @@
-// Copyright (c) Meta Platforms, Inc. and affiliates.
-
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import type { NodeIDX } from "@/types";
+import { useMemo } from "react";
 import type { Arrow } from "u-be/unigraph_core/bindings/Arrow";
-import type { NodeIDX } from "u-be/unigraph_core/bindings/NodeIDX";
+import type { GraphSettings } from "u-be/unigraph_core/bindings/GraphSettings";
+import type { MetricSettings } from "u-be/unigraph_core/bindings/MetricSettings";
 import type NativeGraph from "../NativeGraph";
-import formatNumber from "../lib/formatNumber";
-import ContextMenuCell from "../tree_table/ContextMenuCell";
+import { useGraphSettings } from "../context/GraphSettingsContext";
+import { useNativeGraph } from "../context/NativeGraphContext";
+import formatMetric from "../lib/formatMetric";
+import ContextMenuCell from "./ContextMenuCell";
 import type {
   ColumnDefinitions,
   NonTreeColumnDefinition,
   NumericValueColumnDefinition,
   TreeColumnDefinition,
-} from "../tree_table/TreeTable";
-import { useNativeGraph } from "./NativeGraphContext";
+} from "./TreeTable";
 
-export type GraphTreeTableColumnsContextType = {
-  columnDefinitions: ColumnDefinitions;
-  setColumnDefinitions: (definitions: ColumnDefinitions) => void;
-};
-
-const GraphTreeTableColumnsContext =
-  createContext<GraphTreeTableColumnsContextType | null>(null);
-
-export function GraphTreeTableColumnsContextProvider({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function useGraphTreeTableColumns(): ColumnDefinitions {
   const nativeGraph = useNativeGraph();
-  const [columnDefinitions, setColumnDefinitions] = useState(() =>
-    defaultColumnDefinitions(nativeGraph),
-  );
+  const [graphSettings] = useGraphSettings();
 
-  useEffect(() => {
-    // we need to reset the whole thing if the native grpah changes, because
-    // the columns will otherwise have references to the old graph and
-    // the values will not be correct.
-    // In the future we need to defive the columns from graph UI/Metircs settings
-    setColumnDefinitions(defaultColumnDefinitions(nativeGraph));
-  }, [nativeGraph]);
-
-  const setDefinitionsCb = useCallback((newDefinitions: ColumnDefinitions) => {
-    setColumnDefinitions(newDefinitions);
-  }, []);
-
-  const value = useMemo(() => {
-    return {
-      columnDefinitions,
-      setColumnDefinitions: setDefinitionsCb,
-    };
-  }, [columnDefinitions, setDefinitionsCb]);
-
-  return (
-    <GraphTreeTableColumnsContext.Provider value={value}>
-      {children}
-    </GraphTreeTableColumnsContext.Provider>
-  );
+  console.log({ graphSettings });
+  return useMemo(() => {
+    return defaultColumnDefinitions(nativeGraph, graphSettings);
+  }, [nativeGraph, graphSettings]);
 }
 
-export function useGraphTreeTableColumns(): GraphTreeTableColumnsContextType {
-  const context = useContext(GraphTreeTableColumnsContext);
-  if (!context) {
-    throw new Error(
-      "useGraphTreeTableColumns must be used within a GraphTreeTableColumnsContextProvider",
-    );
-  }
-  return context;
-}
-
-function defaultColumnDefinitions(nativeGraph: NativeGraph): ColumnDefinitions {
+function defaultColumnDefinitions(
+  nativeGraph: NativeGraph,
+  graphSettings: GraphSettings,
+): ColumnDefinitions {
   const columnDefinitions: { [name: string]: NonTreeColumnDefinition } = {};
   for (const metricName of nativeGraph.metricNames) {
-    const [metricColumnID, metricColumnDefinition] = createMetricColumn(
-      nativeGraph,
-      metricName,
-    );
+    const metricSettings = graphSettings.metric_settings?.[metricName] ?? null;
 
-    const [transitiveMetricColumnID, transitiveMetricColumnDefinition] =
-      createTransitiveMetricColumn(metricName, nativeGraph);
+    if (metricSettings?.column_hide_self !== true) {
+      const [metricColumnID, metricColumnDefinition] = createMetricColumn(
+        nativeGraph,
+        metricName,
+        metricSettings,
+      );
 
-    columnDefinitions[metricColumnID] = metricColumnDefinition;
-    columnDefinitions[transitiveMetricColumnID] =
-      transitiveMetricColumnDefinition;
+      columnDefinitions[metricColumnID] = metricColumnDefinition;
+    }
+
+    if (metricSettings?.column_hide_transitive !== true) {
+      const [transitiveMetricColumnID, transitiveMetricColumnDefinition] =
+        createTransitiveMetricColumn(metricName, nativeGraph, metricSettings);
+
+      columnDefinitions[transitiveMetricColumnID] =
+        transitiveMetricColumnDefinition;
+    }
 
     const tieredTransitiveColumns = createTieredTransitiveMetricColumn(
       metricName,
       nativeGraph,
+      metricSettings,
     );
 
     for (const { columnID, definition } of tieredTransitiveColumns) {
@@ -123,6 +85,7 @@ function defaultColumnDefinitions(nativeGraph: NativeGraph): ColumnDefinitions {
 function createMetricColumn(
   nativeGraph: NativeGraph,
   metricName: string,
+  metricSettings: MetricSettings | null,
 ): [string, NumericValueColumnDefinition] {
   const columnID = `[metric] ${metricName}`;
   const definition: NumericValueColumnDefinition = {
@@ -131,11 +94,9 @@ function createMetricColumn(
     renderer: (arrow: Arrow) => {
       const value = arrow.points_to_unreachable
         ? "-"
-        : formatNumber(
+        : formatMetric(
             nativeGraph.getNodeMetric(arrow.points_to, metricName),
-            0,
-            0,
-            true,
+            metricSettings?.format,
           );
       return <p className="px-4 text-right tabular-nums w-full">{value}</p>;
     },
@@ -151,6 +112,7 @@ function createMetricColumn(
 function createTransitiveMetricColumn(
   metricName: string,
   nativeGraph: NativeGraph,
+  metricSettings: MetricSettings | null,
 ): [string, NumericValueColumnDefinition] {
   const columnID = `[transitive] ${metricName}`;
   const definition: NumericValueColumnDefinition = {
@@ -159,11 +121,9 @@ function createTransitiveMetricColumn(
     renderer: (arrow: Arrow) => {
       const value = arrow.points_to_unreachable
         ? "-"
-        : formatNumber(
+        : formatMetric(
             nativeGraph.getTransitiveMetric(arrow.points_to, metricName),
-            0,
-            0,
-            true,
+            metricSettings?.format,
           );
       return <p className="px-4 text-right tabular-nums w-full">{value}</p>;
     },
@@ -179,9 +139,17 @@ function createTransitiveMetricColumn(
 function createTieredTransitiveMetricColumn(
   metricName: string,
   nativeGraph: NativeGraph,
+  metricSettings: MetricSettings | null,
 ): { columnID: string; definition: NumericValueColumnDefinition }[] {
   const tiers = nativeGraph.stats().tier_names;
-  return tiers.map((tierName) => {
+  const column_hide_trantitive_tiered =
+    metricSettings?.column_hide_trantitive_tiered ?? [];
+
+  return tiers.flatMap((tierName) => {
+    if (column_hide_trantitive_tiered.includes(tierName)) {
+      return [];
+    }
+
     const columnID = `[tiered_transitive ${tierName}] ${metricName}`;
     const definition: NumericValueColumnDefinition = {
       t: "numeric_value_column",
@@ -189,14 +157,12 @@ function createTieredTransitiveMetricColumn(
       renderer: (arrow: Arrow) => {
         const value = arrow.points_to_unreachable
           ? "-"
-          : formatNumber(
+          : formatMetric(
               nativeGraph.getTieredTransitiveMetric(
                 arrow.points_to,
                 metricName,
               )?.[tierName] ?? 0,
-              0,
-              0,
-              true,
+              metricSettings?.format,
             );
         return <p className="px-4 text-right tabular-nums w-full">{value}</p>;
       },
@@ -211,9 +177,11 @@ function createTieredTransitiveMetricColumn(
       isHidden: false,
     };
 
-    return {
-      columnID,
-      definition,
-    };
+    return [
+      {
+        columnID,
+        definition,
+      },
+    ];
   });
 }

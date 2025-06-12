@@ -4,33 +4,30 @@ import { useState } from "react";
 import { Collapsible, CollapsibleTrigger } from "../components/ui/collapsible";
 import { Label } from "../components/ui/label";
 import { Switch } from "../components/ui/switch";
-import { useGraphTreeTableColumns } from "../context/GraphTreeTableColumnsContext";
 import { SidebarPanel, SidebarPanelHeader } from "./SidebarPanel";
 
 export default function ColumnsPanel() {
-  const { columnDefinitions, setColumnDefinitions } =
-    useGraphTreeTableColumns();
-
-  const cards = Object.entries(columnDefinitions.columns).map(
-    ([columnID, definition]) => {
-      return (
-        <ColumnCard
-          key={columnID}
-          columnID={columnID}
-          definition={definition}
-          onUpdateDefinition={(newDefinition) => {
-            setColumnDefinitions({
-              ...columnDefinitions,
-              columns: {
-                ...columnDefinitions.columns,
-                [columnID]: newDefinition,
-              },
-            });
-          }}
-        />
-      );
-    },
-  );
+  // const cards = Object.entries(columnDefinitions.columns).map(
+  //   ([columnID, definition]) => {
+  //     return (
+  //       <ColumnCard
+  //         key={columnID}
+  //         columnID={columnID}
+  //         definition={definition}
+  //         onUpdateDefinition={(newDefinition) => {
+  //           setColumnDefinitions({
+  //             ...columnDefinitions,
+  //             columns: {
+  //               ...columnDefinitions.columns,
+  //               [columnID]: newDefinition,
+  //             },
+  //           });
+  //         }}
+  //       />
+  //     );
+  //   },
+  // );
+  const cards = null;
 
   return (
     <SidebarPanel>

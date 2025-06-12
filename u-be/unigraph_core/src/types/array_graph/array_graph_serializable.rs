@@ -126,7 +126,7 @@ impl From<ArrayGraph> for ArrayGraphSerializable {
                 metrics: graph.metrics,
                 tag_sets: graph.tag_sets,
             },
-            graph_settings: None,
+            graph_settings: graph.graph_settings,
             traversal_config: graph.traversal_config,
         }
     }

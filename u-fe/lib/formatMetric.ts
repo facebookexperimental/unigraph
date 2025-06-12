@@ -4,9 +4,16 @@ import type { MetricFormat } from "u-be/unigraph_core/bindings/MetricFormat";
 import type { SizeConfig } from "u-be/unigraph_core/bindings/SizeConfig";
 import formatNumber from "./formatNumber";
 
+const DEFAULT_METRIC_FORMAT: MetricFormat = {
+  NumberWithVariablePrecision: {
+    min_precision: 0,
+    max_precision: 2,
+    use_delimiter: true,
+  },
+};
 export default function formatMetric(
   value: number,
-  format: MetricFormat,
+  format: MetricFormat = DEFAULT_METRIC_FORMAT,
 ): string {
   if ("Percent" in format) {
     const config = format.Percent;
