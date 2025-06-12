@@ -18,7 +18,6 @@ struct BasicUniforms {
 
 struct NodeAttributes {
     position: vec2<f32>,
-    velocity: vec2<f32>,
     adjusted_size: f32,
     flags: u32,
 }

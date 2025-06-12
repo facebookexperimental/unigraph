@@ -5,28 +5,21 @@ use std::sync::RwLock;
 use std::sync::RwLockReadGuard;
 use std::sync::RwLockWriteGuard;
 
+use anyhow::Context;
 use anyhow::Result;
 use bytemuck::Pod;
 use bytemuck::Zeroable;
 use glam::Vec2;
-use rand::Rng;
 use unigraph_core::ArrayGraph;
 use unigraph_core::types::NodeIDX;
 use wgpu::util::DeviceExt;
 
-use crate::barnes_hut::BHGraphNode;
-use crate::barnes_hut::QuadTree;
 use crate::basic_uniforms::BasicUniforms;
 use crate::global_state;
-use crate::global_state::GlobalState;
 use crate::simulation_graph::SimulationGraph;
-use crate::ts_types::Selection;
-use crate::ts_types::SelectionType;
 
 pub struct GraphState {
     pub array_graph: ArrayGraph,
-    pub node_attributes: Vec<NodeAttributes>,
-    pub forces: Vec<Vec2>,
     pub selected_metric: Option<String>,
     pub(crate) simulation_graph: SimulationGraph,
     // since this requires some initialization logic to run let's
@@ -60,9 +53,12 @@ impl SharedGraphState {
         Ok(())
     }
 
-    pub fn compute_next_frame(&self, update_forces: bool) {
+    pub fn compute_next_frame(&self, update_forces: bool) -> Result<()> {
         let mut graph_state = self.get_mut();
-        graph_state.compute_next_frame(update_forces);
+        graph_state
+            .simulation_graph
+            .compute_next_frame(update_forces)
+            .context("Failed to compute next frame")
     }
 }
 
@@ -122,14 +118,14 @@ impl WGPUGraphState {
         let graph_state = global_state().graph_state.get();
         let nodes_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Graph Buffer"),
-            contents: graph_state.nodes_bytes(),
+            contents: graph_state.simulation_graph.nodes_bytes(),
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
         });
 
-        let edge_bytes = graph_state.edges_buffer();
+        let edges_bytes = graph_state.simulation_graph.edges_bytes();
         let edges_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Edges Buffer"),
-            contents: bytemuck::cast_slice(&edge_bytes),
+            contents: edges_bytes,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
         });
 
@@ -325,19 +321,14 @@ impl GraphState {
     pub fn new(array_graph: ArrayGraph) -> Result<Self> {
         // by default we'll grab whatever metric is first in the list
         let selected_metric = array_graph.metrics.keys().next().cloned();
-        let node_attributes = Self::initialize_node_attributes(&array_graph);
-        let forces = vec![Vec2::ZERO; array_graph.nodes_len()];
         let simulation_graph = SimulationGraph::new(&array_graph)?;
 
-        let mut result = Self {
+        let result = Self {
             array_graph,
-            node_attributes,
-            forces,
             selected_metric,
             simulation_graph,
             _phantom: (),
         };
-        result.recalculate_adjusted_sizes();
         Ok(result)
     }
 
@@ -349,249 +340,75 @@ impl GraphState {
         }
     }
 
-    pub fn edges_buffer(&self) -> Vec<EdgeAttributes> {
-        let mut edges: Vec<EdgeAttributes> = vec![];
+    // pub fn recalculate_adjusted_sizes(&mut self) {
+    //     let nodes_len = self.array_graph.nodes_len();
+    //     if nodes_len == 0 {
+    //         return;
+    //     }
+    //     let mut all_sizes = Vec::with_capacity(nodes_len);
 
-        for idx in self.array_graph.node_idx_iter() {
-            for edge in self.array_graph.edges_forward.edges(idx) {
-                edges.push(EdgeAttributes {
-                    from: idx,
-                    to: edge.points_to,
-                });
-            }
-        }
-        edges
-    }
+    //     if let Some(selected_metrics) = self.get_selected_metrics_vec() {
+    //         for idx in self.array_graph.node_idx_iter() {
+    //             all_sizes.push(selected_metrics[idx]);
+    //         }
+    //     }
 
-    pub fn recalculate_adjusted_sizes(&mut self) {
-        let nodes_len = self.array_graph.nodes_len();
-        if nodes_len == 0 {
-            return;
-        }
-        let mut all_sizes = Vec::with_capacity(nodes_len);
+    //     if all_sizes.is_empty() {
+    //         return;
+    //     }
 
-        if let Some(selected_metrics) = self.get_selected_metrics_vec() {
-            for idx in self.array_graph.node_idx_iter() {
-                all_sizes.push(selected_metrics[idx]);
-            }
-        }
+    //     let mut sorted = all_sizes.clone();
+    //     sort_vec_f32(&mut sorted);
 
-        if all_sizes.is_empty() {
-            return;
-        }
+    //     let min_size = sorted[0];
+    //     let max_size = sorted[sorted.len() - 1];
 
-        let mut sorted = all_sizes.clone();
-        sort_vec_f32(&mut sorted);
+    //     for idx in self.array_graph.node_idx_iter() {
+    //         let size = all_sizes[idx];
+    //         let adjusted_size = if size == 0.0 {
+    //             1.0
+    //         } else {
+    //             // Normalize the size to be between 0 and 1
+    //             let normalized_size = (size - min_size) / (max_size - min_size);
+    //             // Scale it to be between 1 and 100
+    //             normalized_size * 99.0 + 1.0
+    //         };
+    //         self.node_attributes[idx].adjusted_size = adjusted_size;
+    //     }
+    // }
 
-        let min_size = sorted[0];
-        let max_size = sorted[sorted.len() - 1];
+    // pub fn mark_nodes_as_selected(&mut self, selection: &Selection) -> Result<Vec<usize>> {
+    // let aspect_ratio = GlobalState::surface_size().aspect_ratio();
 
-        for idx in self.array_graph.node_idx_iter() {
-            let size = all_sizes[idx];
-            let adjusted_size = if size == 0.0 {
-                1.0
-            } else {
-                // Normalize the size to be between 0 and 1
-                let normalized_size = (size - min_size) / (max_size - min_size);
-                // Scale it to be between 1 and 100
-                normalized_size * 99.0 + 1.0
-            };
-            self.node_attributes[idx].adjusted_size = adjusted_size;
-        }
-    }
-
-    pub fn initialize_node_attributes(array_graph: &ArrayGraph) -> Vec<NodeAttributes> {
-        let mut rng = rand::rng();
-        let mut nodes = Vec::with_capacity(array_graph.nodes_len());
-        if array_graph.is_empty() {
-            return nodes;
-        }
-
-        for _idx in array_graph.node_idx_iter() {
-            nodes.push(NodeAttributes {
-                position: Vec2 {
-                    x: rng.random_range(-1.0..1.0),
-                    y: rng.random_range(-1.0..1.0),
-                }
-                .clamp_length_max(0.01),
-                velocity: Vec2 {
-                    x: rng.random_range(-1.0..1.0),
-                    y: rng.random_range(-1.0..1.0),
-                }
-                .clamp_length_max(0.0001),
-                adjusted_size: 1.0,
-                flags: NodeAttributesFlags::empty(),
-                _padding: Default::default(),
-            });
-        }
-        nodes
-    }
-
-    pub fn nodes_bytes(&'_ self) -> &'_ [u8] {
-        bytemuck::cast_slice(&self.node_attributes)
-    }
-
-    // Process the next iteration of the simulation, which involves calculating all
-    // forces and adjusting node velocities and positions accordingly.
-    pub fn compute_next_frame(&mut self, compute_forces: bool) {
-        const TERMINAL_VELOCITY: f32 = 0.01;
-        let params = global_state().simulation_params.get();
-
-        if compute_forces {
-            self.compute_forces();
-        }
-
-        // update node positions based on forces
-        for (idx, node) in self.node_attributes.iter_mut().enumerate() {
-            let force = self.forces[idx];
-
-            node.velocity += force * params.max_velocity_multiplier;
-            node.velocity = node.velocity.clamp_length_max(TERMINAL_VELOCITY);
-
-            // Add some friction. This will slow down the nodes over time.
-            const SLOW_DOWN: f32 = 0.9;
-            node.velocity *= SLOW_DOWN;
-
-            // Update the node's position based on its velocity
-            node.position += node.velocity;
-
-            node.position = node.position.clamp(Vec2::splat(-0.95), Vec2::splat(0.95));
-        }
-    }
-
-    fn compute_forces(&mut self) {
-        let gravity_forces = self.compute_gravity_forces();
-        let edge_forces = self.get_edge_forces();
-        let center_pull_forces = self.forces_pull_towards_center();
-        let mut forces = vec![Vec2::ZERO; self.node_attributes.len()];
-
-        let params = global_state().simulation_params.get();
-        for node_idx in self.array_graph.node_idx_iter() {
-            forces[node_idx] = edge_forces[node_idx] * params.edge_force_multiplier
-                + center_pull_forces[node_idx]
-                - gravity_forces[node_idx] * params.gravity_force_multiplier;
-        }
-        self.forces = forces;
-    }
-
-    fn compute_gravity_forces(&self) -> Vec<Vec2> {
-        let mut quad_tree = QuadTree::new(300);
-        for (idx, node) in self.node_attributes.iter().enumerate() {
-            if node.flags.contains(NodeAttributesFlags::UNREACHABLE) {
-                continue;
-            }
-
-            quad_tree.add_body(BHGraphNode {
-                position: node.position,
-                idx,
-                mass: node.adjusted_size,
-            });
-        }
-        quad_tree.compute_forces(self.array_graph.nodes_len())
-    }
-
-    pub fn get_edge_forces(&self) -> Vec<Vec2> {
-        // Calculate forces based on edges
-        // These edges will act as springs and try to pull the nodes together.
-        let mut forces = vec![Vec2::ZERO; self.node_attributes.len()];
-
-        for from in self.array_graph.node_idx_iter() {
-            if self.node_attributes[from]
-                .flags
-                .contains(NodeAttributesFlags::UNREACHABLE)
-            {
-                continue;
-            }
-
-            for to in self.array_graph.edges_forward.edges(from) {
-                let dx = self.node_attributes[to.points_to].position.x
-                    - self.node_attributes[from].position.x;
-                let dy = self.node_attributes[to.points_to].position.y
-                    - self.node_attributes[from].position.y;
-
-                let distance_squared = dx * dx + dy * dy + 0.0001; // Avoid division by zero
-
-                let distance = distance_squared.sqrt();
-                let force_magnitude = 0.0009 * distance.ln_1p(); // Use natural log (ln(1 + x)) for linlog
-
-                // Calculate components of the force
-                let fx = (dx / distance) * force_magnitude;
-                let fy = (dy / distance) * force_magnitude;
-
-                let force = Vec2 { x: fx, y: fy };
-                forces[from] += force;
-                forces[to.points_to] -= force;
-            }
-        }
-        forces
-    }
-
-    fn forces_pull_towards_center(&self) -> Vec<Vec2> {
-        const CENTER_PULL_STRENGTH: f32 = 0.0007;
-        // Calculate forces pulling nodes towards the center (0, 0)
-        let mut forces = vec![Vec2::ZERO; self.node_attributes.len()];
-        for (idx, node) in self.node_attributes.iter().enumerate() {
-            let dx = -node.position.x;
-            let dy = -node.position.y;
-
-            let distance_squared = dx * dx + dy * dy + 0.001; // Avoid division by zero
-            let distance = distance_squared.sqrt();
-            let force_magnitude = CENTER_PULL_STRENGTH * distance * distance;
-
-            // Calculate components of the force
-            let fx = dx / distance * force_magnitude;
-            let fy = dy / distance * force_magnitude;
-
-            forces[idx] += Vec2 { x: fx, y: fy };
-        }
-        forces
-    }
-
-    pub fn mark_nodes_as_selected(&mut self, selection: &Selection) -> Result<Vec<usize>> {
-        let aspect_ratio = GlobalState::surface_size().aspect_ratio();
-
-        match selection.selection_type {
-            SelectionType::None => Ok(vec![]),
-            SelectionType::Box => {
-                let mut selected_nodes = vec![];
-                for (idx, node) in self.node_attributes.iter_mut().enumerate() {
-                    if selection.within_box_bounds(node.position, aspect_ratio) {
-                        node.flags.insert(NodeAttributesFlags::SELECTED);
-                        selected_nodes.push(idx);
-                    } else {
-                        node.flags.remove(NodeAttributesFlags::SELECTED);
-                    }
-                }
-                Ok(selected_nodes)
-            }
-            SelectionType::Line => {
-                anyhow::bail!("Line selection not implemented yet");
-            }
-        }
-    }
+    // match selection.selection_type {
+    //     SelectionType::None => Ok(vec![]),
+    //     SelectionType::Box => {
+    //         let mut selected_nodes = vec![];
+    //         for (idx, node) in self.node_attributes.iter_mut().enumerate() {
+    //             if selection.within_box_bounds(node.position, aspect_ratio) {
+    //                 node.flags.insert(NodeAttributesFlags::SELECTED);
+    //                 selected_nodes.push(idx);
+    //             } else {
+    //                 node.flags.remove(NodeAttributesFlags::SELECTED);
+    //             }
+    //         }
+    //         Ok(selected_nodes)
+    //     }
+    //     SelectionType::Line => {
+    //         anyhow::bail!("Line selection not implemented yet");
+    //     }
+    // }
+    // }
 
     // syncs flags from the array graph to the node attributes that we'll
     // then be able to pass to the shader.
     pub fn sync_node_attributes(&mut self) -> Result<()> {
         self.simulation_graph = SimulationGraph::new(&self.array_graph)?;
 
-        for node_idx in self.array_graph.node_idx_iter() {
-            let unreachable = self.array_graph.node_flags[node_idx].is_node_unreachable();
-            if unreachable {
-                self.node_attributes[node_idx]
-                    .flags
-                    .insert(NodeAttributesFlags::UNREACHABLE);
-            } else {
-                self.node_attributes[node_idx]
-                    .flags
-                    .remove(NodeAttributesFlags::UNREACHABLE);
-            }
-        }
-
         Ok(())
     }
 }
 
-fn sort_vec_f32(vec: &mut [f32]) {
-    vec.sort_by(|a, b| a.partial_cmp(b).unwrap());
-}
+// fn sort_vec_f32(vec: &mut [f32]) {
+//     vec.sort_by(|a, b| a.partial_cmp(b).unwrap());
+// }

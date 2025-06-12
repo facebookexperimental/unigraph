@@ -4,6 +4,7 @@ use anyhow::Result;
 use bytemuck::Pod;
 use bytemuck::Zeroable;
 use glam::Vec2;
+use rand::Rng;
 use unigraph_core::ArrayGraph;
 use unigraph_core::NodeIDX;
 use unigraph_core::remap_utils::RemapContext;
@@ -25,17 +26,18 @@ use crate::graph_state::NodeAttributesFlags;
 /// hundreds of MBs of data per second which can mess up the GPU pipeline.
 pub(crate) struct SimulationGraph {
     /// Local node data lives on the CPU and we only access it here
-    pub nodes_local: Vec<SimulationNodeLocal>,
+    nodes_local: Vec<SimulationNodeLocal>,
     /// GPU data gets serialized and sent to a GPU buffer, ideally we want to
     /// keep it as small as possible.
-    pub nodes_gpu: Vec<SimulationNodeGPU>,
+    nodes_gpu: Vec<SimulationNodeGPU>,
 
-    pub edges: Vec<SimulationEdge>,
+    edges: Vec<SimulationEdge>,
 
-    pub remap_ctx: RemapContext,
+    remap_ctx: RemapContext,
 }
+
 #[repr(C)]
-#[derive(Default, Clone, Copy, Pod, Zeroable)]
+#[derive(Clone, Copy, Pod, Zeroable)]
 struct SimulationNodeGPU {
     position: Vec2,
     adjusted_size: f32,
@@ -70,7 +72,7 @@ impl SimulationGraph {
                 mappings.push(Some(nodes_gpu.len().into()));
                 original_positions.push(node_idx);
                 nodes_local.push(SimulationNodeLocal::default());
-                nodes_gpu.push(SimulationNodeGPU::default());
+                nodes_gpu.push(SimulationNodeGPU::random());
             }
         }
 
@@ -104,6 +106,14 @@ impl SimulationGraph {
         })
     }
 
+    pub fn nodes_len(&self) -> usize {
+        self.nodes_local.len()
+    }
+
+    pub fn edges_len(&self) -> usize {
+        self.edges.len()
+    }
+
     pub fn node_idx_iter(&self) -> std::iter::Map<std::ops::Range<usize>, fn(usize) -> NodeIDX> {
         (0..self.nodes_local.len()).map(NodeIDX::from)
     }
@@ -112,18 +122,18 @@ impl SimulationGraph {
         bytemuck::cast_slice(&self.nodes_gpu)
     }
 
-    pub fn edge_bytes(&'_ self) -> &'_ [u8] {
+    pub fn edges_bytes(&'_ self) -> &'_ [u8] {
         bytemuck::cast_slice(&self.edges)
     }
 
     // Process the next iteration of the simulation, which involves calculating all
     // forces and adjusting node velocities and positions accordingly.
-    pub fn compute_next_frame(&mut self, compute_forces: bool) {
+    pub fn compute_next_frame(&mut self, compute_forces: bool) -> Result<()> {
         const TERMINAL_VELOCITY: f32 = 0.01;
         let params = global_state().simulation_params.get();
 
         if compute_forces {
-            self.recompute_forces();
+            self.recompute_forces()?;
         }
 
         // update node positions based on forces
@@ -145,6 +155,7 @@ impl SimulationGraph {
 
             gpu.position = gpu.position.clamp(Vec2::splat(-0.95), Vec2::splat(0.95));
         }
+        Ok(())
     }
 
     fn recompute_forces(&mut self) -> Result<()> {
@@ -155,15 +166,8 @@ impl SimulationGraph {
 
         self.compute_gravity_forces()?;
         self.compute_edge_forces()?;
-        let center_pull_forces = self.forces_pull_towards_center();
-        let mut forces = vec![Vec2::ZERO; self.nodes_local.len()];
+        self.forces_pull_towards_center()?;
 
-        // let params = global_state().simulation_params.get();
-        // for node_idx in self.node_idx_iter() {
-        //     forces[node_idx] = edge_forces[node_idx] * params.edge_force_multiplier
-        //         + center_pull_forces[node_idx]
-        //         - gravity_forces[node_idx] * params.gravity_force_multiplier;
-        // }
         Ok(())
     }
 
@@ -180,7 +184,7 @@ impl SimulationGraph {
         let gravity_forces = quad_tree.compute_forces(self.nodes_local.len());
         let params = global_state().simulation_params.get();
         for (idx, force) in gravity_forces.iter().enumerate() {
-            self.nodes_local[idx].force += *force * params.gravity_force_multiplier;
+            self.nodes_local[idx].force -= *force * params.gravity_force_multiplier;
         }
 
         Ok(())
@@ -232,5 +236,20 @@ impl SimulationGraph {
             self.nodes_local[node_idx].force += Vec2 { x: fx, y: fy };
         }
         Ok(())
+    }
+}
+
+impl SimulationNodeGPU {
+    pub fn random() -> Self {
+        let mut rng = rand::rng();
+        Self {
+            position: Vec2 {
+                x: rng.random_range(-1.0..1.0),
+                y: rng.random_range(-1.0..1.0),
+            }
+            .clamp_length_max(0.01),
+            adjusted_size: 1.0,
+            flags: NodeAttributesFlags::empty(),
+        }
     }
 }

@@ -175,8 +175,8 @@ impl WGPUState {
             let (node_ct, edge_ct) = {
                 let graph_state = global_state().graph_state.get();
                 (
-                    graph_state.node_attributes.len() as u32,
-                    graph_state.array_graph.edges_forward.edges_len() as u32,
+                    graph_state.simulation_graph.nodes_len() as u32,
+                    graph_state.simulation_graph.edges_len() as u32,
                 )
             };
             if global_state().simulation_params.get().render_edges {
@@ -338,13 +338,16 @@ impl ApplicationHandler<UserEvent> for WGPUApplication {
                         % cmp::max(params.compute_forces_every_n_frames as u64, 1)
                         == 0;
                     // NOTE: this requires a write lock on the graph state
-                    global_state().graph_state.compute_next_frame(update_forces);
+                    global_state()
+                        .graph_state
+                        .compute_next_frame(update_forces)
+                        .unwrap();
 
                     let graph_state = global_state().graph_state.get();
                     state.queue.write_buffer(
                         &state.wgpu_graph_state.nodes_buffer,
                         0,
-                        graph_state.nodes_bytes(),
+                        graph_state.simulation_graph.nodes_bytes(),
                     );
 
                     // NOTE: we don't modify the edges buffer, because
@@ -425,15 +428,16 @@ async fn run(event_loop: EventLoop<UserEvent>) {
 pub async fn start(array_graph: ArrayGraph) -> Result<(), UnigraphError> {
     GlobalState::init();
     let event_loop = EventLoop::<UserEvent>::with_user_event().build().unwrap();
-    GlobalState::graph_state().replace_graph(array_graph);
+    GlobalState::graph_state().replace_graph(array_graph)?;
     GlobalState::set_event_loop_proxy(event_loop.create_proxy());
     run(event_loop).await;
     Ok(())
 }
 
 pub fn get_selected_node_idxs() -> Result<Vec<usize>> {
-    let selection = GlobalState::simulation_params().selection;
-    GlobalState::graph_state_mut().mark_nodes_as_selected(&selection)
+    // let selection = GlobalState::simulation_params().selection;
+    // GlobalState::graph_state_mut().mark_nodes_as_selected(&selection)
+    Ok(vec![])
 }
 
 pub fn set_event_loop_active(active: bool) -> Result<()> {
