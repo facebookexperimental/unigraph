@@ -10,6 +10,10 @@ export type TraversalConfig = { force_nodes: { [key in string]?: Decision },
  */
 force_edges: { [key in string]?: { [key in string]?: Decision } }, 
 /**
+ * Only applied to tagged edges
+ */
+force_tagged: { [key in string]?: Decision }, 
+/**
  * These rules are ordered. The first one that matches will be used.
  */
 tag_sets: Array<NodeTagSetsPredicate>, 

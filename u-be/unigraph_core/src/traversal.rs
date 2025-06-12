@@ -47,6 +47,9 @@ pub struct TraversalConfig {
     pub force_nodes: BTreeMap<NodeName, Decision>,
     /// From Node Name -> To Node Name -> Decision
     pub force_edges: BTreeMap<NodeName, BTreeMap<NodeName, Decision>>,
+
+    /// Only applied to tagged edges
+    pub force_tagged: BTreeMap<Tag, Decision>,
     /// These rules are ordered. The first one that matches will be used.
     pub tag_sets: Vec<NodeTagSetsPredicate>,
     /// These rules are ordered. The first one that matches will be used.
@@ -60,6 +63,7 @@ pub struct TraversalConfig {
 pub struct TraversalConfigIDX {
     pub force_nodes: BTreeMap<NodeIDX, Decision>,
     pub force_edges: BTreeMap<NodeIDX, BTreeMap<NodeIDX, Decision>>,
+    pub force_tagged: BTreeMap<Tag, Decision>,
     /// These rules are ordered. The first one that matches will be used.
     pub tag_sets: Vec<NodeTagSetsPredicate>,
     /// These rules are ordered. The first one that matches will be used.
@@ -157,6 +161,7 @@ impl TraversalConfig {
         TraversalConfigIDX {
             force_nodes,
             force_edges,
+            force_tagged: self.force_tagged.clone(),
             force_dynamic,
             tag_sets: self.tag_sets.clone(),
             tiered_traversal: self.tiered_traversal.clone(),

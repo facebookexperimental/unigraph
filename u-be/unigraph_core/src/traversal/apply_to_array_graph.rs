@@ -27,6 +27,7 @@ pub fn apply_traversal_config_to_array_graph(
         edge.flags.remove(EdgeFlags::EXCLUDED);
 
         match_dynamic_edges(&indexed_config, parent_idx, edge, metadata);
+        match_tagged(&indexed_config, edge, metadata);
         if let Some(tag_sets_for_node) = ag.tag_sets.get(&edge.points_to) {
             match_tag_sets(&indexed_config, edge, tag_sets_for_node);
         }
@@ -126,6 +127,21 @@ fn match_dynamic_edges(
         match decision.include {
             true => edge.flags.remove(EdgeFlags::EXCLUDED),
             false => edge.flags.insert(EdgeFlags::EXCLUDED),
+        }
+    }
+}
+fn match_tagged(
+    indexed_config: &super::TraversalConfigIDX,
+    edge: &mut crate::types::array_graph::offset_graph::Edge,
+    metadata: &mut NonDirectedEdgeMetadata,
+) {
+    #[allow(clippy::collapsible_if)]
+    if let NonDirectedEdgeMetadata::Tagged { tag } = metadata {
+        if let Some(decision) = indexed_config.force_tagged.get(tag) {
+            match decision.include {
+                true => edge.flags.remove(EdgeFlags::EXCLUDED),
+                false => edge.flags.insert(EdgeFlags::EXCLUDED),
+            }
         }
     }
 }
