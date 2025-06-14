@@ -2,7 +2,7 @@
   "nodes": {
     "A": {
       "metrics": { "size": 1 },
-      "edges": { "directed": ["B", "D", "L"] }
+      "edges": { "directed": ["B", "D"] }
     },
     "B": {
       "metrics": { "size": 1 },

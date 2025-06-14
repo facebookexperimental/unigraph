@@ -1,3 +1,5 @@
+// Copyright (c) Meta Platforms, Inc. and affiliates.
+
 use std::cmp::min;
 use std::collections::BTreeSet;
 
@@ -178,16 +180,12 @@ mod tests {
 
     #[test]
     fn test_dominator_tree() -> Result<()> {
-        let ag = make_test_array_graph_2()?;
+        let ag = make_test_array_graph_2()?.append_super_root()?;
 
         snapshot!(
             ag.to_dom_edges_string()?,
-            "
+            r#"
 A:
-  - L
-  - F
-  - D
-  - K
   - B
 B:
   - J
@@ -214,7 +212,13 @@ O:
   - P
   - N
 P:
-"
+\u{10ffff}__root__\u{10ffff}:
+  - L
+  - F
+  - D
+  - K
+  - A
+"#
         );
         Ok(())
     }

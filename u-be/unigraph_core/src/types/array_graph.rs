@@ -7,12 +7,14 @@ pub mod graph_settings;
 pub(crate) mod node_names_ordered;
 pub(crate) mod offset_graph;
 pub mod remap_utils;
+mod super_root;
 mod to_map_graph;
 
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::sync::OnceLock;
 
+use anyhow::Context;
 use anyhow::Result;
 use node_names_ordered::NodeNamesOrdered;
 use offset_graph::Edge;
@@ -130,6 +132,10 @@ impl ArrayGraph {
 
     pub fn into_serializable(self) -> ArrayGraphSerializable {
         self.into()
+    }
+
+    pub fn append_super_root(self) -> Result<ArrayGraph> {
+        super_root::append_super_root(self).context("Failed to append super root")
     }
 
     pub fn to_map_graph(&self) -> Result<MapGraph> {

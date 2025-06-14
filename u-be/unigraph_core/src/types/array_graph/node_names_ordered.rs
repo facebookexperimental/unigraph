@@ -2,6 +2,8 @@
 
 use std::collections::HashMap;
 
+use anyhow::Result;
+
 use crate::types::NodeIDX;
 use crate::types::NodeName;
 
@@ -71,6 +73,28 @@ impl NodeNamesOrdered {
         }
         None
     }
+
+    pub fn append_node_name(&mut self, name: &str) -> Result<NodeIDX> {
+        let names_count = self.nodes_len();
+
+        if names_count > 0 {
+            // ensure the new name is > than the last name
+            let last_name = self.idx_to_name(NodeIDX::from(self.nodes_len() - 1));
+            if last_name >= name {
+                return Err(anyhow::anyhow!(
+                    "Node names must be ordered incrementally.
+You are trying to append a new node name '{name}' to a list of nodes containing '{names_count}' elements.
+The last node name in the list is '{last_name}'.
+Last name must be `<` the new name, which was not the case.
+",                ));
+            }
+        }
+
+        let idx = names_count;
+        self.node_names.push_str(name);
+        self.offsets.push(self.node_names.len());
+        Ok(NodeIDX::from(idx))
+    }
 }
 pub(crate) struct NodeNamesOrderedBuilder {}
 
@@ -113,5 +137,41 @@ impl<'a> Iterator for NodeNamesOrderedNamesIter<'a> {
         let name = self.node_names.idx_to_name(NodeIDX::from(self.idx));
         self.idx += 1;
         Some(name)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use k9::assert_equal;
+    use k9::snapshot;
+
+    use super::*;
+
+    #[test]
+    fn test_appending() -> Result<()> {
+        let mut nn = NodeNamesOrdered {
+            node_names: String::new(),
+            offsets: vec![0],
+        };
+
+        assert_equal!(nn.append_node_name("meow")?.0, 0);
+        assert_equal!(nn.node_names, "meow");
+
+        assert_equal!(nn.append_node_name("woof")?.0, 1);
+        assert_equal!(nn.node_names, "meowwoof");
+
+        let e = nn.append_node_name("abcd").unwrap_err();
+
+        snapshot!(
+            e.to_string(),
+            r#"
+Node names must be ordered incrementally.
+You are trying to append a new node name 'abcd' to a list of nodes containing '2' elements.
+The last node name in the list is 'woof'.
+Last name must be `<` the new name, which was not the case.
+
+"#
+        );
+        Ok(())
     }
 }
