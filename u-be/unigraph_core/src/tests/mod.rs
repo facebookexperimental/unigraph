@@ -18,6 +18,7 @@ use crate::ArrayGraphDebugUtils;
 use crate::ArrayGraphSerializable;
 use crate::NodeIDX;
 use crate::tests::test_graphs::make_test_array_graph_1;
+use crate::tests::test_graphs::make_test_array_graph_2;
 use crate::traversal::Decision;
 use crate::traversal::ForceDynamic;
 use crate::traversal::NodeTagSetsPredicate;
@@ -542,17 +543,27 @@ F -> I [D]
 
 #[test]
 fn test_edges_len() -> Result<()> {
-    let mut g = make_test_array_graph_1()?;
-    let node_e = g.node_names_ordered.name_to_idx_log("E").unwrap();
+    let mut g = make_test_array_graph_2()?;
+    let node_k = g.node_names_ordered.name_to_idx_log("K").unwrap();
 
-    assert_equal!(g.parents_len_configured(node_e), 1);
+    assert_equal!(g.parents_len_configured(node_k), 2);
 
     g.apply_traversal_config(TraversalConfig {
         force_nodes: btreemap! { "D".into() => Decision { include: false, message: None } },
         ..Default::default()
     })?;
 
-    assert_equal!(g.parents_len_configured(node_e), 0);
+    assert_equal!(g.parents_len_configured(node_k), 1);
+
+    g.apply_traversal_config(TraversalConfig {
+        force_nodes: btreemap! {
+          "J".into() => Decision { include: false, message: None },
+          "D".into() => Decision { include: false, message: None }
+        },
+        ..Default::default()
+    })?;
+
+    assert_equal!(g.parents_len_configured(node_k), 0);
 
     Ok(())
 }
