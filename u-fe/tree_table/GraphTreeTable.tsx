@@ -51,9 +51,13 @@ export default function GraphTreeTable(props: {
 
   const getArrows = useCallback(
     (nodeIDX: NodeIDX) => {
-      return nativeGraph.getArrowsForward(nodeIDX);
+      if (settings.ui_settings?.show_as_dominator_tree) {
+        return nativeGraph.getArrowsDominator(nodeIDX);
+      } else {
+        return nativeGraph.getArrowsForward(nodeIDX);
+      }
     },
-    [nativeGraph],
+    [nativeGraph, settings.ui_settings?.show_as_dominator_tree],
   );
 
   return (

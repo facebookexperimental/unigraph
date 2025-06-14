@@ -3,4 +3,4 @@ import type { ColumnSettings } from "./ColumnSettings";
 import type { GraphTableSort } from "./GraphTableSort";
 import type { SidebarPanel } from "./SidebarPanel";
 
-export type ArrayGraphUISettings = { selected_sidebar_panel?: SidebarPanel, graph_table_sort?: GraphTableSort, columns?: ColumnSettings, show_as_a_flat_list?: boolean, };
+export type ArrayGraphUISettings = { selected_sidebar_panel?: SidebarPanel, graph_table_sort?: GraphTableSort, columns?: ColumnSettings, show_as_a_flat_list?: boolean, show_as_dominator_tree?: boolean, };

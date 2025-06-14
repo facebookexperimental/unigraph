@@ -9,6 +9,7 @@ import {
   determine_entrypoints,
   get_all_reachable_node_idxs,
   get_array_graph_stats,
+  get_arrows_dominator,
   get_arrows_forward,
   get_graph_node_count,
   get_graph_settings,
@@ -109,6 +110,12 @@ export default class NativeGraph {
 
   getArrowsForward(nodeIDX: NodeIDX): Arrow[] {
     const arrowsJSON = get_arrows_forward(nodeIDX);
+    const parsed = JSON.parse(arrowsJSON);
+    return parsed as Arrow[];
+  }
+
+  getArrowsDominator(nodeIDX: NodeIDX): Arrow[] {
+    const arrowsJSON = get_arrows_dominator(nodeIDX);
     const parsed = JSON.parse(arrowsJSON);
     return parsed as Arrow[];
   }

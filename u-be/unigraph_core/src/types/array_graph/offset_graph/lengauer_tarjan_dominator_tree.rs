@@ -130,6 +130,9 @@ pub fn make_dominator_tree(offset_graph: &OffsetGraph, roots: &[NodeIDX]) -> Off
         dom_offset_graph
             .edge_offsets
             .push(dom_offset_graph.edges.len());
+        dom_offset_graph
+            .non_directed_edges_metadata
+            .push(super::NonDirectedEdgeMetadata::Directed);
     }
 
     dom_offset_graph

@@ -20,7 +20,7 @@ impl ArrayGraphDebugUtils for ArrayGraph {
     }
 
     fn to_dom_edges_string(&self) -> Result<String> {
-        self.to_edges_string(|graph, node_idx| graph.dom_edges(node_idx))
+        self.to_edges_string(|graph, node_idx| graph.children_dominator(node_idx))
     }
 
     fn to_edges_string<FN>(&self, edges_fn: FN) -> Result<String>

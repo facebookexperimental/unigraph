@@ -27,7 +27,9 @@ pub fn print_forward_edges(array_graph: &ArrayGraph) -> String {
 }
 
 pub fn print_dom_edges(array_graph: &ArrayGraph) -> String {
-    print_edges(array_graph, |graph, node_idx| graph.dom_edges(node_idx))
+    print_edges(array_graph, |graph, node_idx| {
+        graph.children_dominator(node_idx)
+    })
 }
 
 pub fn print_edges<FN>(array_graph: &ArrayGraph, edges_fn: FN) -> String

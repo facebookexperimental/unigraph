@@ -127,7 +127,12 @@ export function TreeTable(props: {
 
   const headerHeight = props.headerHeight ?? 35;
 
-  useEffect(() => ctx.updateRoots(props.roots), [props.roots, ctx]);
+  useEffect(() => {
+    ctx.getArrows = props.getArrows;
+    ctx.updateRoots(props.roots);
+    ctx.selectedRowIDX = null;
+    ctx.forceUpdate();
+  }, [ctx, props.getArrows, props.roots]);
 
   useEffect(() => {
     props.pathSelector.setNewSelectedPath = (path: NodeIDX[]) => {

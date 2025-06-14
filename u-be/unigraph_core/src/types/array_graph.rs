@@ -154,10 +154,13 @@ impl ArrayGraph {
         self.edges_forward.edges(node_idx)
     }
 
-    pub fn dom_edges(&self, node_idx: NodeIDX) -> &[Edge] {
+    pub fn edges_dom(&self) -> &OffsetGraph {
         self.edges_dom
             .get_or_init(|| make_dominator_tree(&self.edges_forward, &self.determine_entrypoints()))
-            .edges(node_idx)
+    }
+
+    pub fn children_dominator(&self, node_idx: NodeIDX) -> &[Edge] {
+        self.edges_dom().edges(node_idx)
     }
 
     pub fn node_idx_iter(&self) -> std::iter::Map<std::ops::Range<usize>, fn(usize) -> NodeIDX> {
@@ -350,6 +353,20 @@ impl ArrayGraph {
                         }),
                     }
                 }
+            })
+            .collect()
+    }
+
+    pub fn get_arrows_dominator(&self, node_idx: NodeIDX) -> Vec<Arrow> {
+        self.children_dominator(node_idx)
+            .iter()
+            .map(|edge| Arrow {
+                tag: None,
+                branch: None,
+                properties: None,
+                points_from: node_idx,
+                points_to: edge.points_to,
+                excluded: false,
             })
             .collect()
     }

@@ -50,6 +50,19 @@ export default function ColumnsPanel() {
             });
           }}
         />
+        <USwitch
+          label="Show As Dominator Tree"
+          checked={graphSettings.ui_settings?.show_as_dominator_tree === true}
+          onCheckedChange={(checked) => {
+            setGraphSettings({
+              ...graphSettings,
+              ui_settings: {
+                ...graphSettings.ui_settings,
+                show_as_dominator_tree: checked,
+              },
+            });
+          }}
+        />
       </div>
       <SidebarPanelHeader>Metrics</SidebarPanelHeader>
       <div className="flex flex-col gap-2">{cards}</div>
