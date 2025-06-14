@@ -225,7 +225,7 @@ mod tests {
 
     use super::*;
     use crate::ArrayGraphSerializable;
-    use crate::tests::make_test_array_graph_1;
+    use crate::tests::test_graphs::make_test_array_graph_1;
     use crate::types::array_graph::array_graph_debug_utils::ArrayGraphDebugUtils;
 
     #[test]

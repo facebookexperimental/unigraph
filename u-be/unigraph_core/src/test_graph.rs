@@ -45,6 +45,6 @@ mod tests {
 
     #[test]
     fn test_make_test_graph() {
-        let _graph = make_test_graph().unwrap();
+        make_test_graph().unwrap();
     }
 }

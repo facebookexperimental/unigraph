@@ -114,8 +114,8 @@ mod tests {
     use k9::snapshot;
 
     use super::*;
-    use crate::tests::make_test_array_graph_1;
-    use crate::tests::make_test_graph_1;
+    use crate::tests::test_graphs::make_test_array_graph_1;
+    use crate::tests::test_graphs::make_test_graph_1;
 
     #[test]
     fn test_to_map_graph() -> Result<()> {

@@ -1,8 +1,7 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-// https://fburl.com/excalidraw/vgjzlq2q
-
-mod test_utils;
+pub(crate) mod test_graphs;
+pub(crate) mod test_utils;
 
 use std::collections::BTreeSet;
 
@@ -17,8 +16,8 @@ use test_utils::print_edges;
 use crate::ArrayGraph;
 use crate::ArrayGraphDebugUtils;
 use crate::ArrayGraphSerializable;
-use crate::MapGraph;
 use crate::NodeIDX;
+use crate::tests::test_graphs::make_test_array_graph_1;
 use crate::traversal::Decision;
 use crate::traversal::ForceDynamic;
 use crate::traversal::NodeTagSetsPredicate;
@@ -27,68 +26,6 @@ use crate::traversal::tiered_traversal::AscendingTier;
 use crate::traversal::tiered_traversal::AscendingTiersConfig;
 use crate::traversal::tiered_traversal::TieredTraversalConfig;
 use crate::types::array_graph::NodeFlags;
-
-const TEST_GRAPH_1: &str = r#"
-{
-    "nodes": {
-        "A": {
-            "metrics": {"size": 1},
-            "edges": {"directed": ["B", "D"]}
-        },
-        "B": {
-            "metrics": {"size": 1},
-            "edges": {"tagged": {"BL": ["C"], "RD": ["J"]}}
-        },
-        "C": {
-          "metrics": {"size": 1},
-          "tag_sets": {"disallow_tags": ["b", "c"]}
-        },
-        "D": {
-            "metrics": {"size": 1},
-            "edges": {"directed": ["F"], "tagged": {"RDFD": ["E"]}}
-        },
-        "E": {
-            "metrics": {"size": 1}
-        },
-        "F": {
-            "metrics": {"size": 1},
-            "edges": {
-                "dynamic": [
-                    {
-                        "properties": {"type": "DDD"},
-                        "branches": {
-                            "b1": ["G", "H"],
-                            "b2": ["I"]
-                        }
-                    }
-                ]
-            }
-        },
-        "G": {
-          "metrics": {"size": 1}
-        },
-        "H": {
-          "metrics": {"size": 1}
-        },
-        "I": {
-          "metrics": {"size": 1}
-        },
-        "J": {
-          "metrics": {"size": 1},
-          "tag_sets": {"assert_tags": ["a", "b"]}
-        }
-    }
-}
-    "#;
-
-pub(crate) fn make_test_graph_1() -> MapGraph {
-    MapGraph::from_json(TEST_GRAPH_1).unwrap()
-}
-
-pub(crate) fn make_test_array_graph_1() -> Result<ArrayGraph> {
-    let graph = make_test_graph_1();
-    graph.to_array_graph()
-}
 
 #[test]
 fn determine_entrypoints() -> Result<()> {
@@ -643,131 +580,4 @@ I:
 "
     );
     Ok(())
-}
-#[test]
-fn test_graph() {
-    let graph = make_test_graph_1();
-    snapshot!(
-        serde_json::to_string_pretty(&graph).unwrap(),
-        r#"
-{
-  "nodes": {
-    "A": {
-      "edges": {
-        "directed": [
-          "B",
-          "D"
-        ]
-      },
-      "metrics": {
-        "size": 1.0
-      }
-    },
-    "B": {
-      "edges": {
-        "tagged": {
-          "BL": [
-            "C"
-          ],
-          "RD": [
-            "J"
-          ]
-        }
-      },
-      "metrics": {
-        "size": 1.0
-      }
-    },
-    "C": {
-      "edges": {},
-      "tag_sets": {
-        "disallow_tags": [
-          "b",
-          "c"
-        ]
-      },
-      "metrics": {
-        "size": 1.0
-      }
-    },
-    "D": {
-      "edges": {
-        "directed": [
-          "F"
-        ],
-        "tagged": {
-          "RDFD": [
-            "E"
-          ]
-        }
-      },
-      "metrics": {
-        "size": 1.0
-      }
-    },
-    "E": {
-      "edges": {},
-      "metrics": {
-        "size": 1.0
-      }
-    },
-    "F": {
-      "edges": {
-        "dynamic": [
-          {
-            "properties": {
-              "type": "DDD"
-            },
-            "branches": {
-              "b1": [
-                "G",
-                "H"
-              ],
-              "b2": [
-                "I"
-              ]
-            }
-          }
-        ]
-      },
-      "metrics": {
-        "size": 1.0
-      }
-    },
-    "G": {
-      "edges": {},
-      "metrics": {
-        "size": 1.0
-      }
-    },
-    "H": {
-      "edges": {},
-      "metrics": {
-        "size": 1.0
-      }
-    },
-    "I": {
-      "edges": {},
-      "metrics": {
-        "size": 1.0
-      }
-    },
-    "J": {
-      "edges": {},
-      "tag_sets": {
-        "assert_tags": [
-          "a",
-          "b"
-        ]
-      },
-      "metrics": {
-        "size": 1.0
-      }
-    }
-  },
-  "traversal_config": null,
-  "graph_settings": null
-}
-"#
-    );
 }
