@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
+use std::sync::OnceLock;
 
 use anyhow::Context;
 use anyhow::Result;
@@ -202,6 +203,7 @@ impl From<ArrayGraphSerializable> for ArrayGraph {
             node_names_ordered: serializable.node_names_ordered,
             edges_forward,
             edges_reverse,
+            edges_dom: OnceLock::new(),
             edges_tagged: serializable.edges.tagged,
             edges_dynamic: serializable.edges.dynamic,
             metrics: serializable.node_metadata.metrics,

@@ -11,6 +11,7 @@ mod to_map_graph;
 
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
+use std::sync::OnceLock;
 
 use anyhow::Result;
 use node_names_ordered::NodeNamesOrdered;
@@ -34,6 +35,7 @@ use crate::traversal::reachable_subgraph::get_reachable_subgraph_unconfigured;
 use crate::traversal::tiered_traversal::TieredTraversalConfig;
 use crate::types::TierName;
 use crate::types::array_graph::array_graph_stats::ArrayGraphStats;
+use crate::types::array_graph::offset_graph::lengauer_tarjan_dominator_tree::make_dominator_tree;
 
 pub struct ArrayGraph {
     pub node_names_ordered: NodeNamesOrdered,
@@ -41,6 +43,10 @@ pub struct ArrayGraph {
 
     pub edges_forward: OffsetGraph,
     pub edges_reverse: OffsetGraph,
+    /// Dominator tree is pretty expensive to compute and we normally only
+    /// need it for when dominator tree views are enabled in the UI. We'll store
+    /// it in a OnceLock so that it is computed lazyly and only when needed.
+    pub edges_dom: OnceLock<OffsetGraph>,
 
     pub edges_tagged: BTreeMap<NodeIDX, BTreeMap<Tag, BTreeSet<NodeIDX>>>,
     pub edges_dynamic: BTreeMap<NodeIDX, Vec<ArrayGraphDynamicEdge>>,
@@ -140,6 +146,12 @@ impl ArrayGraph {
 
     pub fn children(&self, node_idx: NodeIDX) -> &[Edge] {
         self.edges_forward.edges(node_idx)
+    }
+
+    pub fn dom_edges(&self, node_idx: NodeIDX) -> &[Edge] {
+        self.edges_dom
+            .get_or_init(|| make_dominator_tree(&self.edges_forward, &self.determine_entrypoints()))
+            .edges(node_idx)
     }
 
     pub fn node_idx_iter(&self) -> std::iter::Map<std::ops::Range<usize>, fn(usize) -> NodeIDX> {

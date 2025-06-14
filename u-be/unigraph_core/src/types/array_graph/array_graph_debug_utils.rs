@@ -1,15 +1,32 @@
 use anyhow::Result;
 
 use crate::ArrayGraph;
+use crate::NodeIDX;
 use crate::types::array_graph::NodeFlags;
+use crate::types::array_graph::offset_graph::Edge;
 use crate::types::array_graph::offset_graph::EdgeFlags;
 
 pub trait ArrayGraphDebugUtils {
-    fn to_edges_string(&self) -> Result<String>;
+    fn to_forward_edges_string(&self) -> Result<String>;
+    fn to_dom_edges_string(&self) -> Result<String>;
+    fn to_edges_string<FN>(&self, edges_fn: FN) -> Result<String>
+    where
+        FN: Fn(&ArrayGraph, NodeIDX) -> &[Edge];
 }
 
 impl ArrayGraphDebugUtils for ArrayGraph {
-    fn to_edges_string(&self) -> Result<String> {
+    fn to_forward_edges_string(&self) -> Result<String> {
+        self.to_edges_string(|graph, node_idx| graph.edges_forward.edges(node_idx))
+    }
+
+    fn to_dom_edges_string(&self) -> Result<String> {
+        self.to_edges_string(|graph, node_idx| graph.dom_edges(node_idx))
+    }
+
+    fn to_edges_string<FN>(&self, edges_fn: FN) -> Result<String>
+    where
+        FN: Fn(&ArrayGraph, NodeIDX) -> &[Edge],
+    {
         let mut result = String::new();
 
         for node_idx in self.node_idx_iter() {
@@ -36,7 +53,7 @@ impl ArrayGraphDebugUtils for ArrayGraph {
 
             result.push_str(&format!("{node_name}{unreachable_str}{tag_sets_str}:\n"));
 
-            for edge in self.edges_forward.edges(node_idx) {
+            for edge in edges_fn(self, node_idx) {
                 let points_to = self.node_names_ordered.idx_to_name(edge.points_to);
                 let edge_type = match edge
                     .flags

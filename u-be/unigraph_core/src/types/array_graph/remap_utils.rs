@@ -255,7 +255,7 @@ mod tests {
     fn test_graph_remapping() -> Result<()> {
         let g = make_test_array_graph_1()?;
         snapshot!(
-            g.to_edges_string()?,
+            g.to_forward_edges_string()?,
             "
 A:
   - B
@@ -311,7 +311,7 @@ J (tag sets: assert_tags: [a, b]):
 
         let new_g = new_sg.into_array_graph();
         snapshot!(
-            new_g.to_edges_string()?,
+            new_g.to_forward_edges_string()?,
             "
 0_J (tag sets: assert_tags: [a, b]):
 1_I:

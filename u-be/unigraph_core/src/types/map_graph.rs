@@ -160,6 +160,7 @@ impl MapGraph {
             node_flags: vec![NodeFlags::empty(); forward_edges.node_count()],
             edges_forward: forward_edges,
             edges_reverse: reverse_edges,
+            edges_dom: OnceLock::new(),
             metrics: btreemap! {
                 "size".to_string() => sizes,
             },

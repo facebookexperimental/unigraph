@@ -1,5 +1,6 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
+pub(super) mod lengauer_tarjan_dominator_tree;
 mod offset_graph_traversal;
 
 use std::collections::BTreeMap;
@@ -169,13 +170,14 @@ impl OffsetGraph {
         self.edges.len()
     }
 
+    /// is this correct?? should be unconfigured?? --aaron 2025-06-13
     pub fn edges_len_for_node_configured(&self, node_idx: NodeIDX) -> usize {
         let start = self.edge_offsets[node_idx];
         let end = self.edge_offsets[node_idx + 1];
         end - start
     }
 
-    pub fn node_idx_iter(&self) -> impl Iterator<Item = NodeIDX> {
+    pub fn node_idx_iter(&self) -> std::iter::Map<std::ops::Range<usize>, fn(usize) -> NodeIDX> {
         (0..self.node_count()).map(NodeIDX::from)
     }
 
@@ -183,6 +185,15 @@ impl OffsetGraph {
         let start = self.edge_offsets[node_idx];
         let end = self.edge_offsets[node_idx + 1];
         &self.edges[start..end]
+    }
+
+    pub fn edges_configured(&self, node_idx: NodeIDX) -> impl Iterator<Item = Edge> {
+        let start = self.edge_offsets[node_idx];
+        let end = self.edge_offsets[node_idx + 1];
+        self.edges[start..end]
+            .iter()
+            .copied()
+            .filter(|edge| !edge.is_excluded())
     }
 
     pub fn iter_edges(&self) -> impl Iterator<Item = (NodeIDX, Edge, &NonDirectedEdgeMetadata)> {

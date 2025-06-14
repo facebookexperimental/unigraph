@@ -11,7 +11,7 @@ use k9::snapshot;
 use maplit::btreemap;
 use test_utils::idx_to_names;
 use test_utils::print_all_node_names;
-use test_utils::print_edges;
+use test_utils::print_forward_edges;
 
 use crate::ArrayGraph;
 use crate::ArrayGraphDebugUtils;
@@ -377,7 +377,7 @@ fn test_dfs_with_traversal_config_tag_sets() -> Result<()> {
     snapshot!(dfs_unconfigured(&g), "A B C D E F G H I J");
 
     snapshot!(
-        g.to_edges_string()?,
+        g.to_forward_edges_string()?,
         "
 A:
   - B
@@ -492,13 +492,13 @@ Node: J, Tier: T3
 fn test_serializable() -> Result<()> {
     let g = make_test_array_graph_1()?;
     let original_names = print_all_node_names(&g);
-    let original_edges = print_edges(&g);
+    let original_edges = print_forward_edges(&g);
     let s = g.into_serializable();
     let json_zstd = s.to_json()?;
     let original: ArrayGraphSerializable = ArrayGraphSerializable::from_json(&json_zstd)?;
     let roundtrip = original.into_array_graph();
     let rountrip_names = print_all_node_names(&roundtrip);
-    let roundtrip_edges = print_edges(&roundtrip);
+    let roundtrip_edges = print_forward_edges(&roundtrip);
 
     snapshot!(&rountrip_names, "A B C D E F G H I J");
     snapshot!(
@@ -575,7 +575,7 @@ fn test_reacable_subgraph_unconfigured() -> Result<()> {
     let sg = g.get_reachable_subgraph_unconfigured(&[d])?;
     let reachable = sg.into_array_graph();
     snapshot!(
-        reachable.to_edges_string()?,
+        reachable.to_forward_edges_string()?,
         "
 D:
   - F

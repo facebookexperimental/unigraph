@@ -2,6 +2,7 @@
 
 use crate::ArrayGraph;
 use crate::types::NodeIDX;
+use crate::types::array_graph::offset_graph::Edge;
 use crate::types::array_graph::offset_graph::EdgeFlags;
 
 pub fn idx_to_names<I: IntoIterator<Item = NodeIDX>>(graph: &ArrayGraph, idxs: I) -> Vec<String> {
@@ -19,10 +20,23 @@ pub fn print_all_node_names(graph: &ArrayGraph) -> String {
         .join(" ")
 }
 
-pub fn print_edges(array_graph: &ArrayGraph) -> String {
+pub fn print_forward_edges(array_graph: &ArrayGraph) -> String {
+    print_edges(array_graph, |graph, node_idx| {
+        graph.edges_forward.edges(node_idx)
+    })
+}
+
+pub fn print_dom_edges(array_graph: &ArrayGraph) -> String {
+    print_edges(array_graph, |graph, node_idx| graph.dom_edges(node_idx))
+}
+
+pub fn print_edges<FN>(array_graph: &ArrayGraph, edges_fn: FN) -> String
+where
+    FN: Fn(&ArrayGraph, NodeIDX) -> &[Edge],
+{
     let mut result = String::new();
     for node_idx in array_graph.edges_forward.node_idx_iter() {
-        let edges = array_graph.edges_forward.edges(node_idx);
+        let edges = edges_fn(array_graph, node_idx);
         let from_name = array_graph.idx_to_name(node_idx);
         for edge in edges {
             let to_name = array_graph.idx_to_name(edge.points_to);
