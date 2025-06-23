@@ -218,13 +218,14 @@ pub fn get_transitive_metrics(
 pub fn get_transitive_tiered_metrics(
     node_idxs: Vec<u32>,
     metric_name: &str,
+    dominated: bool,
 ) -> Result<String, WasmJSError> {
     let graph_state = GlobalState::graph_state().get();
     let mut result = Vec::with_capacity(node_idxs.len());
     for node_idx in node_idxs {
         let transitive_value = graph_state
             .array_graph
-            .get_transitive_tiered_metric_values(NodeIDX(node_idx), metric_name)?;
+            .get_transitive_tiered_metric_values(NodeIDX(node_idx), metric_name, dominated)?;
         result.push(transitive_value);
     }
     Ok(serde_json::to_string(&result).context("Failed to serialize transitive tiered metrics")?)

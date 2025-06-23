@@ -55,6 +55,7 @@ function defaultColumnDefinitions(
       metricName,
       nativeGraph,
       metricSettings,
+      graphSettings.ui_settings?.show_as_dominator_tree === true,
     );
 
     for (const { columnID, definition } of tieredTransitiveColumns) {
@@ -160,6 +161,7 @@ function createTieredTransitiveMetricColumn(
   metricName: string,
   nativeGraph: NativeGraph,
   metricSettings: MetricSettings | null,
+  dominated: boolean,
 ): { columnID: string; definition: NumericValueColumnDefinition }[] {
   const tiers = nativeGraph.stats().tier_names;
   const column_hide_trantitive_tiered =
@@ -170,28 +172,42 @@ function createTieredTransitiveMetricColumn(
       return [];
     }
 
-    const columnID = `[tiered_transitive ${tierName}] ${metricName}`;
+    const [columnID, label, getValue] = (() => {
+      if (dominated) {
+        const columnID = `[tiered_transitive dominated ${tierName}] ${metricName}`;
+        const label = `D(${tierName})`;
+        const getValue = (idxs: NodeIDX[]) =>
+          nativeGraph
+            .getTieredTransitiveMetricsDominatedBatched(idxs, metricName)
+            .map((m) => m[tierName] ?? 0);
+
+        return [columnID, label, getValue];
+      } else {
+        const columnID = `[tiered_transitive ${tierName}] ${metricName}`;
+        const label = tierName;
+        const getValue = (idxs: NodeIDX[]) =>
+          nativeGraph
+            .getTieredTransitiveMetricsBatched(idxs, metricName)
+            .map((m) => m[tierName] ?? 0);
+
+        return [columnID, label, getValue];
+      }
+    })();
+
     const definition: NumericValueColumnDefinition = {
       t: "numeric_value_column",
-      label: tierName,
+      label,
       renderer: (arrow: Arrow) => {
         const value = !nativeGraph.isNodeReachable(arrow.points_to)
           ? "-"
           : formatMetric(
-              nativeGraph.getTieredTransitiveMetric(
-                arrow.points_to,
-                metricName,
-              )?.[tierName] ?? 0,
+              getValue([arrow.points_to])[0] as number,
               metricSettings?.format,
             );
         return <MetricCell value={value} />;
       },
       getNumericValues: (idxs: NodeIDX[]) => {
-        return new Float32Array(
-          nativeGraph
-            .getTieredTransitiveMetricsBatched(idxs, metricName)
-            .map((m) => m[tierName] ?? 0),
-        );
+        return new Float32Array(getValue(idxs));
       },
       sortable: true,
       isHidden: false,

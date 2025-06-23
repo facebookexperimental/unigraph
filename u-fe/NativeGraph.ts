@@ -216,6 +216,15 @@ export default class NativeGraph {
       .getOrInitForTransitiveTiered(metricName)
       .getForIDXs(nodeIDXs);
   }
+
+  getTieredTransitiveMetricsDominatedBatched(
+    nodeIDXs: NodeIDX[],
+    metricName: string,
+  ): KeyedMetrics[] {
+    return this.metricCaches
+      .getOrInitForTransitiveTieredDominated(metricName)
+      .getForIDXs(nodeIDXs);
+  }
 }
 
 class MetricCaches {
@@ -225,11 +234,13 @@ class MetricCaches {
   private node_metrics: Map<string, SingleMetricsCache>;
   private transitive: Map<string, SingleMetricsCache>;
   private transitive_tiered: Map<string, KeyedMetricsCache>;
+  private transitive_tiered_dominated: Map<string, KeyedMetricsCache>;
 
   constructor(private nodeCount: number) {
     this.node_metrics = new Map<string, SingleMetricsCache>();
     this.transitive = new Map<string, SingleMetricsCache>();
     this.transitive_tiered = new Map<string, KeyedMetricsCache>();
+    this.transitive_tiered_dominated = new Map<string, KeyedMetricsCache>();
   }
 
   getOrInitForTransitive(metricName: string): SingleMetricsCache {
@@ -264,11 +275,31 @@ class MetricCaches {
       const metricsJSON = get_transitive_tiered_metrics(
         new Uint32Array(nodeIDXs),
         metricName,
+        false,
       );
       return JSON.parse(metricsJSON) as Array<KeyedMetrics>;
     };
     const metricsCache = new KeyedMetricsCache(this.nodeCount, getMetrics);
     this.transitive_tiered.set(metricName, metricsCache);
+    return metricsCache;
+  }
+
+  getOrInitForTransitiveTieredDominated(metricName: string): KeyedMetricsCache {
+    if (this.transitive_tiered_dominated.has(metricName)) {
+      return this.transitive_tiered_dominated.get(
+        metricName,
+      ) as KeyedMetricsCache;
+    }
+    const getMetrics = (nodeIDXs: NodeIDX[]) => {
+      const metricsJSON = get_transitive_tiered_metrics(
+        new Uint32Array(nodeIDXs),
+        metricName,
+        true,
+      );
+      return JSON.parse(metricsJSON) as Array<KeyedMetrics>;
+    };
+    const metricsCache = new KeyedMetricsCache(this.nodeCount, getMetrics);
+    this.transitive_tiered_dominated.set(metricName, metricsCache);
     return metricsCache;
   }
 }

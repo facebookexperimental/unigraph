@@ -245,6 +245,7 @@ impl ArrayGraph {
         &self,
         node_idx: NodeIDX,
         metric_name: &str,
+        dominated: bool,
     ) -> Result<BTreeMap<TierName, f32>> {
         let mut result = BTreeMap::new();
 
@@ -263,7 +264,13 @@ impl ArrayGraph {
             (Some(metrics), Some(TieredTraversalConfig::AscendingTiers(ascending_tiers))) => {
                 let mut tiered_metrics = [0.0; 8];
 
-                for node_idx in self.edges_forward.dfs_configured(&[node_idx]) {
+                let edges = if dominated {
+                    self.edges_dom()
+                } else {
+                    &self.edges_forward
+                };
+
+                for node_idx in edges.dfs_configured(&[node_idx]) {
                     let value = metrics[node_idx];
                     let tier_idx = self.node_flags[node_idx].tier_idx();
                     tiered_metrics[tier_idx] += value;

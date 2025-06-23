@@ -474,7 +474,7 @@ Node: J, Tier: T3
     );
 
     snapshot!(
-        g.get_transitive_tiered_metric_values(NodeIDX(0), "size")?,
+        g.get_transitive_tiered_metric_values(NodeIDX(0), "size", false)?,
         r#"
 {
     "T1": 7.0,
