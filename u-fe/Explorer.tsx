@@ -7,6 +7,7 @@ import {
   to_zstd_base64_url_safe_no_pad,
 } from "../.build/wasm/unigraph_wasm";
 import type { GraphSettings } from "../u-be/unigraph_core/bindings/GraphSettings";
+import ExplorerFooter from "./ExplorerFooter";
 import NativeGraph from "./NativeGraph";
 import Sidebar from "./Sidebar";
 import Simulation from "./Simulation";
@@ -38,14 +39,12 @@ export type InputGraph =
 
 export function Explorer({
   graph,
-  header,
   traversalConfigZSTDBase64UrlSafeNoPadding,
   onTraversalConfigZSTDBase64UrlSafeNoPaddingChange,
   graphSettingsZSTDBase64UrlSafeNoPadding,
   onGraphSettingsZSTDBase64UrlSafeNoPaddingChange,
 }: {
   graph: InputGraph;
-  header?: React.ReactNode;
   traversalConfigZSTDBase64UrlSafeNoPadding?: string | null;
   onTraversalConfigZSTDBase64UrlSafeNoPaddingChange?: (v: string) => void;
   graphSettingsZSTDBase64UrlSafeNoPadding?: string | null;
@@ -108,8 +107,7 @@ export function Explorer({
           settings={settings}
           setSettings={setSettingsCb}
         >
-          <div className="h-screen flex flex-col">
-            {header}
+          <div className="h-screen flex flex-col unigraph-explorer">
             <Page />
           </div>
         </GraphSettingsContextProvider>
@@ -177,13 +175,14 @@ function Page() {
   return (
     <PortalContextProvider containerRef={containerRef}>
       <div
-        className="flex grow-1 shrink flex-row bg-background text-foreground unigraph-explorer min-h-0"
+        className="flex grow-1 shrink flex-row bg-background text-foreground min-h-0"
         ref={containerRef}
       >
         <Sidebar selectedPanelTab={selectedSidebarPanel} />
         {panelTab}
-        <div className="flex h-full grow-1">
+        <div className="flex flex-col h-full grow-1">
           <GraphTreeTable focusOnMount={true} roots={roots} />
+          <ExplorerFooter />
         </div>
       </div>
     </PortalContextProvider>

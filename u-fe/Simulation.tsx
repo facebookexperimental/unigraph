@@ -105,7 +105,7 @@ export default function Simulation(props: {
   );
 
   return (
-    <div className="flex h-full">
+    <div className="flex h-full border-r">
       {paramsVisible && (
         <ParamsPanel
           simulationParams={simulationParams}
