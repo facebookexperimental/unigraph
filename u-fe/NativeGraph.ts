@@ -40,8 +40,8 @@ export default class NativeGraph {
   readonly metricNames: string[] = [];
   private metricCaches: MetricCaches;
   private statsCache: ArrayGraphStats | null = null;
-  private parentsCountCache: MetricsCache;
-  private transitiveCountCache: MetricsCache;
+  private parentsCountCache: SingleMetricsCache;
+  private transitiveCountCache: SingleMetricsCache;
 
   private entrypointsCache: NodeIDXVecSet | null = null;
 
@@ -67,12 +67,12 @@ export default class NativeGraph {
     this.nodeCount = get_graph_node_count();
     this.metricNames = get_metric_names();
     this.metricCaches = new MetricCaches(this.nodeCount);
-    this.parentsCountCache = new MetricsCache(
+    this.parentsCountCache = new SingleMetricsCache(
       this.nodeCount,
       (nodeIDXs: NodeIDX[]) =>
         new Float32Array(get_reverse_edges_len(new Uint32Array(nodeIDXs))),
     );
-    this.transitiveCountCache = new MetricsCache(
+    this.transitiveCountCache = new SingleMetricsCache(
       this.nodeCount,
       (nodeIDXs: NodeIDX[]) =>
         new Float32Array(get_transitive_count(new Uint32Array(nodeIDXs))),
@@ -188,17 +188,17 @@ export default class NativeGraph {
   getTieredTransitiveMetric(
     nodeIDX: NodeIDX,
     metricName: string,
-  ): TieredTransitiveMetrics {
+  ): KeyedMetrics {
     const value = this.metricCaches
       .getOrInitForTransitiveTiered(metricName)
       .getForIDXs([nodeIDX])[0];
-    return value as TieredTransitiveMetrics;
+    return value as KeyedMetrics;
   }
 
   getTieredTransitiveMetricsBatched(
     nodeIDXs: NodeIDX[],
     metricName: string,
-  ): TieredTransitiveMetrics[] {
+  ): KeyedMetrics[] {
     return this.metricCaches
       .getOrInitForTransitiveTiered(metricName)
       .getForIDXs(nodeIDXs);
@@ -209,59 +209,52 @@ class MetricCaches {
   // plain metrics come directly from the graph's nodes.
   // This cache will basically just copy the metrics to the JS
   // side as is and we'll use it to avoid crossing the boundary
-  private node_metrics: Map<string, MetricsCache>;
-  private transitive: Map<string, MetricsCache>;
-  private transitive_tiered: Map<string, TieredTransitiveMetricsCache>;
+  private node_metrics: Map<string, SingleMetricsCache>;
+  private transitive: Map<string, SingleMetricsCache>;
+  private transitive_tiered: Map<string, KeyedMetricsCache>;
 
   constructor(private nodeCount: number) {
-    this.node_metrics = new Map<string, MetricsCache>();
-    this.transitive = new Map<string, MetricsCache>();
-    this.transitive_tiered = new Map<string, TieredTransitiveMetricsCache>();
+    this.node_metrics = new Map<string, SingleMetricsCache>();
+    this.transitive = new Map<string, SingleMetricsCache>();
+    this.transitive_tiered = new Map<string, KeyedMetricsCache>();
   }
 
-  getOrInitForTransitive(metricName: string): MetricsCache {
+  getOrInitForTransitive(metricName: string): SingleMetricsCache {
     if (this.transitive.has(metricName)) {
-      return this.transitive.get(metricName) as MetricsCache;
+      return this.transitive.get(metricName) as SingleMetricsCache;
     }
     const getMetrics = (nodeIDXs: NodeIDX[]) =>
       get_transitive_metrics(new Uint32Array(nodeIDXs), metricName);
 
-    const metricsCache = new MetricsCache(this.nodeCount, getMetrics);
+    const metricsCache = new SingleMetricsCache(this.nodeCount, getMetrics);
     this.transitive.set(metricName, metricsCache);
     return metricsCache;
   }
 
-  getOrInitForPlain(metricName: string): MetricsCache {
+  getOrInitForPlain(metricName: string): SingleMetricsCache {
     if (this.node_metrics.has(metricName)) {
-      return this.node_metrics.get(metricName) as MetricsCache;
+      return this.node_metrics.get(metricName) as SingleMetricsCache;
     }
     const getMetrics = (nodeIDXs: NodeIDX[]) =>
       get_node_metrics(new Uint32Array(nodeIDXs), metricName);
 
-    const metricsCache = new MetricsCache(this.nodeCount, getMetrics);
+    const metricsCache = new SingleMetricsCache(this.nodeCount, getMetrics);
     this.node_metrics.set(metricName, metricsCache);
     return metricsCache;
   }
 
-  getOrInitForTransitiveTiered(
-    metricName: string,
-  ): TieredTransitiveMetricsCache {
+  getOrInitForTransitiveTiered(metricName: string): KeyedMetricsCache {
     if (this.transitive_tiered.has(metricName)) {
-      return this.transitive_tiered.get(
-        metricName,
-      ) as TieredTransitiveMetricsCache;
+      return this.transitive_tiered.get(metricName) as KeyedMetricsCache;
     }
     const getMetrics = (nodeIDXs: NodeIDX[]) => {
       const metricsJSON = get_transitive_tiered_metrics(
         new Uint32Array(nodeIDXs),
         metricName,
       );
-      return JSON.parse(metricsJSON) as Array<TieredTransitiveMetrics>;
+      return JSON.parse(metricsJSON) as Array<KeyedMetrics>;
     };
-    const metricsCache = new TieredTransitiveMetricsCache(
-      this.nodeCount,
-      getMetrics,
-    );
+    const metricsCache = new KeyedMetricsCache(this.nodeCount, getMetrics);
     this.transitive_tiered.set(metricName, metricsCache);
     return metricsCache;
   }
@@ -271,7 +264,7 @@ class MetricCaches {
 /// WASM<->JS interop is not cheap, so we do these operations in
 /// batches and cache the results on JS side so we don't have to go
 /// multiple to WASM for the same data.
-class MetricsCache {
+class SingleMetricsCache {
   private metrics: Float32Array;
   private valueExists: Uint8Array;
   private getMetrics: (nodeIDXs: NodeIDX[]) => Float32Array;
@@ -314,20 +307,20 @@ class MetricsCache {
   }
 }
 
-export type TieredTransitiveMetrics = { [metricName: string]: number };
-class TieredTransitiveMetricsCache {
-  private metrics: Array<TieredTransitiveMetrics | null>;
-  private getMetrics: (nodeIDXs: NodeIDX[]) => Array<TieredTransitiveMetrics>;
+export type KeyedMetrics = { [metricName: string]: number };
+class KeyedMetricsCache {
+  private metrics: Array<KeyedMetrics | null>;
+  private getMetrics: (nodeIDXs: NodeIDX[]) => Array<KeyedMetrics>;
 
   constructor(
     size: number,
-    getMetrics: (nodeIDXs: NodeIDX[]) => Array<TieredTransitiveMetrics>,
+    getMetrics: (nodeIDXs: NodeIDX[]) => Array<KeyedMetrics>,
   ) {
     this.metrics = new Array(size).fill(null);
     this.getMetrics = getMetrics;
   }
 
-  getForIDXs(nodeIDXs: NodeIDX[]): Array<TieredTransitiveMetrics> {
+  getForIDXs(nodeIDXs: NodeIDX[]): Array<KeyedMetrics> {
     const cacheMissesIDXs: NodeIDX[] = [];
 
     for (let i = 0; i < nodeIDXs.length; i++) {
@@ -341,7 +334,7 @@ class TieredTransitiveMetricsCache {
       const newMetrics = this.getMetrics(cacheMissesIDXs);
       for (let i = 0; i < cacheMissesIDXs.length; i++) {
         const nodeIDX = cacheMissesIDXs[i] as NodeIDX;
-        const value = newMetrics[i] as TieredTransitiveMetrics;
+        const value = newMetrics[i] as KeyedMetrics;
         this.metrics[nodeIDX] = value;
       }
     }
@@ -351,7 +344,7 @@ class TieredTransitiveMetricsCache {
     for (let i = 0; i < nodeIDXs.length; i++) {
       const nodeIDX = nodeIDXs[i] as NodeIDX;
       // at this point there should not be missing values
-      result[i] = this.metrics[nodeIDX] as TieredTransitiveMetrics;
+      result[i] = this.metrics[nodeIDX] as KeyedMetrics;
     }
 
     return result;
