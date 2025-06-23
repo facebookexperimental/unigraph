@@ -155,4 +155,7 @@ pub struct ColumnSettings {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     show_parents_count: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    show_transitive_count: Option<bool>,
 }

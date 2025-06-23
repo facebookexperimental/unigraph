@@ -20,6 +20,24 @@ export default function ColumnsPanel() {
       <SidebarPanelHeader>Columns</SidebarPanelHeader>
       <div className="mb-8 flex flex-col gap-4">
         <USwitch
+          label="Show Transitive Counts"
+          checked={
+            graphSettings.ui_settings?.columns?.show_transitive_count === true
+          }
+          onCheckedChange={(checked) => {
+            setGraphSettings({
+              ...graphSettings,
+              ui_settings: {
+                ...graphSettings.ui_settings,
+                columns: {
+                  ...graphSettings.ui_settings?.columns,
+                  show_transitive_count: checked,
+                },
+              },
+            });
+          }}
+        />
+        <USwitch
           label="Show Parent Counts"
           checked={
             graphSettings.ui_settings?.columns?.show_parents_count === true

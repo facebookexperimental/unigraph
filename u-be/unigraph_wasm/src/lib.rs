@@ -274,6 +274,22 @@ pub fn get_reverse_edges_len(node_idxs: Vec<u32>) -> Result<Vec<usize>, WasmJSEr
 }
 
 #[wasm_bindgen]
+pub fn get_transitive_count(node_idxs: Vec<u32>) -> Result<Vec<usize>, WasmJSError> {
+    let graph_state = GlobalState::graph_state().get();
+
+    let result = node_idxs
+        .into_iter()
+        .map(|node_idx| {
+            graph_state
+                .array_graph
+                .transitive_count_configured(node_idx.into())
+        })
+        .collect::<Vec<usize>>();
+
+    Ok(result)
+}
+
+#[wasm_bindgen]
 pub fn get_all_reachable_node_idxs() -> Result<Vec<u32>, WasmJSError> {
     let graph_state = GlobalState::graph_state().get();
     let reachable_nodes = graph_state.array_graph.all_reachable_node_idxs();

@@ -66,6 +66,13 @@ function defaultColumnDefinitions(
         createParentsCountColumn(nativeGraph);
       columnDefinitions[parentsCountColumnID] = parentsCountColumnDefinition;
     }
+
+    if (graphSettings.ui_settings?.columns?.show_transitive_count === true) {
+      const [transitiveCountColumnID, transitiveCountColumnDefinition] =
+        createTransitiveCountColumn(nativeGraph);
+      columnDefinitions[transitiveCountColumnID] =
+        transitiveCountColumnDefinition;
+    }
   }
 
   const treeColumn: TreeColumnDefinition = {
@@ -210,6 +217,31 @@ function createParentsCountColumn(
     },
     getNumericValues: (idxs: NodeIDX[]) => {
       return nativeGraph.getParentsCount(idxs);
+    },
+    sortable: true,
+    isHidden: false,
+  };
+  return [columnID, definition];
+}
+
+function createTransitiveCountColumn(
+  nativeGraph: NativeGraph,
+): [string, NumericValueColumnDefinition] {
+  const columnID = "Transitive #";
+  const definition: NumericValueColumnDefinition = {
+    t: "numeric_value_column",
+    label: columnID,
+    renderer: (arrow: Arrow) => {
+      const value = formatNumber(
+        nativeGraph.getTransitiveCount([arrow.points_to])[0] ?? 0,
+        0,
+        0,
+        true,
+      );
+      return <p className="px-4 text-right tabular-nums w-full">{value}</p>;
+    },
+    getNumericValues: (idxs: NodeIDX[]) => {
+      return nativeGraph.getTransitiveCount(idxs);
     },
     sortable: true,
     isHidden: false,

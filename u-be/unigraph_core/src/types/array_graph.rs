@@ -313,6 +313,14 @@ impl ArrayGraph {
             .collect()
     }
 
+    pub fn transitive_count_configured(&self, node_idx: NodeIDX) -> usize {
+        if self.is_node_unreachable(node_idx) {
+            0
+        } else {
+            self.edges_forward.dfs_configured(&[node_idx]).count()
+        }
+    }
+
     pub fn get_arrows_forward(&self, node_idx: NodeIDX) -> Result<Vec<Arrow>> {
         self.edges_forward
             .edges_with_metadata(node_idx)
