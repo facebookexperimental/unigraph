@@ -18,6 +18,7 @@ import {
   get_node_metrics,
   get_reverse_edges_len,
   get_transitive_count,
+  get_transitive_count_dominated,
   get_transitive_metrics,
   get_transitive_tiered_metrics,
   node_idx_to_name,
@@ -42,6 +43,7 @@ export default class NativeGraph {
   private statsCache: ArrayGraphStats | null = null;
   private parentsCountCache: SingleMetricsCache;
   private transitiveCountCache: SingleMetricsCache;
+  private transitiveCountDominatedCache: SingleMetricsCache;
 
   private entrypointsCache: NodeIDXVecSet | null = null;
 
@@ -76,6 +78,13 @@ export default class NativeGraph {
       this.nodeCount,
       (nodeIDXs: NodeIDX[]) =>
         new Float32Array(get_transitive_count(new Uint32Array(nodeIDXs))),
+    );
+    this.transitiveCountDominatedCache = new SingleMetricsCache(
+      this.nodeCount,
+      (nodeIDXs: NodeIDX[]) =>
+        new Float32Array(
+          get_transitive_count_dominated(new Uint32Array(nodeIDXs)),
+        ),
     );
   }
 
@@ -167,6 +176,10 @@ export default class NativeGraph {
 
   getTransitiveCount(nodeIDX: NodeIDX[]): Float32Array {
     return this.transitiveCountCache.getForIDXs(nodeIDX);
+  }
+
+  getTransitiveCountDominated(nodeIDX: NodeIDX[]): Float32Array {
+    return this.transitiveCountDominatedCache.getForIDXs(nodeIDX);
   }
 
   getTransitiveMetric(nodeIDX: NodeIDX, metricName: string): number {

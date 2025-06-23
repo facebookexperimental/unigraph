@@ -72,6 +72,13 @@ function defaultColumnDefinitions(
         createTransitiveCountColumn(nativeGraph);
       columnDefinitions[transitiveCountColumnID] =
         transitiveCountColumnDefinition;
+
+      const [
+        transitiveCountDominatedColumnID,
+        transitiveCountDominatedColumnDefinition,
+      ] = createTransitiveCountDominatedColumn(nativeGraph);
+      columnDefinitions[transitiveCountDominatedColumnID] =
+        transitiveCountDominatedColumnDefinition;
     }
   }
 
@@ -227,7 +234,7 @@ function createParentsCountColumn(
 function createTransitiveCountColumn(
   nativeGraph: NativeGraph,
 ): [string, NumericValueColumnDefinition] {
-  const columnID = "Transitive #";
+  const columnID = "T(count)";
   const definition: NumericValueColumnDefinition = {
     t: "numeric_value_column",
     label: columnID,
@@ -242,6 +249,31 @@ function createTransitiveCountColumn(
     },
     getNumericValues: (idxs: NodeIDX[]) => {
       return nativeGraph.getTransitiveCount(idxs);
+    },
+    sortable: true,
+    isHidden: false,
+  };
+  return [columnID, definition];
+}
+
+function createTransitiveCountDominatedColumn(
+  nativeGraph: NativeGraph,
+): [string, NumericValueColumnDefinition] {
+  const columnID = "D(T(count))";
+  const definition: NumericValueColumnDefinition = {
+    t: "numeric_value_column",
+    label: columnID,
+    renderer: (arrow: Arrow) => {
+      const value = formatNumber(
+        nativeGraph.getTransitiveCountDominated([arrow.points_to])[0] ?? 0,
+        0,
+        0,
+        true,
+      );
+      return <p className="px-4 text-right tabular-nums w-full">{value}</p>;
+    },
+    getNumericValues: (idxs: NodeIDX[]) => {
+      return nativeGraph.getTransitiveCountDominated(idxs);
     },
     sortable: true,
     isHidden: false,
