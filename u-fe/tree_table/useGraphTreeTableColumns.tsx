@@ -118,7 +118,7 @@ function createMetricColumn(
             nativeGraph.getNodeMetric(arrow.points_to, metricName),
             metricSettings?.format,
           );
-      return <p className="px-4 text-right tabular-nums w-full">{value}</p>;
+      return <MetricCell value={value} />;
     },
     getNumericValues: (idxs: NodeIDX[]) =>
       nativeGraph.getNodeMetricBatched(idxs, metricName),
@@ -145,7 +145,7 @@ function createTransitiveMetricColumn(
             nativeGraph.getTransitiveMetric(arrow.points_to, metricName),
             metricSettings?.format,
           );
-      return <p className="px-4 text-right tabular-nums w-full">{value}</p>;
+      return <MetricCell value={value} />;
     },
     getNumericValues: (idxs: NodeIDX[]) => {
       return nativeGraph.getTransitiveMetricsBatched(idxs, metricName);
@@ -184,7 +184,7 @@ function createTieredTransitiveMetricColumn(
               )?.[tierName] ?? 0,
               metricSettings?.format,
             );
-        return <p className="px-4 text-right tabular-nums w-full">{value}</p>;
+        return <MetricCell value={value} />;
       },
       getNumericValues: (idxs: NodeIDX[]) => {
         return new Float32Array(
@@ -220,7 +220,7 @@ function createParentsCountColumn(
         0,
         true,
       );
-      return <p className="px-4 text-right tabular-nums w-full">{value}</p>;
+      return <MetricCell value={value} />;
     },
     getNumericValues: (idxs: NodeIDX[]) => {
       return nativeGraph.getParentsCount(idxs);
@@ -245,7 +245,7 @@ function createTransitiveCountColumn(
         0,
         true,
       );
-      return <p className="px-4 text-right tabular-nums w-full">{value}</p>;
+      return <MetricCell value={value} />;
     },
     getNumericValues: (idxs: NodeIDX[]) => {
       return nativeGraph.getTransitiveCount(idxs);
@@ -270,7 +270,7 @@ function createTransitiveCountDominatedColumn(
         0,
         true,
       );
-      return <p className="px-4 text-right tabular-nums w-full">{value}</p>;
+      return <MetricCell value={value} />;
     },
     getNumericValues: (idxs: NodeIDX[]) => {
       return nativeGraph.getTransitiveCountDominated(idxs);
@@ -279,4 +279,12 @@ function createTransitiveCountDominatedColumn(
     isHidden: false,
   };
   return [columnID, definition];
+}
+
+function MetricCell({ value }: { value: string }) {
+  return (
+    <p className="px-4 text-right tabular-nums w-full whitespace-nowrap">
+      {value}
+    </p>
+  );
 }
