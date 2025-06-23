@@ -1,6 +1,6 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-import { Separator } from "@radix-ui/react-dropdown-menu";
+import { Separator } from "../components/ui/separator";
 
 export function SidebarPanel({
   children,
@@ -21,8 +21,8 @@ export function SidebarPanelHeader({
 }) {
   return (
     <>
-      <h2 className="text-3xl font-bold mb-4">{children}</h2>
-      <Separator className="mb-4" />
+      <h2 className="text-3xl font-bold">{children}</h2>
+      <Separator className="my-4" />
     </>
   );
 }
