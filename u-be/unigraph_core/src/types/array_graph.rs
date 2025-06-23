@@ -261,19 +261,23 @@ impl ArrayGraph {
 
         match (metrics, tier_config) {
             (Some(metrics), Some(TieredTraversalConfig::AscendingTiers(ascending_tiers))) => {
-                let mut tiered_metrics = vec![0.0; 8];
+                let mut tiered_metrics = [0.0; 8];
 
                 for node_idx in self.edges_forward.dfs_configured(&[node_idx]) {
                     let value = metrics[node_idx];
                     let tier_idx = self.node_flags[node_idx].tier_idx();
                     tiered_metrics[tier_idx] += value;
                 }
-                for (tier_idx, value) in tiered_metrics.into_iter().enumerate() {
-                    if value > 0.0 {
-                        result.insert(
-                            ascending_tiers.tier_idx_to_name(tier_idx)?.to_string(),
-                            value,
-                        );
+                // Make tiered metrics cumulative. meaning that every next tier has
+                // its own value plus the previous tier's value combined
+                // T1_cml = T1, T2_cml = T1 + T2, T3_cml = T1 + T2 + T3, etc.
+                let mut cumulative = 0.0;
+                for (tier_idx, tier) in ascending_tiers.tiers.iter().enumerate() {
+                    let value = tiered_metrics[tier_idx];
+                    let cml_value = cumulative + value;
+                    cumulative = cml_value;
+                    if cml_value > 0.0 {
+                        result.insert(tier.name.to_string(), cml_value);
                     }
                 }
 
