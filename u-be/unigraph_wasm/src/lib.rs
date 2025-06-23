@@ -232,6 +232,18 @@ pub fn get_transitive_tiered_metrics(
 }
 
 #[wasm_bindgen]
+pub fn get_combined_metrics_for_nodes(node_idxs: Vec<u32>) -> Result<String, WasmJSError> {
+    let graph_state = GlobalState::graph_state().get();
+    let result = graph_state.array_graph.get_combined_metrics_for_nodes(
+        &node_idxs
+            .iter()
+            .map(|&idx| NodeIDX(idx))
+            .collect::<Vec<_>>(),
+    )?;
+    Ok(serde_json::to_string(&result).context("Failed to serialize transitive tiered metrics")?)
+}
+
+#[wasm_bindgen]
 pub fn get_available_tiers() -> Result<Vec<String>, WasmJSError> {
     let graph_state = GlobalState::graph_state().get();
     Ok(graph_state.array_graph.get_tiers_names())

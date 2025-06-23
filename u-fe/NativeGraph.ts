@@ -11,6 +11,7 @@ import {
   get_array_graph_stats,
   get_arrows_dominator,
   get_arrows_forward,
+  get_combined_metrics_for_nodes,
   get_graph_node_count,
   get_graph_settings,
   get_graph_traversal_config,
@@ -28,6 +29,7 @@ import {
 } from "../.build/wasm/unigraph_wasm";
 import type { ArrayGraphStats } from "../u-be/unigraph_core/bindings/ArrayGraphStats";
 import type { Arrow } from "../u-be/unigraph_core/bindings/Arrow";
+import type { CombinedMetricsForNodes } from "../u-be/unigraph_core/bindings/CombinedMetricsForNodes";
 import type { NodeIDX } from "./types";
 
 type NodeIDXVecSet = Readonly<{
@@ -224,6 +226,11 @@ export default class NativeGraph {
     return this.metricCaches
       .getOrInitForTransitiveTieredDominated(metricName)
       .getForIDXs(nodeIDXs);
+  }
+
+  getCombinedMetrics(nodeIDXs: NodeIDX[]): CombinedMetricsForNodes {
+    const json = get_combined_metrics_for_nodes(new Uint32Array(nodeIDXs));
+    return JSON.parse(json) as CombinedMetricsForNodes;
   }
 }
 

@@ -182,7 +182,7 @@ function Page() {
         {panelTab}
         <div className="flex flex-col h-full grow-1">
           <GraphTreeTable focusOnMount={true} roots={roots} />
-          <ExplorerFooter />
+          <ExplorerFooter selectedNodeIDXs={selectedNodeIDXs} />
         </div>
       </div>
     </PortalContextProvider>

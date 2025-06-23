@@ -5,6 +5,7 @@ use anyhow::Result;
 use crate::ArrayGraph;
 use crate::NodeIDX;
 use crate::TieredTraversalConfig;
+use crate::types::MetricName;
 use crate::types::TierName;
 
 pub fn get_transitive_tiered_metric_values(
@@ -103,4 +104,81 @@ pub fn get_transitive_metric_value(
     } else {
         Ok(0.0)
     }
+}
+
+pub fn get_metrics_sums_for_nodes(
+    ag: &ArrayGraph,
+    node_idxs: &[NodeIDX],
+) -> Result<BTreeMap<String, f32>> {
+    let mut result = BTreeMap::new();
+
+    for (metric_name, metrics) in &ag.metrics {
+        let mut total = 0.0;
+
+        for node_idx in node_idxs {
+            if ag.is_node_unreachable(*node_idx) {
+                continue;
+            }
+
+            let value = metrics[*node_idx];
+            total += value;
+        }
+
+        result.insert(metric_name.to_string(), total);
+    }
+
+    Ok(result)
+}
+
+pub fn get_metrics_sums_tiered_for_nodes(
+    ag: &ArrayGraph,
+    node_idxs: &[NodeIDX],
+) -> Result<BTreeMap<MetricName, BTreeMap<TierName, f32>>> {
+    let mut result = BTreeMap::new();
+
+    let tier_config = ag
+        .traversal_config
+        .as_ref()
+        .and_then(|config| config.tiered_traversal.as_ref());
+
+    if let Some(TieredTraversalConfig::AscendingTiers(ascending_tiers)) = tier_config {
+        for (metric_name, metrics) in &ag.metrics {
+            let mut tiered_metrics = [0.0; 8];
+
+            for node_idx in node_idxs {
+                if ag.is_node_unreachable(*node_idx) {
+                    continue;
+                }
+
+                let tier_idx = ag.node_flags[*node_idx].tier_idx();
+                let value = metrics[*node_idx];
+                tiered_metrics[tier_idx] += value;
+            }
+
+            let mut cumulative = 0.0;
+            let mut tiered_result = BTreeMap::new();
+            for (tier_idx, tier) in ascending_tiers.tiers.iter().enumerate() {
+                let value = tiered_metrics[tier_idx];
+                let cml_value = cumulative + value;
+                cumulative = cml_value;
+                if cml_value > 0.0 {
+                    tiered_result.insert(tier.name.to_string(), cml_value);
+                }
+            }
+
+            result.insert(metric_name.to_string(), tiered_result);
+        }
+    }
+
+    Ok(result)
+}
+
+/// Represents values for metrics for a set of nodes.
+/// Not transitive, just aggregated for things like
+/// "give me total size of all the nodes i just selected"
+#[derive(serde::Serialize, serde::Deserialize, ts_rs::TS, Clone)]
+#[ts(export)]
+pub struct CombinedMetricsForNodes {
+    pub metrics: BTreeMap<MetricName, f32>,
+    pub tiered_metrics: BTreeMap<MetricName, BTreeMap<TierName, f32>>,
 }

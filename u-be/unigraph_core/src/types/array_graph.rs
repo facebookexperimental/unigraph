@@ -37,6 +37,9 @@ use crate::traversal::apply_to_array_graph::apply_traversal_config_to_array_grap
 use crate::traversal::reachable_subgraph::get_reachable_subgraph_unconfigured;
 use crate::traversal::tiered_traversal::TieredTraversalConfig;
 use crate::types::TierName;
+use crate::types::array_graph::array_graph_metrics::CombinedMetricsForNodes;
+use crate::types::array_graph::array_graph_metrics::get_metrics_sums_for_nodes;
+use crate::types::array_graph::array_graph_metrics::get_metrics_sums_tiered_for_nodes;
 use crate::types::array_graph::array_graph_metrics::get_transitive_metric_value;
 use crate::types::array_graph::array_graph_metrics::get_transitive_tiered_metric_values;
 use crate::types::array_graph::array_graph_metrics::parents_len_configured;
@@ -265,6 +268,16 @@ impl ArrayGraph {
         } else {
             self.edges_dom().dfs_configured(&[node_idx]).count()
         }
+    }
+
+    pub fn get_combined_metrics_for_nodes(
+        &self,
+        node_idxs: &[NodeIDX],
+    ) -> Result<CombinedMetricsForNodes> {
+        Ok(CombinedMetricsForNodes {
+            metrics: get_metrics_sums_for_nodes(self, node_idxs)?,
+            tiered_metrics: get_metrics_sums_tiered_for_nodes(self, node_idxs)?,
+        })
     }
 
     pub fn get_arrows_forward(&self, node_idx: NodeIDX) -> Result<Vec<Arrow>> {
