@@ -1,6 +1,6 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-import { Play, Split } from "lucide-react";
+import { Play, Settings2, Split } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   get_selected_node_idxs,
@@ -11,6 +11,7 @@ import {
 import type { SelectionType } from "../u-be/unigraph_wgpu/bindings/SelectionType.js";
 import type { SimulationParams } from "../u-be/unigraph_wgpu/bindings/SimulationParams";
 import type { TsVec2 } from "../u-be/unigraph_wgpu/bindings/TsVec2.js";
+import { Button } from "./components/ui/button.js";
 import { Label } from "./components/ui/label";
 import { Slider } from "./components/ui/slider";
 import { Toggle } from "./components/ui/toggle";
@@ -20,6 +21,7 @@ export default function Simulation(props: {
   setSelectedNodeIDXs: (idxs: NodeIDX[]) => void;
 }) {
   const defaultSimulationParams = useDefaultSimulationParams();
+  const [paramsVisible, setParamsVisible] = useState(false);
 
   const [simulationParams, setSimulationParams] = useState<SimulationParams>(
     defaultSimulationParams,
@@ -103,19 +105,46 @@ export default function Simulation(props: {
   );
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex w-[600px] grow-1 shrink-0">
+    <div className="flex h-full">
+      {paramsVisible && (
+        <ParamsPanel
+          simulationParams={simulationParams}
+          setSimulationParams={setSimulationParamsCb}
+        />
+      )}
+
+      <div className="flex w-[600px] grow-1 shrink-0 relative">
         <Canvas
           onClick={onCanvasClick}
           onSelect={onCanvasSelect}
           onSelectComplete={onCanvasSelectComplete}
         />
+        <SimulationParamsToggle
+          selected={paramsVisible}
+          onSelectedChange={setParamsVisible}
+        />
       </div>
-      <ParamsPanel
-        simulationParams={simulationParams}
-        setSimulationParams={setSimulationParamsCb}
-      />
     </div>
+  );
+}
+
+function SimulationParamsToggle({
+  selected,
+  onSelectedChange,
+}: { selected?: boolean; onSelectedChange?: (selected: boolean) => void }) {
+  return (
+    <Button
+      size="icon"
+      className="cursor-pointer absolute top-2 left-2 z-10 mt-2"
+      variant={selected ? "default" : "secondary"}
+      onClick={() => {
+        if (onSelectedChange) {
+          onSelectedChange(!selected);
+        }
+      }}
+    >
+      <Settings2 />
+    </Button>
   );
 }
 
@@ -124,7 +153,7 @@ function ParamsPanel(props: {
   setSimulationParams: (params: SimulationParams) => void;
 }) {
   return (
-    <div className="px-6 py-4 flex flex-col gap-4 w-full">
+    <div className="px-6 py-4 flex flex-col gap-4 w-48 bg-card">
       <div className="flex gap-4">
         <Toggle
           pressed={props.simulationParams.active}
@@ -136,7 +165,6 @@ function ParamsPanel(props: {
           }}
         >
           <Play />
-          Active
         </Toggle>
         <Toggle
           pressed={props.simulationParams.render_edges}
@@ -148,137 +176,135 @@ function ParamsPanel(props: {
           }}
         >
           <Split />
-          Edges
         </Toggle>
       </div>
-      <div className="flex gap-4">
-        <div className="flex flex-col gap-4 grow-1">
-          <div>
-            <Label
-              htmlFor="antigravity-force-slider"
-              className="text-sm font-medium mb-2"
-            >
-              Antigravity force
-            </Label>
-            <Slider
-              id="antigravity-force-slider"
-              defaultValue={[props.simulationParams.gravity_force_multiplier]}
-              min={0.1}
-              max={10.0}
-              onValueChange={(values) => {
-                const value = values[0];
-                if (value == null) {
-                  return;
-                }
-                props.setSimulationParams({
-                  ...props.simulationParams,
-                  gravity_force_multiplier: value,
-                });
-              }}
-            />
-          </div>
-          <div>
-            <Label
-              htmlFor="edge-force-slider"
-              className="text-sm font-medium mb-2"
-            >
-              Edge force
-            </Label>
-            <Slider
-              id="edge-force-slider"
-              defaultValue={[props.simulationParams.edge_force_multiplier]}
-              min={0.1}
-              max={10.0}
-              onValueChange={(values) => {
-                const value = values[0];
-                if (value == null) {
-                  return;
-                }
-                props.setSimulationParams({
-                  ...props.simulationParams,
-                  edge_force_multiplier: value,
-                });
-              }}
-            />
-          </div>
+      <div className="flex flex-col gap-4 grow-1">
+        <div>
+          <Label
+            htmlFor="antigravity-force-slider"
+            className="text-sm font-medium mb-2"
+          >
+            Antigravity force
+          </Label>
+          <Slider
+            id="antigravity-force-slider"
+            defaultValue={[props.simulationParams.gravity_force_multiplier]}
+            min={0.1}
+            max={10.0}
+            onValueChange={(values) => {
+              const value = values[0];
+              if (value == null) {
+                return;
+              }
+              props.setSimulationParams({
+                ...props.simulationParams,
+                gravity_force_multiplier: value,
+              });
+            }}
+          />
         </div>
-        <div className="flex flex-col grow-1 gap-4">
-          <div>
-            <Label
-              htmlFor="max-velocity-slider"
-              className="text-sm font-medium mb-2"
-            >
-              Max velocity
-            </Label>
-            <Slider
-              id="max-velocity-slider"
-              defaultValue={[props.simulationParams.max_velocity_multiplier]}
-              min={0.1}
-              max={10.0}
-              onValueChange={(values) => {
-                const value = values[0];
-                if (value == null) {
-                  return;
-                }
-                props.setSimulationParams({
-                  ...props.simulationParams,
-                  max_velocity_multiplier: value,
-                });
-              }}
-            />
-          </div>
-          <div>
-            <Label
-              htmlFor="node-size-slider"
-              className="text-sm font-medium mb-2"
-            >
-              Node Size
-            </Label>
-            <Slider
-              id="node-size-slider"
-              defaultValue={[props.simulationParams.node_size_scale]}
-              min={1}
-              max={100}
-              onValueChange={(values) => {
-                const node_size_scale = values[0];
-                if (node_size_scale == null) {
-                  return;
-                }
-                props.setSimulationParams({
-                  ...props.simulationParams,
-                  node_size_scale,
-                });
-              }}
-            />
-          </div>
-          <div>
-            <Label
-              htmlFor="compute-forces-every-x-frames-slider"
-              className="text-sm font-medium mb-2"
-            >
-              Compute forces every{" "}
-              {props.simulationParams.compute_forces_every_n_frames} frames
-            </Label>
-            <Slider
-              id="compute-forces-every-x-frames-slider"
-              defaultValue={[
-                props.simulationParams.compute_forces_every_n_frames,
-              ]}
-              min={1}
-              max={20}
-              step={1}
-              onValueChange={(values) => {
-                const compute_forces_every_n_frames = values[0];
-                if (compute_forces_every_n_frames == null) {
-                  return;
-                }
-                props.setSimulationParams({
-                  ...props.simulationParams,
-                  compute_forces_every_n_frames,
-                });
-              }}
-            />
-          </div>
+        <div>
+          <Label
+            htmlFor="edge-force-slider"
+            className="text-sm font-medium mb-2"
+          >
+            Edge force
+          </Label>
+          <Slider
+            id="edge-force-slider"
+            defaultValue={[props.simulationParams.edge_force_multiplier]}
+            min={0.1}
+            max={10.0}
+            onValueChange={(values) => {
+              const value = values[0];
+              if (value == null) {
+                return;
+              }
+              props.setSimulationParams({
+                ...props.simulationParams,
+                edge_force_multiplier: value,
+              });
+            }}
+          />
+        </div>
+        <div>
+          <Label
+            htmlFor="max-velocity-slider"
+            className="text-sm font-medium mb-2"
+          >
+            Max velocity
+          </Label>
+          <Slider
+            id="max-velocity-slider"
+            defaultValue={[props.simulationParams.max_velocity_multiplier]}
+            min={0.1}
+            max={10.0}
+            onValueChange={(values) => {
+              const value = values[0];
+              if (value == null) {
+                return;
+              }
+              props.setSimulationParams({
+                ...props.simulationParams,
+                max_velocity_multiplier: value,
+              });
+            }}
+          />
+        </div>
+        <div>
+          <Label
+            htmlFor="node-size-slider"
+            className="text-sm font-medium mb-2"
+          >
+            Node Size
+          </Label>
+          <Slider
+            id="node-size-slider"
+            defaultValue={[props.simulationParams.node_size_scale]}
+            min={1}
+            max={100}
+            onValueChange={(values) => {
+              const node_size_scale = values[0];
+              if (node_size_scale == null) {
+                return;
+              }
+              props.setSimulationParams({
+                ...props.simulationParams,
+                node_size_scale,
+              });
+            }}
+          />
+        </div>
+        <div>
+          <Label
+            htmlFor="compute-forces-every-x-frames-slider"
+            className="text-sm font-medium mb-2"
+          >
+            {props.simulationParams.compute_forces_every_n_frames} frame
+            {props.simulationParams.compute_forces_every_n_frames === 1
+              ? ""
+              : "s"}
+            /force compute
+          </Label>
+          <Slider
+            id="compute-forces-every-x-frames-slider"
+            defaultValue={[
+              props.simulationParams.compute_forces_every_n_frames,
+            ]}
+            min={1}
+            max={20}
+            step={1}
+            onValueChange={(values) => {
+              const compute_forces_every_n_frames = values[0];
+              if (compute_forces_every_n_frames == null) {
+                return;
+              }
+              props.setSimulationParams({
+                ...props.simulationParams,
+                compute_forces_every_n_frames,
+              });
+            }}
+          />
         </div>
       </div>
     </div>
