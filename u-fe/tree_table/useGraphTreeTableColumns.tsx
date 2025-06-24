@@ -81,6 +81,12 @@ function defaultColumnDefinitions(
       columnDefinitions[transitiveCountDominatedColumnID] =
         transitiveCountDominatedColumnDefinition;
     }
+
+    if (graphSettings.ui_settings?.columns?.show_conjoint_count === true) {
+      const [conjointCountColumnID, conjointCountColumnDefinition] =
+        createConjointCountColumn(nativeGraph);
+      columnDefinitions[conjointCountColumnID] = conjointCountColumnDefinition;
+    }
   }
 
   const treeColumn: TreeColumnDefinition = {
@@ -265,6 +271,32 @@ function createTransitiveCountColumn(
     },
     getNumericValues: (idxs: NodeIDX[]) => {
       return nativeGraph.getTransitiveCount(idxs);
+    },
+    sortable: true,
+    isHidden: false,
+  };
+  return [columnID, definition];
+}
+
+function createConjointCountColumn(
+  nativeGraph: NativeGraph,
+): [string, NumericValueColumnDefinition] {
+  const columnID = "C(count)";
+  const definition: NumericValueColumnDefinition = {
+    t: "numeric_value_column",
+    label: columnID,
+    renderer: (arrow: Arrow) => {
+      const value = formatNumber(
+        nativeGraph.getConjointCost().count[arrow.points_to] ?? 0,
+        0,
+        0,
+        true,
+      );
+      return <MetricCell value={value} />;
+    },
+    getNumericValues: (idxs: NodeIDX[]) => {
+      const count = nativeGraph.getConjointCost().count;
+      return new Float32Array(idxs.map((idx) => count[idx] ?? 0));
     },
     sortable: true,
     isHidden: false,

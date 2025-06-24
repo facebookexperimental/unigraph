@@ -244,6 +244,13 @@ pub fn get_combined_metrics_for_nodes(node_idxs: Vec<u32>) -> Result<String, Was
 }
 
 #[wasm_bindgen]
+pub fn get_conjoint_cost() -> Result<String, WasmJSError> {
+    let graph_state = GlobalState::graph_state().get();
+    let conjoint_cost = graph_state.array_graph.conjoint_cost();
+    Ok(serde_json::to_string(&conjoint_cost).context("Failed to serialize conjoint cost")?)
+}
+
+#[wasm_bindgen]
 pub fn get_available_tiers() -> Result<Vec<String>, WasmJSError> {
     let graph_state = GlobalState::graph_state().get();
     Ok(graph_state

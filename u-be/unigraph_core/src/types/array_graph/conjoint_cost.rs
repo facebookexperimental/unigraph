@@ -26,6 +26,8 @@ type SCCIDX = usize;
 /// E.g. if there is a popular framework that almost every single node
 /// uses it would not make sense for it to try to remove that depenedncy, since
 /// it will likely still stay in the graph.
+#[derive(serde::Serialize, ts_rs::TS)]
+#[ts(export)]
 pub struct ConjointCost {
     pub count: Vec<f32>,
     pub metrics: BTreeMap<MetricName, Vec<f32>>,

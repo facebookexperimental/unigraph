@@ -13,4 +13,4 @@ column_hide_transitive?: boolean,
 /**
  * Hide columns that display transitive tiered value for provided tier names.
  */
-column_hide_trantitive_tiered?: Array<string>, };
+column_hide_trantitive_tiered?: Array<string>, show_conjoint_self?: boolean, show_conjoint_tiered?: Array<string>, };

@@ -1,4 +1,10 @@
-import { ArrowUpNarrowWide, List, Network, TreePine } from "lucide-react";
+import {
+  ArrowUpNarrowWide,
+  CircleDollarSign,
+  List,
+  Network,
+  TreePine,
+} from "lucide-react";
 import { useMemo } from "react";
 import type { CombinedMetricsForNodes } from "u-be/unigraph_core/bindings/CombinedMetricsForNodes";
 import Metric from "./components/Metric";
@@ -120,6 +126,27 @@ function Toggles() {
         }}
       >
         <Network />
+      </UToggleButton>
+      <UToggleButton
+        tooltip="Show conjoint cost"
+        size="sm"
+        selected={
+          graphSettings.ui_settings?.columns?.show_conjoint_count === true
+        }
+        onSelectedChange={(checked) => {
+          setGraphSettings({
+            ...graphSettings,
+            ui_settings: {
+              ...graphSettings.ui_settings,
+              columns: {
+                ...graphSettings.ui_settings?.columns,
+                show_conjoint_count: checked,
+              },
+            },
+          });
+        }}
+      >
+        <CircleDollarSign />
       </UToggleButton>
       <UToggleButton
         tooltip="Show number of parent nodes"

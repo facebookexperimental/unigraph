@@ -12,6 +12,7 @@ import {
   get_arrows_dominator,
   get_arrows_forward,
   get_combined_metrics_for_nodes,
+  get_conjoint_cost,
   get_graph_node_count,
   get_graph_settings,
   get_graph_traversal_config,
@@ -30,6 +31,7 @@ import {
 import type { ArrayGraphStats } from "../u-be/unigraph_core/bindings/ArrayGraphStats";
 import type { Arrow } from "../u-be/unigraph_core/bindings/Arrow";
 import type { CombinedMetricsForNodes } from "../u-be/unigraph_core/bindings/CombinedMetricsForNodes";
+import type { ConjointCost } from "../u-be/unigraph_core/bindings/ConjointCost";
 import type { NodeIDX } from "./types";
 
 type NodeIDXVecSet = Readonly<{
@@ -46,6 +48,7 @@ export default class NativeGraph {
   private parentsCountCache: SingleMetricsCache;
   private transitiveCountCache: SingleMetricsCache;
   private transitiveCountDominatedCache: SingleMetricsCache;
+  private conjointCostCache: ConjointCost | null = null;
 
   private entrypointsCache: NodeIDXVecSet | null = null;
 
@@ -231,6 +234,14 @@ export default class NativeGraph {
   getCombinedMetrics(nodeIDXs: NodeIDX[]): CombinedMetricsForNodes {
     const json = get_combined_metrics_for_nodes(new Uint32Array(nodeIDXs));
     return JSON.parse(json) as CombinedMetricsForNodes;
+  }
+
+  getConjointCost(): ConjointCost {
+    if (this.conjointCostCache == null) {
+      const json = get_conjoint_cost();
+      this.conjointCostCache = JSON.parse(json) as ConjointCost;
+    }
+    return this.conjointCostCache;
   }
 }
 

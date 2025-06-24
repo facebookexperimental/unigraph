@@ -42,6 +42,14 @@ pub struct MetricSettings {
     #[ts(optional)]
     /// Hide columns that display transitive tiered value for provided tier names.
     pub column_hide_trantitive_tiered: Option<BTreeSet<TierName>>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub show_conjoint_self: Option<bool>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub show_conjoint_tiered: Option<BTreeSet<TierName>>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, TS, Clone)]
@@ -158,4 +166,7 @@ pub struct ColumnSettings {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     show_transitive_count: Option<bool>,
+
+    #[ts(optional)]
+    show_conjoint_count: Option<bool>,
 }
