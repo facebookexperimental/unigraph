@@ -9,6 +9,7 @@ pub(crate) mod node_names_ordered;
 pub(crate) mod offset_graph;
 pub mod remap_utils;
 mod super_root;
+mod tarjan_strongly_connected_components;
 mod to_map_graph;
 
 use std::collections::BTreeMap;
@@ -56,6 +57,8 @@ pub struct ArrayGraph {
     /// need it for when dominator tree views are enabled in the UI. We'll store
     /// it in a OnceLock so that it is computed lazyly and only when needed.
     pub edges_dom: OnceLock<OffsetGraph>,
+
+    pub sccs: OnceLock<Vec<Vec<NodeIDX>>>,
 
     pub edges_tagged: BTreeMap<NodeIDX, BTreeMap<Tag, BTreeSet<NodeIDX>>>,
     pub edges_dynamic: BTreeMap<NodeIDX, Vec<ArrayGraphDynamicEdge>>,
@@ -170,8 +173,18 @@ impl ArrayGraph {
         self.edges_dom().edges(node_idx)
     }
 
+    pub fn sccs(&self) -> &Vec<Vec<NodeIDX>> {
+        self.sccs
+            .get_or_init(|| tarjan_strongly_connected_components::SCCBuilder::new(self).build())
+    }
+
     pub fn node_idx_iter(&self) -> std::iter::Map<std::ops::Range<usize>, fn(usize) -> NodeIDX> {
         (0..self.node_names_ordered.nodes_len()).map(NodeIDX::from)
+    }
+
+    pub fn node_idx_iter_reachable(&self) -> impl Iterator<Item = NodeIDX> {
+        self.node_idx_iter()
+            .filter(|&node_idx| !self.is_node_unreachable(node_idx))
     }
 
     pub fn idx_to_name(&self, idx: NodeIDX) -> &str {

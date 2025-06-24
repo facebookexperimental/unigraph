@@ -40,6 +40,7 @@ pub fn append_super_root(ag: ArrayGraph) -> Result<ArrayGraph> {
         mut edges_forward,
         edges_reverse: _, // these are invalidated and need to be recomputed
         edges_dom: _,     // invalidated and need to be recomputed
+        sccs: _,          // these are invalidated and need to be recomputed
         edges_tagged,
         edges_dynamic,
         mut metrics,
@@ -70,6 +71,7 @@ be no other node already on the list that doesn't start from the same character"
         edges_forward,
         edges_reverse,
         edges_dom: OnceLock::new(),
+        sccs: OnceLock::new(),
         edges_tagged,
         edges_dynamic,
         metrics,

@@ -204,6 +204,7 @@ impl From<ArrayGraphSerializable> for ArrayGraph {
             edges_forward,
             edges_reverse,
             edges_dom: OnceLock::new(),
+            sccs: OnceLock::new(),
             edges_tagged: serializable.edges.tagged,
             edges_dynamic: serializable.edges.dynamic,
             metrics: serializable.node_metadata.metrics,

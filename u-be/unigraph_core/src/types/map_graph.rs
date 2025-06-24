@@ -161,6 +161,7 @@ impl MapGraph {
             edges_forward: forward_edges,
             edges_reverse: reverse_edges,
             edges_dom: OnceLock::new(),
+            sccs: OnceLock::new(),
             metrics: btreemap! {
                 "size".to_string() => sizes,
             },
