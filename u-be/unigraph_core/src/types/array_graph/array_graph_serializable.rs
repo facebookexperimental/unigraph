@@ -1,3 +1,5 @@
+// Copyright (c) Meta Platforms, Inc. and affiliates.
+
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::sync::OnceLock;
@@ -199,18 +201,25 @@ impl From<ArrayGraphSerializable> for ArrayGraph {
         // Node flags are initialized on traversal config application, so we'll just create an empty vector
         let node_flags = vec![NodeFlags::empty(); serializable.node_names_ordered.nodes_len()];
 
+        let tiers = serializable
+            .traversal_config
+            .as_ref()
+            .map_or_else(Default::default, |config| config.get_tiers());
+
         ArrayGraph {
             node_names_ordered: serializable.node_names_ordered,
             edges_forward,
             edges_reverse,
             edges_dom: OnceLock::new(),
             sccs: OnceLock::new(),
+            conjoint_cost: OnceLock::new(),
             edges_tagged: serializable.edges.tagged,
             edges_dynamic: serializable.edges.dynamic,
             metrics: serializable.node_metadata.metrics,
             tag_sets: serializable.node_metadata.tag_sets,
             node_flags,
             traversal_config: serializable.traversal_config.clone(),
+            tiers,
             graph_settings: serializable.graph_settings,
         }
     }

@@ -1,3 +1,5 @@
+// Copyright (c) Meta Platforms, Inc. and affiliates.
+
 use ts_rs::TS;
 
 use crate::ArrayGraph;
@@ -44,6 +46,12 @@ impl ArrayGraphStats {
             }
         }
 
+        let tier_names = array_graph
+            .tiers
+            .iter()
+            .map(|(name, _)| name.to_string())
+            .collect();
+
         Self {
             num_all_nodes,
             num_all_edges,
@@ -52,7 +60,7 @@ impl ArrayGraphStats {
             num_dynamic_edges,
             num_excluded_edges,
             num_unreachable_nodes,
-            tier_names: array_graph.get_tiers_names(),
+            tier_names,
         }
     }
 }

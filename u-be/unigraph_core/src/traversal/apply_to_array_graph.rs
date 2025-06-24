@@ -37,6 +37,7 @@ pub fn apply_traversal_config_to_array_graph(
 
     apply_tiers(ag, &indexed_config, &entry_points)?;
     apply_node_reachability(ag, entry_points);
+    ag.tiers = traversal_config.get_tiers();
     ag.traversal_config = Some(traversal_config);
     Ok(())
 }

@@ -4,6 +4,7 @@ pub mod array_graph_debug_utils;
 mod array_graph_metrics;
 pub mod array_graph_serializable;
 mod array_graph_stats;
+mod conjoint_cost;
 pub mod graph_settings;
 pub(crate) mod node_names_ordered;
 pub(crate) mod offset_graph;
@@ -36,7 +37,7 @@ use crate::graph_settings::GraphSettings;
 use crate::traversal::TraversalConfig;
 use crate::traversal::apply_to_array_graph::apply_traversal_config_to_array_graph;
 use crate::traversal::reachable_subgraph::get_reachable_subgraph_unconfigured;
-use crate::traversal::tiered_traversal::TieredTraversalConfig;
+use crate::types::TierIDX;
 use crate::types::TierName;
 use crate::types::array_graph::array_graph_metrics::CombinedMetricsForNodes;
 use crate::types::array_graph::array_graph_metrics::get_metrics_sums_for_nodes;
@@ -45,6 +46,7 @@ use crate::types::array_graph::array_graph_metrics::get_transitive_metric_value;
 use crate::types::array_graph::array_graph_metrics::get_transitive_tiered_metric_values;
 use crate::types::array_graph::array_graph_metrics::parents_len_configured;
 use crate::types::array_graph::array_graph_stats::ArrayGraphStats;
+use crate::types::array_graph::conjoint_cost::ConjointCost;
 use crate::types::array_graph::offset_graph::lengauer_tarjan_dominator_tree::make_dominator_tree;
 
 pub struct ArrayGraph {
@@ -59,6 +61,7 @@ pub struct ArrayGraph {
     pub edges_dom: OnceLock<OffsetGraph>,
 
     pub sccs: OnceLock<Vec<Vec<NodeIDX>>>,
+    pub conjoint_cost: OnceLock<ConjointCost>,
 
     pub edges_tagged: BTreeMap<NodeIDX, BTreeMap<Tag, BTreeSet<NodeIDX>>>,
     pub edges_dynamic: BTreeMap<NodeIDX, Vec<ArrayGraphDynamicEdge>>,
@@ -67,6 +70,7 @@ pub struct ArrayGraph {
     pub tag_sets: BTreeMap<NodeIDX, BTreeMap<TagSetName, BTreeSet<Tag>>>,
 
     pub traversal_config: Option<TraversalConfig>,
+    pub tiers: Vec<(TierName, TierIDX)>,
     pub graph_settings: Option<GraphSettings>,
 }
 
@@ -178,6 +182,11 @@ impl ArrayGraph {
             .get_or_init(|| tarjan_strongly_connected_components::SCCBuilder::new(self).build())
     }
 
+    pub fn conjoint_cost(&self) -> &ConjointCost {
+        self.conjoint_cost
+            .get_or_init(|| ConjointCost::build(self).expect("Failed to build conjoint cost"))
+    }
+
     pub fn node_idx_iter(&self) -> std::iter::Map<std::ops::Range<usize>, fn(usize) -> NodeIDX> {
         (0..self.node_names_ordered.nodes_len()).map(NodeIDX::from)
     }
@@ -228,24 +237,6 @@ impl ArrayGraph {
 
     pub fn get_transitive_metric_value(&self, node_idx: NodeIDX, metric_name: &str) -> Result<f32> {
         get_transitive_metric_value(self, node_idx, metric_name)
-    }
-
-    pub fn get_tiers_names(&self) -> Vec<TierName> {
-        match &self.traversal_config {
-            Some(TraversalConfig {
-                tiered_traversal: Some(TieredTraversalConfig::AscendingTiers(ascending_tiers)),
-                ..
-            }) => ascending_tiers
-                .tiers
-                .iter()
-                .map(|tier| tier.name.clone())
-                .collect(),
-            Some(TraversalConfig {
-                tiered_traversal: None,
-                ..
-            }) => vec![],
-            None => vec![],
-        }
     }
 
     pub fn get_transitive_tiered_metric_values(

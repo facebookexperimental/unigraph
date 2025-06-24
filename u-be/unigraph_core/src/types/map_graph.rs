@@ -155,6 +155,12 @@ impl MapGraph {
         let forward_edges = offset_graph_builder.build();
         let reverse_edges = forward_edges.reverse();
 
+        let tiers = self
+            .traversal_config
+            .as_ref()
+            .map(|config| config.get_tiers())
+            .unwrap_or_default();
+
         Ok(ArrayGraph {
             node_names_ordered,
             node_flags: vec![NodeFlags::empty(); forward_edges.node_count()],
@@ -162,6 +168,7 @@ impl MapGraph {
             edges_reverse: reverse_edges,
             edges_dom: OnceLock::new(),
             sccs: OnceLock::new(),
+            conjoint_cost: OnceLock::new(),
             metrics: btreemap! {
                 "size".to_string() => sizes,
             },
@@ -169,6 +176,7 @@ impl MapGraph {
             edges_dynamic: all_dynamic_edges,
             tag_sets: all_tag_sets,
             traversal_config: self.traversal_config.clone(),
+            tiers,
             graph_settings: self.graph_settings.clone(),
         })
     }

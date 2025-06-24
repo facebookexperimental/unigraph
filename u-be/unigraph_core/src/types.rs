@@ -19,6 +19,7 @@ pub type TagSetName = String;
 pub type Tag = String;
 pub type DynamicBranchName = String;
 pub type TierName = String;
+pub type TierIDX = usize;
 
 /// Why is NodeIDX a u32?
 /// We pass this across the WASM boundary in batch (as Vec<u64>) where

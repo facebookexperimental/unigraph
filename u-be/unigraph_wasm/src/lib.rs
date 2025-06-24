@@ -246,7 +246,12 @@ pub fn get_combined_metrics_for_nodes(node_idxs: Vec<u32>) -> Result<String, Was
 #[wasm_bindgen]
 pub fn get_available_tiers() -> Result<Vec<String>, WasmJSError> {
     let graph_state = GlobalState::graph_state().get();
-    Ok(graph_state.array_graph.get_tiers_names())
+    Ok(graph_state
+        .array_graph
+        .tiers
+        .iter()
+        .map(|(name, _)| name.to_string())
+        .collect())
 }
 
 #[wasm_bindgen]

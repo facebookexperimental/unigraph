@@ -13,6 +13,8 @@ use crate::types::NodeIDX;
 use crate::types::NodeName;
 use crate::types::Tag;
 use crate::types::TagSetName;
+use crate::types::TierIDX;
+use crate::types::TierName;
 pub type Message = String;
 
 #[derive(Clone)]
@@ -165,6 +167,24 @@ impl TraversalConfig {
             force_dynamic,
             tag_sets: self.tag_sets.clone(),
             tiered_traversal: self.tiered_traversal.clone(),
+        }
+    }
+
+    pub fn get_tiers(&self) -> Vec<(TierName, TierIDX)> {
+        match self {
+            TraversalConfig {
+                tiered_traversal: Some(TieredTraversalConfig::AscendingTiers(ascending_tiers)),
+                ..
+            } => ascending_tiers
+                .tiers
+                .iter()
+                .enumerate()
+                .map(|(tier_idx, tier)| (tier.name.clone(), tier_idx))
+                .collect(),
+            TraversalConfig {
+                tiered_traversal: None,
+                ..
+            } => vec![],
         }
     }
 }

@@ -41,11 +41,13 @@ pub fn append_super_root(ag: ArrayGraph) -> Result<ArrayGraph> {
         edges_reverse: _, // these are invalidated and need to be recomputed
         edges_dom: _,     // invalidated and need to be recomputed
         sccs: _,          // these are invalidated and need to be recomputed
+        conjoint_cost: _, // these are invalidated and need to be recomputed
         edges_tagged,
         edges_dynamic,
         mut metrics,
         tag_sets,
         traversal_config,
+        tiers,
         graph_settings,
     } = ag;
 
@@ -72,11 +74,13 @@ be no other node already on the list that doesn't start from the same character"
         edges_reverse,
         edges_dom: OnceLock::new(),
         sccs: OnceLock::new(),
+        conjoint_cost: OnceLock::new(),
         edges_tagged,
         edges_dynamic,
         metrics,
         tag_sets,
         traversal_config,
+        tiers,
         graph_settings,
     })
 }
