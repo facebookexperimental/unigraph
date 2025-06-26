@@ -90,13 +90,23 @@ function defaultColumnDefinitions(
       }
     }
 
-    if (
-      showConjoint &&
-      graphSettings.ui_settings?.columns?.show_conjoint_count !== "Never"
-    ) {
-      const [conjointCountColumnID, conjointCountColumnDefinition] =
-        createConjointCountColumn(nativeGraph);
-      columnDefinitions[conjointCountColumnID] = conjointCountColumnDefinition;
+    if (showConjoint) {
+      if (graphSettings.ui_settings?.columns?.show_conjoint_count !== "Never") {
+        const [conjointCountColumnID, conjointCountColumnDefinition] =
+          createConjointCountColumn(nativeGraph);
+        columnDefinitions[conjointCountColumnID] =
+          conjointCountColumnDefinition;
+      }
+
+      const metricsConjointColumns = createMetricsConjointMetricColumn(
+        metricName,
+        nativeGraph,
+        metricSettings,
+      );
+
+      for (const { columnID, definition } of metricsConjointColumns) {
+        columnDefinitions[columnID] = definition;
+      }
     }
   }
 
@@ -237,6 +247,93 @@ function createTieredTransitiveMetricColumn(
       },
     ];
   });
+}
+
+function createMetricsConjointMetricColumn(
+  metricName: string,
+  nativeGraph: NativeGraph,
+  metricSettings: MetricSettings | null,
+): { columnID: string; definition: NumericValueColumnDefinition }[] {
+  const tiers = nativeGraph.stats().tier_names;
+
+  const metricConjColumn = (() => {
+    if (metricSettings?.show_conjoint_self === "Never") {
+      return [];
+    }
+
+    const columnID = `[conjoint ${metricName}`;
+    const label = `C(${metricName})`;
+    const values = nativeGraph.getConjointCost().metrics?.[metricName] ?? null;
+    const getValues = (idxs: NodeIDX[]) =>
+      idxs.map((idx) => values?.[idx] ?? 0);
+
+    const definition: NumericValueColumnDefinition = {
+      t: "numeric_value_column",
+      label,
+      renderer: (arrow: Arrow) => {
+        const value = !nativeGraph.isNodeReachable(arrow.points_to)
+          ? "-"
+          : formatMetric(
+              getValues([arrow.points_to])[0] as number,
+              metricSettings?.format,
+            );
+        return <MetricCell value={value} />;
+      },
+      getNumericValues: (idxs: NodeIDX[]) => {
+        return new Float32Array(getValues(idxs));
+      },
+      sortable: true,
+      isHidden: false,
+    };
+
+    return [
+      {
+        columnID,
+        definition,
+      },
+    ];
+  })();
+
+  const tieredColumns = tiers.flatMap((tierName) => {
+    if (metricSettings?.show_conjoint_tiered?.[tierName] === "Never") {
+      return [];
+    }
+
+    const columnID = `[tiered_conjoint ${tierName}] ${metricName}`;
+    const label = `C(${tierName})`;
+    const values =
+      nativeGraph.getConjointCost().tiered_metric?.[metricName]?.[tierName];
+    const getValues = (idxs: NodeIDX[]) =>
+      idxs.map((idx) => values?.[idx] ?? 0);
+
+    const definition: NumericValueColumnDefinition = {
+      t: "numeric_value_column",
+      label,
+      renderer: (arrow: Arrow) => {
+        const value = !nativeGraph.isNodeReachable(arrow.points_to)
+          ? "-"
+          : formatMetric(
+              getValues([arrow.points_to])[0] as number,
+              metricSettings?.format,
+            );
+        return <MetricCell value={value} />;
+      },
+      getNumericValues: (idxs: NodeIDX[]) => {
+        return new Float32Array(getValues(idxs));
+      },
+      sortable: true,
+      isHidden: false,
+    };
+
+    return [
+      {
+        columnID,
+        definition,
+      },
+    ];
+  });
+
+  return [...metricConjColumn, ...tieredColumns];
 }
 
 function createParentsCountColumn(
