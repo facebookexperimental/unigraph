@@ -48,6 +48,7 @@ pub(crate) fn traversal_config_with_tiers() -> TraversalConfig {
                 tags_that_transition_to_this_tier: vec!["BL".into()],
             },
         ],
+        max_tier: None,
     };
 
     TraversalConfig {

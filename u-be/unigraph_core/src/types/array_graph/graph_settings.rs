@@ -1,7 +1,6 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 use std::collections::BTreeMap;
-use std::collections::BTreeSet;
 
 use ts_rs::TS;
 
@@ -42,8 +41,7 @@ pub struct MetricSettings {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
-    /// Hide columns that display transitive tiered value for provided tier names.
-    pub column_hide_trantitive_tiered: Option<BTreeSet<TierName>>,
+    pub column_show_tiered: Option<BTreeMap<TierName, IndividualOptionEnabled>>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
@@ -186,6 +184,12 @@ pub struct ColumnSettings {
 
     #[ts(optional)]
     show_conjoint_count: Option<IndividualOptionEnabled>,
+
+    /// Global setting for showing tiered values for metrics
+    /// (if tiers are defined)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub show_tiered: Option<bool>,
 }
 
 /// Enum that defines whether an individual option is enabled or not.

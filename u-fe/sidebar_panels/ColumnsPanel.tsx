@@ -38,37 +38,8 @@ function ColumnCardContent({
 }: {
   metricName: string;
 }) {
-  const nativeGraph = useNativeGraph();
   const [graphSettings, setGraphSettings] = useGraphSettings();
   const metricSettings = graphSettings.metric_settings?.[metricName] ?? {};
-
-  const hidden = metricSettings.column_hide_trantitive_tiered ?? [];
-  const transitiveSwitches = nativeGraph.stats().tier_names.map((tierName) => {
-    const checked = !hidden.includes(tierName);
-    return (
-      <USwitch
-        key={`${metricName}-${tierName}`}
-        label={`Show ${tierName} transitive`}
-        checked={checked}
-        onCheckedChange={(checked) => {
-          const column_hide_trantitive_tiered = checked
-            ? hidden.filter((name) => name !== tierName)
-            : [...hidden, tierName];
-
-          setGraphSettings({
-            ...graphSettings,
-            metric_settings: {
-              ...graphSettings.metric_settings,
-              [metricName]: {
-                ...metricSettings,
-                column_hide_trantitive_tiered,
-              },
-            },
-          });
-        }}
-      />
-    );
-  });
 
   return (
     <div className="flex flex-col gap-4 bg-sidebar mx-1 p-3 rounded-lg">
@@ -106,8 +77,6 @@ function ColumnCardContent({
           });
         }}
       />
-
-      {transitiveSwitches}
     </div>
   );
 }

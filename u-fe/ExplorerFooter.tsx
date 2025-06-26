@@ -1,6 +1,7 @@
 import {
   ArrowUpNarrowWide,
   CircleDollarSign,
+  Layers,
   List,
   Network,
   Tally5,
@@ -105,6 +106,8 @@ function SelectedNodesMetrics({
 
 function Toggles() {
   const [graphSettings, setGraphSettings] = useGraphSettings();
+  const nativeGraph = useNativeGraph();
+  const hasTiers = nativeGraph.stats().tier_names.length > 0;
 
   return (
     <div className="flex gap-4 items-center m-4">
@@ -194,6 +197,28 @@ function Toggles() {
       >
         <TreePalm />
       </UToggleButton>
+      {hasTiers && (
+        <UHoverCard content={<TiersHoverCardContent />}>
+          <UToggleButton
+            size="sm"
+            selected={graphSettings.ui_settings?.columns?.show_tiered === true}
+            onSelectedChange={(checked) => {
+              setGraphSettings({
+                ...graphSettings,
+                ui_settings: {
+                  ...graphSettings.ui_settings,
+                  columns: {
+                    ...graphSettings.ui_settings?.columns,
+                    show_tiered: checked,
+                  },
+                },
+              });
+            }}
+          >
+            <Layers />
+          </UToggleButton>
+        </UHoverCard>
+      )}
     </div>
   );
 }
@@ -311,6 +336,53 @@ function ConjointCostHoverCardContent() {
         </UToggleButton>
         {metricCards}
       </div>
+    </div>
+  );
+}
+
+function TiersHoverCardContent() {
+  const [graphSettings, setGraphSettings] = useGraphSettings();
+  const nativeGraph = useNativeGraph();
+
+  const metricCards = Object.entries(graphSettings.metric_settings ?? {}).map(
+    ([metricName, metricSettings]) => {
+      const tiers = nativeGraph.stats().tier_names.map((tierName) => {
+        return (
+          <UToggleButton
+            key={`tiered-${metricName}-${tierName}`}
+            size="sm"
+            tooltip={`Transitive values of '${metricName}' metric for ${tierName} tier`}
+            selected={
+              metricSettings?.column_show_tiered?.[tierName] !== "Never"
+            }
+            onSelectedChange={(selected) => {
+              setGraphSettings({
+                ...graphSettings,
+                metric_settings: {
+                  ...graphSettings.metric_settings,
+                  [metricName]: {
+                    ...metricSettings,
+                    column_show_tiered: {
+                      ...metricSettings?.column_show_tiered,
+                      [tierName]: selected ? "WhenEnabledGlobally" : "Never",
+                    },
+                  },
+                },
+              });
+            }}
+          >
+            <span className="text-sm">{`${metricName}: ${tierName}`}</span>
+          </UToggleButton>
+        );
+      });
+
+      return tiers;
+    },
+  );
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex gap-2">{metricCards}</div>
     </div>
   );
 }

@@ -9,6 +9,7 @@ use std::collections::BTreeMap;
 use tiered_traversal::TieredTraversalConfig;
 
 use crate::ArrayGraph;
+use crate::AscendingTiersConfig;
 use crate::types::NodeIDX;
 use crate::types::NodeName;
 use crate::types::Tag;
@@ -225,6 +226,13 @@ impl TraversalConfigIDX {
         Decision {
             include: true,
             message: None,
+        }
+    }
+
+    pub fn ascending_tiers(&self) -> Option<&AscendingTiersConfig> {
+        match &self.tiered_traversal {
+            Some(TieredTraversalConfig::AscendingTiers(config)) => Some(config),
+            _ => None,
         }
     }
 }

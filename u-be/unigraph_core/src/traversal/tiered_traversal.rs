@@ -36,6 +36,9 @@ pub enum TieredTraversalConfig {
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
 pub struct AscendingTiersConfig {
     pub tiers: Vec<AscendingTier>,
+    /// If this is set, the traversal will stop at this tier
+    /// and not traverse any further.
+    pub max_tier: Option<usize>,
 }
 
 #[derive(ts_rs::TS, Debug)]

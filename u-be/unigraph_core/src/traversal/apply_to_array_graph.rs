@@ -3,6 +3,7 @@
 use anyhow::Result;
 
 use crate::ArrayGraph;
+use crate::AscendingTiersConfig;
 use crate::NodeIDX;
 use crate::TraversalConfig;
 use crate::traversal::TraversalConfigIDX;
@@ -36,9 +37,34 @@ pub fn apply_traversal_config_to_array_graph(
     }
 
     apply_tiers(ag, &indexed_config, &entry_points)?;
+    exclude_edges_below_max_tier(ag, &indexed_config)?;
+
     apply_node_reachability(ag, entry_points);
     ag.tiers = traversal_config.get_tiers();
     ag.traversal_config = Some(traversal_config);
+    Ok(())
+}
+
+/// If max tier set, do another traversal of all edges and exclude any edges
+/// that point to a node with a tier above the max tier.
+fn exclude_edges_below_max_tier(
+    ag: &mut ArrayGraph,
+    indexed_config: &TraversalConfigIDX,
+) -> Result<()> {
+    if let Some(AscendingTiersConfig {
+        max_tier: Some(max_tier),
+        ..
+    }) = indexed_config.ascending_tiers()
+    {
+        for (_from, edge, _metadata) in ag.edges_forward.iter_edges_mut() {
+            if let Some(points_to_tier) = ag.node_flags[edge.points_to].tier_idx() {
+                if points_to_tier > *max_tier {
+                    edge.flags.insert(EdgeFlags::EXCLUDED);
+                }
+            }
+        }
+    }
+
     Ok(())
 }
 

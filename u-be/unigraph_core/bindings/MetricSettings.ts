@@ -10,8 +10,4 @@ column_hide_self?: boolean,
 /**
  * Column that displays transitive value for the metric.
  */
-column_show_transitive?: IndividualOptionEnabled, 
-/**
- * Hide columns that display transitive tiered value for provided tier names.
- */
-column_hide_trantitive_tiered?: Array<string>, show_conjoint_self?: IndividualOptionEnabled, show_conjoint_tiered?: { [key in string]?: IndividualOptionEnabled }, };
+column_show_transitive?: IndividualOptionEnabled, column_show_tiered?: { [key in string]?: IndividualOptionEnabled }, show_conjoint_self?: IndividualOptionEnabled, show_conjoint_tiered?: { [key in string]?: IndividualOptionEnabled }, };

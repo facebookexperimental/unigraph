@@ -19,12 +19,11 @@ use crate::ArrayGraphSerializable;
 use crate::NodeIDX;
 use crate::tests::test_graphs::make_test_array_graph_1;
 use crate::tests::test_graphs::make_test_array_graph_2;
+use crate::tests::test_graphs::traversal_config_with_tiers;
 use crate::traversal::Decision;
 use crate::traversal::ForceDynamic;
 use crate::traversal::NodeTagSetsPredicate;
 use crate::traversal::TraversalConfig;
-use crate::traversal::tiered_traversal::AscendingTier;
-use crate::traversal::tiered_traversal::AscendingTiersConfig;
 use crate::traversal::tiered_traversal::TieredTraversalConfig;
 use crate::types::array_graph::NodeFlags;
 
@@ -407,30 +406,9 @@ J [UNREACHABLE] (tag sets: assert_tags: [a, b]):
 #[test]
 fn test_tiered_traversal() -> Result<()> {
     let mut g = make_test_array_graph_1()?;
-    let tiered_config = AscendingTiersConfig {
-        tiers: vec![
-            AscendingTier {
-                name: "T1".into(),
-                tags_that_transition_to_this_tier: vec![],
-            },
-            AscendingTier {
-                name: "T2".into(),
-                tags_that_transition_to_this_tier: vec!["RDFD".into()],
-            },
-            AscendingTier {
-                name: "T3".into(),
-                tags_that_transition_to_this_tier: vec!["RD".into()],
-            },
-            AscendingTier {
-                name: "T4".into(),
-                tags_that_transition_to_this_tier: vec!["BL".into()],
-            },
-        ],
-    };
-
-    let traversal_config = TraversalConfig {
-        tiered_traversal: Some(TieredTraversalConfig::AscendingTiers(tiered_config.clone())),
-        ..Default::default()
+    let traversal_config = traversal_config_with_tiers();
+    let tiered_config = match traversal_config.tiered_traversal.as_ref().unwrap() {
+        TieredTraversalConfig::AscendingTiers(tiered_config) => tiered_config.clone(),
     };
 
     g.apply_traversal_config(traversal_config)?;

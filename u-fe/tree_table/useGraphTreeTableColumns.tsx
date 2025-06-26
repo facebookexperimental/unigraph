@@ -31,6 +31,7 @@ function defaultColumnDefinitions(
 ): ColumnDefinitions {
   const showTransitive = graphSettings.ui_settings?.show_transitive ?? false;
   const showConjoint = graphSettings.ui_settings?.show_conjoint ?? false;
+  const showTiered = graphSettings.ui_settings?.columns?.show_tiered ?? false;
 
   const columnDefinitions: { [name: string]: NonTreeColumnDefinition } = {};
   for (const metricName of nativeGraph.metricNames) {
@@ -54,15 +55,16 @@ function defaultColumnDefinitions(
         transitiveMetricColumnDefinition;
     }
 
-    const tieredTransitiveColumns = createTieredTransitiveMetricColumn(
-      metricName,
-      nativeGraph,
-      metricSettings,
-      graphSettings.ui_settings?.show_as_dominator_tree === true,
-    );
-
-    for (const { columnID, definition } of tieredTransitiveColumns) {
-      columnDefinitions[columnID] = definition;
+    if (showTiered) {
+      const tieredTransitiveColumns = createTieredTransitiveMetricColumn(
+        metricName,
+        nativeGraph,
+        metricSettings,
+        graphSettings.ui_settings?.show_as_dominator_tree === true,
+      );
+      for (const { columnID, definition } of tieredTransitiveColumns) {
+        columnDefinitions[columnID] = definition;
+      }
     }
 
     if (graphSettings.ui_settings?.columns?.show_parents_count === true) {
@@ -191,11 +193,9 @@ function createTieredTransitiveMetricColumn(
   dominated: boolean,
 ): { columnID: string; definition: NumericValueColumnDefinition }[] {
   const tiers = nativeGraph.stats().tier_names;
-  const column_hide_trantitive_tiered =
-    metricSettings?.column_hide_trantitive_tiered ?? [];
 
   return tiers.flatMap((tierName) => {
-    if (column_hide_trantitive_tiered.includes(tierName)) {
+    if (metricSettings?.column_show_tiered?.[tierName] === "Never") {
       return [];
     }
 
