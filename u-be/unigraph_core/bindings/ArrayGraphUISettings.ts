@@ -8,16 +8,4 @@ export type ArrayGraphUISettings = { selected_sidebar_panel?: SidebarPanel, grap
  * If set, the graph will be rendered as a reverse graph
  * starting from provided node names.
  */
-reverse_from?: Array<string>, 
-/**
- * Global setting for showing transitive values.
- * Individual columns will be enabled/disabled based on
- * their individual settings.
- */
-show_transitive?: boolean, 
-/**
- * Global setting for showing conjoint cost values.
- * Individual columns will be enabled/disabled based on
- * their individual settings.
- */
-show_conjoint?: boolean, };
+reverse_from?: Array<string>, };

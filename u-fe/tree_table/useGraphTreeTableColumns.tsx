@@ -29,9 +29,11 @@ function defaultColumnDefinitions(
   nativeGraph: NativeGraph,
   graphSettings: GraphSettings,
 ): ColumnDefinitions {
-  const showTransitive = graphSettings.ui_settings?.show_transitive ?? false;
-  const showConjoint = graphSettings.ui_settings?.show_conjoint ?? false;
-  const showTiered = graphSettings.ui_settings?.columns?.show_tiered ?? false;
+  const showTransitive =
+    graphSettings.ui_settings?.columns?.show_transitive ?? false;
+  const showConjoint =
+    graphSettings.ui_settings?.columns?.show_conjoint ?? false;
+  const showTiered = graphSettings.ui_settings?.columns?.hide_tiered !== true;
 
   const columnDefinitions: { [name: string]: NonTreeColumnDefinition } = {};
   for (const metricName of nativeGraph.metricNames) {

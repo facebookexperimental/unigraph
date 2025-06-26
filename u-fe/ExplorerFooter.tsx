@@ -116,13 +116,16 @@ function Toggles() {
       <UToggleButton
         tooltip="Show number of transitive children nodes"
         size="sm"
-        selected={graphSettings.ui_settings?.show_transitive === true}
+        selected={graphSettings.ui_settings?.columns?.show_transitive === true}
         onSelectedChange={(checked) => {
           setGraphSettings({
             ...graphSettings,
             ui_settings: {
               ...graphSettings.ui_settings,
-              show_transitive: checked,
+              columns: {
+                ...graphSettings.ui_settings?.columns,
+                show_transitive: checked,
+              },
             },
           });
         }}
@@ -132,13 +135,16 @@ function Toggles() {
       <UHoverCard content={<ConjointCostHoverCardContent />}>
         <UToggleButton
           size="sm"
-          selected={graphSettings.ui_settings?.show_conjoint === true}
+          selected={graphSettings.ui_settings?.columns?.show_conjoint === true}
           onSelectedChange={(checked) => {
             setGraphSettings({
               ...graphSettings,
               ui_settings: {
                 ...graphSettings.ui_settings,
-                show_conjoint: checked,
+                columns: {
+                  ...graphSettings.ui_settings?.columns,
+                  show_conjoint: checked,
+                },
               },
             });
           }}
@@ -203,7 +209,7 @@ function Toggles() {
         <UHoverCard content={<TiersHoverCardContent />}>
           <UToggleButton
             size="sm"
-            selected={graphSettings.ui_settings?.columns?.show_tiered === true}
+            selected={graphSettings.ui_settings?.columns?.hide_tiered !== true}
             onSelectedChange={(checked) => {
               setGraphSettings({
                 ...graphSettings,
@@ -211,7 +217,7 @@ function Toggles() {
                   ...graphSettings.ui_settings,
                   columns: {
                     ...graphSettings.ui_settings?.columns,
-                    show_tiered: checked,
+                    hide_tiered: !checked,
                   },
                 },
               });

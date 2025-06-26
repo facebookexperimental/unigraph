@@ -162,20 +162,6 @@ pub struct ArrayGraphUISettings {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub reverse_from: Option<Vec<NodeName>>,
-
-    /// Global setting for showing transitive values.
-    /// Individual columns will be enabled/disabled based on
-    /// their individual settings.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
-    pub show_transitive: Option<bool>,
-
-    /// Global setting for showing conjoint cost values.
-    /// Individual columns will be enabled/disabled based on
-    /// their individual settings.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
-    pub show_conjoint: Option<bool>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, TS, Clone)]
@@ -194,9 +180,24 @@ pub struct ColumnSettings {
 
     /// Global setting for showing tiered values for metrics
     /// (if tiers are defined)
+    /// It is shown by default, but can be hidden
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
-    pub show_tiered: Option<bool>,
+    pub hide_tiered: Option<bool>,
+
+    /// Global setting for showing transitive values.
+    /// Individual columns will be enabled/disabled based on
+    /// their individual settings.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub show_transitive: Option<bool>,
+
+    /// Global setting for showing conjoint cost values.
+    /// Individual columns will be enabled/disabled based on
+    /// their individual settings.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub show_conjoint: Option<bool>,
 }
 
 /// Enum that defines whether an individual option is enabled or not.

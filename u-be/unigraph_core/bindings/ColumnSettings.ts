@@ -5,5 +5,18 @@ export type ColumnSettings = { show_parents_count?: boolean, show_transitive_cou
 /**
  * Global setting for showing tiered values for metrics
  * (if tiers are defined)
+ * It is shown by default, but can be hidden
  */
-show_tiered?: boolean, };
+hide_tiered?: boolean, 
+/**
+ * Global setting for showing transitive values.
+ * Individual columns will be enabled/disabled based on
+ * their individual settings.
+ */
+show_transitive?: boolean, 
+/**
+ * Global setting for showing conjoint cost values.
+ * Individual columns will be enabled/disabled based on
+ * their individual settings.
+ */
+show_conjoint?: boolean, };
