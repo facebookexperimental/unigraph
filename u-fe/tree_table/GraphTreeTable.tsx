@@ -11,7 +11,7 @@ import { useNativeGraph } from "../context/NativeGraphContext";
 import useGraphTreeTableColumns from "./useGraphTreeTableColumns";
 
 export default function GraphTreeTable(props: {
-  roots: Readonly<NodeIDX[]>;
+  roots: readonly NodeIDX[];
   focusOnMount?: boolean;
 }) {
   const nativeGraph = useNativeGraph();
@@ -32,6 +32,8 @@ export default function GraphTreeTable(props: {
 
   const columnDefinitions = useGraphTreeTableColumns();
   const graphStructure = settings.ui_settings?.graph_structure ?? "Forward";
+  const treeTableEntryPoints =
+    settings.ui_settings?.entry_points ?? "Determine";
 
   const getArrows = useCallback(
     (nodeIDX: NodeIDX) => {
@@ -52,7 +54,7 @@ export default function GraphTreeTable(props: {
   );
 
   const getShortestPath = useCallback(
-    (fromNodeIDX: NodeIDX[], toNodeIDX: NodeIDX) => {
+    (fromNodeIDX: readonly NodeIDX[], toNodeIDX: NodeIDX) => {
       return nativeGraph.getShortestPath(
         fromNodeIDX,
         toNodeIDX,
@@ -68,8 +70,15 @@ export default function GraphTreeTable(props: {
       roots: props.roots,
       getShortestPath,
       graphStructure,
+      treeTableEntryPoints,
     };
-  }, [props.roots, getArrows, graphStructure, getShortestPath]);
+  }, [
+    props.roots,
+    getArrows,
+    graphStructure,
+    getShortestPath,
+    treeTableEntryPoints,
+  ]);
 
   return (
     <ErrorBoundary>

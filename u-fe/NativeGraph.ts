@@ -153,7 +153,7 @@ export default class NativeGraph {
   }
 
   getShortestPath(
-    fromNodeIDX: NodeIDX[],
+    fromNodeIDX: readonly NodeIDX[],
     toNodeIDX: NodeIDX,
     graphStructure: GraphStructure,
   ): NodeIDX[] | null {

@@ -12,6 +12,13 @@ pub fn shortest_path_configured(
 ) -> Option<Vec<NodeIDX>> {
     // here we will need to run a BFS on our directed graph in a very efficient way.
 
+    // an edge case where roots contain the target node. Here we would want to return
+    // that path of a single node right away. Otherwise the algorithm might start
+    // setting parents for root nodes and then return a longer path than necessary.
+    if from.contains(&to) {
+        return Some(vec![to]);
+    }
+
     // We can't put "current paths" on the stack for each entry cause it'll fragment
     // the memory, instead we'll be constructing a "reverse spanning tree" of parents
     // and then reconstruct the path from the "to" node to the "from" node.
@@ -82,6 +89,27 @@ mod tests {
             .unwrap();
 
         assert_equal!(idx_to_names(&ag, p), vec!["A", "B", "J", "K"]);
+
+        // FROM A NODE TO ITSELF
+        let p = ag
+            .edges_forward
+            .shortest_path_configured(&[name_to_idx(&ag, "A")], name_to_idx(&ag, "A"))
+            .unwrap();
+        assert_equal!(idx_to_names(&ag, p), vec!["A"]);
+
+        // FROM A NODE TO ITSELF IN A CYCLE
+        let p = ag
+            .edges_forward
+            .shortest_path_configured(
+                &[
+                    name_to_idx(&ag, "M"),
+                    name_to_idx(&ag, "N"),
+                    name_to_idx(&ag, "O"),
+                ],
+                name_to_idx(&ag, "N"),
+            )
+            .unwrap();
+        assert_equal!(idx_to_names(&ag, p), vec!["N"]);
 
         let p = ag
             .edges_forward

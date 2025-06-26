@@ -10,9 +10,11 @@ import {
   ArrowUpZA,
 } from "lucide-react";
 import { useEffect, useMemo, useReducer, useRef } from "react";
+import type { ArrayGraphUISettingsTreeTableEntryPoints } from "u-be/unigraph_core/bindings/ArrayGraphUISettingsTreeTableEntryPoints";
 import type { GraphStructure } from "u-be/unigraph_core/bindings/GraphStructure";
 import type { GraphTableSort } from "u-be/unigraph_core/bindings/GraphTableSort";
 import type { SortOrder } from "u-be/unigraph_core/bindings/SortOrder";
+import { node_idx_to_name } from "../../.build/wasm/unigraph_wasm";
 import type { Arrow } from "../../u-be/unigraph_core/bindings/Arrow";
 import { useSelectedPath } from "../context/SelectedPathContext";
 import type { NodeIDX } from "../types";
@@ -130,6 +132,7 @@ export function TreeTable(props: {
   useEffect(() => {
     ctx.treeTableGraph = props.treeTableGraph;
     ctx.resetTable();
+    ctx.navigateToCurrentPathOrFallbackToShortestPath();
   }, [ctx, props.treeTableGraph]);
 
   useEffect(() => {
@@ -679,7 +682,83 @@ class TreeTableCtx {
 
       setTimeout(() => {
         this.scrollToSelected();
-      }, 0);
+      }, 5);
+    }
+  }
+
+  /// When we reset our table but want to keep the selected path we would call
+  /// this.
+  ///   -The path might still be valid (e.g. we switched from dominator tree to
+  ///     refular graph and we had the row selected that didn't change the path)
+  ///   -The path might not be valid anymore (e.g. we switched from a flat list
+  ///    to a tree and the the node we had selected is not a root anymore)
+  ///
+  /// If the path if valid we would just select it. If the path is not valid, we'll
+  /// try our best to find the shortest path to the node that was selected
+  /// and navigate to that path.
+  navigateToCurrentPathOrFallbackToShortestPath() {
+    const currentPath = this.selectedNodeIDXPath;
+    const treeTableEntryPoints = this.treeTableGraph.treeTableEntryPoints;
+    if (currentPath.length === 0) {
+      return; // no path to navigate to
+    }
+    const firstNodeIDX = currentPath[0] as NodeIDX;
+    const selectedNodeIDX = currentPath[currentPath.length - 1] as NodeIDX;
+
+    const isPathValid = () => {
+      /// if the first node in the path is not a root then the path is invalid right away
+      if (!this.treeTableGraph.roots.includes(firstNodeIDX)) {
+        return false;
+      }
+
+      // If it's in the roots then we can try to follow every node in the path
+      // and make sure that the NEXT node in the path is a child of the current node.
+      for (let i = 0; i < currentPath.length - 1; i++) {
+        const currentNodeIDX = currentPath[i] as NodeIDX;
+        const nextNodeIDX = currentPath[i + 1] as NodeIDX;
+        const arrows = this.treeTableGraph.getArrows(currentNodeIDX);
+
+        if (arrows.find((a) => a.points_to === nextNodeIDX) == null) {
+          // our next node is not a child of the current node, which means the path is invalid
+          return false;
+        }
+      }
+
+      // if all the nodes in the path are valid and we successfully got to here our path is valid
+      return true;
+    };
+
+    // If our entry points are set to "AllReachable", which is essentially a flat list,
+    // we normally don't want to navigate to a specific path. Most of the time you switch
+    // into the flat list to see sorted values and then back to the tree table.
+    // Expanding rows in a flat list make the sorting look weird and is generally not useful.
+    // So for this case we will opt out of navigating to the set specific path and instead
+    // skipp to finding the shortest path, which will be the path of the node itself, since
+    // it's a flat list.
+    const shouldUseValidPath = treeTableEntryPoints !== "AllReachable";
+
+    if (shouldUseValidPath && isPathValid()) {
+      // If the path is valid we can just navigate to it
+      this.navigateToPath(currentPath);
+      return;
+    }
+
+    // if the path is invalid we can try to find the shortest path
+    // to the last node in the path.
+    const shortestPath = this.treeTableGraph.getShortestPath(
+      this.treeTableGraph.roots,
+      selectedNodeIDX,
+    );
+
+    console.log({
+      shortestPath,
+      from: this.treeTableGraph.roots,
+      to: selectedNodeIDX,
+    });
+
+    if (shortestPath != null && shortestPath.length > 0) {
+      // If we found a shortest path we can navigate to it
+      this.navigateToPath(shortestPath);
     }
   }
 }
@@ -755,6 +834,7 @@ export class TreeTablePathSelector {
 type TreeTableGraph = {
   roots: Readonly<NodeIDX[]>;
   getArrows: (idx: NodeIDX) => Arrow[];
-  getShortestPath: (from: NodeIDX[], to: NodeIDX) => NodeIDX[] | null;
+  getShortestPath: (from: readonly NodeIDX[], to: NodeIDX) => NodeIDX[] | null;
   graphStructure: GraphStructure;
+  treeTableEntryPoints: ArrayGraphUISettingsTreeTableEntryPoints;
 };
