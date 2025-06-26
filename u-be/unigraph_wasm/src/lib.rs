@@ -284,6 +284,42 @@ pub fn get_arrows(node_idx: usize, graph_structure: u8) -> Result<String, WasmJS
 }
 
 #[wasm_bindgen]
+pub fn get_shortest_path(
+    from: &[u32],
+    to: u32,
+    graph_structure: u8,
+) -> Result<Option<Vec<u32>>, WasmJSError> {
+    let graph_state = GlobalState::graph_state().get();
+    let ag = &graph_state.array_graph;
+    let graph_structure = GraphStructure::from_u8(graph_structure)?;
+    let from = from
+        .iter()
+        .map(|&idx| NodeIDX::from(idx))
+        .collect::<Vec<NodeIDX>>();
+    let to = NodeIDX::from(to);
+
+    let offset_graph = match graph_structure {
+        GraphStructure::Forward => &ag.edges_forward,
+        GraphStructure::Dominator => ag.edges_dom(),
+        GraphStructure::Reverse => &ag.derived_state.edges_reverse,
+    };
+
+    #[allow(clippy::collapsible_if)]
+    if let Some(shortest_path) = offset_graph.shortest_path_configured(&from, to) {
+        if !shortest_path.is_empty() {
+            return Ok(Some(
+                shortest_path
+                    .into_iter()
+                    .map(|idx| idx.0)
+                    .collect::<Vec<u32>>(),
+            ));
+        }
+    }
+
+    Ok(None)
+}
+
+#[wasm_bindgen]
 pub fn get_reverse_edges_len(node_idxs: Vec<u32>) -> Result<Vec<usize>, WasmJSError> {
     let graph_state = GlobalState::graph_state().get();
 

@@ -2,6 +2,7 @@
 
 pub(super) mod lengauer_tarjan_dominator_tree;
 mod offset_graph_traversal;
+mod shortest_path;
 
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -257,6 +258,10 @@ impl OffsetGraph {
 
     pub fn dfs_unconfigured(&self, roots: &[NodeIDX]) -> OffsetGraphDFSUnconfigured {
         OffsetGraphDFSUnconfigured::new(self, roots)
+    }
+
+    pub fn shortest_path_configured(&self, from: &[NodeIDX], to: NodeIDX) -> Option<Vec<NodeIDX>> {
+        shortest_path::shortest_path_configured(self, from, to)
     }
 }
 

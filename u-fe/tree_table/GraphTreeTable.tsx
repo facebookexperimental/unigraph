@@ -3,7 +3,7 @@
 import type { NodeIDX } from "../types";
 import { TreeTable } from "./TreeTable";
 
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import type { GraphTableSort } from "u-be/unigraph_core/bindings/GraphTableSort";
 import ErrorBoundary from "../components/ErrorBoundary";
 import { useGraphSettings } from "../context/GraphSettingsContext";
@@ -31,11 +31,10 @@ export default function GraphTreeTable(props: {
   );
 
   const columnDefinitions = useGraphTreeTableColumns();
+  const graphStructure = settings.ui_settings?.graph_structure ?? "Forward";
 
   const getArrows = useCallback(
     (nodeIDX: NodeIDX) => {
-      const graphStructure = settings.ui_settings?.graph_structure ?? "Forward";
-
       switch (graphStructure) {
         case "Forward":
           return nativeGraph.getArrowsForward(nodeIDX);
@@ -49,15 +48,34 @@ export default function GraphTreeTable(props: {
         }
       }
     },
-    [nativeGraph, settings.ui_settings?.graph_structure],
+    [nativeGraph, graphStructure],
   );
+
+  const getShortestPath = useCallback(
+    (fromNodeIDX: NodeIDX[], toNodeIDX: NodeIDX) => {
+      return nativeGraph.getShortestPath(
+        fromNodeIDX,
+        toNodeIDX,
+        graphStructure,
+      );
+    },
+    [nativeGraph, graphStructure],
+  );
+
+  const treeTableGraph = useMemo(() => {
+    return {
+      getArrows: getArrows,
+      roots: props.roots,
+      getShortestPath,
+      graphStructure,
+    };
+  }, [props.roots, getArrows, graphStructure, getShortestPath]);
 
   return (
     <ErrorBoundary>
       <TreeTable
-        roots={props.roots}
         columnDefinitions={columnDefinitions}
-        getArrows={getArrows}
+        treeTableGraph={treeTableGraph}
         focusOnMount={props.focusOnMount}
         onSortChange={onSortChange}
         sortColumnID={

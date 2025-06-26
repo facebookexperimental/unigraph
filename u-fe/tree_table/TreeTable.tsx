@@ -10,6 +10,7 @@ import {
   ArrowUpZA,
 } from "lucide-react";
 import { useEffect, useMemo, useReducer, useRef } from "react";
+import type { GraphStructure } from "u-be/unigraph_core/bindings/GraphStructure";
 import type { GraphTableSort } from "u-be/unigraph_core/bindings/GraphTableSort";
 import type { SortOrder } from "u-be/unigraph_core/bindings/SortOrder";
 import type { Arrow } from "../../u-be/unigraph_core/bindings/Arrow";
@@ -91,13 +92,12 @@ type ColumnInternal =
 
 export function TreeTable(props: {
   columnDefinitions: ColumnDefinitions;
-  roots: Readonly<NodeIDX[]>;
+  treeTableGraph: TreeTableGraph;
   headerHeight?: number;
   focusOnMount?: boolean;
   sortColumnID: TreeColumnID | string | null;
   sortOrder: SortOrder | null;
   onSortChange: (sort: GraphTableSort | null) => void;
-  getArrows: (idx: NodeIDX) => Arrow[];
 }) {
   const forceUpdate = useReducer((x) => {
     return x + 1;
@@ -113,8 +113,11 @@ export function TreeTable(props: {
   //
   // biome-ignore lint/correctness/useExhaustiveDependencies: <explanation>
   const ctx = useMemo(() => {
-    const ctx = new TreeTableCtx(columns, props.roots, selectedPath ?? []);
-    ctx.getArrows = props.getArrows;
+    const ctx = new TreeTableCtx(
+      columns,
+      selectedPath ?? [],
+      props.treeTableGraph,
+    );
     ctx.updateSortState(props.sortColumnID, props.sortOrder);
     ctx.forceUpdate = forceUpdate;
     return ctx;
@@ -125,11 +128,9 @@ export function TreeTable(props: {
   const headerHeight = props.headerHeight ?? 35;
 
   useEffect(() => {
-    ctx.getArrows = props.getArrows;
-    ctx.updateRoots(props.roots);
-    ctx.selectedRowIDX = null;
-    ctx.forceUpdate();
-  }, [ctx, props.getArrows, props.roots]);
+    ctx.treeTableGraph = props.treeTableGraph;
+    ctx.resetTable();
+  }, [ctx, props.treeTableGraph]);
 
   useEffect(() => {
     pathSelector.navigate = (path: NodeIDX[] | null) => {
@@ -141,11 +142,10 @@ export function TreeTable(props: {
   }, [pathSelector, ctx]);
 
   useEffect(() => {
-    ctx.getArrows = props.getArrows;
     ctx.columns = columns;
     ctx.updateSortState(props.sortColumnID, props.sortOrder);
     ctx.resortRows();
-  }, [props.sortColumnID, props.sortOrder, ctx, columns, props.getArrows]);
+  }, [props.sortColumnID, props.sortOrder, ctx, columns]);
 
   useEffect(() => {
     setSelectedPath(ctx.selectedNodeIDXPath);
@@ -226,7 +226,9 @@ export function TreeTable(props: {
                     ctx.collapseRow(rowIDX);
                   }
                 }}
-                canExpand={props.getArrows(row.arrow.points_to).length > 0}
+                canExpand={
+                  props.treeTableGraph.getArrows(row.arrow.points_to).length > 0
+                }
                 nodeName={column.c.getNodeName(row.arrow.points_to)}
               />
             );
@@ -403,24 +405,25 @@ class TreeTableCtx {
   columns: ColumnInternal[];
   forceUpdate: () => void;
   sortState: SortState | null;
-  getArrows: (idx: NodeIDX) => Arrow[] = () => [];
+  treeTableGraph: TreeTableGraph;
   selectedRowIDX: number | null;
   selectedNodeIDXPath: NodeIDX[];
   scrollToIndex: (index: number, options: { align: "center" }) => void;
 
   constructor(
     columns: ColumnInternal[],
-    roots: Readonly<NodeIDX[]>,
     selectedNodeIDXPath: NodeIDX[],
+    treeTableGraph: TreeTableGraph,
   ) {
     this.columns = columns;
     this.rows = [];
     this.forceUpdate = () => {};
     this.sortState = null;
-    this.updateRoots(roots);
+    this.treeTableGraph = treeTableGraph;
     this.selectedRowIDX = null;
     this.scrollToIndex = () => {};
     this.selectedNodeIDXPath = selectedNodeIDXPath;
+    this.resetTable();
   }
 
   updateSortState(
@@ -477,8 +480,8 @@ class TreeTableCtx {
     };
   }
 
-  updateRoots(roots: Readonly<NodeIDX[]>) {
-    this.rows = roots.map((nodeIDX) => {
+  resetTable() {
+    this.rows = this.treeTableGraph.roots.map((nodeIDX) => {
       return {
         depth: 0,
         expanded: false,
@@ -512,7 +515,7 @@ class TreeTableCtx {
       return;
     }
 
-    const arrows = this.getArrows(row.arrow.points_to);
+    const arrows = this.treeTableGraph.getArrows(row.arrow.points_to);
 
     const childrenIDXs = arrows.map((a) => a.points_to);
 
@@ -651,7 +654,8 @@ class TreeTableCtx {
         // pretty heavy and we can optimize this to a simple
         // direct memory access check on a cached datastructure
         // or something.
-        this.getArrows(selectedRow.arrow.points_to).length === 0 ||
+        this.treeTableGraph.getArrows(selectedRow.arrow.points_to).length ===
+          0 ||
         selectedRow.isCycle
       ) {
         this.navigateDown(1);
@@ -665,7 +669,7 @@ class TreeTableCtx {
     const selectedRowIDX = expandToPath(
       this.rows,
       path,
-      this.getArrows,
+      this.treeTableGraph.getArrows,
       this.sortState,
     );
 
@@ -745,3 +749,12 @@ export class TreeTablePathSelector {
     this.setNewSelectedPath = () => {};
   }
 }
+
+/// Object that defines the structure of the graph represented
+/// in the tree table and how to havigate it
+type TreeTableGraph = {
+  roots: Readonly<NodeIDX[]>;
+  getArrows: (idx: NodeIDX) => Arrow[];
+  getShortestPath: (from: NodeIDX[], to: NodeIDX) => NodeIDX[] | null;
+  graphStructure: GraphStructure;
+};

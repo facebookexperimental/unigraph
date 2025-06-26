@@ -3,6 +3,7 @@
 // This is a wrapper class over the state of the graph on the WASM side.
 
 import type { GraphSettings } from "u-be/unigraph_core/bindings/GraphSettings";
+import type { GraphStructure } from "u-be/unigraph_core/bindings/GraphStructure";
 import type { TraversalConfig } from "u-be/unigraph_core/bindings/TraversalConfig";
 import {
   apply_traversal_config,
@@ -18,6 +19,7 @@ import {
   get_metric_names,
   get_node_metrics,
   get_reverse_edges_len,
+  get_shortest_path,
   get_transitive_count,
   get_transitive_count_dominated,
   get_transitive_metrics,
@@ -148,6 +150,24 @@ export default class NativeGraph {
     const arrowsJSON = get_arrows(nodeIDX, GraphStructureReverseU8);
     const parsed = JSON.parse(arrowsJSON);
     return parsed as Arrow[];
+  }
+
+  getShortestPath(
+    fromNodeIDX: NodeIDX[],
+    toNodeIDX: NodeIDX,
+    graphStructure: GraphStructure,
+  ): NodeIDX[] | null {
+    const path = get_shortest_path(
+      new Uint32Array(fromNodeIDX),
+      toNodeIDX,
+      graphStructureToU8(graphStructure),
+    );
+
+    if (path == null || path.length === 0) {
+      return null;
+    }
+
+    return Array.from(path) as NodeIDX[];
   }
 
   determineEntrypoints(): NodeIDXVecSet {
@@ -419,5 +439,20 @@ class KeyedMetricsCache {
     }
 
     return result;
+  }
+}
+
+function graphStructureToU8(graphStructure: GraphStructure): number {
+  switch (graphStructure) {
+    case "Forward":
+      return GraphStructureForwardU8;
+    case "Dominator":
+      return GraphStructureDominatorU8;
+    case "Reverse":
+      return GraphStructureReverseU8;
+    default: {
+      const _exhaustiveCheck: never = graphStructure;
+      throw new Error(`Unknown graph structure: ${_exhaustiveCheck}`);
+    }
   }
 }

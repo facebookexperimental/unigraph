@@ -59,6 +59,7 @@ fn exclude_edges_below_max_tier(
     }) = indexed_config.ascending_tiers()
     {
         for (_from, edge, _metadata) in ag.edges_forward.iter_edges_mut() {
+            #[allow(clippy::collapsible_if)]
             if let Some(points_to_tier) = ag.node_flags[edge.points_to].tier_idx() {
                 if points_to_tier > *max_tier {
                     edge.flags.insert(EdgeFlags::EXCLUDED);
