@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 
 use ts_rs::TS;
 
+use crate::types::NodeName;
 use crate::types::TierName;
 
 #[derive(serde::Serialize, serde::Deserialize, TS, Clone, Default)]
@@ -155,6 +156,12 @@ pub struct ArrayGraphUISettings {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub show_as_dominator_tree: Option<bool>,
+
+    /// If set, the graph will be rendered as a reverse graph
+    /// starting from provided node names.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub reverse_from: Option<Vec<NodeName>>,
 
     /// Global setting for showing transitive values.
     /// Individual columns will be enabled/disabled based on

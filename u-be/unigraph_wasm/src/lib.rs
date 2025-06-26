@@ -268,7 +268,18 @@ pub fn get_arrows_forward(node_idx: usize) -> Result<String, WasmJSError> {
     let edges = graph_state
         .array_graph
         .get_arrows_forward(NodeIDX::from(node_idx))
-        .context("Failed to get arrows")?;
+        .context("Failed to get arrows forward")?;
+
+    Ok(serde_json::to_string(&edges).context("Failed to serialize arrows")?)
+}
+
+#[wasm_bindgen]
+pub fn get_arrows_reverse(node_idx: usize) -> Result<String, WasmJSError> {
+    let graph_state = GlobalState::graph_state().get();
+    let edges = graph_state
+        .array_graph
+        .get_arrows_reverse(NodeIDX::from(node_idx))
+        .context("Failed to get arrows reverse")?;
 
     Ok(serde_json::to_string(&edges).context("Failed to serialize arrows")?)
 }

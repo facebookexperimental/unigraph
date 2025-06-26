@@ -40,6 +40,7 @@ use crate::types::TierIDX;
 use crate::types::TierName;
 use crate::types::array_graph::array_graph_arrows::get_arrows_dominator;
 use crate::types::array_graph::array_graph_arrows::get_arrows_forward;
+use crate::types::array_graph::array_graph_arrows::get_arrows_reverse;
 use crate::types::array_graph::array_graph_derived_state::ArrayGraphDerivedState;
 use crate::types::array_graph::array_graph_metrics::CombinedMetricsForNodes;
 use crate::types::array_graph::array_graph_metrics::get_metrics_sums_for_nodes;
@@ -308,6 +309,10 @@ impl ArrayGraph {
 
     pub fn get_arrows_dominator(&self, node_idx: NodeIDX) -> Vec<Arrow> {
         get_arrows_dominator(self, node_idx)
+    }
+
+    pub fn get_arrows_reverse(&self, node_idx: NodeIDX) -> Result<Vec<Arrow>> {
+        get_arrows_reverse(self, node_idx).context("arrows reverse")
     }
 }
 

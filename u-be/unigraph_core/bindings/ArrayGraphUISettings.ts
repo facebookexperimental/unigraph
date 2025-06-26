@@ -5,6 +5,11 @@ import type { SidebarPanel } from "./SidebarPanel";
 
 export type ArrayGraphUISettings = { selected_sidebar_panel?: SidebarPanel, graph_table_sort?: GraphTableSort, columns?: ColumnSettings, show_as_a_flat_list?: boolean, show_as_dominator_tree?: boolean, 
 /**
+ * If set, the graph will be rendered as a reverse graph
+ * starting from provided node names.
+ */
+reverse_from?: Array<string>, 
+/**
  * Global setting for showing transitive values.
  * Individual columns will be enabled/disabled based on
  * their individual settings.

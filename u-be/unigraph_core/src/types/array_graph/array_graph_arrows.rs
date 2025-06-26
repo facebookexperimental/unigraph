@@ -65,3 +65,48 @@ pub fn get_arrows_dominator(ag: &ArrayGraph, node_idx: NodeIDX) -> Vec<Arrow> {
         })
         .collect()
 }
+
+pub fn get_arrows_reverse(ag: &ArrayGraph, node_idx: NodeIDX) -> Result<Vec<Arrow>> {
+    ag.derived_state
+        .edges_reverse
+        .edges_with_metadata(node_idx)
+        .map(|(edge, metadata)| {
+            let excluded = edge.flags.contains(EdgeFlags::EXCLUDED);
+            if !edge
+                .flags
+                .intersects(EdgeFlags::IS_TAGGED | EdgeFlags::IS_DYNAMIC)
+            {
+                Ok(Arrow {
+                    tag: None,
+                    branch: None,
+                    properties: None,
+                    points_from: edge.points_to,
+                    points_to: node_idx,
+                    excluded,
+                })
+            } else {
+                match metadata {
+                    NonDirectedEdgeMetadata::Directed => {
+                        anyhow::bail!("Directed edge should not have metadata")
+                    }
+                    NonDirectedEdgeMetadata::Tagged { tag } => Ok(Arrow {
+                        tag: Some(tag.clone()),
+                        branch: None,
+                        properties: None,
+                        points_from: edge.points_to,
+                        points_to: node_idx,
+                        excluded,
+                    }),
+                    NonDirectedEdgeMetadata::Dynamic { properties, branch } => Ok(Arrow {
+                        tag: None,
+                        branch: Some(branch.clone()),
+                        properties: Some(properties.clone()),
+                        points_from: edge.points_to,
+                        points_to: node_idx,
+                        excluded,
+                    }),
+                }
+            }
+        })
+        .collect()
+}
