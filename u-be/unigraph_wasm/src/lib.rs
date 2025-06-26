@@ -12,6 +12,7 @@ use unigraph_core::ArrayGraph;
 use unigraph_core::ArrayGraphSerializable;
 use unigraph_core::MapGraph;
 use unigraph_core::TraversalConfig;
+use unigraph_core::graph_settings::GraphStructure;
 use unigraph_core::make_test_graph;
 use unigraph_core::types::NodeIDX;
 use unigraph_wgpu::GlobalState;
@@ -267,35 +268,19 @@ pub fn get_available_tiers() -> Result<Vec<String>, WasmJSError> {
 }
 
 #[wasm_bindgen]
-pub fn get_arrows_forward(node_idx: usize) -> Result<String, WasmJSError> {
+pub fn get_arrows(node_idx: usize, graph_structure: u8) -> Result<String, WasmJSError> {
     let graph_state = GlobalState::graph_state().get();
-    let edges = graph_state
-        .array_graph
-        .get_arrows_forward(NodeIDX::from(node_idx))
-        .context("Failed to get arrows forward")?;
+    let ag = &graph_state.array_graph;
+    let graph_structure = GraphStructure::from_u8(graph_structure)?;
+    let node_idx = NodeIDX::from(node_idx);
 
-    Ok(serde_json::to_string(&edges).context("Failed to serialize arrows")?)
-}
+    let arrows = match graph_structure {
+        GraphStructure::Forward => ag.get_arrows_forward(node_idx),
+        GraphStructure::Dominator => Ok(ag.get_arrows_dominator(node_idx)),
+        GraphStructure::Reverse => ag.get_arrows_reverse(node_idx),
+    }?;
 
-#[wasm_bindgen]
-pub fn get_arrows_reverse(node_idx: usize) -> Result<String, WasmJSError> {
-    let graph_state = GlobalState::graph_state().get();
-    let edges = graph_state
-        .array_graph
-        .get_arrows_reverse(NodeIDX::from(node_idx))
-        .context("Failed to get arrows reverse")?;
-
-    Ok(serde_json::to_string(&edges).context("Failed to serialize arrows")?)
-}
-
-#[wasm_bindgen]
-pub fn get_arrows_dominator(node_idx: usize) -> Result<String, WasmJSError> {
-    let graph_state = GlobalState::graph_state().get();
-    let edges = graph_state
-        .array_graph
-        .get_arrows_dominator(NodeIDX::from(node_idx));
-
-    Ok(serde_json::to_string(&edges).context("Failed to serialize arrows")?)
+    Ok(serde_json::to_string(&arrows).context("Failed to serialize arrows")?)
 }
 
 #[wasm_bindgen]

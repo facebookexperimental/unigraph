@@ -9,9 +9,7 @@ import {
   determine_entrypoints,
   get_all_reachable_node_idxs,
   get_array_graph_stats,
-  get_arrows_dominator,
-  get_arrows_forward,
-  get_arrows_reverse,
+  get_arrows,
   get_combined_metrics_for_nodes,
   get_conjoint_cost,
   get_graph_node_count,
@@ -39,6 +37,10 @@ type NodeIDXVecSet = Readonly<{
   vec: Readonly<NodeIDX[]>;
   set: Readonly<Set<NodeIDX>>;
 }>;
+
+const GraphStructureForwardU8 = 0;
+const GraphStructureDominatorU8 = 1;
+const GraphStructureReverseU8 = 2;
 
 // It serves as a bridge/cache layer between JS and WASM.
 export default class NativeGraph {
@@ -131,19 +133,19 @@ export default class NativeGraph {
   }
 
   getArrowsForward(nodeIDX: NodeIDX): Arrow[] {
-    const arrowsJSON = get_arrows_forward(nodeIDX);
+    const arrowsJSON = get_arrows(nodeIDX, GraphStructureForwardU8);
     const parsed = JSON.parse(arrowsJSON);
     return parsed as Arrow[];
   }
 
   getArrowsDominator(nodeIDX: NodeIDX): Arrow[] {
-    const arrowsJSON = get_arrows_dominator(nodeIDX);
+    const arrowsJSON = get_arrows(nodeIDX, GraphStructureDominatorU8);
     const parsed = JSON.parse(arrowsJSON);
     return parsed as Arrow[];
   }
 
   getArrowsReverse(nodeIDX: NodeIDX): Arrow[] {
-    const arrowsJSON = get_arrows_reverse(nodeIDX);
+    const arrowsJSON = get_arrows(nodeIDX, GraphStructureReverseU8);
     const parsed = JSON.parse(arrowsJSON);
     return parsed as Arrow[];
   }

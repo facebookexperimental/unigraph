@@ -2,6 +2,8 @@
 
 use std::collections::BTreeMap;
 
+use anyhow::Result;
+use anyhow::bail;
 use ts_rs::TS;
 
 use crate::types::NodeName;
@@ -151,7 +153,7 @@ pub struct ArrayGraphUISettings {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
-    pub graph_structure: Option<ArrayGraphUISettingsGraphStructure>,
+    pub graph_structure: Option<GraphStructure>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
@@ -175,15 +177,27 @@ pub struct ArrayGraphUISettings {
 /// e.g. which edges we will be following when visualizing the
 /// graph in the tree table.
 #[derive(serde::Serialize, serde::Deserialize, TS, Clone, Default)]
+#[repr(u8)]
 #[ts(export)]
-pub enum ArrayGraphUISettingsGraphStructure {
+pub enum GraphStructure {
     // default, follow the forward edges
     #[default]
-    Forward,
+    Forward = 0,
     // follow the dominator tree edges
-    Dominator,
+    Dominator = 1,
     // follow the reverse edges (child -> parent)
-    Reverse,
+    Reverse = 2,
+}
+
+impl GraphStructure {
+    pub fn from_u8(value: u8) -> Result<Self> {
+        match value {
+            0 => Ok(GraphStructure::Forward),
+            1 => Ok(GraphStructure::Dominator),
+            2 => Ok(GraphStructure::Reverse),
+            _ => bail!("Invalid GraphStructure value: {}", value),
+        }
+    }
 }
 
 /// Will be used as entry points for the tree table.

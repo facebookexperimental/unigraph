@@ -5,4 +5,4 @@
  * e.g. which edges we will be following when visualizing the
  * graph in the tree table.
  */
-export type ArrayGraphUISettingsGraphStructure = "Forward" | "Dominator" | "Reverse";
+export type GraphStructure = "Forward" | "Dominator" | "Reverse";
