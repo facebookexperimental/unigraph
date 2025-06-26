@@ -12,8 +12,10 @@ import type { CombinedMetricsForNodes } from "u-be/unigraph_core/bindings/Combin
 import Metric from "./components/Metric";
 import UHoverCard from "./components/UHoverCard";
 import UToggleButton from "./components/UToggleButton";
+
 import { useGraphSettings } from "./context/GraphSettingsContext";
 import { useNativeGraph } from "./context/NativeGraphContext";
+import { useTVC } from "./context/TraversalConfigContext";
 import formatMetric from "./lib/formatMetric";
 import formatNumber from "./lib/formatNumber";
 import type { NodeIDX } from "./types";
@@ -343,10 +345,12 @@ function ConjointCostHoverCardContent() {
 function TiersHoverCardContent() {
   const [graphSettings, setGraphSettings] = useGraphSettings();
   const nativeGraph = useNativeGraph();
+  const allTiers = nativeGraph.stats().tier_names;
+  const { tvc, setTvc } = useTVC();
 
   const metricCards = Object.entries(graphSettings.metric_settings ?? {}).map(
     ([metricName, metricSettings]) => {
-      const tiers = nativeGraph.stats().tier_names.map((tierName) => {
+      const tiers = allTiers.map((tierName) => {
         return (
           <UToggleButton
             key={`tiered-${metricName}-${tierName}`}
@@ -380,9 +384,38 @@ function TiersHoverCardContent() {
     },
   );
 
+  const tierSwitches = allTiers.map((tierName, tierIDX) => {
+    const selected = tvc.tiered_traversal?.AscendingTiers?.max_tier === tierIDX;
+
+    return (
+      <UToggleButton
+        // biome-ignore lint/suspicious/noArrayIndexKey: <explanation>
+        key={`tier-${tierIDX}`}
+        size="sm"
+        tooltip={`Only show nodes that are on or below '${tierName}'`}
+        selected={selected}
+        onSelectedChange={(selected) => {
+          setTvc({
+            ...tvc,
+            tiered_traversal: {
+              AscendingTiers: {
+                tiers: tvc.tiered_traversal?.AscendingTiers?.tiers ?? [],
+                max_tier: selected ? tierIDX : null,
+              },
+            },
+          });
+        }}
+      >
+        <span className="text-sm">{tierName}</span>
+      </UToggleButton>
+    );
+  });
+
   return (
     <div className="flex flex-col gap-2">
       <div className="flex gap-2">{metricCards}</div>
+      <h2 className="text-xl">Max Tier</h2>
+      <div className="flex flex-wrap gap-2">{tierSwitches}</div>
     </div>
   );
 }
