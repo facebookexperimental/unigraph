@@ -1,11 +1,10 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 import type { NodeIDX } from "../types";
-import { TreeTable, TreeTablePathSelector } from "./TreeTable";
+import { TreeTable } from "./TreeTable";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback } from "react";
 import type { GraphTableSort } from "u-be/unigraph_core/bindings/GraphTableSort";
-import type NativeGraph from "../NativeGraph";
 import ErrorBoundary from "../components/ErrorBoundary";
 import { useGraphSettings } from "../context/GraphSettingsContext";
 import { useNativeGraph } from "../context/NativeGraphContext";
@@ -30,23 +29,6 @@ export default function GraphTreeTable(props: {
     },
     [settings, setSettings],
   );
-
-  const onSelectedNodeIDXPathChange = useCallback(
-    (path: NodeIDX[]) => {
-      syncSelectedPathToURLHash(nativeGraph, path);
-    },
-    [nativeGraph],
-  );
-
-  const pathSelector = useRef(
-    new TreeTablePathSelector(parseSelectedPathFromURLHash(nativeGraph)),
-  );
-  useEffect(() => {
-    const path = parseSelectedPathFromURLHash(nativeGraph);
-    if (path) {
-      pathSelector.current.setNewSelectedPath(path);
-    }
-  }, [nativeGraph]);
 
   const columnDefinitions = useGraphTreeTableColumns();
 
@@ -82,47 +64,7 @@ export default function GraphTreeTable(props: {
           settings?.ui_settings?.graph_table_sort?.column_id ?? null
         }
         sortOrder={settings?.ui_settings?.graph_table_sort?.order ?? null}
-        pathSelector={pathSelector.current}
-        onSelectedNodeIDXPathChange={onSelectedNodeIDXPathChange}
       />
     </ErrorBoundary>
   );
-}
-
-function syncSelectedPathToURLHash(
-  nativeGraph: NativeGraph,
-  selectedPath: NodeIDX[],
-) {
-  const nodeNamePath = selectedPath.map((idx) => nativeGraph.getNodeName(idx));
-  const serialized = JSON.stringify(nodeNamePath);
-  const encoded = encodeURIComponent(serialized);
-  // update the hash of the URL only with the new encoded value
-  const newHash = `#${encoded}`;
-  window.history.replaceState(null, "", newHash);
-}
-
-function parseSelectedPathFromURLHash(
-  nativeGraph: NativeGraph,
-): NodeIDX[] | null {
-  const hash = window.location.hash;
-  if (hash.length === 0) {
-    return null;
-  }
-  const decoded = decodeURIComponent(hash.slice(1));
-  const parsed = JSON.parse(decoded);
-  if (!Array.isArray(parsed)) {
-    return null;
-  }
-  const nodeNamePath: string[] = parsed;
-  const nodeIDXPath: NodeIDX[] = [];
-  for (const nodeName of nodeNamePath) {
-    const nodeIDX = nativeGraph.getNodeIDXByNameLog(nodeName);
-    if (nodeIDX == null) {
-      // We'll try to parse as far as possible. If something
-      // is missing in the middle we'll return whatever we have.
-      return nodeIDXPath;
-    }
-    nodeIDXPath.push(nodeIDX);
-  }
-  return nodeIDXPath;
 }

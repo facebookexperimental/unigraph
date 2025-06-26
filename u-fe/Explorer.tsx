@@ -25,6 +25,7 @@ import {
   SelectedNodesContextProvider,
   useSelectedNodes,
 } from "./context/SelectedNodesContext";
+import { SelectedPathContextProvider } from "./context/SelectedPathContext";
 import { SimulationParamsContextProvider } from "./context/SimulationParamsContext";
 import { TraversalConfigContextProvider } from "./context/TraversalConfigContext";
 import initWasm from "./init_wasm";
@@ -115,9 +116,11 @@ export function Explorer({
               settings={settings}
               setSettings={setSettingsCb}
             >
-              <div className="h-screen flex flex-col unigraph-explorer">
-                <Page />
-              </div>
+              <SelectedPathContextProvider syncToURL={true}>
+                <div className="h-screen flex flex-col unigraph-explorer">
+                  <Page />
+                </div>
+              </SelectedPathContextProvider>
             </GraphSettingsContextProvider>
           </SelectedNodesContextProvider>
         </SimulationParamsContextProvider>

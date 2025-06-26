@@ -13,6 +13,7 @@ import { useEffect, useMemo, useReducer, useRef } from "react";
 import type { GraphTableSort } from "u-be/unigraph_core/bindings/GraphTableSort";
 import type { SortOrder } from "u-be/unigraph_core/bindings/SortOrder";
 import type { Arrow } from "../../u-be/unigraph_core/bindings/Arrow";
+import { useSelectedPath } from "../context/SelectedPathContext";
 import type { NodeIDX } from "../types";
 import TreeCell from "./TreeCell";
 import {
@@ -93,8 +94,6 @@ export function TreeTable(props: {
   roots: Readonly<NodeIDX[]>;
   headerHeight?: number;
   focusOnMount?: boolean;
-  onSelectedNodeIDXPathChange: (path: NodeIDX[]) => void;
-  pathSelector: TreeTablePathSelector;
   sortColumnID: TreeColumnID | string | null;
   sortOrder: SortOrder | null;
   onSortChange: (sort: GraphTableSort | null) => void;
@@ -104,6 +103,8 @@ export function TreeTable(props: {
     return x + 1;
   }, 0)[1];
 
+  const { selectedPath, setSelectedPath, pathSelector } = useSelectedPath();
+
   const columns = useMakeInternalColumns(props.columnDefinitions);
   // Initial setup of stateful context. This runs only once
   // when the component is mounted and is never updated again.
@@ -112,11 +113,7 @@ export function TreeTable(props: {
   //
   // biome-ignore lint/correctness/useExhaustiveDependencies: <explanation>
   const ctx = useMemo(() => {
-    const ctx = new TreeTableCtx(
-      columns,
-      props.roots,
-      props.pathSelector.initialPath ?? [],
-    );
+    const ctx = new TreeTableCtx(columns, props.roots, selectedPath ?? []);
     ctx.getArrows = props.getArrows;
     ctx.updateSortState(props.sortColumnID, props.sortOrder);
     ctx.forceUpdate = forceUpdate;
@@ -135,13 +132,13 @@ export function TreeTable(props: {
   }, [ctx, props.getArrows, props.roots]);
 
   useEffect(() => {
-    props.pathSelector.setNewSelectedPath = (path: NodeIDX[]) => {
-      ctx.navigateToPath(path);
+    pathSelector.navigate = (path: NodeIDX[] | null) => {
+      ctx.navigateToPath(path ?? []);
     };
     if (ctx.selectedNodeIDXPath.length > 0) {
       ctx.navigateToPath(ctx.selectedNodeIDXPath);
     }
-  }, [props.pathSelector, ctx]);
+  }, [pathSelector, ctx]);
 
   useEffect(() => {
     ctx.getArrows = props.getArrows;
@@ -151,8 +148,8 @@ export function TreeTable(props: {
   }, [props.sortColumnID, props.sortOrder, ctx, columns, props.getArrows]);
 
   useEffect(() => {
-    props.onSelectedNodeIDXPathChange(ctx.selectedNodeIDXPath);
-  }, [ctx.selectedNodeIDXPath, props.onSelectedNodeIDXPathChange]);
+    setSelectedPath(ctx.selectedNodeIDXPath);
+  }, [ctx.selectedNodeIDXPath, setSelectedPath]);
 
   useEffect(() => {
     if (props.focusOnMount === true) {
