@@ -1,13 +1,12 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-use std::sync::OnceLock;
-
 use anyhow::Context;
 use anyhow::Result;
 
 use crate::ArrayGraph;
 use crate::NodeIDX;
 use crate::types::array_graph::NodeFlags;
+use crate::types::array_graph::array_graph_derived_state::ArrayGraphDerivedState;
 use crate::types::array_graph::offset_graph::Edge;
 use crate::types::array_graph::offset_graph::EdgeFlags;
 use crate::types::array_graph::offset_graph::OffsetGraph;
@@ -38,10 +37,7 @@ pub fn append_super_root(ag: ArrayGraph) -> Result<ArrayGraph> {
         mut node_names_ordered,
         mut node_flags,
         mut edges_forward,
-        edges_reverse: _, // these are invalidated and need to be recomputed
-        edges_dom: _,     // invalidated and need to be recomputed
-        sccs: _,          // these are invalidated and need to be recomputed
-        conjoint_cost: _, // these are invalidated and need to be recomputed
+        derived_state: _, // this is invalidated and need to be recomputed
         edges_tagged,
         edges_dynamic,
         mut metrics,
@@ -64,17 +60,15 @@ be no other node already on the list that doesn't start from the same character"
 
     node_flags.push(NodeFlags::empty());
     append_super_root_edges(entrypoints, &mut edges_forward);
-    let edges_reverse = edges_forward.reverse();
     metrics.values_mut().for_each(|m| m.push(0.0));
+
+    let derived_state = ArrayGraphDerivedState::from_forward_edges(&edges_forward);
 
     Ok(ArrayGraph {
         node_names_ordered,
         node_flags,
         edges_forward,
-        edges_reverse,
-        edges_dom: OnceLock::new(),
-        sccs: OnceLock::new(),
-        conjoint_cost: OnceLock::new(),
+        derived_state,
         edges_tagged,
         edges_dynamic,
         metrics,

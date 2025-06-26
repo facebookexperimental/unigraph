@@ -1,6 +1,7 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 pub mod array_graph_debug_utils;
+pub mod array_graph_derived_state;
 mod array_graph_metrics;
 pub mod array_graph_serializable;
 mod array_graph_stats;
@@ -15,7 +16,6 @@ mod to_map_graph;
 
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
-use std::sync::OnceLock;
 
 use anyhow::Context;
 use anyhow::Result;
@@ -39,6 +39,7 @@ use crate::traversal::apply_to_array_graph::apply_traversal_config_to_array_grap
 use crate::traversal::reachable_subgraph::get_reachable_subgraph_unconfigured;
 use crate::types::TierIDX;
 use crate::types::TierName;
+use crate::types::array_graph::array_graph_derived_state::ArrayGraphDerivedState;
 use crate::types::array_graph::array_graph_metrics::CombinedMetricsForNodes;
 use crate::types::array_graph::array_graph_metrics::get_metrics_sums_for_nodes;
 use crate::types::array_graph::array_graph_metrics::get_metrics_sums_tiered_for_nodes;
@@ -54,14 +55,8 @@ pub struct ArrayGraph {
     pub node_flags: Vec<NodeFlags>,
 
     pub edges_forward: OffsetGraph,
-    pub edges_reverse: OffsetGraph,
-    /// Dominator tree is pretty expensive to compute and we normally only
-    /// need it for when dominator tree views are enabled in the UI. We'll store
-    /// it in a OnceLock so that it is computed lazyly and only when needed.
-    pub edges_dom: OnceLock<OffsetGraph>,
 
-    pub sccs: OnceLock<Vec<Vec<NodeIDX>>>,
-    pub conjoint_cost: OnceLock<ConjointCost>,
+    pub derived_state: ArrayGraphDerivedState,
 
     pub edges_tagged: BTreeMap<NodeIDX, BTreeMap<Tag, BTreeSet<NodeIDX>>>,
     pub edges_dynamic: BTreeMap<NodeIDX, Vec<ArrayGraphDynamicEdge>>,
@@ -166,7 +161,8 @@ impl ArrayGraph {
     }
 
     pub fn edges_dom(&self) -> &OffsetGraph {
-        self.edges_dom
+        self.derived_state
+            .edges_dom
             .get_or_init(|| make_dominator_tree(&self.edges_forward, &self.determine_entrypoints()))
     }
 
@@ -175,12 +171,14 @@ impl ArrayGraph {
     }
 
     pub fn sccs(&self) -> &Vec<Vec<NodeIDX>> {
-        self.sccs
+        self.derived_state
+            .sccs
             .get_or_init(|| tarjan_strongly_connected_components::SCCBuilder::new(self).build())
     }
 
     pub fn conjoint_cost(&self) -> &ConjointCost {
-        self.conjoint_cost
+        self.derived_state
+            .conjoint_cost
             .get_or_init(|| ConjointCost::build(self).expect("Failed to build conjoint cost"))
     }
 
@@ -225,7 +223,7 @@ impl ArrayGraph {
     pub fn determine_entrypoints(&self) -> Vec<NodeIDX> {
         let mut entrypoints = Vec::new();
         for node_idx in self.node_idx_iter() {
-            if self.edges_reverse.edges(node_idx).is_empty() {
+            if self.derived_state.edges_reverse.edges(node_idx).is_empty() {
                 entrypoints.push(node_idx);
             }
         }
@@ -398,8 +396,8 @@ mod tests {
         assert_equal!(array_graph.edges_forward.node_count(), 6);
         assert_equal!(array_graph.edges_forward.edges_len(), 13);
 
-        assert_equal!(array_graph.edges_reverse.node_count(), 6);
-        assert_equal!(array_graph.edges_reverse.edges_len(), 13);
+        assert_equal!(array_graph.derived_state.edges_reverse.node_count(), 6);
+        assert_equal!(array_graph.derived_state.edges_reverse.edges_len(), 13);
 
         let children_names = |node_idx: u32| {
             array_graph

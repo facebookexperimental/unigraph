@@ -9,6 +9,7 @@ use crate::TraversalConfig;
 use crate::traversal::TraversalConfigIDX;
 use crate::traversal::tiered_traversal::TieredTraversalConfig;
 use crate::types::array_graph::NodeFlags;
+use crate::types::array_graph::array_graph_derived_state::ArrayGraphDerivedState;
 use crate::types::array_graph::offset_graph::EdgeFlags;
 use crate::types::array_graph::offset_graph::NonDirectedEdgeMetadata;
 
@@ -42,6 +43,7 @@ pub fn apply_traversal_config_to_array_graph(
     apply_node_reachability(ag, entry_points);
     ag.tiers = traversal_config.get_tiers();
     ag.traversal_config = Some(traversal_config);
+    ag.derived_state = ArrayGraphDerivedState::from_forward_edges(&ag.edges_forward);
     Ok(())
 }
 

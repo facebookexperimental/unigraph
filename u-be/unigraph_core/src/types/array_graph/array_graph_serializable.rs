@@ -2,7 +2,6 @@
 
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
-use std::sync::OnceLock;
 
 use anyhow::Context;
 use anyhow::Result;
@@ -24,6 +23,7 @@ use crate::types::MetricName;
 use crate::types::NodeIDX;
 use crate::types::Tag;
 use crate::types::TagSetName;
+use crate::types::array_graph::array_graph_derived_state::ArrayGraphDerivedState;
 
 /// A serializable representation of an array graph, which can be used for
 /// storing or transmitting the graph structure.
@@ -196,8 +196,6 @@ impl From<ArrayGraphSerializable> for ArrayGraph {
             edges_forward.edge_offsets.push(edges_forward.edges.len());
         }
 
-        let edges_reverse = edges_forward.reverse();
-
         // Node flags are initialized on traversal config application, so we'll just create an empty vector
         let node_flags = vec![NodeFlags::empty(); serializable.node_names_ordered.nodes_len()];
 
@@ -206,13 +204,12 @@ impl From<ArrayGraphSerializable> for ArrayGraph {
             .as_ref()
             .map_or_else(Default::default, |config| config.get_tiers());
 
+        let derived_state = ArrayGraphDerivedState::from_forward_edges(&edges_forward);
+
         ArrayGraph {
             node_names_ordered: serializable.node_names_ordered,
             edges_forward,
-            edges_reverse,
-            edges_dom: OnceLock::new(),
-            sccs: OnceLock::new(),
-            conjoint_cost: OnceLock::new(),
+            derived_state,
             edges_tagged: serializable.edges.tagged,
             edges_dynamic: serializable.edges.dynamic,
             metrics: serializable.node_metadata.metrics,

@@ -39,9 +39,8 @@ pub fn get_transitive_tiered_metric_values(
 
             for node_idx in edges.dfs_configured(&[node_idx]) {
                 let value = metrics[node_idx];
-                if let Some(tier_idx) = ag.node_tier_idx(node_idx) {
-                    tiered_metrics[tier_idx] += value;
-                }
+                let tier_idx = ag.try_node_tier_idx(node_idx)?;
+                tiered_metrics[tier_idx] += value;
             }
             // Make tiered metrics cumulative. meaning that every next tier has
             // its own value plus the previous tier's value combined
@@ -72,7 +71,7 @@ pub fn parents_len_configured(ag: &ArrayGraph, node_idx: NodeIDX) -> usize {
     }
 
     let mut count = 0;
-    for edge in ag.edges_reverse.edges(node_idx) {
+    for edge in ag.derived_state.edges_reverse.edges(node_idx) {
         if edge.flags.is_excluded() {
             continue;
         }

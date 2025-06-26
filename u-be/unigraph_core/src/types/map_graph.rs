@@ -20,6 +20,7 @@ use super::array_graph::node_names_ordered::NodeNamesOrderedBuilder;
 use super::array_graph::offset_graph::OffsetGraphBuilder;
 use crate::TraversalConfig;
 use crate::graph_settings::GraphSettings;
+use crate::types::array_graph::array_graph_derived_state::ArrayGraphDerivedState;
 
 type NodeName = String;
 
@@ -152,8 +153,7 @@ impl MapGraph {
             }
         }
 
-        let forward_edges = offset_graph_builder.build();
-        let reverse_edges = forward_edges.reverse();
+        let edges_forward = offset_graph_builder.build();
 
         let tiers = self
             .traversal_config
@@ -161,14 +161,13 @@ impl MapGraph {
             .map(|config| config.get_tiers())
             .unwrap_or_default();
 
+        let derived_state = ArrayGraphDerivedState::from_forward_edges(&edges_forward);
+
         Ok(ArrayGraph {
             node_names_ordered,
-            node_flags: vec![NodeFlags::empty(); forward_edges.node_count()],
-            edges_forward: forward_edges,
-            edges_reverse: reverse_edges,
-            edges_dom: OnceLock::new(),
-            sccs: OnceLock::new(),
-            conjoint_cost: OnceLock::new(),
+            node_flags: vec![NodeFlags::empty(); edges_forward.node_count()],
+            edges_forward,
+            derived_state,
             metrics: btreemap! {
                 "size".to_string() => sizes,
             },
