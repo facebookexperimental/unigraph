@@ -62,7 +62,7 @@ function defaultColumnDefinitions(
         metricName,
         nativeGraph,
         metricSettings,
-        graphSettings.ui_settings?.show_as_dominator_tree === true,
+        graphSettings.ui_settings?.graph_structure === "Dominator",
       );
       for (const { columnID, definition } of tieredTransitiveColumns) {
         columnDefinitions[columnID] = definition;
@@ -84,7 +84,7 @@ function defaultColumnDefinitions(
       columnDefinitions[transitiveCountColumnID] =
         transitiveCountColumnDefinition;
 
-      if (graphSettings.ui_settings?.show_as_dominator_tree === true) {
+      if (graphSettings.ui_settings?.graph_structure === "Dominator") {
         const [
           transitiveCountDominatedColumnID,
           transitiveCountDominatedColumnDefinition,

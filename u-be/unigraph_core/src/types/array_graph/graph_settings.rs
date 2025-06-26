@@ -151,17 +151,50 @@ pub struct ArrayGraphUISettings {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
-    pub show_as_a_flat_list: Option<bool>,
+    pub graph_structure: Option<ArrayGraphUISettingsGraphStructure>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
-    pub show_as_dominator_tree: Option<bool>,
+    pub entry_points: Option<ArrayGraphUISettingsTreeTableEntryPoints>,
 
-    /// If set, the graph will be rendered as a reverse graph
-    /// starting from provided node names.
+    /// Used in combination with `entry_points` settings.`
+    /// If entry_points is set to `Specified`, this value will be
+    /// used to determine entry points. This value is stored separately
+    /// so we can preserve selected entry points when switching
+    /// between different entry points settings.
+    /// E.g. if we're exploring `reverse from a specific node` and want
+    /// to hop into `show as flat list`, we want to preserve
+    /// the selected entry points, so when we switch back to "reverse"
+    /// we keep the same selected entry point
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
-    pub reverse_from: Option<Vec<NodeName>>,
+    pub entry_points_specified: Option<Vec<NodeName>>,
+}
+
+/// Enum that defines how the graph structure is displayed in the UI.
+/// e.g. which edges we will be following when visualizing the
+/// graph in the tree table.
+#[derive(serde::Serialize, serde::Deserialize, TS, Clone, Default)]
+#[ts(export)]
+pub enum ArrayGraphUISettingsGraphStructure {
+    // default, follow the forward edges
+    #[default]
+    Forward,
+    // follow the dominator tree edges
+    Dominator,
+}
+
+/// Will be used as entry points for the tree table.
+/// Otherwise we will use the determined entry points.
+/// This is needed for things like: show as flat list, show selected nodes,
+/// show reverse from a specific node, etc.
+#[derive(serde::Serialize, serde::Deserialize, TS, Clone, Default)]
+#[ts(export)]
+pub enum ArrayGraphUISettingsTreeTableEntryPoints {
+    #[default]
+    Determine,
+    AllReachable,
+    Specified,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, TS, Clone)]

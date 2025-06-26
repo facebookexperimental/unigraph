@@ -1,6 +1,7 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 import { useCallback, useMemo, useRef } from "react";
+import type { ArrayGraphUISettingsTreeTableEntryPoints } from "u-be/unigraph_core/bindings/ArrayGraphUISettingsTreeTableEntryPoints";
 import type { TraversalConfig } from "u-be/unigraph_core/bindings/TraversalConfig";
 import {
   from_zstd_base64_url_safe_no_pad,
@@ -30,6 +31,7 @@ import initWasm from "./init_wasm";
 import ColumnsPanel from "./sidebar_panels/ColumnsPanel";
 import GraphInfoPanel from "./sidebar_panels/GraphInfoPanel";
 import GraphTreeTable from "./tree_table/GraphTreeTable";
+import type { NodeIDX } from "./types";
 
 export type InputGraph =
   | {
@@ -153,18 +155,17 @@ function Page() {
   })();
 
   const roots = useMemo(() => {
-    if (selectedNodes.length > 0) {
-      return selectedNodes;
-    }
-    if (graphSettings.ui_settings?.show_as_a_flat_list) {
-      return nativeGraph.getAllReachableNodeIDXs().vec;
-    } else {
-      return nativeGraph.determineEntrypoints().vec;
-    }
+    return getRoots(
+      nativeGraph,
+      selectedNodes,
+      graphSettings.ui_settings?.entry_points_specified ?? null,
+      graphSettings.ui_settings?.entry_points,
+    );
   }, [
     nativeGraph,
     selectedNodes,
-    graphSettings.ui_settings?.show_as_a_flat_list,
+    graphSettings.ui_settings?.entry_points,
+    graphSettings.ui_settings?.entry_points_specified,
   ]);
 
   return (
@@ -192,5 +193,36 @@ function initNativeGraph(graph: InputGraph): NativeGraph {
       );
     case "MapGraphJSON":
       return NativeGraph.fromMapGraphJSON(graph.mapGraphJSON);
+  }
+}
+
+function getRoots(
+  nativeGraph: NativeGraph,
+  selectedNodes: NodeIDX[],
+  entryPointsSpecified: string[] | null,
+  entryPoints: ArrayGraphUISettingsTreeTableEntryPoints = "Determine",
+): readonly NodeIDX[] {
+  if (selectedNodes.length > 0) {
+    return selectedNodes;
+  }
+
+  switch (entryPoints) {
+    case "Determine":
+      return nativeGraph.determineEntrypoints().vec;
+    case "AllReachable":
+      return nativeGraph.getAllReachableNodeIDXs().vec;
+    case "Specified":
+      if (entryPointsSpecified == null || entryPointsSpecified.length === 0) {
+        return nativeGraph.determineEntrypoints().vec;
+      }
+      return entryPointsSpecified
+        .map((idx) => nativeGraph.getNodeIDXByNameLog(idx))
+        .filter((idx) => idx != null);
+    default: {
+      const exhaustiveCheck: never = entryPoints;
+      throw new Error(
+        `Unexpected entry points: ${JSON.stringify(exhaustiveCheck)}`,
+      );
+    }
   }
 }

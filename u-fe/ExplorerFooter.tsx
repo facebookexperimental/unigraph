@@ -179,13 +179,13 @@ function Toggles() {
       <UToggleButton
         tooltip="Show as a flat list"
         size="sm"
-        selected={graphSettings.ui_settings?.show_as_a_flat_list === true}
+        selected={graphSettings.ui_settings?.entry_points === "AllReachable"}
         onSelectedChange={(checked) => {
           setGraphSettings({
             ...graphSettings,
             ui_settings: {
               ...graphSettings.ui_settings,
-              show_as_a_flat_list: checked,
+              entry_points: checked ? "AllReachable" : "Determine",
             },
           });
         }}
@@ -195,13 +195,13 @@ function Toggles() {
       <UToggleButton
         tooltip="Show as a dominator tree"
         size="sm"
-        selected={graphSettings.ui_settings?.show_as_dominator_tree === true}
+        selected={graphSettings.ui_settings?.graph_structure === "Dominator"}
         onSelectedChange={(checked) => {
           setGraphSettings({
             ...graphSettings,
             ui_settings: {
               ...graphSettings.ui_settings,
-              show_as_dominator_tree: checked,
+              graph_structure: checked ? "Dominator" : "Forward",
             },
           });
         }}

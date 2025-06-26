@@ -52,13 +52,20 @@ export default function GraphTreeTable(props: {
 
   const getArrows = useCallback(
     (nodeIDX: NodeIDX) => {
-      if (settings.ui_settings?.show_as_dominator_tree) {
-        return nativeGraph.getArrowsDominator(nodeIDX);
-      } else {
-        return nativeGraph.getArrowsForward(nodeIDX);
+      const graphStructure = settings.ui_settings?.graph_structure ?? "Forward";
+
+      switch (graphStructure) {
+        case "Forward":
+          return nativeGraph.getArrowsForward(nodeIDX);
+        case "Dominator":
+          return nativeGraph.getArrowsDominator(nodeIDX);
+        default: {
+          const _exhaustiveCheck: never = graphStructure;
+          throw new Error(`Unknown column type: ${_exhaustiveCheck}`);
+        }
       }
     },
-    [nativeGraph, settings.ui_settings?.show_as_dominator_tree],
+    [nativeGraph, settings.ui_settings?.graph_structure],
   );
 
   return (
