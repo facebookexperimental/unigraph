@@ -1,5 +1,6 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
+mod array_graph_arrows;
 pub mod array_graph_debug_utils;
 pub mod array_graph_derived_state;
 mod array_graph_metrics;
@@ -21,8 +22,6 @@ use anyhow::Context;
 use anyhow::Result;
 use node_names_ordered::NodeNamesOrdered;
 use offset_graph::Edge;
-use offset_graph::EdgeFlags;
-use offset_graph::NonDirectedEdgeMetadata;
 use offset_graph::OffsetGraph;
 
 use super::DynamicBranchName;
@@ -39,6 +38,8 @@ use crate::traversal::apply_to_array_graph::apply_traversal_config_to_array_grap
 use crate::traversal::reachable_subgraph::get_reachable_subgraph_unconfigured;
 use crate::types::TierIDX;
 use crate::types::TierName;
+use crate::types::array_graph::array_graph_arrows::get_arrows_dominator;
+use crate::types::array_graph::array_graph_arrows::get_arrows_forward;
 use crate::types::array_graph::array_graph_derived_state::ArrayGraphDerivedState;
 use crate::types::array_graph::array_graph_metrics::CombinedMetricsForNodes;
 use crate::types::array_graph::array_graph_metrics::get_metrics_sums_for_nodes;
@@ -302,61 +303,11 @@ impl ArrayGraph {
     }
 
     pub fn get_arrows_forward(&self, node_idx: NodeIDX) -> Result<Vec<Arrow>> {
-        self.edges_forward
-            .edges_with_metadata(node_idx)
-            .map(|(edge, metadata)| {
-                let excluded = edge.flags.contains(EdgeFlags::EXCLUDED);
-                if !edge
-                    .flags
-                    .intersects(EdgeFlags::IS_TAGGED | EdgeFlags::IS_DYNAMIC)
-                {
-                    Ok(Arrow {
-                        tag: None,
-                        branch: None,
-                        properties: None,
-                        points_from: node_idx,
-                        points_to: edge.points_to,
-                        excluded,
-                    })
-                } else {
-                    match metadata {
-                        NonDirectedEdgeMetadata::Directed => {
-                            anyhow::bail!("Directed edge should not have metadata")
-                        }
-                        NonDirectedEdgeMetadata::Tagged { tag } => Ok(Arrow {
-                            tag: Some(tag.clone()),
-                            branch: None,
-                            properties: None,
-                            points_from: node_idx,
-                            points_to: edge.points_to,
-                            excluded,
-                        }),
-                        NonDirectedEdgeMetadata::Dynamic { properties, branch } => Ok(Arrow {
-                            tag: None,
-                            branch: Some(branch.clone()),
-                            properties: Some(properties.clone()),
-                            points_from: node_idx,
-                            points_to: edge.points_to,
-                            excluded,
-                        }),
-                    }
-                }
-            })
-            .collect()
+        get_arrows_forward(self, node_idx).context("arrows forward")
     }
 
     pub fn get_arrows_dominator(&self, node_idx: NodeIDX) -> Vec<Arrow> {
-        self.children_dominator(node_idx)
-            .iter()
-            .map(|edge| Arrow {
-                tag: None,
-                branch: None,
-                properties: None,
-                points_from: node_idx,
-                points_to: edge.points_to,
-                excluded: false,
-            })
-            .collect()
+        get_arrows_dominator(self, node_idx)
     }
 }
 
