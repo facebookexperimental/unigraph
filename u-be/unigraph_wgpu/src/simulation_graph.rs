@@ -47,7 +47,7 @@ struct SimulationNodeGPU {
     flags: NodeAttributesFlags,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone, Copy)]
 struct SimulationNodeLocal {
     velocity: Vec2,
     force: Vec2,
@@ -61,7 +61,14 @@ struct SimulationEdge {
 }
 
 impl SimulationGraph {
-    pub fn new(array_graph: &ArrayGraph, selected_metric: &Option<String>) -> Result<Self> {
+    pub fn new(
+        array_graph: &ArrayGraph,
+        selected_metric: &Option<String>,
+        // optionally pass the previous graph if we want to preserve
+        // existing node postitions/velocities/etc. Otherwise the simulation
+        // will reset from the start positions every time we modify the graph/traversal config.
+        previous_graph: Option<&SimulationGraph>,
+    ) -> Result<Self> {
         let mut nodes_local = vec![];
         let mut nodes_gpu = vec![];
         let mut edges = vec![];
@@ -72,10 +79,21 @@ impl SimulationGraph {
             if array_graph.node_flags[node_idx].is_node_unreachable() {
                 mappings.push(None);
             } else {
+                let (mut local, mut gpu) =
+                    (SimulationNodeLocal::default(), SimulationNodeGPU::random());
+
+                if let Some(prev) = &previous_graph {
+                    // If we have a previous graph, we can reuse the existing node data
+                    if let Some(prev_idx) = prev.remap_ctx.mappings[node_idx] {
+                        local = prev.nodes_local[prev_idx];
+                        gpu = prev.nodes_gpu[prev_idx];
+                    }
+                }
+
                 mappings.push(Some(nodes_gpu.len().into()));
                 original_positions.push(node_idx);
-                nodes_local.push(SimulationNodeLocal::default());
-                nodes_gpu.push(SimulationNodeGPU::random());
+                nodes_local.push(local);
+                nodes_gpu.push(gpu);
             }
         }
 

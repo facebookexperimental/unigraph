@@ -323,7 +323,7 @@ impl GraphState {
     pub fn new(array_graph: ArrayGraph) -> Result<Self> {
         // by default we'll grab whatever metric is first in the list
         let selected_metric = array_graph.metrics.keys().next().cloned();
-        let simulation_graph = SimulationGraph::new(&array_graph, &selected_metric)?;
+        let simulation_graph = SimulationGraph::new(&array_graph, &selected_metric, None)?;
 
         let result = Self {
             array_graph,
@@ -343,7 +343,11 @@ impl GraphState {
     }
 
     pub fn sync_node_attributes(&mut self) -> Result<()> {
-        self.simulation_graph = SimulationGraph::new(&self.array_graph, &self.selected_metric)?;
+        self.simulation_graph = SimulationGraph::new(
+            &self.array_graph,
+            &self.selected_metric,
+            Some(&self.simulation_graph),
+        )?;
         GlobalState::send_event_loop_event(UserEvent::GraphUpdated)
     }
 }
