@@ -80,8 +80,8 @@ pub fn get_arrows_reverse(ag: &ArrayGraph, node_idx: NodeIDX) -> Result<Vec<Arro
                     tag: None,
                     branch: None,
                     properties: None,
-                    points_from: edge.points_to,
-                    points_to: node_idx,
+                    points_from: node_idx,
+                    points_to: edge.points_to,
                     excluded,
                 })
             } else {
@@ -93,16 +93,16 @@ pub fn get_arrows_reverse(ag: &ArrayGraph, node_idx: NodeIDX) -> Result<Vec<Arro
                         tag: Some(tag.clone()),
                         branch: None,
                         properties: None,
-                        points_from: edge.points_to,
-                        points_to: node_idx,
+                        points_from: node_idx,
+                        points_to: edge.points_to,
                         excluded,
                     }),
                     NonDirectedEdgeMetadata::Dynamic { properties, branch } => Ok(Arrow {
                         tag: None,
                         branch: Some(branch.clone()),
                         properties: Some(properties.clone()),
-                        points_from: edge.points_to,
-                        points_to: node_idx,
+                        points_from: node_idx,
+                        points_to: edge.points_to,
                         excluded,
                     }),
                 }

@@ -59,6 +59,8 @@ export default function GraphTreeTable(props: {
           return nativeGraph.getArrowsForward(nodeIDX);
         case "Dominator":
           return nativeGraph.getArrowsDominator(nodeIDX);
+        case "Reverse":
+          return nativeGraph.getArrowsReverse(nodeIDX);
         default: {
           const _exhaustiveCheck: never = graphStructure;
           throw new Error(`Unknown column type: ${_exhaustiveCheck}`);

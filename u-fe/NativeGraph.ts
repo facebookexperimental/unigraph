@@ -11,6 +11,7 @@ import {
   get_array_graph_stats,
   get_arrows_dominator,
   get_arrows_forward,
+  get_arrows_reverse,
   get_combined_metrics_for_nodes,
   get_conjoint_cost,
   get_graph_node_count,
@@ -137,6 +138,12 @@ export default class NativeGraph {
 
   getArrowsDominator(nodeIDX: NodeIDX): Arrow[] {
     const arrowsJSON = get_arrows_dominator(nodeIDX);
+    const parsed = JSON.parse(arrowsJSON);
+    return parsed as Arrow[];
+  }
+
+  getArrowsReverse(nodeIDX: NodeIDX): Arrow[] {
+    const arrowsJSON = get_arrows_reverse(nodeIDX);
     const parsed = JSON.parse(arrowsJSON);
     return parsed as Arrow[];
   }

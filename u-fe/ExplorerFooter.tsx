@@ -1,4 +1,5 @@
 import {
+  ArrowLeftRight,
   ArrowUpNarrowWide,
   CircleDollarSign,
   Layers,
@@ -191,6 +192,22 @@ function Toggles() {
         }}
       >
         <List />
+      </UToggleButton>
+      <UToggleButton
+        tooltip="Show reverse graph (children to parents)"
+        size="sm"
+        selected={graphSettings.ui_settings?.graph_structure === "Reverse"}
+        onSelectedChange={(checked) => {
+          setGraphSettings({
+            ...graphSettings,
+            ui_settings: {
+              ...graphSettings.ui_settings,
+              graph_structure: checked ? "Reverse" : "Forward",
+            },
+          });
+        }}
+      >
+        <ArrowLeftRight />
       </UToggleButton>
       <UToggleButton
         tooltip="Show as a dominator tree"

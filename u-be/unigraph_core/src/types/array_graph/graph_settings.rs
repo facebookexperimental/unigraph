@@ -182,6 +182,8 @@ pub enum ArrayGraphUISettingsGraphStructure {
     Forward,
     // follow the dominator tree edges
     Dominator,
+    // follow the reverse edges (child -> parent)
+    Reverse,
 }
 
 /// Will be used as entry points for the tree table.
