@@ -242,7 +242,15 @@ impl ArrayGraph {
         metric_name: &str,
         dominated: bool,
     ) -> Result<BTreeMap<TierName, f32>> {
-        get_transitive_tiered_metric_values(self, node_idx, metric_name, dominated)
+        get_transitive_tiered_metric_values(self, node_idx, metric_name, dominated).with_context(
+            || {
+                format!(
+                    "ag:get_transitive_tiered_metric_values for node_idx: `{}`, node_name: `{}`",
+                    node_idx,
+                    self.idx_to_name(node_idx)
+                )
+            },
+        )
     }
 
     pub fn parents_len_configured(&self, node_idx: NodeIDX) -> usize {

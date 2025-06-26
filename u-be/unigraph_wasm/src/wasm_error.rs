@@ -1,5 +1,6 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
+use wasm_bindgen::JsError;
 use wasm_bindgen::JsValue;
 
 pub struct WasmJSError(String);
@@ -25,12 +26,12 @@ impl std::error::Error for WasmJSError {
 
 impl From<anyhow::Error> for WasmJSError {
     fn from(err: anyhow::Error) -> Self {
-        WasmJSError(format!("{:#?}", &err))
+        WasmJSError(format!("{:?}", &err))
     }
 }
 
 impl From<WasmJSError> for JsValue {
     fn from(error: WasmJSError) -> JsValue {
-        JsValue::from_str(&error.0)
+        JsError::new(&error.0).into()
     }
 }

@@ -6,6 +6,7 @@ import { TreeTable, TreeTablePathSelector } from "./TreeTable";
 import { useCallback, useEffect, useRef } from "react";
 import type { GraphTableSort } from "u-be/unigraph_core/bindings/GraphTableSort";
 import type NativeGraph from "../NativeGraph";
+import ErrorBoundary from "../components/ErrorBoundary";
 import { useGraphSettings } from "../context/GraphSettingsContext";
 import { useNativeGraph } from "../context/NativeGraphContext";
 import useGraphTreeTableColumns from "./useGraphTreeTableColumns";
@@ -61,17 +62,21 @@ export default function GraphTreeTable(props: {
   );
 
   return (
-    <TreeTable
-      roots={props.roots}
-      columnDefinitions={columnDefinitions}
-      getArrows={getArrows}
-      focusOnMount={props.focusOnMount}
-      onSortChange={onSortChange}
-      sortColumnID={settings?.ui_settings?.graph_table_sort?.column_id ?? null}
-      sortOrder={settings?.ui_settings?.graph_table_sort?.order ?? null}
-      pathSelector={pathSelector.current}
-      onSelectedNodeIDXPathChange={onSelectedNodeIDXPathChange}
-    />
+    <ErrorBoundary>
+      <TreeTable
+        roots={props.roots}
+        columnDefinitions={columnDefinitions}
+        getArrows={getArrows}
+        focusOnMount={props.focusOnMount}
+        onSortChange={onSortChange}
+        sortColumnID={
+          settings?.ui_settings?.graph_table_sort?.column_id ?? null
+        }
+        sortOrder={settings?.ui_settings?.graph_table_sort?.order ?? null}
+        pathSelector={pathSelector.current}
+        onSelectedNodeIDXPathChange={onSelectedNodeIDXPathChange}
+      />
+    </ErrorBoundary>
   );
 }
 

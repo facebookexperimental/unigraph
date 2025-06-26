@@ -225,7 +225,8 @@ pub fn get_transitive_tiered_metrics(
     for node_idx in node_idxs {
         let transitive_value = graph_state
             .array_graph
-            .get_transitive_tiered_metric_values(NodeIDX(node_idx), metric_name, dominated)?;
+            .get_transitive_tiered_metric_values(NodeIDX(node_idx), metric_name, dominated)
+            .context("get transitive tiered metrics")?;
         result.push(transitive_value);
     }
     Ok(serde_json::to_string(&result).context("Failed to serialize transitive tiered metrics")?)

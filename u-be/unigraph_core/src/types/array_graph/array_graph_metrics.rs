@@ -16,7 +16,7 @@ pub fn get_transitive_tiered_metric_values(
 ) -> Result<BTreeMap<TierName, f32>> {
     let mut result = BTreeMap::new();
 
-    if ag.is_node_unreachable(node_idx) {
+    if ag.is_node_unreachable(node_idx) || ag.node_tier_idx(node_idx).is_none() {
         return Ok(result);
     }
 
@@ -39,8 +39,9 @@ pub fn get_transitive_tiered_metric_values(
 
             for node_idx in edges.dfs_configured(&[node_idx]) {
                 let value = metrics[node_idx];
-                let tier_idx = ag.try_node_tier_idx(node_idx)?;
-                tiered_metrics[tier_idx] += value;
+                if let Some(tier_idx) = ag.node_tier_idx(node_idx) {
+                    tiered_metrics[tier_idx] += value;
+                }
             }
             // Make tiered metrics cumulative. meaning that every next tier has
             // its own value plus the previous tier's value combined
