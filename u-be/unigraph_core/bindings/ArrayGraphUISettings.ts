@@ -3,4 +3,16 @@ import type { ColumnSettings } from "./ColumnSettings";
 import type { GraphTableSort } from "./GraphTableSort";
 import type { SidebarPanel } from "./SidebarPanel";
 
-export type ArrayGraphUISettings = { selected_sidebar_panel?: SidebarPanel, graph_table_sort?: GraphTableSort, columns?: ColumnSettings, show_as_a_flat_list?: boolean, show_as_dominator_tree?: boolean, };
+export type ArrayGraphUISettings = { selected_sidebar_panel?: SidebarPanel, graph_table_sort?: GraphTableSort, columns?: ColumnSettings, show_as_a_flat_list?: boolean, show_as_dominator_tree?: boolean, 
+/**
+ * Global setting for showing transitive values.
+ * Individual columns will be enabled/disabled based on
+ * their individual settings.
+ */
+show_transitive?: boolean, 
+/**
+ * Global setting for showing conjoint cost values.
+ * Individual columns will be enabled/disabled based on
+ * their individual settings.
+ */
+show_conjoint?: boolean, };

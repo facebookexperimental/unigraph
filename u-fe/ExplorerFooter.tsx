@@ -3,7 +3,7 @@ import {
   CircleDollarSign,
   List,
   Network,
-  TreePine,
+  TreePalm,
 } from "lucide-react";
 import { useMemo } from "react";
 import type { CombinedMetricsForNodes } from "u-be/unigraph_core/bindings/CombinedMetricsForNodes";
@@ -109,18 +109,13 @@ function Toggles() {
       <UToggleButton
         tooltip="Show number of transitive children nodes"
         size="sm"
-        selected={
-          graphSettings.ui_settings?.columns?.show_transitive_count === true
-        }
+        selected={graphSettings.ui_settings?.show_transitive === true}
         onSelectedChange={(checked) => {
           setGraphSettings({
             ...graphSettings,
             ui_settings: {
               ...graphSettings.ui_settings,
-              columns: {
-                ...graphSettings.ui_settings?.columns,
-                show_transitive_count: checked,
-              },
+              show_transitive: checked,
             },
           });
         }}
@@ -130,18 +125,13 @@ function Toggles() {
       <UToggleButton
         tooltip="Show conjoint cost"
         size="sm"
-        selected={
-          graphSettings.ui_settings?.columns?.show_conjoint_count === true
-        }
+        selected={graphSettings.ui_settings?.show_conjoint === true}
         onSelectedChange={(checked) => {
           setGraphSettings({
             ...graphSettings,
             ui_settings: {
               ...graphSettings.ui_settings,
-              columns: {
-                ...graphSettings.ui_settings?.columns,
-                show_conjoint_count: checked,
-              },
+              show_conjoint: checked,
             },
           });
         }}
@@ -199,7 +189,7 @@ function Toggles() {
           });
         }}
       >
-        <TreePine />
+        <TreePalm />
       </UToggleButton>
     </div>
   );

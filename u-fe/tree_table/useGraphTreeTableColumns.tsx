@@ -29,6 +29,9 @@ function defaultColumnDefinitions(
   nativeGraph: NativeGraph,
   graphSettings: GraphSettings,
 ): ColumnDefinitions {
+  const showTransitive = graphSettings.ui_settings?.show_transitive ?? false;
+  const showConjoint = graphSettings.ui_settings?.show_conjoint ?? false;
+
   const columnDefinitions: { [name: string]: NonTreeColumnDefinition } = {};
   for (const metricName of nativeGraph.metricNames) {
     const metricSettings = graphSettings.metric_settings?.[metricName] ?? null;
@@ -43,7 +46,7 @@ function defaultColumnDefinitions(
       columnDefinitions[metricColumnID] = metricColumnDefinition;
     }
 
-    if (metricSettings?.column_hide_transitive !== true) {
+    if (showTransitive && metricSettings?.column_show_transitive !== "Never") {
       const [transitiveMetricColumnID, transitiveMetricColumnDefinition] =
         createTransitiveMetricColumn(metricName, nativeGraph, metricSettings);
 
@@ -68,21 +71,29 @@ function defaultColumnDefinitions(
       columnDefinitions[parentsCountColumnID] = parentsCountColumnDefinition;
     }
 
-    if (graphSettings.ui_settings?.columns?.show_transitive_count === true) {
+    if (
+      showTransitive &&
+      graphSettings.ui_settings?.columns?.show_transitive_count !== "Never"
+    ) {
       const [transitiveCountColumnID, transitiveCountColumnDefinition] =
         createTransitiveCountColumn(nativeGraph);
       columnDefinitions[transitiveCountColumnID] =
         transitiveCountColumnDefinition;
 
-      const [
-        transitiveCountDominatedColumnID,
-        transitiveCountDominatedColumnDefinition,
-      ] = createTransitiveCountDominatedColumn(nativeGraph);
-      columnDefinitions[transitiveCountDominatedColumnID] =
-        transitiveCountDominatedColumnDefinition;
+      if (graphSettings.ui_settings?.show_as_dominator_tree === true) {
+        const [
+          transitiveCountDominatedColumnID,
+          transitiveCountDominatedColumnDefinition,
+        ] = createTransitiveCountDominatedColumn(nativeGraph);
+        columnDefinitions[transitiveCountDominatedColumnID] =
+          transitiveCountDominatedColumnDefinition;
+      }
     }
 
-    if (graphSettings.ui_settings?.columns?.show_conjoint_count === true) {
+    if (
+      showConjoint &&
+      graphSettings.ui_settings?.columns?.show_conjoint_count !== "Never"
+    ) {
       const [conjointCountColumnID, conjointCountColumnDefinition] =
         createConjointCountColumn(nativeGraph);
       columnDefinitions[conjointCountColumnID] = conjointCountColumnDefinition;

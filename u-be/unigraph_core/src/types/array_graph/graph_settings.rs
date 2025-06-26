@@ -34,10 +34,12 @@ pub struct MetricSettings {
     #[ts(optional)]
     /// Hide table column that displays the metric itself.
     pub column_hide_self: Option<bool>,
+
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
-    /// hide the column that displays transitive value for the metric.
-    pub column_hide_transitive: Option<bool>,
+    /// Column that displays transitive value for the metric.
+    pub column_show_transitive: Option<IndividualOptionEnabled>,
+
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     /// Hide columns that display transitive tiered value for provided tier names.
@@ -45,11 +47,11 @@ pub struct MetricSettings {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
-    pub show_conjoint_self: Option<bool>,
+    pub show_conjoint_self: Option<IndividualOptionEnabled>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
-    pub show_conjoint_tiered: Option<BTreeSet<TierName>>,
+    pub show_conjoint_tiered: Option<BTreeMap<TierName, IndividualOptionEnabled>>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, TS, Clone)]
@@ -155,6 +157,20 @@ pub struct ArrayGraphUISettings {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub show_as_dominator_tree: Option<bool>,
+
+    /// Global setting for showing transitive values.
+    /// Individual columns will be enabled/disabled based on
+    /// their individual settings.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub show_transitive: Option<bool>,
+
+    /// Global setting for showing conjoint cost values.
+    /// Individual columns will be enabled/disabled based on
+    /// their individual settings.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub show_conjoint: Option<bool>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, TS, Clone)]
@@ -163,10 +179,29 @@ pub struct ColumnSettings {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     show_parents_count: Option<bool>,
+
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
-    show_transitive_count: Option<bool>,
+    show_transitive_count: Option<IndividualOptionEnabled>,
 
     #[ts(optional)]
-    show_conjoint_count: Option<bool>,
+    show_conjoint_count: Option<IndividualOptionEnabled>,
+}
+
+/// Enum that defines whether an individual option is enabled or not.
+/// This is for cases where we have a global settings that can show/hide certain
+/// things plus individual settings for the same thing on each metric/tier/etc.
+/// E.g. we have dominator tree and dominated size columns we want to display.
+/// We have a single "show dominator tree" button that we can enable/disable.
+/// But normally that would add multiple dominated size/count columns. For graphs
+/// with many tiers/metrics we're talkinb about 10+ columns, while the user is likely
+/// to only care about one or two.
+/// For that reason we can add these settings to individual columns that can make them
+/// be disabled even when the global setting is enabled.
+#[derive(serde::Serialize, serde::Deserialize, TS, Clone, Copy, Default)]
+#[ts(export)]
+pub enum IndividualOptionEnabled {
+    #[default]
+    WhenEnabledGlobally,
+    Never,
 }

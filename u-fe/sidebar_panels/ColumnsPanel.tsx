@@ -90,7 +90,7 @@ function ColumnCardContent({
       />
       <USwitch
         label="Show Transitive"
-        checked={metricSettings.column_hide_transitive !== true}
+        checked={metricSettings.column_show_transitive !== "Never"}
         onCheckedChange={(checked) => {
           setGraphSettings({
             ...graphSettings,
@@ -98,7 +98,9 @@ function ColumnCardContent({
               ...graphSettings.metric_settings,
               [metricName]: {
                 ...metricSettings,
-                column_hide_transitive: !checked,
+                column_show_transitive: checked
+                  ? "WhenEnabledGlobally"
+                  : "Never",
               },
             },
           });
