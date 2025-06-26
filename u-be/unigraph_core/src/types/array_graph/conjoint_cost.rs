@@ -151,7 +151,7 @@ impl<'a> ConjointCostBuilder<'a> {
                 self.set_scc_value_for_metric(metric_name, scc_idx, current_v + node_v)?;
 
                 if !self.ag.tiers.is_empty() {
-                    let tier_idx = self.ag.node_flags[node_idx].tier_idx();
+                    let tier_idx = self.ag.try_node_tier_idx(node_idx)?;
                     let current_v_tiered =
                         self.get_scc_value_for_tiered_metric(metric_name, tier_idx, scc_idx)?;
                     self.set_scc_value_for_tiered_metric(

@@ -3,6 +3,7 @@
 pub(crate) mod array_graph;
 pub(crate) mod map_graph;
 
+use std::fmt::Display;
 use std::ops::Add;
 use std::ops::Index;
 use std::ops::IndexMut;
@@ -40,6 +41,12 @@ pub type TierIDX = usize;
 #[serde(transparent)]
 #[repr(transparent)]
 pub struct NodeIDX(pub u32);
+
+impl Display for NodeIDX {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
 
 impl<T> Index<NodeIDX> for Vec<T> {
     type Output = T;

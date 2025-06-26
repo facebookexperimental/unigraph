@@ -39,7 +39,7 @@ pub fn get_transitive_tiered_metric_values(
 
             for node_idx in edges.dfs_configured(&[node_idx]) {
                 let value = metrics[node_idx];
-                let tier_idx = ag.node_flags[node_idx].tier_idx();
+                let tier_idx = ag.try_node_tier_idx(node_idx)?;
                 tiered_metrics[tier_idx] += value;
             }
             // Make tiered metrics cumulative. meaning that every next tier has
@@ -150,7 +150,7 @@ pub fn get_metrics_sums_tiered_for_nodes(
                     continue;
                 }
 
-                let tier_idx = ag.node_flags[*node_idx].tier_idx();
+                let tier_idx = ag.try_node_tier_idx(*node_idx)?;
                 let value = metrics[*node_idx];
                 tiered_metrics[tier_idx] += value;
             }

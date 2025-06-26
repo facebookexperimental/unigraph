@@ -93,21 +93,18 @@ bitflags::bitflags! {
 }
 
 impl NodeFlags {
-    pub fn tier_idx(self) -> usize {
+    pub fn tier_idx(self) -> Option<usize> {
         let tier_bits = self.intersection(NodeFlags::ALL_TIERS);
         match tier_bits {
-            NodeFlags::TIER_0 => 0,
-            NodeFlags::TIER_1 => 1,
-            NodeFlags::TIER_2 => 2,
-            NodeFlags::TIER_3 => 3,
-            NodeFlags::TIER_4 => 4,
-            NodeFlags::TIER_5 => 5,
-            NodeFlags::TIER_6 => 6,
-            NodeFlags::TIER_7 => 7,
-            _ => panic!(
-                "NodeFlags does not represent a tier {:?}",
-                self.to_binary_string()
-            ),
+            NodeFlags::TIER_0 => Some(0),
+            NodeFlags::TIER_1 => Some(1),
+            NodeFlags::TIER_2 => Some(2),
+            NodeFlags::TIER_3 => Some(3),
+            NodeFlags::TIER_4 => Some(4),
+            NodeFlags::TIER_5 => Some(5),
+            NodeFlags::TIER_6 => Some(6),
+            NodeFlags::TIER_7 => Some(7),
+            _ => None,
         }
     }
 
@@ -281,6 +278,20 @@ impl ArrayGraph {
         Ok(CombinedMetricsForNodes {
             metrics: get_metrics_sums_for_nodes(self, node_idxs)?,
             tiered_metrics: get_metrics_sums_tiered_for_nodes(self, node_idxs)?,
+        })
+    }
+
+    pub fn node_tier_idx(&self, node_idx: NodeIDX) -> Option<usize> {
+        self.node_flags[node_idx].tier_idx()
+    }
+
+    pub fn try_node_tier_idx(&self, node_idx: NodeIDX) -> Result<usize> {
+        self.node_flags[node_idx].tier_idx().with_context(|| {
+            format!(
+                "Node does not have a tier assigned. Node name: `{}`, node_idx: `{}`",
+                self.idx_to_name(node_idx),
+                node_idx
+            )
         })
     }
 
