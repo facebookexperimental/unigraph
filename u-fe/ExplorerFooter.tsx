@@ -19,6 +19,7 @@ import { Button } from "./components/ui/button";
 import { useGraphSettings } from "./context/GraphSettingsContext";
 import { useNativeGraph } from "./context/NativeGraphContext";
 import { useSelectedNodes } from "./context/SelectedNodesContext";
+import { useSelectedNodeIDX } from "./context/SelectedPathContext";
 import { useTVC } from "./context/TraversalConfigContext";
 import formatMetric from "./lib/formatMetric";
 import formatNumber from "./lib/formatNumber";
@@ -114,6 +115,11 @@ function Toggles() {
   const [graphSettings, setGraphSettings] = useGraphSettings();
   const nativeGraph = useNativeGraph();
   const hasTiers = nativeGraph.stats().tier_names.length > 0;
+  const selectedNodeIDX = useSelectedNodeIDX();
+
+  const entry_points = graphSettings.ui_settings?.entry_points ?? "Determine";
+  const graph_structure =
+    graphSettings.ui_settings?.graph_structure ?? "Forward";
 
   return (
     <div className="flex gap-4 items-center m-4">
@@ -180,7 +186,7 @@ function Toggles() {
       <UToggleButton
         tooltip="Show as a flat list"
         size="sm"
-        selected={graphSettings.ui_settings?.entry_points === "AllReachable"}
+        selected={entry_points === "AllReachable"}
         onSelectedChange={(checked) => {
           setGraphSettings({
             ...graphSettings,
@@ -196,13 +202,47 @@ function Toggles() {
       <UToggleButton
         tooltip="Show reverse graph (children to parents)"
         size="sm"
-        selected={graphSettings.ui_settings?.graph_structure === "Reverse"}
+        selected={graph_structure === "Reverse"}
         onSelectedChange={(checked) => {
+          const [newEntryPoints, entry_points_specified] = (() => {
+            if (checked) {
+              if (entry_points === "AllReachable") {
+                /// if we're in a flat list we don't want to change entry points
+                /// Our dependency will already be there in the root
+                return ["AllReachable" as const, undefined];
+              } else {
+                if (selectedNodeIDX == null) {
+                  // if we don't have a selected node, we want to show all reachable nodes
+                  return ["AllReachable" as const, undefined];
+                }
+
+                // if we have a selected node and we are turning the reverse graph on outside
+                // of a flat list we will make that selected node the entry point for the tree
+                // table.
+                return [
+                  "Specified" as const,
+                  [nativeGraph.getNodeName(selectedNodeIDX)],
+                ];
+              }
+            } else {
+              if (entry_points === "AllReachable") {
+                /// if we're in a flat list we should stay in a flat list
+                return ["AllReachable" as const, undefined];
+              } else {
+                // if we're unchecking the reverse graph, we will switch back to
+                // the default forward graph.
+                return ["Determine" as const, undefined];
+              }
+            }
+          })();
+
           setGraphSettings({
             ...graphSettings,
             ui_settings: {
               ...graphSettings.ui_settings,
               graph_structure: checked ? "Reverse" : "Forward",
+              entry_points: newEntryPoints,
+              entry_points_specified,
             },
           });
         }}
@@ -212,7 +252,7 @@ function Toggles() {
       <UToggleButton
         tooltip="Show as a dominator tree"
         size="sm"
-        selected={graphSettings.ui_settings?.graph_structure === "Dominator"}
+        selected={graph_structure === "Dominator"}
         onSelectedChange={(checked) => {
           setGraphSettings({
             ...graphSettings,

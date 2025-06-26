@@ -117,7 +117,7 @@ export function Explorer({
               setSettings={setSettingsCb}
             >
               <SelectedPathContextProvider syncToURL={true}>
-                <div className="h-screen flex flex-col unigraph-explorer">
+                <div className="h-screen flex flex-col unigraph-explorer bg-background">
                   <Page />
                 </div>
               </SelectedPathContextProvider>
@@ -218,6 +218,7 @@ function getRoots(
       if (entryPointsSpecified == null || entryPointsSpecified.length === 0) {
         return nativeGraph.determineEntrypoints().vec;
       }
+
       return entryPointsSpecified
         .map((idx) => nativeGraph.getNodeIDXByNameLog(idx))
         .filter((idx) => idx != null);

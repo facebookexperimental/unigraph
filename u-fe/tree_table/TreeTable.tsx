@@ -14,7 +14,6 @@ import type { ArrayGraphUISettingsTreeTableEntryPoints } from "u-be/unigraph_cor
 import type { GraphStructure } from "u-be/unigraph_core/bindings/GraphStructure";
 import type { GraphTableSort } from "u-be/unigraph_core/bindings/GraphTableSort";
 import type { SortOrder } from "u-be/unigraph_core/bindings/SortOrder";
-import { node_idx_to_name } from "../../.build/wasm/unigraph_wasm";
 import type { Arrow } from "../../u-be/unigraph_core/bindings/Arrow";
 import { useSelectedPath } from "../context/SelectedPathContext";
 import type { NodeIDX } from "../types";
@@ -749,12 +748,6 @@ class TreeTableCtx {
       this.treeTableGraph.roots,
       selectedNodeIDX,
     );
-
-    console.log({
-      shortestPath,
-      from: this.treeTableGraph.roots,
-      to: selectedNodeIDX,
-    });
 
     if (shortestPath != null && shortestPath.length > 0) {
       // If we found a shortest path we can navigate to it
