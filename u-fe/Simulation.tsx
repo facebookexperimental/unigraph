@@ -1,10 +1,9 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 import { Play, Settings2, Split } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   get_selected_node_idxs,
-  get_simulation_params,
   set_event_loop_active,
   set_simulation_params,
 } from "../.build/wasm/unigraph_wasm.js";
@@ -15,17 +14,14 @@ import { Button } from "./components/ui/button.js";
 import { Label } from "./components/ui/label";
 import { Slider } from "./components/ui/slider";
 import { Toggle } from "./components/ui/toggle";
-import type { NodeIDX } from "./types";
+import { useSelectedNodes } from "./context/SelectedNodesContext.js";
+import { useSimulationParams } from "./context/SimulationParamsContext.js";
 
-export default function Simulation(props: {
-  setSelectedNodeIDXs: (idxs: NodeIDX[]) => void;
-}) {
-  const defaultSimulationParams = useDefaultSimulationParams();
+export default function Simulation() {
   const [paramsVisible, setParamsVisible] = useState(false);
+  const [_selectedNodes, setSelectedNodes] = useSelectedNodes();
 
-  const [simulationParams, setSimulationParams] = useState<SimulationParams>(
-    defaultSimulationParams,
-  );
+  const [simulationParams, setSimulationParams] = useSimulationParams();
 
   useEffect(() => {
     set_simulation_params(JSON.stringify(simulationParams));
@@ -38,10 +34,6 @@ export default function Simulation(props: {
     // When the component unmounts we can stop the loop and let it
     // chill.
     return () => set_event_loop_active(false);
-  }, []);
-
-  const setSimulationParamsCb = useCallback((params: SimulationParams) => {
-    setSimulationParams(params);
   }, []);
 
   const onCanvasClick = useCallback(
@@ -57,7 +49,7 @@ export default function Simulation(props: {
         },
       });
     },
-    [simulationParams],
+    [simulationParams, setSimulationParams],
   );
 
   const onCanvasSelect = useCallback(
@@ -79,7 +71,7 @@ export default function Simulation(props: {
         selection,
       });
     },
-    [simulationParams],
+    [simulationParams, setSimulationParams],
   );
 
   const onCanvasSelectComplete = useCallback(
@@ -99,9 +91,9 @@ export default function Simulation(props: {
         selection,
       });
       const selectedNodeIDXs = get_selected_node_idxs();
-      props.setSelectedNodeIDXs(Array.from(selectedNodeIDXs));
+      setSelectedNodes(Array.from(selectedNodeIDXs));
     },
-    [simulationParams, props.setSelectedNodeIDXs],
+    [simulationParams, setSelectedNodes, setSimulationParams],
   );
 
   return (
@@ -109,7 +101,7 @@ export default function Simulation(props: {
       {paramsVisible && (
         <ParamsPanel
           simulationParams={simulationParams}
-          setSimulationParams={setSimulationParamsCb}
+          setSimulationParams={setSimulationParams}
         />
       )}
 
@@ -364,24 +356,4 @@ function getClickPoint(
   const wgpuY = (y / rect.height) * -2 + 1;
 
   return { x: wgpuX, y: wgpuY };
-}
-
-function useDefaultSimulationParams(): SimulationParams {
-  return useMemo(() => {
-    // wasm sets some set of defaults for simulation params, we'll use those
-    // as a starting point in JS
-    const defaultSimulationParamsJSON = get_simulation_params();
-    const defaultSimulationParams: SimulationParams = JSON.parse(
-      defaultSimulationParamsJSON,
-    );
-    const simulationParams: SimulationParams = {
-      ...defaultSimulationParams,
-      colors: {
-        node_main: [1.0, 0.1254902, 0.3372549],
-        node_selected: [0.048, 0.0091, 0.4654],
-        background: [0.04529412, 0.04137255, 0.04137255],
-      },
-    };
-    return simulationParams;
-  }, []);
 }

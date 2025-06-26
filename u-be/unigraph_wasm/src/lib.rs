@@ -143,6 +143,10 @@ pub fn get_simulation_params() -> Result<String, WasmJSError> {
     Ok(GlobalState::simulation_params().to_json()?)
 }
 
+/// This function is mutating the state even though it's a getter.
+/// We do this because we can't really affort performing the selection
+/// of nodes on every small change in the selection frames cause it
+/// involves iterationg though all nodes.
 #[wasm_bindgen]
 pub fn get_selected_node_idxs() -> Result<Vec<u32>, WasmJSError> {
     Ok(unigraph_wgpu::get_selected_node_idxs()?

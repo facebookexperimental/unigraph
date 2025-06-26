@@ -6,53 +6,46 @@ import {
   Network,
   Tally5,
   TreePalm,
+  X,
 } from "lucide-react";
 import { useMemo } from "react";
-import type { CombinedMetricsForNodes } from "u-be/unigraph_core/bindings/CombinedMetricsForNodes";
 import Metric from "./components/Metric";
 import UHoverCard from "./components/UHoverCard";
 import UToggleButton from "./components/UToggleButton";
 
+import UTooltip from "./components/UTooltip";
+import { Button } from "./components/ui/button";
 import { useGraphSettings } from "./context/GraphSettingsContext";
 import { useNativeGraph } from "./context/NativeGraphContext";
+import { useSelectedNodes } from "./context/SelectedNodesContext";
 import { useTVC } from "./context/TraversalConfigContext";
 import formatMetric from "./lib/formatMetric";
 import formatNumber from "./lib/formatNumber";
-import type { NodeIDX } from "./types";
 
-export default function ExplorerFooter({
-  selectedNodeIDXs,
-}: { selectedNodeIDXs: NodeIDX[] }) {
-  const nativeGraph = useNativeGraph();
-
-  const combinedMetrics = useMemo(() => {
-    return nativeGraph.getCombinedMetrics(selectedNodeIDXs);
-  }, [nativeGraph, selectedNodeIDXs]);
-
+export default function ExplorerFooter() {
   return (
     <div className="flex h-16 bg-card border-tw-full justify-between">
       <Toggles />
-      <SelectedNodesMetrics
-        combinedMetrics={combinedMetrics}
-        selectedNodeIDXs={selectedNodeIDXs}
-      />
+      <SelectedNodesMetrics />
     </div>
   );
 }
 
-function SelectedNodesMetrics({
-  selectedNodeIDXs,
-  combinedMetrics,
-}: {
-  selectedNodeIDXs: NodeIDX[];
-  combinedMetrics: CombinedMetricsForNodes | null;
-}) {
+function SelectedNodesMetrics() {
   const [graphSettings] = useGraphSettings();
+  const [selectedNodes, _setSelectedNodes, resetSelectedNodes] =
+    useSelectedNodes();
+  const nativeGraph = useNativeGraph();
+
+  const combinedMetrics = useMemo(() => {
+    return nativeGraph.getCombinedMetrics(selectedNodes);
+  }, [nativeGraph, selectedNodes]);
+
   if (combinedMetrics == null) {
     return null;
   }
 
-  if (selectedNodeIDXs.length === 0) {
+  if (selectedNodes.length === 0) {
     return null;
   }
 
@@ -95,9 +88,19 @@ function SelectedNodesMetrics({
 
   return (
     <div className="flex flex-wrap gap-4 mx-4 h-full items-center">
+      <UTooltip tooltip="Clear node selection">
+        <Button
+          className="h-8 cursor-pointer"
+          variant="ghost"
+          size="icon"
+          onClick={resetSelectedNodes}
+        >
+          <X />
+        </Button>
+      </UTooltip>
       <Metric
         label="Selected"
-        value={formatNumber(selectedNodeIDXs.length)}
+        value={formatNumber(selectedNodes.length)}
         metricSize="text-sm"
       />
       {metrics}

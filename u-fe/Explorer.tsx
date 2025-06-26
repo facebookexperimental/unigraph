@@ -1,6 +1,6 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import type { TraversalConfig } from "u-be/unigraph_core/bindings/TraversalConfig";
 import {
   from_zstd_base64_url_safe_no_pad,
@@ -20,12 +20,16 @@ import {
   NativeGraphContextProvider,
   useNativeGraph,
 } from "./context/NativeGraphContext";
+import {
+  SelectedNodesContextProvider,
+  useSelectedNodes,
+} from "./context/SelectedNodesContext";
+import { SimulationParamsContextProvider } from "./context/SimulationParamsContext";
 import { TraversalConfigContextProvider } from "./context/TraversalConfigContext";
 import initWasm from "./init_wasm";
 import ColumnsPanel from "./sidebar_panels/ColumnsPanel";
 import GraphInfoPanel from "./sidebar_panels/GraphInfoPanel";
 import GraphTreeTable from "./tree_table/GraphTreeTable";
-import type { NodeIDX } from "./types";
 
 export type InputGraph =
   | {
@@ -103,39 +107,30 @@ export function Explorer({
   return (
     <NativeGraphContextProvider nativeGraph={nativeGraph}>
       <TraversalConfigContextProvider tvc={tvc} setTvc={setTvcCb}>
-        <GraphSettingsContextProvider
-          settings={settings}
-          setSettings={setSettingsCb}
-        >
-          <div className="h-screen flex flex-col unigraph-explorer">
-            <Page />
-          </div>
-        </GraphSettingsContextProvider>
+        <SimulationParamsContextProvider>
+          <SelectedNodesContextProvider>
+            <GraphSettingsContextProvider
+              settings={settings}
+              setSettings={setSettingsCb}
+            >
+              <div className="h-screen flex flex-col unigraph-explorer">
+                <Page />
+              </div>
+            </GraphSettingsContextProvider>
+          </SelectedNodesContextProvider>
+        </SimulationParamsContextProvider>
       </TraversalConfigContextProvider>
     </NativeGraphContextProvider>
   );
 }
 
 function Page() {
-  const [selectedNodeIDXs, setSelectedNodeIDXs] = useState<NodeIDX[]>([]);
   const nativeGraph = useNativeGraph();
   const [graphSettings] = useGraphSettings();
   const [settings] = useGraphSettings();
+  const [selectedNodes] = useSelectedNodes();
 
   const containerRef = useRef<HTMLDivElement>(null);
-
-  const setSelectedNodeIDXsCb = useCallback(
-    (idxs: NodeIDX[]) => {
-      // if updating from an emmpty array to empty array we don't
-      // want to trigger a rerender
-      if (idxs.length === 0 && selectedNodeIDXs.length === 0) {
-        return;
-      }
-
-      setSelectedNodeIDXs(idxs);
-    },
-    [selectedNodeIDXs],
-  );
 
   const selectedSidebarPanel =
     settings.ui_settings?.selected_sidebar_panel ?? "Simulation";
@@ -143,7 +138,7 @@ function Page() {
   const panelTab: React.ReactNode = (() => {
     switch (selectedSidebarPanel) {
       case "Simulation":
-        return <Simulation setSelectedNodeIDXs={setSelectedNodeIDXsCb} />;
+        return <Simulation />;
       case "None":
         return null;
       case "GraphInfo":
@@ -158,8 +153,8 @@ function Page() {
   })();
 
   const roots = useMemo(() => {
-    if (selectedNodeIDXs.length > 0) {
-      return selectedNodeIDXs;
+    if (selectedNodes.length > 0) {
+      return selectedNodes;
     }
     if (graphSettings.ui_settings?.show_as_a_flat_list) {
       return nativeGraph.getAllReachableNodeIDXs().vec;
@@ -168,7 +163,7 @@ function Page() {
     }
   }, [
     nativeGraph,
-    selectedNodeIDXs,
+    selectedNodes,
     graphSettings.ui_settings?.show_as_a_flat_list,
   ]);
 
@@ -182,7 +177,7 @@ function Page() {
         {panelTab}
         <div className="flex flex-col h-full grow-1">
           <GraphTreeTable focusOnMount={true} roots={roots} />
-          <ExplorerFooter selectedNodeIDXs={selectedNodeIDXs} />
+          <ExplorerFooter />
         </div>
       </div>
     </PortalContextProvider>

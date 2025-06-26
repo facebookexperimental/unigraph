@@ -309,7 +309,14 @@ impl SimulationGraph {
         let aspect_ratio = GlobalState::surface_size().aspect_ratio();
 
         match selection.selection_type {
-            SelectionType::None => Ok(vec![]),
+            SelectionType::None => {
+                for sim_node_idx in self.node_idx_iter() {
+                    self.nodes_gpu[sim_node_idx]
+                        .flags
+                        .remove(NodeAttributesFlags::SELECTED);
+                }
+                Ok(vec![])
+            }
             SelectionType::Box => {
                 let mut selected_nodes = vec![];
                 for sim_node_idx in self.node_idx_iter() {
