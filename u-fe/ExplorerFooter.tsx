@@ -183,6 +183,32 @@ function Toggles() {
       >
         <ArrowUpNarrowWide />
       </UToggleButton>
+
+      {hasTiers && (
+        <UHoverCard content={<TiersHoverCardContent />}>
+          <UToggleButton
+            size="sm"
+            selected={graphSettings.ui_settings?.columns?.hide_tiered !== true}
+            onSelectedChange={(checked) => {
+              setGraphSettings({
+                ...graphSettings,
+                ui_settings: {
+                  ...graphSettings.ui_settings,
+                  columns: {
+                    ...graphSettings.ui_settings?.columns,
+                    hide_tiered: !checked,
+                  },
+                },
+              });
+            }}
+          >
+            <Layers />
+          </UToggleButton>
+        </UHoverCard>
+      )}
+
+      <div className="border-l border border-accent h-full w-0" />
+
       <UToggleButton
         tooltip="Show as a flat list"
         size="sm"
@@ -265,28 +291,6 @@ function Toggles() {
       >
         <TreePalm />
       </UToggleButton>
-      {hasTiers && (
-        <UHoverCard content={<TiersHoverCardContent />}>
-          <UToggleButton
-            size="sm"
-            selected={graphSettings.ui_settings?.columns?.hide_tiered !== true}
-            onSelectedChange={(checked) => {
-              setGraphSettings({
-                ...graphSettings,
-                ui_settings: {
-                  ...graphSettings.ui_settings,
-                  columns: {
-                    ...graphSettings.ui_settings?.columns,
-                    hide_tiered: !checked,
-                  },
-                },
-              });
-            }}
-          >
-            <Layers />
-          </UToggleButton>
-        </UHoverCard>
-      )}
     </div>
   );
 }
