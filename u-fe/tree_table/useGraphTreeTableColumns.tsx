@@ -15,6 +15,7 @@ import type {
   NumericValueColumnDefinition,
   TreeColumnDefinition,
 } from "./TreeTable";
+import type { Row } from "./TreeTableRows";
 
 export default function useGraphTreeTableColumns(): ColumnDefinitions {
   const nativeGraph = useNativeGraph();
@@ -123,7 +124,9 @@ function defaultColumnDefinitions(
   columnDefinitions.context_menu = {
     t: "non_sortable_column",
     label: "More Menu",
-    renderer: (arrow: Arrow) => <ContextMenuCell arrow={arrow} />,
+    renderer: (arrow: Arrow, row: Readonly<Row>) => (
+      <ContextMenuCell arrow={arrow} row={row} />
+    ),
     isHidden: false,
     isLabelHidden: true,
   };

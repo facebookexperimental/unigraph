@@ -2,39 +2,32 @@
 
 import { Ellipsis } from "lucide-react";
 import type { Arrow } from "u-be/unigraph_core/bindings/Arrow";
-import type NativeGraph from "../NativeGraph";
+import { canArrowBeForced, canNodeBeForceExcluded } from "../ArrowUtils";
 import { UDropdownMenu } from "../components/UDropdownMenu";
 import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuShortcut,
 } from "../components/ui/dropdown-menu";
-import { useNativeGraph } from "../context/NativeGraphContext";
-import { useTVC } from "../context/TraversalConfigContext";
+import { useSelectedPath } from "../context/SelectedPathContext";
+import {
+  useForceEdge,
+  useForceExcludeNode,
+} from "../context/TraversalConfigContext";
+import { type Row, pathToRow } from "./TreeTableRows";
 
 export default function ContextMenuCell(props: {
   arrow: Arrow;
+  row: Row;
 }) {
-  const nativeGraph = useNativeGraph();
   return (
-    <UDropdownMenu
-      content={<Content arrow={props.arrow} nativeGraph={nativeGraph} />}
-    >
+    <UDropdownMenu content={<Content arrow={props.arrow} row={props.row} />}>
       <Ellipsis className="cursor-pointer hover:bg-primary rounded transition-all p-1" />
     </UDropdownMenu>
   );
 }
 
-function Content({
-  arrow,
-  nativeGraph,
-}: { arrow: Arrow; nativeGraph: NativeGraph }) {
-  const { tvc, setTvc } = useTVC();
-
-  const disableForce = nativeGraph
-    .determineEntrypoints()
-    .set.has(arrow.points_to);
-
+function Content({ arrow, row }: { arrow: Arrow; row: Readonly<Row> }) {
   return (
     <DropdownMenuContent
       className="w-56"
@@ -45,53 +38,65 @@ function Content({
         e.preventDefault();
       }}
     >
-      <DropdownMenuItem
-        disabled={disableForce}
-        className="cursor-pointer"
-        onSelect={() => {
-          const points_from: string = nativeGraph.getNodeName(
-            arrow.points_from,
-          );
-          const points_to: string = nativeGraph.getNodeName(arrow.points_to);
-          setTvc({
-            ...tvc,
-            force_edges: {
-              ...tvc.force_edges,
-              [points_from]: {
-                ...(tvc.force_edges[points_from] ?? null),
-                [points_to]: {
-                  include: false,
-                  message:
-                    "This edge was manually forced from the dropdown menu",
-                },
-              },
-            },
-          });
-        }}
-      >
-        Exclude Edge
-        <DropdownMenuShortcut>E</DropdownMenuShortcut>
-      </DropdownMenuItem>
-      <DropdownMenuItem
-        disabled={disableForce}
-        className="cursor-pointer"
-        onSelect={() => {
-          const points_to: string = nativeGraph.getNodeName(arrow.points_to);
-          setTvc({
-            ...tvc,
-            force_nodes: {
-              ...tvc.force_nodes,
-              [points_to]: {
-                include: false,
-                message: "This node was manually forced from the dropdown menu",
-              },
-            },
-          });
-        }}
-      >
-        Exclude Node
-        <DropdownMenuShortcut>N</DropdownMenuShortcut>
-      </DropdownMenuItem>
+      <ForceEdgeItem arrow={arrow} row={row} />
+      <ExcludeNodeItem arrow={arrow} row={row} />
     </DropdownMenuContent>
+  );
+}
+
+function ExcludeNodeItem({ arrow, row }: { arrow: Arrow; row: Readonly<Row> }) {
+  const forceExcludeNode = useForceExcludeNode();
+  const { setSelectedPath } = useSelectedPath();
+
+  const enabled = canNodeBeForceExcluded(arrow);
+
+  return (
+    <DropdownMenuItem
+      disabled={!enabled}
+      className="cursor-pointer"
+      onSelect={() => {
+        forceExcludeNode(arrow.points_to, !arrow.excluded);
+        setSelectedPath(pathToRow(row), true);
+      }}
+    >
+      {`${arrow.excluded ? "Undo Exclude" : "Exclude"} Node`}
+      <DropdownMenuShortcut>N</DropdownMenuShortcut>
+    </DropdownMenuItem>
+  );
+}
+
+function ForceEdgeItem({
+  arrow,
+  row,
+}: {
+  arrow: Arrow;
+  row: Readonly<Row>;
+}) {
+  const { setSelectedPath } = useSelectedPath();
+  const [isForcedTo, forceEdge] = useForceEdge(
+    arrow.points_from,
+    arrow.points_to,
+  );
+
+  const action: "Include" | "Exclude" = (() => {
+    if (isForcedTo === null) {
+      return arrow.excluded ? "Include" : "Exclude";
+    }
+    return isForcedTo ? "Exclude" : "Include";
+  })();
+
+  const canEdgeBeForced = canArrowBeForced(arrow);
+  return (
+    <DropdownMenuItem
+      disabled={!canEdgeBeForced}
+      className="cursor-pointer"
+      onSelect={() => {
+        forceEdge(action === "Include");
+        setSelectedPath(pathToRow(row), true);
+      }}
+    >
+      {`Force ${action} Edge`}
+      <DropdownMenuShortcut>E</DropdownMenuShortcut>
+    </DropdownMenuItem>
   );
 }

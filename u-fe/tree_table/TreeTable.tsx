@@ -15,6 +15,7 @@ import type { GraphStructure } from "u-be/unigraph_core/bindings/GraphStructure"
 import type { GraphTableSort } from "u-be/unigraph_core/bindings/GraphTableSort";
 import type { SortOrder } from "u-be/unigraph_core/bindings/SortOrder";
 import type { Arrow } from "../../u-be/unigraph_core/bindings/Arrow";
+import { ARROW_POINTS_FROM_NON_EXISTENT } from "../ArrowUtils";
 import { useSelectedPath } from "../context/SelectedPathContext";
 import type { NodeIDX } from "../types";
 import TreeCell from "./TreeCell";
@@ -43,7 +44,7 @@ export type ColumnDefinitions = {
 export type CommonNonTreeColumnDefinitionFields = {
   flexGrow?: number;
   label: string;
-  renderer: (arrow: Arrow) => React.ReactNode;
+  renderer: (arrow: Arrow, row: Readonly<Row>) => React.ReactNode;
   isHidden: boolean;
   isLabelHidden?: boolean;
 };
@@ -236,10 +237,10 @@ export function TreeTable(props: {
             );
           }
           case "numeric_value_column": {
-            return column.c.renderer(row.arrow);
+            return column.c.renderer(row.arrow, row);
           }
           case "non_sortable_column": {
-            return column.c.renderer(row.arrow);
+            return column.c.renderer(row.arrow, row);
           }
           default: {
             const _exhaustiveCheck: never = column;
@@ -495,9 +496,7 @@ class TreeTableCtx {
           tag: null,
           branch: null,
           properties: null,
-          // JS indexes are not u32 so -1 is a valid value.
-          // We're going to abuse it to represent the root arrows
-          points_from: -1,
+          points_from: ARROW_POINTS_FROM_NON_EXISTENT,
           points_to: nodeIDX,
           points_to_unreachable: false,
           excluded: false,

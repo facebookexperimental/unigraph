@@ -235,3 +235,13 @@ export function expandToPath(
   }
   return currentGlobalRowIDX === -1 ? null : currentGlobalRowIDX;
 }
+
+export function pathToRow(row: Readonly<Row>): NodeIDX[] {
+  const path: NodeIDX[] = [];
+  let current: Row | null = row;
+  while (current != null) {
+    path.push(current.arrow.points_to);
+    current = current.parentRowRef;
+  }
+  return path.reverse();
+}
