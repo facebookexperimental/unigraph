@@ -179,7 +179,7 @@ function ParamsPanel(props: {
           label="Antigravity"
           value={props.simulationParams.gravity_force_multiplier}
           min={0.01}
-          max={10000.0}
+          max={100000.0}
           precision={2}
           scale="logarithmic"
           onChange={(gravity_force_multiplier) => {
@@ -206,6 +206,21 @@ function ParamsPanel(props: {
         />
 
         <SimulationSlider
+          label="Center Pull Force"
+          value={props.simulationParams.center_pull_force_multiplier}
+          min={0.01}
+          max={1000.0}
+          precision={2}
+          scale="logarithmic"
+          onChange={(center_pull_force_multiplier) => {
+            props.setSimulationParams({
+              ...props.simulationParams,
+              center_pull_force_multiplier,
+            });
+          }}
+        />
+
+        <SimulationSlider
           label="Max Velocity"
           value={props.simulationParams.max_velocity_multiplier}
           min={0.01}
@@ -224,12 +239,14 @@ function ParamsPanel(props: {
           label="Frames / Compute"
           value={props.simulationParams.compute_forces_every_n_frames}
           min={1}
-          max={20}
+          max={10}
           precision={0}
           onChange={(compute_forces_every_n_frames) => {
             props.setSimulationParams({
               ...props.simulationParams,
-              compute_forces_every_n_frames,
+              compute_forces_every_n_frames: Math.floor(
+                compute_forces_every_n_frames,
+              ),
             });
           }}
         />

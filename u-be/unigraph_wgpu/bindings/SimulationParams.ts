@@ -2,7 +2,38 @@
 import type { Selection } from "./Selection";
 import type { SimulationColors } from "./SimulationColors";
 
-export type SimulationParams = { active: boolean, render_edges: boolean, node_size_scale: number, gravity_force_multiplier: number, edge_force_multiplier: number, max_velocity_multiplier: number, selection: Selection, colors: SimulationColors, 
+export type SimulationParams = { 
+/**
+ * This flag is used to enable or disable the simulation, but not the rendering.
+ * The simulation part is the computation of the positions, forces, etc.
+ * If the simulation is not active we'd still run the rendering part
+ * to show other things (like box selection, etc) but the thing will just not
+ * be moving.
+ */
+active: boolean, render_edges: boolean, 
+/**
+ * scale of the sizes of the nodes. from 1 to 100;
+ */
+node_size_scale: number, 
+/**
+ * value increase or decrease the anti-gravity force
+ * that pushes nodes away from each other
+ */
+gravity_force_multiplier: number, 
+/**
+ * value increase or decrease the force
+ * that edges pull nodes together
+ */
+edge_force_multiplier: number, 
+/**
+ * How much the nodes are pulled towards the center of the space.
+ */
+center_pull_force_multiplier: number, 
+/**
+ * value increase or decrease the maximum velocity that the nodes
+ * can reach.
+ */
+max_velocity_multiplier: number, selection: Selection, colors: SimulationColors, 
 /**
  * Calculating gravity forces is the most expensive part of the simulation.
  * Ideally we would want to compute forces every frame, but on large graphs

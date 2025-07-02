@@ -247,7 +247,12 @@ impl SimulationGraph {
     }
 
     fn forces_pull_towards_center(&mut self) -> Result<()> {
-        const CENTER_PULL_STRENGTH: f32 = 0.0007;
+        const CENTER_PULL_STRENGTH_COEFFICIENT: f32 = 0.0007;
+
+        let params = global_state().simulation_params.get();
+
+        let multiplier = params.center_pull_force_multiplier * CENTER_PULL_STRENGTH_COEFFICIENT;
+
         // Calculate forces pulling nodes towards the center (0, 0)
 
         for node_idx in self.node_idx_iter() {
@@ -257,7 +262,7 @@ impl SimulationGraph {
 
             let distance_squared = dx * dx + dy * dy + 0.001; // Avoid division by zero
             let distance = distance_squared.sqrt();
-            let force_magnitude = CENTER_PULL_STRENGTH * distance * distance;
+            let force_magnitude = multiplier * distance * distance;
 
             // Calculate components of the force
             let fx = dx / distance * force_magnitude;

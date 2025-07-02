@@ -66,24 +66,27 @@ pub struct SimulationColors {
 #[ts(export)]
 #[derive(Deserialize, Serialize, Debug)]
 pub struct SimulationParams {
-    // This flag is used to enable or disable the simulation, but not the rendering.
-    // The simulation part is the computation of the positions, forces, etc.
-    // If the simulation is not active we'd still run the rendering part
-    // to show other things (like box selection, etc) but the thing will just not
-    // be moving.
+    /// This flag is used to enable or disable the simulation, but not the rendering.
+    /// The simulation part is the computation of the positions, forces, etc.
+    /// If the simulation is not active we'd still run the rendering part
+    /// to show other things (like box selection, etc) but the thing will just not
+    /// be moving.
     pub active: bool,
     pub render_edges: bool,
-    // scale of the sizes of the nodes. from 1 to 100;
+    /// scale of the sizes of the nodes. from 1 to 100;
     pub node_size_scale: usize,
-    // value increase or decrease the anti-gravity force
-    // that pushes nodes away from each other
+    /// value increase or decrease the anti-gravity force
+    /// that pushes nodes away from each other
     pub gravity_force_multiplier: f32,
-    // value increase or decrease the force
-    // that edges pull nodes together
+    /// value increase or decrease the force
+    /// that edges pull nodes together
     pub edge_force_multiplier: f32,
 
-    // value increase or decrease the maximum velocity that the nodes
-    // can reach.
+    /// How much the nodes are pulled towards the center of the space.
+    pub center_pull_force_multiplier: f32,
+
+    /// value increase or decrease the maximum velocity that the nodes
+    /// can reach.
     pub max_velocity_multiplier: f32,
 
     pub selection: Selection,
@@ -146,6 +149,7 @@ impl Default for SimulationParams {
             },
             gravity_force_multiplier: 200.0,
             edge_force_multiplier: 1.0,
+            center_pull_force_multiplier: 50.0,
             max_velocity_multiplier: 1.0,
             compute_forces_every_n_frames: 1,
         }
