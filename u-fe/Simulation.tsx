@@ -7,6 +7,7 @@ import {
   set_event_loop_active,
   set_simulation_params,
 } from "../.build/wasm/unigraph_wasm.js";
+import type { ScaleType } from "../u-be/unigraph_wgpu/bindings/ScaleType.js";
 import type { SelectionType } from "../u-be/unigraph_wgpu/bindings/SelectionType.js";
 import type { SimulationParams } from "../u-be/unigraph_wgpu/bindings/SimulationParams";
 import type { TsVec2 } from "../u-be/unigraph_wgpu/bindings/TsVec2.js";
@@ -15,6 +16,7 @@ import { Button } from "./components/ui/button.js";
 import { Label } from "./components/ui/label";
 import { Slider } from "./components/ui/slider";
 import { Toggle } from "./components/ui/toggle";
+import { ToggleGroup, ToggleGroupItem } from "./components/ui/toggle-group.js";
 import { useSelectedNodes } from "./context/SelectedNodesContext.js";
 import { useSimulationParams } from "./context/SimulationParamsContext.js";
 import formatNumber from "./lib/formatNumber.js";
@@ -190,6 +192,16 @@ function ParamsPanel(props: {
           }}
         />
 
+        <ScaleToggle
+          scale={props.simulationParams.gravity_force_scale}
+          onScaleChange={(scale) => {
+            props.setSimulationParams({
+              ...props.simulationParams,
+              gravity_force_scale: scale,
+            });
+          }}
+        />
+
         <SimulationSlider
           label="Edge Force"
           value={props.simulationParams.edge_force_multiplier}
@@ -201,6 +213,16 @@ function ParamsPanel(props: {
             props.setSimulationParams({
               ...props.simulationParams,
               edge_force_multiplier,
+            });
+          }}
+        />
+
+        <ScaleToggle
+          scale={props.simulationParams.edge_force_scale}
+          onScaleChange={(scale) => {
+            props.setSimulationParams({
+              ...props.simulationParams,
+              edge_force_scale: scale,
             });
           }}
         />
@@ -373,5 +395,44 @@ function SimulationSlider({
         }}
       />
     </div>
+  );
+}
+
+function ScaleToggle(props: {
+  scale: ScaleType;
+  onScaleChange: (scale: ScaleType) => void;
+}) {
+  return (
+    <ToggleGroup
+      type="single"
+      variant="outline"
+      value={props.scale}
+      className="w-full"
+      onValueChange={(value) => {
+        if (value == null || value === "") {
+          return;
+        }
+        props.onScaleChange(value as ScaleType);
+      }}
+    >
+      <ToggleGroupItem
+        value="Linear"
+        className="state-on:bg-primary data-[state=on]:bg-primary cursor-pointer"
+      >
+        x
+      </ToggleGroupItem>
+      <ToggleGroupItem
+        className="state-on:bg-primary data-[state=on]:bg-primary cursor-pointer"
+        value="Logarithmic"
+      >
+        log(x)
+      </ToggleGroupItem>
+      <ToggleGroupItem
+        className="state-on:bg-primary data-[state=on]:bg-primary cursor-pointer"
+        value="Quadratic"
+      >
+        x²
+      </ToggleGroupItem>
+    </ToggleGroup>
   );
 }

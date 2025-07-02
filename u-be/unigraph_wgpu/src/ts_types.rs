@@ -78,9 +78,12 @@ pub struct SimulationParams {
     /// value increase or decrease the anti-gravity force
     /// that pushes nodes away from each other
     pub gravity_force_multiplier: f32,
+    pub gravity_force_scale: ScaleType,
+
     /// value increase or decrease the force
     /// that edges pull nodes together
     pub edge_force_multiplier: f32,
+    pub edge_force_scale: ScaleType,
 
     /// How much the nodes are pulled towards the center of the space.
     pub center_pull_force_multiplier: f32,
@@ -100,6 +103,15 @@ pub struct SimulationParams {
     /// This make the visualization much more jittery but it's better then
     /// having 0.5 fps.
     pub compute_forces_every_n_frames: u32,
+}
+
+#[derive(TS)]
+#[ts(export)]
+#[derive(Deserialize, Serialize, Debug, Clone, Copy)]
+pub enum ScaleType {
+    Linear,
+    Logarithmic,
+    Quadratic,
 }
 
 impl SimulationParams {
@@ -148,7 +160,9 @@ impl Default for SimulationParams {
                 node_selected: [0.0480, 0.0091, 0.4654],
             },
             gravity_force_multiplier: 200.0,
+            gravity_force_scale: ScaleType::Linear,
             edge_force_multiplier: 1.0,
+            edge_force_scale: ScaleType::Linear,
             center_pull_force_multiplier: 50.0,
             max_velocity_multiplier: 1.0,
             compute_forces_every_n_frames: 1,

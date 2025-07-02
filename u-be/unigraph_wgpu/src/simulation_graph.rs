@@ -14,6 +14,7 @@ use crate::barnes_hut::BHGraphNode;
 use crate::barnes_hut::QuadTree;
 use crate::global_state;
 use crate::graph_state::NodeAttributesFlags;
+use crate::ts_types::ScaleType;
 use crate::ts_types::Selection;
 use crate::ts_types::SelectionType;
 
@@ -185,6 +186,7 @@ impl SimulationGraph {
 
             gpu.position = gpu.position.clamp(Vec2::splat(-0.95), Vec2::splat(0.95));
         }
+
         Ok(())
     }
 
@@ -202,6 +204,7 @@ impl SimulationGraph {
     }
 
     fn compute_gravity_forces(&mut self) -> Result<()> {
+        let params = global_state().simulation_params.get();
         let mut quad_tree = QuadTree::new(300);
         for idx in self.node_idx_iter() {
             let gpu = &self.nodes_gpu[idx];
@@ -211,10 +214,10 @@ impl SimulationGraph {
                 mass: gpu.adjusted_size,
             });
         }
-        let gravity_forces = quad_tree.compute_forces(self.nodes_local.len());
-        let params = global_state().simulation_params.get();
+        let gravity_forces =
+            quad_tree.compute_forces(self.nodes_local.len(), params.gravity_force_scale);
         for (idx, force) in gravity_forces.iter().enumerate() {
-            self.nodes_local[idx].force -= *force * params.gravity_force_multiplier;
+            self.nodes_local[idx].force -= force * params.gravity_force_multiplier;
         }
 
         Ok(())
@@ -222,23 +225,37 @@ impl SimulationGraph {
 
     pub fn compute_edge_forces(&mut self) -> Result<()> {
         let params = global_state().simulation_params.get();
+        const EDGE_FORCE_COEFFICIENT: f32 = 0.001;
 
         for edge in &self.edges {
             let SimulationEdge { from, to } = *edge;
 
-            let dx = self.nodes_gpu[to].position.x - self.nodes_gpu[from].position.x;
-            let dy = self.nodes_gpu[to].position.y - self.nodes_gpu[from].position.y;
+            let direction =
+                (self.nodes_gpu[to].position - self.nodes_gpu[from].position).normalize_or_zero();
 
-            let distance_squared = dx * dx + dy * dy + 0.0001; // Avoid division by zero
+            let force = match params.edge_force_scale {
+                ScaleType::Linear => {
+                    let distance = self.nodes_gpu[to]
+                        .position
+                        .distance(self.nodes_gpu[from].position);
 
-            let distance = distance_squared.sqrt();
-            let force_magnitude = 0.0009 * distance.ln_1p(); // Use natural log (ln(1 + x)) for linlog
+                    direction * EDGE_FORCE_COEFFICIENT * distance
+                }
+                ScaleType::Logarithmic => {
+                    let distance = self.nodes_gpu[to]
+                        .position
+                        .distance(self.nodes_gpu[from].position);
 
-            // Calculate components of the force
-            let fx = (dx / distance) * force_magnitude;
-            let fy = (dy / distance) * force_magnitude;
+                    direction * EDGE_FORCE_COEFFICIENT * (distance + 1.0).ln_1p()
+                }
+                ScaleType::Quadratic => {
+                    let distance_squared = self.nodes_gpu[to]
+                        .position
+                        .distance_squared(self.nodes_gpu[from].position);
 
-            let force = Vec2 { x: fx, y: fy };
+                    direction * EDGE_FORCE_COEFFICIENT * distance_squared
+                }
+            };
 
             self.nodes_local[from].force += force * params.edge_force_multiplier;
             self.nodes_local[to].force -= force * params.edge_force_multiplier;
@@ -364,4 +381,23 @@ impl SimulationNodeGPU {
 
 fn sort_vec_f32(vec: &mut [f32]) {
     vec.sort_by(|a, b| a.partial_cmp(b).unwrap());
+}
+
+#[cfg(test)]
+mod tests {
+    use k9::assert_equal;
+
+    use super::*;
+
+    #[test]
+    fn test_sort_vec_f32() -> Result<()> {
+        assert_equal!(Vec2::new(0.5, -0.5).signum(), Vec2::new(1.0, -1.0));
+
+        assert_equal!(
+            Vec2::new(0.1, 0.1).copysign(Vec2::new(0.5, -0.5)),
+            Vec2::new(0.1, -0.1)
+        );
+
+        Ok(())
+    }
 }

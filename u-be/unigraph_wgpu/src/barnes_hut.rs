@@ -9,6 +9,8 @@
 
 use glam::Vec2;
 
+use crate::ts_types::ScaleType;
+
 #[derive(Clone, Copy)]
 enum QuadIndex {
     TopLeft = 0,
@@ -63,7 +65,7 @@ impl QuadTree {
         }
     }
 
-    pub fn compute_forces(&self, len: usize) -> Vec<Vec2> {
+    pub fn compute_forces(&self, len: usize, gravity_force_scale: ScaleType) -> Vec<Vec2> {
         let mut forces = vec![Vec2::ZERO; len];
 
         for quad_node in &self.quad_nodes {
@@ -72,14 +74,19 @@ impl QuadTree {
             }
 
             for graph_node in &quad_node.graph_nodes {
-                forces[graph_node.idx] = self.compute_force_for_node(graph_node);
+                forces[graph_node.idx] =
+                    self.compute_force_for_node(graph_node, gravity_force_scale);
             }
         }
 
         forces
     }
 
-    fn compute_force_for_node(&self, graph_node: &BHGraphNode) -> Vec2 {
+    fn compute_force_for_node(
+        &self,
+        graph_node: &BHGraphNode,
+        gravity_force_scale: ScaleType,
+    ) -> Vec2 {
         // by controling the THETA we can control the accuracy of the simulation.
         // if THETA is 0 then every node is treated as a leaf node and
         // the algorithm becomes O(n^2).
@@ -91,7 +98,8 @@ impl QuadTree {
         while let Some(quad_node_idx) = stack.pop() {
             let quad_node = &self.quad_nodes[quad_node_idx];
             if quad_node.is_leaf() {
-                total_force += force_exerted_on_graph_node(graph_node, quad_node);
+                total_force +=
+                    force_exerted_on_graph_node(graph_node, quad_node, gravity_force_scale);
             } else {
                 let distance_between_graph_node_and_quad_node_center_of_mass =
                     ((quad_node.center_of_mass.x - graph_node.position.x).powi(2)
@@ -103,7 +111,8 @@ impl QuadTree {
                     < THETA;
 
                 if should_use_quad_node {
-                    total_force += force_exerted_on_graph_node(graph_node, quad_node);
+                    total_force +=
+                        force_exerted_on_graph_node(graph_node, quad_node, gravity_force_scale);
                 } else {
                     if quad_node.children[QuadIndex::TopLeft as usize] != 0 {
                         stack.push(quad_node.children[QuadIndex::TopLeft as usize]);
@@ -230,28 +239,30 @@ impl QuadTree {
     }
 }
 
-fn force_exerted_on_graph_node(graph_node: &BHGraphNode, quad_node: &QuadNode) -> Vec2 {
+fn force_exerted_on_graph_node(
+    graph_node: &BHGraphNode,
+    quad_node: &QuadNode,
+    gravity_force_scale: ScaleType,
+) -> Vec2 {
     const EPSILON: f32 = 0.01;
 
-    const G: f32 = 0.00000000005;
+    const G: f32 = 0.00005;
 
-    let distance = quad_node.center_of_mass.distance(graph_node.position);
+    let direction = quad_node.center_of_mass - graph_node.position;
 
-    let dx = quad_node.center_of_mass.x - graph_node.position.x;
-    let dy = quad_node.center_of_mass.y - graph_node.position.y;
+    let force = match gravity_force_scale {
+        ScaleType::Linear => {
+            let distance = direction.length() + EPSILON;
+            direction / distance
+        }
+        ScaleType::Logarithmic => direction / (((direction.length() + 1.0).ln_1p()) + EPSILON),
+        ScaleType::Quadratic => {
+            let distance_squared = direction.length_squared() + EPSILON;
+            direction / distance_squared
+        }
+    };
 
-    let mut force_magnitude = (quad_node.total_mass / (distance + EPSILON)) * G;
-
-    // If they're too close make them hella repel each other
-    // so they don't become a singularity
-    if distance < EPSILON / 2.0 {
-        force_magnitude *= 100.0;
-    }
-
-    Vec2 {
-        x: force_magnitude * dx,
-        y: force_magnitude * dy,
-    }
+    force * G
 }
 
 fn add_mass_to_quad_node(quad_node: &mut QuadNode, graph_node: BHGraphNode) {
@@ -616,38 +627,38 @@ mod tests {
 "
         );
 
-        let forces = quad_tree.compute_forces(nodes.len());
+        let forces = quad_tree.compute_forces(nodes.len(), ScaleType::Linear);
         k9::snapshot!(
             forces,
             "
 [
     Vec2(
-        1.1654701e-10,
-        1.1654701e-10,
+        8.2783314e-5,
+        8.2783314e-5,
     ),
     Vec2(
-        -2.0699356e-10,
-        -2.0699356e-10,
+        -0.00013674046,
+        -0.00013674046,
     ),
     Vec2(
-        2.0960747e-10,
-        2.0960747e-10,
+        0.0001392439,
+        0.0001392439,
     ),
     Vec2(
-        -1.9091215e-10,
-        7.3246235e-11,
+        -0.000101806,
+        7.621672e-5,
     ),
     Vec2(
-        7.3246235e-11,
-        -1.9091215e-10,
+        7.621672e-5,
+        -0.000101806,
     ),
     Vec2(
-        6.4398334e-11,
-        6.4398334e-11,
+        3.3423494e-5,
+        3.3423497e-5,
     ),
     Vec2(
-        -8.270708e-11,
-        -8.2707084e-11,
+        -5.1732248e-5,
+        -5.173225e-5,
     ),
 ]
 "
