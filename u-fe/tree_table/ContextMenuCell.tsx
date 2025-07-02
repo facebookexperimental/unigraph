@@ -2,11 +2,14 @@
 
 import { Ellipsis } from "lucide-react";
 import type { Arrow } from "u-be/unigraph_core/bindings/Arrow";
+import {
+  KEYBOARD_SHORTCUTS,
+  KeyboardShortcutLabel,
+} from "../ExplorerKeyboardShortcutsWrapper";
 import { UDropdownMenu } from "../components/UDropdownMenu";
 import {
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuShortcut,
 } from "../components/ui/dropdown-menu";
 import { useSelectedPath } from "../context/SelectedPathContext";
 import {
@@ -57,7 +60,9 @@ function ExcludeNodeItem({ arrow, row }: { arrow: Arrow; row: Readonly<Row> }) {
       }}
     >
       {`${action === "Include" ? "Undo Exclude" : "Exclude"} Node`}
-      <DropdownMenuShortcut>N</DropdownMenuShortcut>
+      <KeyboardShortcutLabel
+        label={KEYBOARD_SHORTCUTS.FORCE_EXCLUDE_NODE.toUpperCase()}
+      />
     </DropdownMenuItem>
   );
 }
@@ -82,7 +87,9 @@ function ForceEdgeItem({
       }}
     >
       {`Force ${action} Edge`}
-      <DropdownMenuShortcut>E</DropdownMenuShortcut>
+      <KeyboardShortcutLabel
+        label={KEYBOARD_SHORTCUTS.FORCE_EDGE.toUpperCase()}
+      />
     </DropdownMenuItem>
   );
 }

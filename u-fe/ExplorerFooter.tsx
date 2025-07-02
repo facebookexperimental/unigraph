@@ -1,3 +1,5 @@
+// Copyright (c) Meta Platforms, Inc. and affiliates.
+
 import {
   ArrowLeftRight,
   ArrowUpNarrowWide,
@@ -14,12 +16,20 @@ import Metric from "./components/Metric";
 import UHoverCard from "./components/UHoverCard";
 import UToggleButton from "./components/UToggleButton";
 
+import {
+  KEYBOARD_SHORTCUTS,
+  KeyboardShortcutLabel,
+} from "./ExplorerKeyboardShortcutsWrapper";
+import {
+  useToggleDominatorTreeView,
+  useToggleFlatListView,
+  useToggleReverseView,
+} from "./GraphStructureHooks";
 import UTooltip from "./components/UTooltip";
 import { Button } from "./components/ui/button";
 import { useGraphSettings } from "./context/GraphSettingsContext";
 import { useNativeGraph } from "./context/NativeGraphContext";
 import { useSelectedNodes } from "./context/SelectedNodesContext";
-import { useSelectedNodeIDX } from "./context/SelectedPathContext";
 import { useTVC } from "./context/TraversalConfigContext";
 import formatMetric from "./lib/formatMetric";
 import formatNumber from "./lib/formatNumber";
@@ -115,11 +125,11 @@ function Toggles() {
   const [graphSettings, setGraphSettings] = useGraphSettings();
   const nativeGraph = useNativeGraph();
   const hasTiers = nativeGraph.stats().tier_names.length > 0;
-  const selectedNodeIDX = useSelectedNodeIDX();
 
-  const entry_points = graphSettings.ui_settings?.entry_points ?? "Determine";
-  const graph_structure =
-    graphSettings.ui_settings?.graph_structure ?? "Forward";
+  const [flatViewEnabled, toggleFlatListView] = useToggleFlatListView();
+  const [reverseViewEnabled, toggleReverseView] = useToggleReverseView();
+  const [dominatorTreeViewEnabled, toggleDominatorTreeView] =
+    useToggleDominatorTreeView();
 
   return (
     <div className="flex gap-4 items-center m-4">
@@ -210,84 +220,48 @@ function Toggles() {
       <div className="border-l border border-accent h-full w-0" />
 
       <UToggleButton
-        tooltip="Show as a flat list"
+        tooltip={
+          <span>
+            Show as a flat list{" "}
+            <KeyboardShortcutLabel
+              label={KEYBOARD_SHORTCUTS.FLAT_LIST.toUpperCase()}
+            />
+          </span>
+        }
         size="sm"
-        selected={entry_points === "AllReachable"}
-        onSelectedChange={(checked) => {
-          setGraphSettings({
-            ...graphSettings,
-            ui_settings: {
-              ...graphSettings.ui_settings,
-              entry_points: checked ? "AllReachable" : "Determine",
-            },
-          });
-        }}
+        selected={flatViewEnabled}
+        onSelectedChange={toggleFlatListView}
       >
         <List />
       </UToggleButton>
+
       <UToggleButton
-        tooltip="Show reverse graph (children to parents)"
+        tooltip={
+          <span>
+            Show reverse graph (children to parents)
+            <KeyboardShortcutLabel
+              label={KEYBOARD_SHORTCUTS.REVERSE_GRAPH.toUpperCase()}
+            />
+          </span>
+        }
         size="sm"
-        selected={graph_structure === "Reverse"}
-        onSelectedChange={(checked) => {
-          const [newEntryPoints, entry_points_specified] = (() => {
-            if (checked) {
-              if (entry_points === "AllReachable") {
-                /// if we're in a flat list we don't want to change entry points
-                /// Our dependency will already be there in the root
-                return ["AllReachable" as const, undefined];
-              } else {
-                if (selectedNodeIDX == null) {
-                  // if we don't have a selected node, we want to show all reachable nodes
-                  return ["AllReachable" as const, undefined];
-                }
-
-                // if we have a selected node and we are turning the reverse graph on outside
-                // of a flat list we will make that selected node the entry point for the tree
-                // table.
-                return [
-                  "Specified" as const,
-                  [nativeGraph.getNodeName(selectedNodeIDX)],
-                ];
-              }
-            } else {
-              if (entry_points === "AllReachable") {
-                /// if we're in a flat list we should stay in a flat list
-                return ["AllReachable" as const, undefined];
-              } else {
-                // if we're unchecking the reverse graph, we will switch back to
-                // the default forward graph.
-                return ["Determine" as const, undefined];
-              }
-            }
-          })();
-
-          setGraphSettings({
-            ...graphSettings,
-            ui_settings: {
-              ...graphSettings.ui_settings,
-              graph_structure: checked ? "Reverse" : "Forward",
-              entry_points: newEntryPoints,
-              entry_points_specified,
-            },
-          });
-        }}
+        selected={reverseViewEnabled}
+        onSelectedChange={toggleReverseView}
       >
         <ArrowLeftRight />
       </UToggleButton>
       <UToggleButton
-        tooltip="Show as a dominator tree"
+        tooltip={
+          <span>
+            Show as a dominator tree
+            <KeyboardShortcutLabel
+              label={KEYBOARD_SHORTCUTS.DOMINATOR_TREE.toUpperCase()}
+            />
+          </span>
+        }
         size="sm"
-        selected={graph_structure === "Dominator"}
-        onSelectedChange={(checked) => {
-          setGraphSettings({
-            ...graphSettings,
-            ui_settings: {
-              ...graphSettings.ui_settings,
-              graph_structure: checked ? "Dominator" : "Forward",
-            },
-          });
-        }}
+        selected={dominatorTreeViewEnabled}
+        onSelectedChange={toggleDominatorTreeView}
       >
         <TreePalm />
       </UToggleButton>

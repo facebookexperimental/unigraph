@@ -1,11 +1,24 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 import { useCallback } from "react";
+import {
+  useToggleDominatorTreeView,
+  useToggleFlatListView,
+  useToggleReverseView,
+} from "./GraphStructureHooks";
 import { useSelectedPath } from "./context/SelectedPathContext";
 import {
   useFlipForceEdge,
   useFlipForceExcludeNode,
 } from "./context/TraversalConfigContext";
+
+export const KEYBOARD_SHORTCUTS = {
+  FORCE_EDGE: "e",
+  FORCE_EXCLUDE_NODE: "n",
+  FLAT_LIST: "f",
+  REVERSE_GRAPH: "r",
+  DOMINATOR_TREE: "d",
+};
 
 export function useExplorerKeyboardShortcuts(): (
   e: React.KeyboardEvent<HTMLDivElement>,
@@ -15,27 +28,56 @@ export function useExplorerKeyboardShortcuts(): (
 
   const flipForceEdge = useFlipForceEdge(arrow);
   const flipForceExcludeNode = useFlipForceExcludeNode(arrow);
+  const [_f, toggleFlatList] = useToggleFlatListView();
+  const [_r, toggleReverseView] = useToggleReverseView();
+  const [_d, toggleDominatorTreeView] = useToggleDominatorTreeView();
 
   const keyboardEventHandler = useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>) => {
       const key = e.key.toLowerCase();
       switch (key) {
-        case "n": {
+        case KEYBOARD_SHORTCUTS.FORCE_EXCLUDE_NODE: {
           if (flipForceExcludeNode.enabled) {
             flipForceExcludeNode.forceExcludeNode();
           }
           break;
         }
-        case "e": {
+        case KEYBOARD_SHORTCUTS.FORCE_EDGE: {
           if (flipForceEdge.enabled) {
             flipForceEdge.forceEdge();
           }
           break;
         }
+        case KEYBOARD_SHORTCUTS.FLAT_LIST: {
+          toggleFlatList();
+          break;
+        }
+        case KEYBOARD_SHORTCUTS.REVERSE_GRAPH: {
+          toggleReverseView();
+          break;
+        }
+        case KEYBOARD_SHORTCUTS.DOMINATOR_TREE: {
+          toggleDominatorTreeView();
+          break;
+        }
       }
     },
-    [flipForceEdge, flipForceExcludeNode],
+    [
+      flipForceEdge,
+      flipForceExcludeNode,
+      toggleFlatList,
+      toggleReverseView,
+      toggleDominatorTreeView,
+    ],
   );
 
   return keyboardEventHandler;
+}
+
+export function KeyboardShortcutLabel({ label }: { label: string }) {
+  return (
+    <span className="text-xs font-bold text-background rounded px-1 mx-1 bg-foreground">
+      <kbd className="kbd">{label}</kbd>
+    </span>
+  );
 }
