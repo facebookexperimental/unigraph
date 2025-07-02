@@ -144,7 +144,7 @@ impl Default for SimulationParams {
                 node_main: [0.4654, 0.0091, 0.0480],
                 node_selected: [0.0480, 0.0091, 0.4654],
             },
-            gravity_force_multiplier: 1.0,
+            gravity_force_multiplier: 200.0,
             edge_force_multiplier: 1.0,
             max_velocity_multiplier: 1.0,
             compute_forces_every_n_frames: 1,
