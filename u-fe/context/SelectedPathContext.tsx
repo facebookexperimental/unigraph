@@ -1,5 +1,6 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
+import type { Row } from "@/tree_table/TreeTableRows";
 import type { NodeIDX } from "@/types";
 import {
   createContext,
@@ -18,6 +19,12 @@ export type SelectedPathContextType = {
     setSelectedPathIDX: NodeIDX[] | null,
     navigate?: boolean,
   ) => void;
+
+  // selected row is not synced with URL, it's a derived state
+  // that we would normally need to use in different places. e.g.
+  // triggering certain actions on keyboard shortcuts.
+  selectedRow: Readonly<Row | null>;
+  setSelectedRow: (row: Row | null) => void;
   pathSelector: TreeTablePathSelector;
 };
 
@@ -37,6 +44,8 @@ export function SelectedPathContextProvider({
     return syncToURL ? parseSelectedPathFromURLHash(nativeGraph) : null;
   });
 
+  const [selectedRow, setSelectedRow] = useState<Row | null>(null);
+
   useEffect(() => {
     if (syncToURL) {
       syncSelectedPathToURLHash(nativeGraph, selectedPath);
@@ -55,9 +64,13 @@ export function SelectedPathContextProvider({
           pathSelector.current.navigate(newSelectedPathIDX);
         }
       },
+      selectedRow,
+      setSelectedRow: (row: Row | null) => {
+        setSelectedRow(row);
+      },
       pathSelector: pathSelector.current,
     };
-  }, [selectedPath]);
+  }, [selectedPath, selectedRow]);
 
   return (
     <SelectedPathContext.Provider value={value}>

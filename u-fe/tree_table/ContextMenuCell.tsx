@@ -2,7 +2,6 @@
 
 import { Ellipsis } from "lucide-react";
 import type { Arrow } from "u-be/unigraph_core/bindings/Arrow";
-import { canArrowBeForced, canNodeBeForceExcluded } from "../ArrowUtils";
 import { UDropdownMenu } from "../components/UDropdownMenu";
 import {
   DropdownMenuContent,
@@ -11,8 +10,8 @@ import {
 } from "../components/ui/dropdown-menu";
 import { useSelectedPath } from "../context/SelectedPathContext";
 import {
-  useForceEdge,
-  useForceExcludeNode,
+  useFlipForceEdge,
+  useFlipForceExcludeNode,
 } from "../context/TraversalConfigContext";
 import { type Row, pathToRow } from "./TreeTableRows";
 
@@ -45,21 +44,19 @@ function Content({ arrow, row }: { arrow: Arrow; row: Readonly<Row> }) {
 }
 
 function ExcludeNodeItem({ arrow, row }: { arrow: Arrow; row: Readonly<Row> }) {
-  const forceExcludeNode = useForceExcludeNode();
+  const { action, enabled, forceExcludeNode } = useFlipForceExcludeNode(arrow);
   const { setSelectedPath } = useSelectedPath();
-
-  const enabled = canNodeBeForceExcluded(arrow);
 
   return (
     <DropdownMenuItem
       disabled={!enabled}
       className="cursor-pointer"
       onSelect={() => {
-        forceExcludeNode(arrow.points_to, !arrow.excluded);
+        forceExcludeNode();
         setSelectedPath(pathToRow(row), true);
       }}
     >
-      {`${arrow.excluded ? "Undo Exclude" : "Exclude"} Node`}
+      {`${action === "Include" ? "Undo Exclude" : "Exclude"} Node`}
       <DropdownMenuShortcut>N</DropdownMenuShortcut>
     </DropdownMenuItem>
   );
@@ -73,25 +70,14 @@ function ForceEdgeItem({
   row: Readonly<Row>;
 }) {
   const { setSelectedPath } = useSelectedPath();
-  const [isForcedTo, forceEdge] = useForceEdge(
-    arrow.points_from,
-    arrow.points_to,
-  );
+  const { enabled, forceEdge, action } = useFlipForceEdge(arrow);
 
-  const action: "Include" | "Exclude" = (() => {
-    if (isForcedTo === null) {
-      return arrow.excluded ? "Include" : "Exclude";
-    }
-    return isForcedTo ? "Exclude" : "Include";
-  })();
-
-  const canEdgeBeForced = canArrowBeForced(arrow);
   return (
     <DropdownMenuItem
-      disabled={!canEdgeBeForced}
+      disabled={!enabled}
       className="cursor-pointer"
       onSelect={() => {
-        forceEdge(action === "Include");
+        forceEdge();
         setSelectedPath(pathToRow(row), true);
       }}
     >

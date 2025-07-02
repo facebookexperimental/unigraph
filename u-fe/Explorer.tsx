@@ -9,9 +9,11 @@ import {
 } from "../.build/wasm/unigraph_wasm";
 import type { GraphSettings } from "../u-be/unigraph_core/bindings/GraphSettings";
 import ExplorerFooter from "./ExplorerFooter";
+import { useExplorerKeyboardShortcuts } from "./ExplorerKeyboardShortcutsWrapper";
 import NativeGraph from "./NativeGraph";
 import Sidebar from "./Sidebar";
 import Simulation from "./Simulation";
+import ErrorBoundary from "./components/ErrorBoundary";
 import { PortalContextProvider } from "./components/PortalContext";
 import {
   GraphSettingsContextProvider,
@@ -58,6 +60,8 @@ export function Explorer({
   onGraphSettingsZSTDBase64UrlSafeNoPaddingChange?: (v: string) => void;
 }) {
   initWasm();
+
+  const containerRef = useRef<HTMLDivElement>(null);
 
   /// This graph initializes a new native graph every time the raw data changes.
   const nativeGraphNoTVC = useMemo(() => initNativeGraph(graph), [graph]);
@@ -108,34 +112,39 @@ export function Explorer({
   );
 
   return (
-    <NativeGraphContextProvider nativeGraph={nativeGraph}>
-      <TraversalConfigContextProvider tvc={tvc} setTvc={setTvcCb}>
-        <SimulationParamsContextProvider>
-          <SelectedNodesContextProvider>
-            <GraphSettingsContextProvider
-              settings={settings}
-              setSettings={setSettingsCb}
-            >
-              <SelectedPathContextProvider syncToURL={true}>
-                <div className="h-screen flex flex-col unigraph-explorer bg-background">
-                  <Page />
-                </div>
-              </SelectedPathContextProvider>
-            </GraphSettingsContextProvider>
-          </SelectedNodesContextProvider>
-        </SimulationParamsContextProvider>
-      </TraversalConfigContextProvider>
-    </NativeGraphContextProvider>
+    <div className="h-screen flex flex-col unigraph-explorer bg-background">
+      <PortalContextProvider containerRef={containerRef}>
+        <ErrorBoundary>
+          <NativeGraphContextProvider nativeGraph={nativeGraph}>
+            <TraversalConfigContextProvider tvc={tvc} setTvc={setTvcCb}>
+              <SimulationParamsContextProvider>
+                <SelectedNodesContextProvider>
+                  <GraphSettingsContextProvider
+                    settings={settings}
+                    setSettings={setSettingsCb}
+                  >
+                    <SelectedPathContextProvider syncToURL={true}>
+                      <Page containerRef={containerRef} />
+                    </SelectedPathContextProvider>
+                  </GraphSettingsContextProvider>
+                </SelectedNodesContextProvider>
+              </SimulationParamsContextProvider>
+            </TraversalConfigContextProvider>
+          </NativeGraphContextProvider>
+        </ErrorBoundary>
+      </PortalContextProvider>
+    </div>
   );
 }
 
-function Page() {
+function Page(props: {
+  containerRef?: React.RefObject<HTMLDivElement | null>;
+}) {
   const nativeGraph = useNativeGraph();
   const [graphSettings] = useGraphSettings();
   const [settings] = useGraphSettings();
   const [selectedNodes] = useSelectedNodes();
-
-  const containerRef = useRef<HTMLDivElement>(null);
+  const keyboardEventHandler = useExplorerKeyboardShortcuts();
 
   const selectedSidebarPanel =
     settings.ui_settings?.selected_sidebar_panel ?? "Simulation";
@@ -172,19 +181,18 @@ function Page() {
   ]);
 
   return (
-    <PortalContextProvider containerRef={containerRef}>
-      <div
-        className="flex grow-1 shrink flex-row bg-background text-foreground min-h-0"
-        ref={containerRef}
-      >
-        <Sidebar selectedPanelTab={selectedSidebarPanel} />
-        {panelTab}
-        <div className="flex flex-col h-full grow-1">
-          <GraphTreeTable focusOnMount={true} roots={roots} />
-          <ExplorerFooter />
-        </div>
+    <div
+      className="flex grow-1 shrink flex-row bg-background text-foreground min-h-0"
+      ref={props.containerRef}
+      onKeyUp={keyboardEventHandler}
+    >
+      <Sidebar selectedPanelTab={selectedSidebarPanel} />
+      {panelTab}
+      <div className="flex flex-col h-full grow-1">
+        <GraphTreeTable focusOnMount={true} roots={roots} />
+        <ExplorerFooter />
       </div>
-    </PortalContextProvider>
+    </div>
   );
 }
 

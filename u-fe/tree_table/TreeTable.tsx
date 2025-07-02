@@ -105,7 +105,8 @@ export function TreeTable(props: {
     return x + 1;
   }, 0)[1];
 
-  const { selectedPath, setSelectedPath, pathSelector } = useSelectedPath();
+  const { selectedPath, setSelectedPath, pathSelector, setSelectedRow } =
+    useSelectedPath();
 
   const columns = useMakeInternalColumns(props.columnDefinitions);
   // Initial setup of stateful context. This runs only once
@@ -153,6 +154,13 @@ export function TreeTable(props: {
   useEffect(() => {
     setSelectedPath(ctx.selectedNodeIDXPath);
   }, [ctx.selectedNodeIDXPath, setSelectedPath]);
+
+  const selectedRow =
+    ctx.selectedRowIDX !== null ? (ctx.rows[ctx.selectedRowIDX] ?? null) : null;
+
+  useEffect(() => {
+    setSelectedRow(selectedRow);
+  }, [selectedRow, setSelectedRow]);
 
   useEffect(() => {
     if (props.focusOnMount === true) {

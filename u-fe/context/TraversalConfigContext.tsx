@@ -1,8 +1,13 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-import type { NodeIDX } from "@/types";
 import { createContext, useCallback, useContext, useMemo } from "react";
+import type { Arrow } from "u-be/unigraph_core/bindings/Arrow";
 import type { TraversalConfig } from "../../u-be/unigraph_core/bindings/TraversalConfig";
+import {
+  ARROW_POINTS_FROM_NON_EXISTENT,
+  useCanEdgeBeForced,
+  useCanNodeBeForceExcluded,
+} from "../ArrowUtils";
 import { useNativeGraph } from "./NativeGraphContext";
 
 export type TraversalConfigContextType = {
@@ -40,62 +45,106 @@ export function useTVC(): TraversalConfigContextType {
   return context;
 }
 
-export function useForceEdge(
-  from: NodeIDX,
-  to: NodeIDX,
-): [boolean | null, (include: boolean) => void] {
+export function useFlipForceEdge(arrow: Arrow | null): {
+  enabled: boolean;
+  forceEdge: () => void;
+  action: "Include" | "Exclude";
+} {
   const { tvc, setTvc } = useTVC();
   const nativeGraph = useNativeGraph();
 
-  const fromName = nativeGraph.getNodeName(from);
-  const toName = nativeGraph.getNodeName(to);
+  const pointsTo = arrow?.points_to ?? null;
+  const pointsFrom = arrow?.points_from ?? null;
+
+  const fromName =
+    pointsFrom != null && pointsFrom !== ARROW_POINTS_FROM_NON_EXISTENT
+      ? nativeGraph.getNodeName(pointsFrom)
+      : null;
+  const toName = pointsTo != null ? nativeGraph.getNodeName(pointsTo) : null;
+
+  const enabled = useCanEdgeBeForced(arrow);
 
   // true/false if forced. null if there is no force edge/not set
-  const isForcedTo = tvc.force_edges[fromName]?.[toName]?.include ?? null;
+  const isForcedTo =
+    fromName != null && toName != null
+      ? (tvc.force_edges[fromName]?.[toName]?.include ?? null)
+      : null;
 
-  const forceEdge = useCallback(
-    (include: boolean) => {
-      setTvc({
-        ...tvc,
-        force_edges: {
-          ...tvc.force_edges,
-          [fromName]: {
-            ...tvc.force_edges[fromName],
-            [toName]: { include, message: null },
-          },
+  const action: "Include" | "Exclude" = (() => {
+    if (isForcedTo === null) {
+      return arrow?.excluded ? "Include" : "Exclude";
+    }
+    return isForcedTo ? "Exclude" : "Include";
+  })();
+
+  const forceEdge = useCallback(() => {
+    if (enabled === false || fromName == null || toName == null) {
+      return;
+    }
+
+    setTvc({
+      ...tvc,
+      force_edges: {
+        ...tvc.force_edges,
+        [fromName]: {
+          ...tvc.force_edges[fromName],
+          [toName]: { include: action === "Include", message: null },
         },
-      });
-    },
-    [tvc, setTvc, fromName, toName],
-  );
+      },
+    });
+  }, [tvc, setTvc, fromName, toName, action, enabled]);
 
-  return [isForcedTo, forceEdge];
+  return useMemo(() => {
+    return { action, enabled, forceEdge };
+  }, [action, enabled, forceEdge]);
 }
 
-export function useForceExcludeNode() {
+export function useFlipForceExcludeNode(arrow: Arrow | null): {
+  enabled: boolean;
+  action: "Include" | "Exclude";
+  forceExcludeNode: () => void;
+} {
   const { tvc, setTvc } = useTVC();
   const nativeGraph = useNativeGraph();
+  const enabled = useCanNodeBeForceExcluded(arrow);
 
-  return useCallback(
-    (node: NodeIDX, exclude: boolean) => {
-      const nodeName = nativeGraph.getNodeName(node);
+  const pointsTo = arrow?.points_to ?? null;
+  const nodeName = pointsTo != null ? nativeGraph.getNodeName(pointsTo) : null;
 
-      if (exclude) {
-        setTvc({
-          ...tvc,
-          force_nodes: {
-            ...tvc.force_nodes,
-            [nodeName]: { include: false, message: null },
-          },
-        });
-      } else {
-        const { [nodeName]: _, ...rest } = tvc.force_nodes;
-        setTvc({
-          ...tvc,
-          force_nodes: rest,
-        });
-      }
-    },
-    [tvc, setTvc, nativeGraph],
-  );
+  const action =
+    nodeName != null
+      ? tvc.force_nodes[nodeName]?.include === false
+        ? "Include"
+        : "Exclude"
+      : "Include";
+
+  const forceExcludeNode = useCallback(() => {
+    if (enabled === false || nodeName == null) {
+      return;
+    }
+
+    if (action === "Exclude") {
+      setTvc({
+        ...tvc,
+        force_nodes: {
+          ...tvc.force_nodes,
+          [nodeName]: { include: false, message: null },
+        },
+      });
+    } else {
+      const { [nodeName]: _, ...rest } = tvc.force_nodes;
+      setTvc({
+        ...tvc,
+        force_nodes: rest,
+      });
+    }
+  }, [tvc, setTvc, enabled, action, nodeName]);
+
+  return useMemo(() => {
+    return {
+      enabled,
+      action,
+      forceExcludeNode,
+    };
+  }, [enabled, action, forceExcludeNode]);
 }

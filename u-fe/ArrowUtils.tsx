@@ -1,6 +1,7 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 import type { Arrow } from "u-be/unigraph_core/bindings/Arrow";
+import { useGraphSettings } from "./context/GraphSettingsContext";
 import { useNativeGraph } from "./context/NativeGraphContext";
 import { useTVC } from "./context/TraversalConfigContext";
 
@@ -9,8 +10,19 @@ import { useTVC } from "./context/TraversalConfigContext";
 // don't have parents
 export const ARROW_POINTS_FROM_NON_EXISTENT = -1;
 
-export function canArrowBeForced(arrow: Arrow): boolean {
+export function useCanEdgeBeForced(arrow: Arrow | null): boolean {
   const nativeGraph = useNativeGraph();
+
+  const isExclusionEnabledForGraphStructure =
+    useIsExclusionEnabledForGraphStructure();
+
+  if (!isExclusionEnabledForGraphStructure) {
+    return false;
+  }
+
+  if (arrow == null) {
+    return false;
+  }
 
   // if it's an entrypoint it gets weird, so we'll disable the ability to force it
   const isEntryoint = nativeGraph
@@ -24,9 +36,34 @@ export function canArrowBeForced(arrow: Arrow): boolean {
   return !isEntryoint && !isRootArrow;
 }
 
-export function canNodeBeForceExcluded(arrow: Arrow): boolean {
+export function useIsExclusionEnabledForGraphStructure(): boolean {
+  const [graphSettings] = useGraphSettings();
+
+  const structure = graphSettings?.ui_settings?.graph_structure ?? "Forward";
+
+  if (structure !== "Forward") {
+    // in dominator tree the rows we render do not correspond to the
+    // nodes in the graph, so we can't exclude them really.
+    // for reverse we can technically do that if we flip `to` and `from`
+    // but we won't do it for now.
+    return false;
+  }
+  return true;
+}
+
+export function useCanNodeBeForceExcluded(arrow: Arrow | null): boolean {
   const nativeGraph = useNativeGraph();
   const { tvc } = useTVC();
+
+  const isExclusionEnabledForGraphStructure =
+    useIsExclusionEnabledForGraphStructure();
+  if (!isExclusionEnabledForGraphStructure) {
+    return false;
+  }
+
+  if (arrow == null) {
+    return false;
+  }
 
   const nodeName = nativeGraph.getNodeName(arrow.points_to);
 
