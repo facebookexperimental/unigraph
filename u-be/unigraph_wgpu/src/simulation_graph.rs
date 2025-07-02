@@ -14,7 +14,6 @@ use crate::barnes_hut::BHGraphNode;
 use crate::barnes_hut::QuadTree;
 use crate::global_state;
 use crate::graph_state::NodeAttributesFlags;
-use crate::ts_types::ScaleType;
 use crate::ts_types::Selection;
 use crate::ts_types::SelectionType;
 
@@ -170,7 +169,6 @@ impl SimulationGraph {
     // Process the next iteration of the simulation, which involves calculating all
     // forces and adjusting node velocities and positions accordingly.
     pub fn compute_next_frame(&mut self, compute_forces: bool) -> Result<()> {
-        const TERMINAL_VELOCITY: f32 = 0.01;
         let params = global_state().simulation_params.get();
 
         if compute_forces {
@@ -183,13 +181,23 @@ impl SimulationGraph {
             let gpu = &mut self.nodes_gpu[node_idx];
 
             let force = local.force;
+            let strength = (force.length() * 10.0).ln_1p() / 10.0;
+            let direction = force.normalize();
 
-            local.velocity += force * params.max_velocity_multiplier;
-            local.velocity = local.velocity.clamp_length_max(TERMINAL_VELOCITY);
+            let force = strength * direction * params.total_force_multiplier;
+            local.velocity += force;
+            local.velocity = local
+                .velocity
+                .clamp_length_max(params.max_velocity_multiplier);
+            if !local.velocity.is_finite() || local.velocity.is_nan() {
+                local.velocity = Vec2::ZERO; // Reset to zero if the velocity is not valid
+            }
+            if !local.force.is_finite() || local.force.is_nan() {
+                local.force = Vec2::ZERO; // Reset to zero if the force is not valid
+            }
 
             // Add some friction. This will slow down the nodes over time.
-            const SLOW_DOWN: f32 = 0.9;
-            local.velocity *= SLOW_DOWN;
+            local.velocity *= params.slowdown;
 
             // Update the node's position based on its velocity
             gpu.position += local.velocity;
@@ -205,10 +213,19 @@ impl SimulationGraph {
         self.nodes_local.iter_mut().for_each(|node| {
             node.force = Vec2::ZERO;
         });
+        let params = global_state().simulation_params.get();
 
-        self.compute_gravity_forces()?;
-        self.compute_edge_forces()?;
-        self.forces_pull_towards_center()?;
+        if !params.disable_gravity {
+            self.compute_gravity_forces()?;
+        }
+
+        if !params.disable_edge_forces {
+            self.compute_edge_forces()?;
+        }
+
+        if !params.disable_center_pull {
+            self.forces_pull_towards_center()?;
+        }
 
         Ok(())
     }
@@ -224,10 +241,9 @@ impl SimulationGraph {
                 mass: gpu.adjusted_size,
             });
         }
-        let gravity_forces =
-            quad_tree.compute_forces(self.nodes_local.len(), params.gravity_force_scale);
+        let gravity_forces = quad_tree.compute_forces(self.nodes_local.len(), &params);
         for (idx, force) in gravity_forces.iter().enumerate() {
-            self.nodes_local[idx].force -= force * params.gravity_force_multiplier;
+            self.nodes_local[idx].force -= force;
         }
 
         Ok(())
@@ -235,40 +251,21 @@ impl SimulationGraph {
 
     pub fn compute_edge_forces(&mut self) -> Result<()> {
         let params = global_state().simulation_params.get();
-        const EDGE_FORCE_COEFFICIENT: f32 = 0.001;
+        const EPSILON: f32 = 0.0001;
 
         for edge in &self.edges {
             let SimulationEdge { from, to } = *edge;
 
-            let direction =
-                (self.nodes_gpu[to].position - self.nodes_gpu[from].position).normalize_or_zero();
+            let diff = self.nodes_gpu[to].position - self.nodes_gpu[from].position;
 
-            let force = match params.edge_force_scale {
-                ScaleType::Linear => {
-                    let distance = self.nodes_gpu[to]
-                        .position
-                        .distance(self.nodes_gpu[from].position);
+            let distance = diff.length() + EPSILON; // Avoid division by zero
+            let force_magnitude =
+                params.edge_force_a * 0.0009 * (distance * params.edge_force_b + EPSILON).ln_1p(); // Use natural log (ln(1 + x)) for linlog
 
-                    direction * EDGE_FORCE_COEFFICIENT * distance
-                }
-                ScaleType::Logarithmic => {
-                    let distance = self.nodes_gpu[to]
-                        .position
-                        .distance(self.nodes_gpu[from].position);
+            let force = (diff / distance) * force_magnitude;
 
-                    direction * EDGE_FORCE_COEFFICIENT * (distance + 1.0).ln_1p()
-                }
-                ScaleType::Quadratic => {
-                    let distance_squared = self.nodes_gpu[to]
-                        .position
-                        .distance_squared(self.nodes_gpu[from].position);
-
-                    direction * EDGE_FORCE_COEFFICIENT * distance_squared
-                }
-            };
-
-            self.nodes_local[from].force += force * params.edge_force_multiplier;
-            self.nodes_local[to].force -= force * params.edge_force_multiplier;
+            self.nodes_local[from].force += force;
+            self.nodes_local[to].force -= force;
         }
         Ok(())
     }
@@ -394,7 +391,7 @@ impl SimulationNodeGPU {
                 x: rng.random_range(-1.0..1.0),
                 y: rng.random_range(-1.0..1.0),
             }
-            .clamp_length_max(0.01),
+            .clamp_length_max(0.9),
             adjusted_size: 1.0,
             flags: NodeAttributesFlags::empty(),
         }
@@ -419,6 +416,11 @@ mod tests {
             Vec2::new(0.1, 0.1).copysign(Vec2::new(0.5, -0.5)),
             Vec2::new(0.1, -0.1)
         );
+
+        let diff = Vec2::new(1.0, 1.0) - Vec2::new(-1.0, -1.0);
+        assert_equal!(diff, Vec2::new(2.0, 2.0));
+
+        assert_equal!(diff.length(), 2.828427);
 
         Ok(())
     }

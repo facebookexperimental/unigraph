@@ -78,19 +78,32 @@ pub struct SimulationParams {
     /// value increase or decrease the anti-gravity force
     /// that pushes nodes away from each other
     pub gravity_force_multiplier: f32,
-    pub gravity_force_scale: ScaleType,
+    pub gravity_force_a: f32,
 
     /// value increase or decrease the force
     /// that edges pull nodes together
     pub edge_force_multiplier: f32,
-    pub edge_force_scale: ScaleType,
+    pub edge_force_a: f32,
+    pub edge_force_b: f32,
 
     /// How much the nodes are pulled towards the center of the space.
     pub center_pull_force_multiplier: f32,
 
+    pub disable_gravity: bool,
+    pub disable_edge_forces: bool,
+    pub disable_center_pull: bool,
+
+    pub total_force_multiplier: f32,
+
     /// value increase or decrease the maximum velocity that the nodes
     /// can reach.
     pub max_velocity_multiplier: f32,
+
+    /// How much the nodes slow down after each frame.
+    /// This is a multiplier that is applied to the velocity of the nodes.
+    /// A value of 1.0 means no slowdown, a value of 0.9 means 10% slowdown,
+    /// a value of 0.5 means 50%
+    pub slowdown: f32,
 
     pub selection: Selection,
     pub colors: SimulationColors,
@@ -103,15 +116,6 @@ pub struct SimulationParams {
     /// This make the visualization much more jittery but it's better then
     /// having 0.5 fps.
     pub compute_forces_every_n_frames: u32,
-}
-
-#[derive(TS)]
-#[ts(export)]
-#[derive(Deserialize, Serialize, Debug, Clone, Copy)]
-pub enum ScaleType {
-    Linear,
-    Logarithmic,
-    Quadratic,
 }
 
 impl SimulationParams {
@@ -159,12 +163,18 @@ impl Default for SimulationParams {
                 node_main: [0.4654, 0.0091, 0.0480],
                 node_selected: [0.0480, 0.0091, 0.4654],
             },
-            gravity_force_multiplier: 200.0,
-            gravity_force_scale: ScaleType::Linear,
+            gravity_force_multiplier: 50.0,
+            gravity_force_a: 30.0,
             edge_force_multiplier: 1.0,
-            edge_force_scale: ScaleType::Linear,
-            center_pull_force_multiplier: 50.0,
-            max_velocity_multiplier: 1.0,
+            edge_force_a: 20.0,
+            edge_force_b: 7.0,
+            center_pull_force_multiplier: 25.0,
+            disable_gravity: false,
+            disable_edge_forces: false,
+            disable_center_pull: false,
+            max_velocity_multiplier: 0.02,
+            total_force_multiplier: 1.0,
+            slowdown: 0.5,
             compute_forces_every_n_frames: 1,
         }
     }

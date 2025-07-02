@@ -7,19 +7,22 @@ import {
   set_event_loop_active,
   set_simulation_params,
 } from "../.build/wasm/unigraph_wasm.js";
-import type { ScaleType } from "../u-be/unigraph_wgpu/bindings/ScaleType.js";
 import type { SelectionType } from "../u-be/unigraph_wgpu/bindings/SelectionType.js";
 import type { SimulationParams } from "../u-be/unigraph_wgpu/bindings/SimulationParams";
 import type { TsVec2 } from "../u-be/unigraph_wgpu/bindings/TsVec2.js";
 import ErrorBoundary from "./components/ErrorBoundary.js";
+import UToggleButton from "./components/UToggleButton.js";
 import { Button } from "./components/ui/button.js";
 import { Label } from "./components/ui/label";
+import { Separator } from "./components/ui/separator.js";
 import { Slider } from "./components/ui/slider";
 import { Toggle } from "./components/ui/toggle";
-import { ToggleGroup, ToggleGroupItem } from "./components/ui/toggle-group.js";
 import { useSelectedNodes } from "./context/SelectedNodesContext.js";
 import { useSimulationParams } from "./context/SimulationParamsContext.js";
 import formatNumber from "./lib/formatNumber.js";
+
+/// Gate extra controls that are useful for debugging but not so much for normal use
+const DEBUG = false;
 
 export default function Simulation() {
   const [paramsVisible, setParamsVisible] = useState(false);
@@ -177,61 +180,94 @@ function ParamsPanel(props: {
         </Toggle>
       </div>
       <div className="flex flex-col gap-4 grow-1">
+        <UToggleButton
+          className="w-full"
+          selected={!props.simulationParams.disable_gravity}
+          onSelectedChange={(disable_gravity) => {
+            props.setSimulationParams({
+              ...props.simulationParams,
+              disable_gravity: !disable_gravity,
+            });
+          }}
+        >
+          {`Antigravity (${formatNumber(props.simulationParams.gravity_force_a)})`}
+        </UToggleButton>
+
         <SimulationSlider
-          label="Antigravity"
-          value={props.simulationParams.gravity_force_multiplier}
-          min={0.01}
-          max={100000.0}
-          precision={2}
+          value={props.simulationParams.gravity_force_a}
+          min={0.0}
+          max={200.0}
+          precision={0}
           scale="logarithmic"
-          onChange={(gravity_force_multiplier) => {
+          onChange={(gravity_force_a) => {
             props.setSimulationParams({
               ...props.simulationParams,
-              gravity_force_multiplier,
+              gravity_force_a,
             });
           }}
         />
 
-        <ScaleToggle
-          scale={props.simulationParams.gravity_force_scale}
-          onScaleChange={(scale) => {
+        <UToggleButton
+          className="w-full"
+          selected={!props.simulationParams.disable_edge_forces}
+          onSelectedChange={(disable_edge_forces) => {
             props.setSimulationParams({
               ...props.simulationParams,
-              gravity_force_scale: scale,
+              disable_edge_forces: !disable_edge_forces,
             });
           }}
-        />
+        >
+          {`Edge Forces (${formatNumber(props.simulationParams.edge_force_a)})`}
+        </UToggleButton>
 
         <SimulationSlider
-          label="Edge Force"
-          value={props.simulationParams.edge_force_multiplier}
-          min={0.01}
-          max={1000.0}
-          precision={2}
+          value={props.simulationParams.edge_force_a}
+          min={0}
+          max={300}
+          precision={4}
           scale="logarithmic"
-          onChange={(edge_force_multiplier) => {
+          onChange={(edge_force_a) => {
             props.setSimulationParams({
               ...props.simulationParams,
-              edge_force_multiplier,
+              edge_force_a,
             });
           }}
         />
 
-        <ScaleToggle
-          scale={props.simulationParams.edge_force_scale}
-          onScaleChange={(scale) => {
+        {DEBUG && (
+          <SimulationSlider
+            label="ln(1 + len * x)"
+            value={props.simulationParams.edge_force_b}
+            min={0.0}
+            max={10.0}
+            precision={2}
+            scale="linear"
+            onChange={(edge_force_b) => {
+              props.setSimulationParams({
+                ...props.simulationParams,
+                edge_force_b,
+              });
+            }}
+          />
+        )}
+
+        <UToggleButton
+          className="w-full"
+          selected={!props.simulationParams.disable_center_pull}
+          onSelectedChange={(disable_center_pull) => {
             props.setSimulationParams({
               ...props.simulationParams,
-              edge_force_scale: scale,
+              disable_center_pull: !disable_center_pull,
             });
           }}
-        />
+        >
+          {`Center Pull (${formatNumber(props.simulationParams.center_pull_force_multiplier)})`}
+        </UToggleButton>
 
         <SimulationSlider
-          label="Center Pull Force"
           value={props.simulationParams.center_pull_force_multiplier}
-          min={0.01}
-          max={1000.0}
+          min={0.0}
+          max={100.0}
           precision={2}
           scale="logarithmic"
           onChange={(center_pull_force_multiplier) => {
@@ -242,11 +278,30 @@ function ParamsPanel(props: {
           }}
         />
 
+        <Separator />
+
+        {DEBUG && (
+          <SimulationSlider
+            label="Total Force multiplier"
+            value={props.simulationParams.total_force_multiplier}
+            min={0.001}
+            max={100.0}
+            precision={2}
+            scale="logarithmic"
+            onChange={(total_force_multiplier) => {
+              props.setSimulationParams({
+                ...props.simulationParams,
+                total_force_multiplier,
+              });
+            }}
+          />
+        )}
+
         <SimulationSlider
           label="Max Velocity"
           value={props.simulationParams.max_velocity_multiplier}
-          min={0.01}
-          max={10.0}
+          min={0.0001}
+          max={0.3}
           precision={2}
           scale="logarithmic"
           onChange={(max_velocity_multiplier) => {
@@ -258,20 +313,37 @@ function ParamsPanel(props: {
         />
 
         <SimulationSlider
-          label="Frames / Compute"
-          value={props.simulationParams.compute_forces_every_n_frames}
-          min={1}
-          max={10}
-          precision={0}
-          onChange={(compute_forces_every_n_frames) => {
+          label="Slowdown"
+          value={props.simulationParams.slowdown}
+          min={0.01}
+          max={1.0}
+          precision={2}
+          scale="logarithmic"
+          onChange={(slowdown) => {
             props.setSimulationParams({
               ...props.simulationParams,
-              compute_forces_every_n_frames: Math.floor(
-                compute_forces_every_n_frames,
-              ),
+              slowdown,
             });
           }}
         />
+
+        {DEBUG && (
+          <SimulationSlider
+            label="Frames / Compute"
+            value={props.simulationParams.compute_forces_every_n_frames}
+            min={1}
+            max={10}
+            precision={0}
+            onChange={(compute_forces_every_n_frames) => {
+              props.setSimulationParams({
+                ...props.simulationParams,
+                compute_forces_every_n_frames: Math.floor(
+                  compute_forces_every_n_frames,
+                ),
+              });
+            }}
+          />
+        )}
       </div>
     </div>
   );
@@ -341,7 +413,7 @@ function SimulationSlider({
   scale = "linear",
   onChange,
 }: {
-  label: string;
+  label?: string;
   value: number;
   min: number;
   max: number;
@@ -351,12 +423,23 @@ function SimulationSlider({
 }) {
   const [toLocalValue, fromLocalValue] = (() => {
     switch (scale) {
-      case "logarithmic":
+      case "logarithmic": {
+        const LOG_COEFFICIENT = 4; // Make the scale a bit less extreme
         return [
-          (value: number) => Math.log10(value),
-          // biome-ignore lint/style/useExponentiationOperator: <explanation>
-          (value: number) => Math.pow(10, value),
+          (value: number) => {
+            if (value === 0) {
+              return 0;
+            }
+            const sign = value < 0 ? -1 : 1;
+            return sign * Math.log10(Math.abs(value) + 1) * LOG_COEFFICIENT;
+          },
+          (value: number) => {
+            const sign = value < 0 ? -1 : 1;
+            // biome-ignore lint/style/useExponentiationOperator: <explanation>
+            return sign * Math.pow(10, value / LOG_COEFFICIENT) - 1;
+          },
         ];
+      }
       case "linear":
         return [(value: number) => value, (value: number) => value];
       default: {
@@ -372,12 +455,17 @@ function SimulationSlider({
   const localMin = toLocalValue(min);
   const step = (localMax - localMin) / 100; // More steps for smoother feel
 
-  const id = `id-${label.toLowerCase().replace(/\s+/g, "-")}`;
+  const id =
+    label != null
+      ? `id-${label.toLowerCase().replace(/\s+/g, "-")}`
+      : undefined;
   return (
     <div>
-      <Label htmlFor={id} className="text-sm font-medium mb-2">
-        {`${label} (${formatNumber(value, 0, precision)})`}
-      </Label>
+      {label != null && (
+        <Label htmlFor={id} className="text-sm font-medium mb-2">
+          {`${label} (${formatNumber(value, 0, precision)})`}
+        </Label>
+      )}
       <Slider
         id={id}
         value={[localValue]}
@@ -395,44 +483,5 @@ function SimulationSlider({
         }}
       />
     </div>
-  );
-}
-
-function ScaleToggle(props: {
-  scale: ScaleType;
-  onScaleChange: (scale: ScaleType) => void;
-}) {
-  return (
-    <ToggleGroup
-      type="single"
-      variant="outline"
-      value={props.scale}
-      className="w-full"
-      onValueChange={(value) => {
-        if (value == null || value === "") {
-          return;
-        }
-        props.onScaleChange(value as ScaleType);
-      }}
-    >
-      <ToggleGroupItem
-        value="Linear"
-        className="state-on:bg-primary data-[state=on]:bg-primary cursor-pointer"
-      >
-        x
-      </ToggleGroupItem>
-      <ToggleGroupItem
-        className="state-on:bg-primary data-[state=on]:bg-primary cursor-pointer"
-        value="Logarithmic"
-      >
-        log(x)
-      </ToggleGroupItem>
-      <ToggleGroupItem
-        className="state-on:bg-primary data-[state=on]:bg-primary cursor-pointer"
-        value="Quadratic"
-      >
-        x²
-      </ToggleGroupItem>
-    </ToggleGroup>
   );
 }
