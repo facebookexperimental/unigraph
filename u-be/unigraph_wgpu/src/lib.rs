@@ -235,6 +235,19 @@ impl WGPUState {
 
         self.basic_uniforms.uniforms.aspect_ratio = new_aspect_ratio;
 
+        log::debug!(
+            "Resized to {}x{} with aspect ratio {}",
+            new_size.width,
+            new_size.height,
+            new_aspect_ratio
+        );
+
+        global_state()
+            .graph_state
+            .get_mut()
+            .simulation_graph
+            .set_boundaries(new_aspect_ratio);
+
         self.queue.write_buffer(
             &self.basic_uniforms.uniforms_buffer,
             0,

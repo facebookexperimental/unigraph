@@ -38,6 +38,15 @@ pub(crate) struct SimulationGraph {
     edges: Vec<SimulationEdge>,
 
     remap_ctx: RemapContext,
+
+    /// value that specifies the boundaries of the MAX position of the nodes.
+    /// to make sure they fit given the current aspect ratio.
+    ///
+    /// values are in the range of -1.0 to 1.0.
+    ///
+    /// if the boundaries (-0.5, -0.5) and (0.5, 0.5) the positions of the nodes
+    /// will be clamped to that range.
+    boundaries: (Vec2, Vec2),
 }
 
 #[repr(C)]
@@ -125,6 +134,7 @@ impl SimulationGraph {
                 original_positions,
                 mappings,
             },
+            boundaries: (Vec2::splat(-0.95), Vec2::splat(0.95)),
         };
 
         if let Some(selected_metrics) = selected_metric
@@ -184,7 +194,7 @@ impl SimulationGraph {
             // Update the node's position based on its velocity
             gpu.position += local.velocity;
 
-            gpu.position = gpu.position.clamp(Vec2::splat(-0.95), Vec2::splat(0.95));
+            gpu.position = gpu.position.clamp(self.boundaries.0, self.boundaries.1);
         }
 
         Ok(())
@@ -361,6 +371,18 @@ impl SimulationGraph {
                 anyhow::bail!("Line selection not implemented yet");
             }
         }
+    }
+
+    pub fn set_boundaries(&mut self, aspect_ratio: f32) {
+        const PADDING: f32 = 0.02; // Padding to avoid nodes being too close to the edges
+
+        let value = if aspect_ratio < 1.0 {
+            Vec2::new(aspect_ratio, 1.0)
+        } else {
+            Vec2::new(1.0, 1.0 / aspect_ratio)
+        } - Vec2::splat(PADDING);
+
+        self.boundaries = (-value, value);
     }
 }
 
