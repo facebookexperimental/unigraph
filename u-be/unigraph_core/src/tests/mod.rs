@@ -418,14 +418,10 @@ fn test_tiered_traversal() -> Result<()> {
         let node_name = g.idx_to_name(node_idx);
         let tier_flags = g.node_flags[node_idx].intersection(NodeFlags::ALL_TIERS);
         let tier_idx = match tier_flags {
-            NodeFlags::TIER_0 => 0,
-            NodeFlags::TIER_1 => 1,
-            NodeFlags::TIER_2 => 2,
-            NodeFlags::TIER_3 => 3,
-            NodeFlags::TIER_4 => 4,
-            NodeFlags::TIER_5 => 5,
-            NodeFlags::TIER_6 => 6,
-            NodeFlags::TIER_7 => 7,
+            NodeFlags::TIER_IDX_0 => 0,
+            NodeFlags::TIER_IDX_1 => 1,
+            NodeFlags::TIER_IDX_2 => 2,
+            NodeFlags::TIER_IDX_3 => 3,
             _ => anyhow::bail!("Does not match any tier or has multiple tiers assigned"), // No tier assigned
         };
 

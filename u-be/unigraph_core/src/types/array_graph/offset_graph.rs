@@ -14,6 +14,8 @@ use super::Arrow;
 use crate::types::NodeIDX;
 use crate::types::array_graph::offset_graph::offset_graph_traversal::EdgesIter;
 use crate::types::array_graph::offset_graph::offset_graph_traversal::OffsetGraphDFSUnconfigured;
+use crate::types::array_graph::tiers::ALL_TIER_FLAGS;
+use crate::types::array_graph::tiers::TIER_FLAGS;
 
 pub struct OffsetGraph {
     pub(super) edges: Vec<Edge>,
@@ -40,9 +42,15 @@ bitflags::bitflags! {
     #[repr(transparent)]
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     pub struct EdgeFlags: u32 {
-        const IS_TAGGED =   0b0000_0001;
-        const IS_DYNAMIC =  0b0000_0010;
-        const EXCLUDED =    0b0000_0100;
+        const IS_TAGGED =                   0b0000_0001;
+        const IS_DYNAMIC =                  0b0000_0010;
+        const EXCLUDED =                    0b0000_0100;
+
+        const TRANSITIONS_TO_TIER_IDX_0 =   TIER_FLAGS[0];
+        const TRANSITIONS_TO_TIER_IDX_1 =   TIER_FLAGS[1];
+        const TRANSITIONS_TO_TIER_IDX_2 =   TIER_FLAGS[2];
+        const TRANSITIONS_TO_TIER_IDX_3 =   TIER_FLAGS[3];
+        const ALL_TIERS =                   ALL_TIER_FLAGS;
     }
 }
 
@@ -103,9 +111,33 @@ impl EdgeFlags {
         result
     }
 
+    pub fn dbg(self) -> String {
+        format!(
+            "
+flags: {}
+excluded: {}
+transitions to tier idx: {:?}
+",
+            self.to_binary_string(),
+            self.is_excluded(),
+            self.transitions_to_tier_idx()
+        )
+    }
+
     #[inline(always)]
     pub fn is_excluded(&self) -> bool {
         self.contains(EdgeFlags::EXCLUDED)
+    }
+
+    pub fn transitions_to_tier_idx(self) -> Option<usize> {
+        let tier_flags = self.intersection(EdgeFlags::ALL_TIERS);
+        match tier_flags {
+            EdgeFlags::TRANSITIONS_TO_TIER_IDX_0 => Some(0),
+            EdgeFlags::TRANSITIONS_TO_TIER_IDX_1 => Some(1),
+            EdgeFlags::TRANSITIONS_TO_TIER_IDX_2 => Some(2),
+            EdgeFlags::TRANSITIONS_TO_TIER_IDX_3 => Some(3),
+            _ => None,
+        }
     }
 }
 

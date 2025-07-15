@@ -1,5 +1,8 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
+use std::collections::BTreeMap;
+
+use anyhow::Context;
 use anyhow::Result;
 
 use crate::ArrayGraph;
@@ -8,10 +11,12 @@ use crate::NodeIDX;
 use crate::TraversalConfig;
 use crate::traversal::TraversalConfigIDX;
 use crate::traversal::tiered_traversal::TieredTraversalConfig;
+use crate::types::Tag;
 use crate::types::array_graph::NodeFlags;
 use crate::types::array_graph::array_graph_derived_state::ArrayGraphDerivedState;
 use crate::types::array_graph::offset_graph::EdgeFlags;
 use crate::types::array_graph::offset_graph::NonDirectedEdgeMetadata;
+use crate::types::array_graph::tiers::tier_idx_to_flags;
 
 /// This function will take an `ArrayGraph` and a `TraversalConfig`, and apply the traversal configuration to the graph.
 /// which will include figuring out which edges/nodes to follow, which edges/nodes to exclude, assign tiers if
@@ -23,13 +28,17 @@ pub fn apply_traversal_config_to_array_graph(
     let entry_points = ag.determine_entrypoints();
     let indexed_config = traversal_config.index(ag);
 
+    let tag_to_tier = indexed_config
+        .ascending_tiers()
+        .map(|c| c.make_tag_to_tier_idx_map());
+
     for (parent_idx, edge, metadata) in ag.edges_forward.iter_edges_mut() {
         // we need to start fresh and make sure all edges that were previously excluded
         // are reset.
         edge.flags.remove(EdgeFlags::EXCLUDED);
 
         match_dynamic_edges(&indexed_config, parent_idx, edge, metadata);
-        match_tagged(&indexed_config, edge, metadata);
+        match_tagged(&indexed_config, edge, metadata, &tag_to_tier)?;
         if let Some(tag_sets_for_node) = ag.tag_sets.get(&edge.points_to) {
             match_tag_sets(&indexed_config, edge, tag_sets_for_node);
         }
@@ -164,7 +173,8 @@ fn match_tagged(
     indexed_config: &super::TraversalConfigIDX,
     edge: &mut crate::types::array_graph::offset_graph::Edge,
     metadata: &mut NonDirectedEdgeMetadata,
-) {
+    tag_to_tier: &Option<BTreeMap<Tag, usize>>,
+) -> Result<()> {
     #[allow(clippy::collapsible_if)]
     if let NonDirectedEdgeMetadata::Tagged { tag } = metadata {
         if let Some(decision) = indexed_config.force_tagged.get(tag) {
@@ -173,5 +183,16 @@ fn match_tagged(
                 false => edge.flags.insert(EdgeFlags::EXCLUDED),
             }
         }
+
+        if let Some(tag_to_tier) = tag_to_tier {
+            if let Some(tier_idx) = tag_to_tier.get(tag).copied() {
+                let tier_transition_flags = tier_idx_to_flags(tier_idx)?;
+                let flags = EdgeFlags::from_bits(tier_transition_flags)
+                    .with_context(|| format!("Invalid tier flags: {tier_transition_flags:#b}"))?;
+
+                edge.flags.insert(flags);
+            }
+        }
     }
+    Ok(())
 }

@@ -13,6 +13,7 @@ pub(crate) mod offset_graph;
 pub mod remap_utils;
 mod super_root;
 mod tarjan_strongly_connected_components;
+pub mod tiers;
 mod to_map_graph;
 
 use std::collections::BTreeMap;
@@ -51,6 +52,8 @@ use crate::types::array_graph::array_graph_metrics::parents_len_configured;
 use crate::types::array_graph::array_graph_stats::ArrayGraphStats;
 use crate::types::array_graph::conjoint_cost::ConjointCost;
 use crate::types::array_graph::offset_graph::lengauer_tarjan_dominator_tree::make_dominator_tree;
+use crate::types::array_graph::tiers::ALL_TIER_FLAGS;
+use crate::types::array_graph::tiers::TIER_FLAGS;
 
 pub struct ArrayGraph {
     pub node_names_ordered: NodeNamesOrdered,
@@ -75,17 +78,13 @@ bitflags::bitflags! {
     #[repr(transparent)]
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     pub struct NodeFlags: u32 {
-        const UNREACHABLE = 0b0001_0000_0000;
+        const UNREACHABLE = 0b0000_0001;
 
-        const TIER_0 =      0b0000_1000_0000;
-        const TIER_1 =      0b0000_0100_0000;
-        const TIER_2 =      0b0000_0010_0000;
-        const TIER_3 =      0b0000_0001_0000;
-        const TIER_4 =      0b0000_0000_1000;
-        const TIER_5 =      0b0000_0000_0100;
-        const TIER_6 =      0b0000_0000_0010;
-        const TIER_7 =      0b0000_0000_0001;
-        const ALL_TIERS =   0b0000_1111_1111;
+        const TIER_IDX_0 =  TIER_FLAGS[0];
+        const TIER_IDX_1 =  TIER_FLAGS[1];
+        const TIER_IDX_2 =  TIER_FLAGS[2];
+        const TIER_IDX_3 =  TIER_FLAGS[3];
+        const ALL_TIERS =   ALL_TIER_FLAGS;
     }
 }
 
@@ -93,14 +92,10 @@ impl NodeFlags {
     pub fn tier_idx(self) -> Option<usize> {
         let tier_bits = self.intersection(NodeFlags::ALL_TIERS);
         match tier_bits {
-            NodeFlags::TIER_0 => Some(0),
-            NodeFlags::TIER_1 => Some(1),
-            NodeFlags::TIER_2 => Some(2),
-            NodeFlags::TIER_3 => Some(3),
-            NodeFlags::TIER_4 => Some(4),
-            NodeFlags::TIER_5 => Some(5),
-            NodeFlags::TIER_6 => Some(6),
-            NodeFlags::TIER_7 => Some(7),
+            NodeFlags::TIER_IDX_0 => Some(0),
+            NodeFlags::TIER_IDX_1 => Some(1),
+            NodeFlags::TIER_IDX_2 => Some(2),
+            NodeFlags::TIER_IDX_3 => Some(3),
             _ => None,
         }
     }
