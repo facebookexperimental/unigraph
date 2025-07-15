@@ -130,11 +130,15 @@ pub fn get_metrics_sums_for_nodes(
     Ok(result)
 }
 
+/// This returns summed up metric for provided nodes.
+/// it DOES NOT compute tiers, it takes the tiers that are already assigned to the
+/// nodes and aggregates the metrics for each tier.
+/// The use case of it is to show how combined metrics for selected nodes.
 pub fn get_metrics_sums_tiered_for_nodes(
     ag: &ArrayGraph,
     node_idxs: &[NodeIDX],
 ) -> Result<BTreeMap<MetricName, BTreeMap<TierName, f32>>> {
-    let mut result = BTreeMap::new();
+    let mut result: BTreeMap<MetricName, BTreeMap<TierName, f32>> = BTreeMap::new();
 
     let tier_config = ag
         .traversal_config
@@ -143,7 +147,7 @@ pub fn get_metrics_sums_tiered_for_nodes(
 
     if let Some(TieredTraversalConfig::AscendingTiers(ascending_tiers)) = tier_config {
         for (metric_name, metrics) in &ag.metrics {
-            let mut tiered_metrics = [0.0; 8];
+            let mut tiered_metrics = [0.0; 4];
 
             for node_idx in node_idxs {
                 if ag.is_node_unreachable(*node_idx) {
@@ -152,31 +156,103 @@ pub fn get_metrics_sums_tiered_for_nodes(
 
                 let tier_idx = ag.try_node_tier_idx(*node_idx)?;
                 let value = metrics[*node_idx];
-                tiered_metrics[tier_idx] += value;
-            }
 
-            let mut cumulative = 0.0;
-            let mut tiered_result = BTreeMap::new();
-            for (tier_idx, tier) in ascending_tiers.tiers.iter().enumerate() {
-                let value = tiered_metrics[tier_idx];
-                let cml_value = cumulative + value;
-                cumulative = cml_value;
-                if cml_value > 0.0 {
-                    tiered_result.insert(tier.name.to_string(), cml_value);
+                // make it cumulative.
+                #[allow(clippy::needless_range_loop)]
+                for add_metric_to_tier_idx in tier_idx..4 {
+                    tiered_metrics[add_metric_to_tier_idx] += value;
                 }
             }
 
-            result.insert(metric_name.to_string(), tiered_result);
+            for (tier_idx, value) in tiered_metrics.iter().enumerate() {
+                if *value > 0.0 {
+                    let tier_name = ascending_tiers.tiers[tier_idx].name.to_string();
+                    result
+                        .entry(metric_name.to_string())
+                        .or_default()
+                        .insert(tier_name, *value);
+                }
+            }
         }
     }
 
     Ok(result)
 }
 
+/// Get Tiered metrics for the set of entry points (which normally means
+/// the whole reachable graph).
+pub fn get_combined_metrics_for_entry_points(ag: &ArrayGraph) -> Result<CombinedMetricsForNodes> {
+    let mut tiered_result = BTreeMap::new();
+    let mut metric_result = BTreeMap::new();
+
+    let tier_config = ag
+        .traversal_config
+        .as_ref()
+        .and_then(|config| config.tiered_traversal.as_ref());
+
+    // get the indexed vec for metrics so we don't acess maps with a string key
+    // on every iteration.
+    let metric_names = ag.metrics.keys().cloned().collect::<Vec<_>>();
+    let metric_values = ag.metrics.values().collect::<Vec<&Vec<f32>>>();
+
+    let mut tiered_result_vec: Vec<[f32; 4]> = metric_names
+        .iter()
+        .map(|_name| [0.0; 4])
+        .collect::<Vec<_>>();
+
+    let mut metrics_result_vec = vec![0.0; metric_names.len()];
+
+    if let Some(TieredTraversalConfig::AscendingTiers(ascending_tiers)) = tier_config {
+        let entry_points = ag.determine_entrypoints();
+
+        for next in ag
+            .edges_forward
+            .dfs_tiered_configured(&ascending_tiers.tiers, &entry_points)?
+        {
+            let (node_idx, tier_idx) = next?;
+
+            //
+            for (metric_idx, _metric_name) in metric_names.iter().enumerate() {
+                let metric_value = metric_values[metric_idx][node_idx];
+
+                metrics_result_vec[metric_idx] += metric_value;
+
+                // make it cumulative. If the node appears on one tier, it's also
+                // included in all tiers above it.
+                for add_metric_to_tier_idx in tier_idx..4 {
+                    tiered_result_vec[metric_idx][add_metric_to_tier_idx] += metric_value;
+                }
+            }
+        }
+
+        for (metric_idx, tiered_metrics) in tiered_result_vec.iter().enumerate() {
+            let metric_name = &metric_names[metric_idx];
+
+            metric_result.insert(metric_name.clone(), metrics_result_vec[metric_idx]);
+
+            let mut tiered_map = BTreeMap::new();
+
+            for (tier_idx, value) in tiered_metrics.iter().enumerate() {
+                if *value > 0.0 {
+                    let tier_name = ascending_tiers.tiers[tier_idx].name.to_string();
+                    tiered_map.insert(tier_name, *value);
+                }
+            }
+
+            tiered_result.insert(metric_name.clone(), tiered_map);
+        }
+    }
+
+    Ok(CombinedMetricsForNodes {
+        metrics: metric_result,
+        tiered_metrics: tiered_result,
+    })
+}
+
 /// Represents values for metrics for a set of nodes.
 /// Not transitive, just aggregated for things like
 /// "give me total size of all the nodes i just selected"
-#[derive(serde::Serialize, serde::Deserialize, ts_rs::TS, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, ts_rs::TS, Clone, Debug)]
 #[ts(export)]
 pub struct CombinedMetricsForNodes {
     pub metrics: BTreeMap<MetricName, f32>,

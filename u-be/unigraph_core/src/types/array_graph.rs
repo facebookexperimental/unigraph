@@ -44,6 +44,7 @@ use crate::types::array_graph::array_graph_arrows::get_arrows_forward;
 use crate::types::array_graph::array_graph_arrows::get_arrows_reverse;
 use crate::types::array_graph::array_graph_derived_state::ArrayGraphDerivedState;
 use crate::types::array_graph::array_graph_metrics::CombinedMetricsForNodes;
+use crate::types::array_graph::array_graph_metrics::get_combined_metrics_for_entry_points;
 use crate::types::array_graph::array_graph_metrics::get_metrics_sums_for_nodes;
 use crate::types::array_graph::array_graph_metrics::get_metrics_sums_tiered_for_nodes;
 use crate::types::array_graph::array_graph_metrics::get_transitive_metric_value;
@@ -282,6 +283,11 @@ impl ArrayGraph {
             metrics: get_metrics_sums_for_nodes(self, node_idxs)?,
             tiered_metrics: get_metrics_sums_tiered_for_nodes(self, node_idxs)?,
         })
+    }
+
+    pub fn get_combined_metrics_for_entry_points(&self) -> Result<CombinedMetricsForNodes> {
+        get_combined_metrics_for_entry_points(self)
+            .context("Failed to get combined metrics for entry points")
     }
 
     pub fn node_tier_idx(&self, node_idx: NodeIDX) -> Option<usize> {

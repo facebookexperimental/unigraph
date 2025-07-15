@@ -459,6 +459,25 @@ Node: J, Tier: T3
 "#
     );
 
+    snapshot!(
+        g.get_combined_metrics_for_entry_points()?,
+        r#"
+CombinedMetricsForNodes {
+    metrics: {
+        "size": 10.0,
+    },
+    tiered_metrics: {
+        "size": {
+            "T1": 7.0,
+            "T2": 8.0,
+            "T3": 9.0,
+            "T4": 10.0,
+        },
+    },
+}
+"#
+    );
+
     Ok(())
 }
 
