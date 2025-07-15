@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use anyhow::Result;
 
 use crate::ArrayGraph;
@@ -11,6 +13,12 @@ pub(crate) fn get_reachable_subgraph_unconfigured(
 ) -> Result<ArrayGraphSerializable> {
     let mut reachable = vec![false; graph.nodes_len()];
     let mut total_reachable = 0;
+
+    let root_names = roots
+        .iter()
+        .map(|&idx| graph.node_names_ordered.idx_to_name(idx).to_string())
+        .collect::<BTreeSet<_>>();
+
     for node_idx in graph.edges_forward.dfs_unconfigured(roots) {
         reachable[node_idx] = true;
         total_reachable += 1;
@@ -38,7 +46,9 @@ pub(crate) fn get_reachable_subgraph_unconfigured(
     }
 
     let gs = graph.into_serializable();
-    let remapped = gs.remap(&remap_ctx)?;
+    let mut remapped = gs.remap(&remap_ctx)?;
+
+    remapped.entry_points = Some(root_names);
 
     Ok(remapped)
 }
