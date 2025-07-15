@@ -5,7 +5,7 @@
 
 :root {
   --radius: 0.5rem;
-  --background: oklch(1 0 0);
+  --background-primary: oklch(1 0 0);
   --foreground: oklch(0.141 0.005 285.823);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.141 0.005 285.823);
@@ -39,7 +39,7 @@
 }
 
 .unigraph-explorer {
-  --background: rgb(13 11 12);
+  --background-primary: rgb(13 11 12);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.21 0.006 285.885);
   --card-foreground: oklch(0.985 0 0);
@@ -73,7 +73,7 @@
 }
 
 @theme inline {
-  --color-background: var(--background);
+  --color-background: var(--background-primary);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
@@ -115,7 +115,19 @@
   * {
     @apply border-border outline-ring/50;
   }
+
   body {
     @apply bg-background text-foreground;
   }
+}
+
+body,
+button,
+input,
+label,
+select,
+td,
+textarea {
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 14px;
 }

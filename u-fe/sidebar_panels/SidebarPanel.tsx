@@ -21,7 +21,7 @@ export function SidebarPanelHeader({
 }) {
   return (
     <>
-      <h2 className="text-3xl font-bold">{children}</h2>
+      <h2 className="!text-3xl !font-bold !text-foreground">{children}</h2>
       <Separator className="my-4" />
     </>
   );

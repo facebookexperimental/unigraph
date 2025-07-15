@@ -462,7 +462,10 @@ function SimulationSlider({
   return (
     <div>
       {label != null && (
-        <Label htmlFor={id} className="text-sm font-medium mb-2">
+        <Label
+          htmlFor={id}
+          className="!text-sm !font-medium !mb-2 !text-foreground"
+        >
           {`${label} (${formatNumber(value, 0, precision)})`}
         </Label>
       )}

@@ -8,7 +8,7 @@ export default function UTooltip({
   tooltip,
   children,
 }: {
-  tooltip: React.ReactNode;
+  tooltip: React.ReactNode | null;
   children: React.ReactNode;
 }) {
   const container = usePortalContainer();
@@ -16,9 +16,11 @@ export default function UTooltip({
   return (
     <Tooltip>
       <TooltipTrigger asChild>{children}</TooltipTrigger>
-      <TooltipPortal container={container?.current}>
-        <TooltipContent>{tooltip}</TooltipContent>
-      </TooltipPortal>
+      {tooltip != null && (
+        <TooltipPortal container={container?.current}>
+          <TooltipContent>{tooltip}</TooltipContent>
+        </TooltipPortal>
+      )}
     </Tooltip>
   );
 }

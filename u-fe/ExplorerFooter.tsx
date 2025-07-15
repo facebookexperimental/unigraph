@@ -306,7 +306,7 @@ function ConjointCostHoverCardContent() {
       });
 
       return (
-        <>
+        <div key={`conjoint-metric-${metricName}`} className="flex gap-2">
           <UToggleButton
             key={`conjoint-self-${metricName}`}
             size="sm"
@@ -330,7 +330,7 @@ function ConjointCostHoverCardContent() {
             <span className="text-sm">{metricName}</span>
           </UToggleButton>
           {tiers}
-        </>
+        </div>
       );
     },
   );

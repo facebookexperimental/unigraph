@@ -333,7 +333,7 @@ export function TreeTable(props: {
         <div
           style={{ height: `${headerHeight}px` }}
           className={clsx(
-            "sticky top-0 border-b  px-4 flex items-center",
+            "sticky top-0 border-b px-4 flex items-center whitespace-nowrap",
             sortOrder != null ? "bg-primary" : "bg-accent",
           )}
         >
