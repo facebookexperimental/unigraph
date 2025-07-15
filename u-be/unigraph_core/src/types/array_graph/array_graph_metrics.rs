@@ -165,8 +165,10 @@ pub fn get_metrics_sums_tiered_for_nodes(
             }
 
             for (tier_idx, value) in tiered_metrics.iter().enumerate() {
-                if *value > 0.0 {
-                    let tier_name = ascending_tiers.tiers[tier_idx].name.to_string();
+                if *value > 0.0
+                    && let Some(tier) = ascending_tiers.tiers.get(tier_idx)
+                {
+                    let tier_name = tier.name.to_string();
                     result
                         .entry(metric_name.to_string())
                         .or_default()
@@ -246,8 +248,10 @@ pub fn get_combined_metrics_for_entry_points(
             let mut tiered_map = BTreeMap::new();
 
             for (tier_idx, value) in tiered_metrics.iter().enumerate() {
-                if *value > 0.0 {
-                    let tier_name = ascending_tiers.tiers[tier_idx].name.to_string();
+                if *value > 0.0
+                    && let Some(tier) = ascending_tiers.tiers.get(tier_idx)
+                {
+                    let tier_name = tier.name.to_string();
                     tiered_map.insert(tier_name, *value);
                 }
             }

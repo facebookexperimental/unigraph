@@ -250,6 +250,29 @@ pub fn get_combined_metrics_for_nodes(node_idxs: Vec<u32>) -> Result<String, Was
 }
 
 #[wasm_bindgen]
+pub fn get_combined_metrics_for_entrypoints_with_force_include(
+    force_edge_include_from: Option<u32>,
+    force_edge_include_to: Option<u32>,
+) -> Result<String, WasmJSError> {
+    let force_edge_include = match (force_edge_include_from, force_edge_include_to) {
+        (Some(from), Some(to)) => Some((NodeIDX(from), NodeIDX(to))),
+        (None, None) => None,
+        _ => {
+            return Err(anyhow::anyhow!(
+                "force_edge_include_from and force_edge_include_to must both be set or both be None"
+            )
+            .into());
+        }
+    };
+
+    let mut graph_state = GlobalState::graph_state().get_mut();
+    let result = graph_state
+        .array_graph
+        .get_combined_metrics_for_entry_points(force_edge_include)?;
+    Ok(serde_json::to_string(&result).context("Failed to serialize transitive tiered metrics")?)
+}
+
+#[wasm_bindgen]
 pub fn get_conjoint_cost() -> Result<String, WasmJSError> {
     let graph_state = GlobalState::graph_state().get();
     let conjoint_cost = graph_state.array_graph.conjoint_cost();

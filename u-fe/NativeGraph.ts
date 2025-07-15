@@ -11,6 +11,7 @@ import {
   get_all_reachable_node_idxs,
   get_array_graph_stats,
   get_arrows,
+  get_combined_metrics_for_entrypoints_with_force_include,
   get_combined_metrics_for_nodes,
   get_conjoint_cost,
   get_graph_node_count,
@@ -40,6 +41,16 @@ type NodeIDXVecSet = Readonly<{
   set: Readonly<Set<NodeIDX>>;
 }>;
 
+type CombinedMetricsCache = {
+  // metrics for the whole reachable graph from current entrypoints with
+  // the current traversal config
+  current: CombinedMetricsForNodes;
+  // Same, but including edge overrides, which is force including an edge
+  // and see how much it changes the metrics.
+  // from -> to -> metrics
+  for_overrides: Map<NodeIDX, Map<NodeIDX, CombinedMetricsForNodes>>;
+};
+
 const GraphStructureForwardU8 = 0;
 const GraphStructureDominatorU8 = 1;
 const GraphStructureReverseU8 = 2;
@@ -58,6 +69,8 @@ export default class NativeGraph {
   private entrypointsCache: NodeIDXVecSet | null = null;
 
   private allReacahableNodeIDXsCache: NodeIDXVecSet | null = null;
+
+  private combinedMetricsCache: CombinedMetricsCache | null = null;
 
   static fromMapGraphJSON(mapGraphJSON: string): NativeGraph {
     set_map_graph(mapGraphJSON);
@@ -263,6 +276,51 @@ export default class NativeGraph {
   getCombinedMetrics(nodeIDXs: NodeIDX[]): CombinedMetricsForNodes {
     const json = get_combined_metrics_for_nodes(new Uint32Array(nodeIDXs));
     return JSON.parse(json) as CombinedMetricsForNodes;
+  }
+
+  private getOrInitCombinedMetricsCache(): CombinedMetricsCache {
+    if (this.combinedMetricsCache == null) {
+      const currentJSON =
+        get_combined_metrics_for_entrypoints_with_force_include(null, null);
+
+      const current: CombinedMetricsForNodes = JSON.parse(currentJSON);
+      this.combinedMetricsCache = {
+        current,
+        for_overrides: new Map(),
+      };
+    }
+
+    return this.combinedMetricsCache;
+  }
+
+  getCombinedMetricsForEntryPoints(): CombinedMetricsForNodes {
+    return this.getOrInitCombinedMetricsCache().current;
+  }
+
+  getCombinedMetricsForEntryPointsWithOverrides(forceInclude: {
+    from: NodeIDX;
+    to: NodeIDX;
+  }): CombinedMetricsForNodes {
+    const cache = this.getOrInitCombinedMetricsCache();
+
+    let result = cache.for_overrides
+      .get(forceInclude.from)
+      ?.get(forceInclude.to);
+
+    if (result != null) {
+      return result;
+    }
+
+    const metricsJSON = get_combined_metrics_for_entrypoints_with_force_include(
+      forceInclude.from,
+      forceInclude.to,
+    );
+    result = JSON.parse(metricsJSON) as CombinedMetricsForNodes;
+
+    const fromMap = cache.for_overrides.get(forceInclude.from) ?? new Map();
+    fromMap.set(forceInclude.to, result);
+    cache.for_overrides.set(forceInclude.from, fromMap);
+    return result;
   }
 
   getConjointCost(): ConjointCost {

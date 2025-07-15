@@ -1,13 +1,16 @@
 import type { NodeIDX } from "@/types";
+import clsx from "clsx";
 import { useMemo } from "react";
 import type { Arrow } from "u-be/unigraph_core/bindings/Arrow";
 import type { GraphSettings } from "u-be/unigraph_core/bindings/GraphSettings";
+import type { MetricFormat } from "u-be/unigraph_core/bindings/MetricFormat";
 import type { MetricSettings } from "u-be/unigraph_core/bindings/MetricSettings";
+import { ARROW_POINTS_FROM_NON_EXISTENT } from "../ArrowUtils";
 import type NativeGraph from "../NativeGraph";
+import UTooltip from "../components/UTooltip";
 import { useGraphSettings } from "../context/GraphSettingsContext";
 import { useNativeGraph } from "../context/NativeGraphContext";
 import formatMetric from "../lib/formatMetric";
-import formatNumber from "../lib/formatNumber";
 import ContextMenuCell from "./ContextMenuCell";
 import type {
   ColumnDefinitions,
@@ -16,6 +19,14 @@ import type {
   TreeColumnDefinition,
 } from "./TreeTable";
 import type { Row } from "./TreeTableRows";
+
+const NO_PRECISION_FORMAT: MetricFormat = {
+  NumberWithVariablePrecision: {
+    min_precision: 0,
+    max_precision: 0,
+    use_delimiter: true,
+  },
+};
 
 export default function useGraphTreeTableColumns(): ColumnDefinitions {
   const nativeGraph = useNativeGraph();
@@ -147,13 +158,16 @@ function createMetricColumn(
     t: "numeric_value_column",
     label: metricName,
     renderer: (arrow: Arrow) => {
-      const value = !nativeGraph.isNodeReachable(arrow.points_to)
-        ? "-"
-        : formatMetric(
-            nativeGraph.getNodeMetric(arrow.points_to, metricName),
-            metricSettings?.format,
-          );
-      return <MetricCell value={value} />;
+      if (nativeGraph.isNodeReachable(arrow.points_to)) {
+        return (
+          <MetricCell
+            value={nativeGraph.getNodeMetric(arrow.points_to, metricName)}
+            format={metricSettings?.format}
+          />
+        );
+      } else {
+        return <MissingMetric />;
+      }
     },
     getNumericValues: (idxs: NodeIDX[]) =>
       nativeGraph.getNodeMetricBatched(idxs, metricName),
@@ -174,13 +188,16 @@ function createTransitiveMetricColumn(
     t: "numeric_value_column",
     label: columnID,
     renderer: (arrow: Arrow) => {
-      const value = !nativeGraph.isNodeReachable(arrow.points_to)
-        ? "-"
-        : formatMetric(
-            nativeGraph.getTransitiveMetric(arrow.points_to, metricName),
-            metricSettings?.format,
-          );
-      return <MetricCell value={value} />;
+      if (nativeGraph.isNodeReachable(arrow.points_to)) {
+        return (
+          <MetricCell
+            value={nativeGraph.getTransitiveMetric(arrow.points_to, metricName)}
+            format={metricSettings?.format}
+          />
+        );
+      } else {
+        return <MissingMetric />;
+      }
     },
     getNumericValues: (idxs: NodeIDX[]) => {
       return nativeGraph.getTransitiveMetricsBatched(idxs, metricName);
@@ -230,13 +247,34 @@ function createTieredTransitiveMetricColumn(
       t: "numeric_value_column",
       label,
       renderer: (arrow: Arrow) => {
-        const value = !nativeGraph.isNodeReachable(arrow.points_to)
-          ? "-"
-          : formatMetric(
-              getValue([arrow.points_to])[0] as number,
-              metricSettings?.format,
-            );
-        return <MetricCell value={value} />;
+        if (nativeGraph.isNodeReachable(arrow.points_to)) {
+          return (
+            <MetricCell
+              value={getValue([arrow.points_to])[0] as number}
+              format={metricSettings?.format}
+            />
+          );
+        } else if (arrow.points_from === ARROW_POINTS_FROM_NON_EXISTENT) {
+          // If the arrow is coming from a non-existent point, we don't know
+          // what to override
+          return <MissingMetric />;
+        } else {
+          const currentValue =
+            nativeGraph.getCombinedMetricsForEntryPoints().tiered_metrics?.[
+              metricName
+            ]?.[tierName] ?? 0;
+          const wouldBeValue =
+            nativeGraph.getCombinedMetricsForEntryPointsWithOverrides({
+              from: arrow.points_from,
+              to: arrow.points_to,
+            }).tiered_metrics?.[metricName]?.[tierName] ?? 0;
+          return (
+            <WouldBeDeltaMetricCell
+              value={wouldBeValue - currentValue}
+              format={metricSettings?.format}
+            />
+          );
+        }
       },
       getNumericValues: (idxs: NodeIDX[]) => {
         return new Float32Array(getValue(idxs));
@@ -276,13 +314,16 @@ function createMetricsConjointMetricColumn(
       t: "numeric_value_column",
       label,
       renderer: (arrow: Arrow) => {
-        const value = !nativeGraph.isNodeReachable(arrow.points_to)
-          ? "-"
-          : formatMetric(
-              getValues([arrow.points_to])[0] as number,
-              metricSettings?.format,
-            );
-        return <MetricCell value={value} />;
+        if (nativeGraph.isNodeReachable(arrow.points_to)) {
+          return (
+            <MetricCell
+              value={getValues([arrow.points_to])[0] as number}
+              format={metricSettings?.format}
+            />
+          );
+        } else {
+          return <MissingMetric />;
+        }
       },
       getNumericValues: (idxs: NodeIDX[]) => {
         return new Float32Array(getValues(idxs));
@@ -315,13 +356,16 @@ function createMetricsConjointMetricColumn(
       t: "numeric_value_column",
       label,
       renderer: (arrow: Arrow) => {
-        const value = !nativeGraph.isNodeReachable(arrow.points_to)
-          ? "-"
-          : formatMetric(
-              getValues([arrow.points_to])[0] as number,
-              metricSettings?.format,
-            );
-        return <MetricCell value={value} />;
+        if (nativeGraph.isNodeReachable(arrow.points_to)) {
+          return (
+            <MetricCell
+              value={getValues([arrow.points_to])[0] as number}
+              format={metricSettings?.format}
+            />
+          );
+        } else {
+          return <MissingMetric />;
+        }
       },
       getNumericValues: (idxs: NodeIDX[]) => {
         return new Float32Array(getValues(idxs));
@@ -349,13 +393,16 @@ function createParentsCountColumn(
     t: "numeric_value_column",
     label: columnID,
     renderer: (arrow: Arrow) => {
-      const value = formatNumber(
-        nativeGraph.getParentsCount([arrow.points_to])[0] ?? 0,
-        0,
-        0,
-        true,
-      );
-      return <MetricCell value={value} />;
+      if (nativeGraph.isNodeReachable(arrow.points_to)) {
+        return (
+          <MetricCell
+            value={nativeGraph.getParentsCount([arrow.points_to])[0] ?? 0}
+            format={NO_PRECISION_FORMAT}
+          />
+        );
+      } else {
+        return <MissingMetric />;
+      }
     },
     getNumericValues: (idxs: NodeIDX[]) => {
       return nativeGraph.getParentsCount(idxs);
@@ -374,13 +421,32 @@ function createTransitiveCountColumn(
     t: "numeric_value_column",
     label: columnID,
     renderer: (arrow: Arrow) => {
-      const value = formatNumber(
-        nativeGraph.getTransitiveCount([arrow.points_to])[0] ?? 0,
-        0,
-        0,
-        true,
-      );
-      return <MetricCell value={value} />;
+      if (nativeGraph.isNodeReachable(arrow.points_to)) {
+        return (
+          <MetricCell
+            value={nativeGraph.getTransitiveCount([arrow.points_to])[0] ?? 0}
+            format={NO_PRECISION_FORMAT}
+          />
+        );
+      } else if (arrow.points_from === ARROW_POINTS_FROM_NON_EXISTENT) {
+        // If the arrow is coming from a non-existent point, we don't know
+        // what to override
+        return <MissingMetric />;
+      } else {
+        const currentValue =
+          nativeGraph.getCombinedMetricsForEntryPoints().node_count ?? 0;
+        const wouldBeValue =
+          nativeGraph.getCombinedMetricsForEntryPointsWithOverrides({
+            from: arrow.points_from,
+            to: arrow.points_to,
+          }).node_count ?? 0;
+        return (
+          <WouldBeDeltaMetricCell
+            value={wouldBeValue - currentValue}
+            format={NO_PRECISION_FORMAT}
+          />
+        );
+      }
     },
     getNumericValues: (idxs: NodeIDX[]) => {
       return nativeGraph.getTransitiveCount(idxs);
@@ -399,13 +465,16 @@ function createConjointCountColumn(
     t: "numeric_value_column",
     label: columnID,
     renderer: (arrow: Arrow) => {
-      const value = formatNumber(
-        nativeGraph.getConjointCost().count[arrow.points_to] ?? 0,
-        0,
-        0,
-        true,
-      );
-      return <MetricCell value={value} />;
+      if (nativeGraph.isNodeReachable(arrow.points_to)) {
+        return (
+          <MetricCell
+            value={nativeGraph.getConjointCost().count[arrow.points_to] ?? 0}
+            format={NO_PRECISION_FORMAT}
+          />
+        );
+      } else {
+        return <MissingMetric />;
+      }
     },
     getNumericValues: (idxs: NodeIDX[]) => {
       const count = nativeGraph.getConjointCost().count;
@@ -425,13 +494,18 @@ function createTransitiveCountDominatedColumn(
     t: "numeric_value_column",
     label: columnID,
     renderer: (arrow: Arrow) => {
-      const value = formatNumber(
-        nativeGraph.getTransitiveCountDominated([arrow.points_to])[0] ?? 0,
-        0,
-        0,
-        true,
-      );
-      return <MetricCell value={value} />;
+      if (nativeGraph.isNodeReachable(arrow.points_to)) {
+        return (
+          <MetricCell
+            value={
+              nativeGraph.getTransitiveCountDominated([arrow.points_to])[0] ?? 0
+            }
+            format={NO_PRECISION_FORMAT}
+          />
+        );
+      } else {
+        return <MissingMetric />;
+      }
     },
     getNumericValues: (idxs: NodeIDX[]) => {
       return nativeGraph.getTransitiveCountDominated(idxs);
@@ -442,10 +516,52 @@ function createTransitiveCountDominatedColumn(
   return [columnID, definition];
 }
 
-function MetricCell({ value }: { value: string }) {
+function MetricCell({
+  value,
+  format,
+}: { value: number; format?: MetricFormat }) {
   return (
     <p className="px-4 text-right tabular-nums w-full whitespace-nowrap">
-      {value}
+      {formatMetric(value, format)}
     </p>
+  );
+}
+
+function WouldBeDeltaMetricCell({
+  value,
+  format,
+}: { value: number; format?: MetricFormat }) {
+  let sign = "";
+  if (value < 0) {
+    sign = "-";
+  } else {
+    sign = "+";
+  }
+
+  return (
+    <UTooltip
+      tooltip={
+        "This node is not reachable in the current graph. This value represents how much the value for the whole graph would change if this edge was included."
+      }
+    >
+      <p
+        className={clsx(
+          "px-2 mx-2 py-1 rounded-md text-right tabular-nums w-full whitespace-nowrap bg-background",
+          {
+            "text-green-500": value < 0,
+            "text-red-500": value >= 0,
+          },
+        )}
+      >
+        {sign}
+        {formatMetric(value, format)}
+      </p>
+    </UTooltip>
+  );
+}
+
+function MissingMetric() {
+  return (
+    <p className="px-4 text-right tabular-nums w-full whitespace-nowrap">-</p>
   );
 }
