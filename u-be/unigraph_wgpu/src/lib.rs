@@ -337,6 +337,10 @@ impl ApplicationHandler<UserEvent> for WGPUApplication {
                 }
             }
             UserEvent::GraphUpdated => {
+                // The graph changed and it might have a different number of
+                // nodes and edges which might not fit in the current buffers
+                // so we need to reinitialize the state
+                self.init_state(event_loop);
                 if let Some(state) = &self.state {
                     state.write_edges_buffer();
                 }
