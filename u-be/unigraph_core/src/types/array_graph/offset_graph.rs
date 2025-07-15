@@ -3,14 +3,16 @@
 pub(super) mod lengauer_tarjan_dominator_tree;
 mod offset_graph_traversal;
 mod shortest_path;
-
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 
+use anyhow::Result;
 use offset_graph_traversal::EdgesIterMut;
 use offset_graph_traversal::OffsetGraphDFSConfigured;
 
 use super::Arrow;
+use crate::AscendingTier;
+use crate::traversal::tiered_traversal::TieredTraversalIter;
 use crate::types::NodeIDX;
 use crate::types::array_graph::offset_graph::offset_graph_traversal::EdgesIter;
 use crate::types::array_graph::offset_graph::offset_graph_traversal::OffsetGraphDFSUnconfigured;
@@ -235,6 +237,16 @@ impl OffsetGraph {
 
     pub fn iter_edges_mut(&mut self) -> EdgesIterMut {
         EdgesIterMut::new(self)
+    }
+
+    pub fn dfs_tiered_configured(
+        &self,
+        tiers: &[AscendingTier],
+        entry_points: &[NodeIDX],
+    ) -> Result<TieredTraversalIter> {
+        anyhow::ensure!(tiers.len() <= 4, "Maximum of 4 tiers supported {tiers:?}");
+
+        Ok(TieredTraversalIter::new(self, tiers, entry_points))
     }
 
     pub fn edges_with_metadata(
