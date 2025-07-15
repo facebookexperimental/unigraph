@@ -179,7 +179,8 @@ fn test_graph() {
     }
   },
   "traversal_config": null,
-  "graph_settings": null
+  "graph_settings": null,
+  "entry_points": null
 }
 "#
     );

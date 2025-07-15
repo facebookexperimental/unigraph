@@ -3,6 +3,7 @@
 mod array_graph_arrows;
 pub mod array_graph_debug_utils;
 pub mod array_graph_derived_state;
+mod array_graph_determine_entrypoints;
 mod array_graph_metrics;
 pub mod array_graph_serializable;
 mod array_graph_stats;
@@ -37,12 +38,14 @@ use crate::graph_settings::GraphSettings;
 use crate::traversal::TraversalConfig;
 use crate::traversal::apply_to_array_graph::apply_traversal_config_to_array_graph;
 use crate::traversal::reachable_subgraph::get_reachable_subgraph_unconfigured;
+use crate::types::NodeName;
 use crate::types::TierIDX;
 use crate::types::TierName;
 use crate::types::array_graph::array_graph_arrows::get_arrows_dominator;
 use crate::types::array_graph::array_graph_arrows::get_arrows_forward;
 use crate::types::array_graph::array_graph_arrows::get_arrows_reverse;
 use crate::types::array_graph::array_graph_derived_state::ArrayGraphDerivedState;
+use crate::types::array_graph::array_graph_determine_entrypoints::determine_entrypoints;
 use crate::types::array_graph::array_graph_metrics::CombinedMetricsForNodes;
 use crate::types::array_graph::array_graph_metrics::get_combined_metrics_for_entry_points;
 use crate::types::array_graph::array_graph_metrics::get_metrics_sums_for_nodes;
@@ -73,6 +76,10 @@ pub struct ArrayGraph {
     pub traversal_config: Option<TraversalConfig>,
     pub tiers: Vec<(TierName, TierIDX)>,
     pub graph_settings: Option<GraphSettings>,
+
+    /// If present, these graph will use these entrypoints instead
+    /// of automatically determining them.
+    pub entry_points: Option<BTreeSet<NodeName>>,
 }
 
 bitflags::bitflags! {
@@ -216,16 +223,8 @@ impl ArrayGraph {
         Ok(())
     }
 
-    // If we don't have entrypoings explicitly defined,
-    // we can assume that any node with no parents is an entrypoint
     pub fn determine_entrypoints(&self) -> Vec<NodeIDX> {
-        let mut entrypoints = Vec::new();
-        for node_idx in self.node_idx_iter() {
-            if self.derived_state.edges_reverse.edges(node_idx).is_empty() {
-                entrypoints.push(node_idx);
-            }
-        }
-        entrypoints
+        determine_entrypoints(self)
     }
 
     pub fn get_transitive_metric_value(&self, node_idx: NodeIDX, metric_name: &str) -> Result<f32> {

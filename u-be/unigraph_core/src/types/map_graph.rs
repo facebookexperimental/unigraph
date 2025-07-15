@@ -29,6 +29,10 @@ pub struct MapGraph {
     pub nodes: BTreeMap<NodeName, GraphNode>,
     pub traversal_config: Option<TraversalConfig>,
     pub graph_settings: Option<GraphSettings>,
+
+    /// If present, these graph will use these entry points instead
+    /// of automatically determining them.
+    pub entry_points: Option<BTreeSet<NodeName>>,
 }
 
 #[derive(serde::Deserialize, serde::Serialize, Default)]
@@ -177,6 +181,7 @@ impl MapGraph {
             traversal_config: self.traversal_config.clone(),
             tiers,
             graph_settings: self.graph_settings.clone(),
+            entry_points: self.entry_points.clone(),
         })
     }
 

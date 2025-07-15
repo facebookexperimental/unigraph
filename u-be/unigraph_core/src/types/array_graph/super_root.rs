@@ -1,5 +1,7 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
+use std::collections::BTreeSet;
+
 use anyhow::Context;
 use anyhow::Result;
 
@@ -45,6 +47,7 @@ pub fn append_super_root(ag: ArrayGraph) -> Result<ArrayGraph> {
         traversal_config,
         tiers,
         graph_settings,
+        entry_points: _, // we get them by determining
     } = ag;
 
     let highest_unicode_char =
@@ -76,10 +79,11 @@ be no other node already on the list that doesn't start from the same character"
         traversal_config,
         tiers,
         graph_settings,
+        entry_points: Some(BTreeSet::from([super_root_name])),
     })
 }
 
-/// Sicne the supe roor is the last node we can just append its new edges
+/// Since the super root is the last node we can just append its new edges
 /// to the end of the edges_forward.
 fn append_super_root_edges(entrypoints: Vec<NodeIDX>, edges_forward: &mut OffsetGraph) {
     for entrypoint in entrypoints {

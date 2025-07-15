@@ -14,6 +14,7 @@ pub fn to_map_graph(graph: &ArrayGraph) -> Result<MapGraph> {
         nodes: Default::default(),
         traversal_config: graph.traversal_config.clone(),
         graph_settings: graph.graph_settings.clone(),
+        entry_points: graph.entry_points.clone(),
     };
 
     for node_idx in graph.node_idx_iter() {
@@ -250,7 +251,8 @@ mod tests {
     }
   },
   "traversal_config": null,
-  "graph_settings": null
+  "graph_settings": null,
+  "entry_points": null
 }
 "#
         );

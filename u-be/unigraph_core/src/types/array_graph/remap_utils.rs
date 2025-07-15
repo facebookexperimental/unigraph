@@ -307,6 +307,7 @@ J (tag sets: assert_tags: [a, b]):
             node_metadata: remap_node_metadata(&sg.node_metadata, &ctx)?,
             graph_settings: None,
             traversal_config: None,
+            entry_points: None,
         };
 
         let new_g = new_sg.into_array_graph();

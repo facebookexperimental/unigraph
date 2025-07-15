@@ -21,6 +21,7 @@ use crate::remap_utils::remap_node_metadata;
 use crate::remap_utils::remap_node_names_ordered;
 use crate::types::MetricName;
 use crate::types::NodeIDX;
+use crate::types::NodeName;
 use crate::types::Tag;
 use crate::types::TagSetName;
 use crate::types::array_graph::array_graph_derived_state::ArrayGraphDerivedState;
@@ -35,6 +36,10 @@ pub struct ArrayGraphSerializable {
 
     pub graph_settings: Option<GraphSettings>,
     pub traversal_config: Option<TraversalConfig>,
+
+    /// If present, these graph will use these entrypoints instead
+    /// of automatically determining them.
+    pub entry_points: Option<BTreeSet<NodeName>>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -93,6 +98,7 @@ impl ArrayGraphSerializable {
             node_metadata: self.node_metadata.remap(ctx)?,
             graph_settings: self.graph_settings,
             traversal_config: self.traversal_config,
+            entry_points: self.entry_points,
         })
     }
 }
@@ -131,6 +137,7 @@ impl From<ArrayGraph> for ArrayGraphSerializable {
             },
             graph_settings: graph.graph_settings,
             traversal_config: graph.traversal_config,
+            entry_points: graph.entry_points,
         }
     }
 }
@@ -218,6 +225,7 @@ impl From<ArrayGraphSerializable> for ArrayGraph {
             traversal_config: serializable.traversal_config.clone(),
             tiers,
             graph_settings: serializable.graph_settings,
+            entry_points: serializable.entry_points,
         }
     }
 }
