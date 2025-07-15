@@ -59,7 +59,9 @@ struct WGPUState {
     window: Arc<Window>,
     surface_config: wgpu::SurfaceConfiguration,
 
-    pub wgpu_graph_state: WGPUGraphState,
+    graph_shader: wgpu::ShaderModule,
+    swapchain_format: TextureFormat,
+    pub wgpu_graph_state: Option<WGPUGraphState>,
 }
 
 impl WGPUState {
@@ -121,28 +123,40 @@ impl WGPUState {
         };
         let basic_uniforms = BasicUniforms::new(uniforms, &device);
 
-        let wgpu_graph_state =
-            WGPUGraphState::new(&device, &basic_uniforms, graph_shader, swapchain_format);
-
-        let state = WGPUState {
+        let mut state = WGPUState {
+            graph_shader,
+            swapchain_format,
             basic_uniforms,
-            wgpu_graph_state,
+            wgpu_graph_state: None,
             surface,
             window: window.clone(),
             surface_config,
             device,
             queue,
         };
+        state.init_wgpu_graph_state();
         Ok(state)
     }
 
-    fn write_nodes_buffer(&self) {
-        let graph_state = global_state().graph_state.get();
-        self.queue.write_buffer(
-            &self.wgpu_graph_state.nodes_buffer,
-            0,
-            graph_state.simulation_graph.nodes_bytes(),
+    fn init_wgpu_graph_state(&mut self) {
+        let wgpu_graph_state = WGPUGraphState::new(
+            &self.device,
+            &self.basic_uniforms,
+            &self.graph_shader,
+            self.swapchain_format,
         );
+        self.wgpu_graph_state = Some(wgpu_graph_state);
+    }
+
+    fn write_nodes_buffer(&self) {
+        if let Some(wgpu_graph_state) = &self.wgpu_graph_state {
+            let graph_state = global_state().graph_state.get();
+            self.queue.write_buffer(
+                &wgpu_graph_state.nodes_buffer,
+                0,
+                graph_state.simulation_graph.nodes_bytes(),
+            );
+        }
     }
 
     /// Edges buffer is generally immutable, since it only stores where
@@ -150,15 +164,23 @@ impl WGPUState {
     /// but if the graph structure changes we'd need to update the
     /// edges buffer as well.
     fn write_edges_buffer(&self) {
-        let graph_state = global_state().graph_state.get();
-        self.queue.write_buffer(
-            &self.wgpu_graph_state.edges_buffer,
-            0,
-            graph_state.simulation_graph.edges_bytes(),
-        );
+        if let Some(wgpu_graph_state) = &self.wgpu_graph_state {
+            let graph_state = global_state().graph_state.get();
+            self.queue.write_buffer(
+                &wgpu_graph_state.edges_buffer,
+                0,
+                graph_state.simulation_graph.edges_bytes(),
+            );
+        }
     }
 
     fn render(&self) {
+        let wgpu_graph_state = if let Some(wgpu_graph_state) = self.wgpu_graph_state.as_ref() {
+            wgpu_graph_state
+        } else {
+            return;
+        };
+
         let frame = self
             .surface
             .get_current_texture()
@@ -203,18 +225,18 @@ impl WGPUState {
                 )
             };
             if global_state().simulation_params.get().render_edges {
-                rpass.set_pipeline(&self.wgpu_graph_state.edge_pipeline);
-                rpass.set_bind_group(1, &self.wgpu_graph_state.graph_bind_group, &[]);
+                rpass.set_pipeline(&wgpu_graph_state.edge_pipeline);
+                rpass.set_bind_group(1, &wgpu_graph_state.graph_bind_group, &[]);
                 rpass.draw(0..2, 0..edge_ct);
             }
 
-            rpass.set_pipeline(&self.wgpu_graph_state.node_pipeline);
-            rpass.set_bind_group(1, &self.wgpu_graph_state.graph_bind_group, &[]);
+            rpass.set_pipeline(&wgpu_graph_state.node_pipeline);
+            rpass.set_bind_group(1, &wgpu_graph_state.graph_bind_group, &[]);
             rpass.draw(0..6, 0..node_ct);
 
             let selection = global_state().simulation_params.get().selection;
             if selection.selection_type == SelectionType::Box {
-                rpass.set_pipeline(&self.wgpu_graph_state.box_selection_pipeline);
+                rpass.set_pipeline(&wgpu_graph_state.box_selection_pipeline);
                 rpass.draw(0..6, 0..1);
             }
         }
@@ -340,8 +362,8 @@ impl ApplicationHandler<UserEvent> for WGPUApplication {
                 // The graph changed and it might have a different number of
                 // nodes and edges which might not fit in the current buffers
                 // so we need to reinitialize the state
-                self.init_state(event_loop);
-                if let Some(state) = &self.state {
+                if let Some(state) = &mut self.state {
+                    state.init_wgpu_graph_state();
                     state.write_edges_buffer();
                 }
             }

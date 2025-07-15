@@ -114,7 +114,7 @@ impl WGPUGraphState {
     pub fn new(
         device: &wgpu::Device,
         basic_uniforms: &BasicUniforms,
-        graph_shader: wgpu::ShaderModule,
+        graph_shader: &wgpu::ShaderModule,
         swapchain_format: wgpu::TextureFormat,
     ) -> Self {
         let graph_state = global_state().graph_state.get();
@@ -192,13 +192,13 @@ impl WGPUGraphState {
             label: Some("Graph Pipeline"),
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
-                module: &graph_shader,
+                module: graph_shader,
                 entry_point: Some("vs_node"),
                 buffers: &[],
                 compilation_options: Default::default(),
             },
             fragment: Some(wgpu::FragmentState {
-                module: &graph_shader,
+                module: graph_shader,
                 entry_point: Some("fs_node"),
                 compilation_options: Default::default(),
                 targets: &[Some(wgpu::ColorTargetState {
@@ -224,13 +224,13 @@ impl WGPUGraphState {
             label: Some("Edge Pipeline"),
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
-                module: &graph_shader,
+                module: graph_shader,
                 entry_point: Some("vs_edge"),
                 buffers: &[],
                 compilation_options: Default::default(),
             },
             fragment: Some(wgpu::FragmentState {
-                module: &graph_shader,
+                module: graph_shader,
                 entry_point: Some("fs_edge"),
                 compilation_options: Default::default(),
                 targets: &[Some(wgpu::ColorTargetState {
@@ -272,13 +272,13 @@ impl WGPUGraphState {
                 label: Some("Box Selection Pipeline"),
                 layout: Some(&box_selection_pipeline_layout),
                 vertex: wgpu::VertexState {
-                    module: &graph_shader,
+                    module: graph_shader,
                     entry_point: Some("vs_box_selection"),
                     buffers: &[],
                     compilation_options: Default::default(),
                 },
                 fragment: Some(wgpu::FragmentState {
-                    module: &graph_shader,
+                    module: graph_shader,
                     entry_point: Some("fs_box_selection"),
                     compilation_options: Default::default(),
                     targets: &[Some(wgpu::ColorTargetState {
