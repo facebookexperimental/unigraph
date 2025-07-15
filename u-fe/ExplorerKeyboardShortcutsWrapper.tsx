@@ -35,6 +35,14 @@ export function useExplorerKeyboardShortcuts(): (
   const keyboardEventHandler = useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>) => {
       const key = e.key.toLowerCase();
+
+      const modifiers = e.ctrlKey || e.metaKey;
+      if (modifiers) {
+        // Ignore shortcuts with modifiers, otherwise it will conflict with
+        // other browser shortcuts (like Cmd+R to refresh will trigger REVERSE_GRAPH)
+        return;
+      }
+
       switch (key) {
         case KEYBOARD_SHORTCUTS.FORCE_EXCLUDE_NODE: {
           if (flipForceExcludeNode.enabled) {

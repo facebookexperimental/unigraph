@@ -184,7 +184,7 @@ function Page(props: {
     <div
       className="flex grow-1 shrink flex-row bg-background text-foreground min-h-0"
       ref={props.containerRef}
-      onKeyUp={keyboardEventHandler}
+      onKeyDown={keyboardEventHandler}
     >
       <Sidebar selectedPanelTab={selectedSidebarPanel} />
       {panelTab}
