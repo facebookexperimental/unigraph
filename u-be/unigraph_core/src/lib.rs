@@ -9,6 +9,7 @@ pub use map_graph_builder::GraphBuilder;
 pub use test_graph::make_test_graph;
 pub use traversal::Decision;
 pub use traversal::ForceDynamic;
+pub use traversal::NodeTagSetsPredicate;
 pub use traversal::TraversalConfig;
 pub use traversal::tiered_traversal::AscendingTier;
 pub use traversal::tiered_traversal::AscendingTiersConfig;
