@@ -307,6 +307,45 @@ impl OffsetGraph {
     pub fn shortest_path_configured(&self, from: &[NodeIDX], to: NodeIDX) -> Option<Vec<NodeIDX>> {
         shortest_path::shortest_path_configured(self, from, to)
     }
+
+    /// Override an edge to exclude it from the graph and returns a struct
+    /// containing the original information about the edge so we can restore it later.
+    /// this is a VERY dangerous operation and should be used with care.
+    /// The idea here is that we can do one off simulations of what the graph would look like
+    /// if we included a certain edge and see how it affects the total sizes of the graph.
+    /// In JS we used to reconstruct the entire graph for every simulation which would take
+    /// seconds to complete. If we accept the mutability, override it, measure, revert the override
+    /// we can technically run these in milliseconds and display the results directly in the UI.
+    pub fn override_edge_force_include(
+        &mut self,
+        from_idx: NodeIDX,
+        to_idx: NodeIDX,
+    ) -> Option<EdgeOverride> {
+        let start = self.edge_offsets[from_idx];
+        let end = self.edge_offsets[from_idx + 1];
+
+        let edge_idx = (start..end).find(|&idx| self.edges[idx].points_to == to_idx);
+        if let Some(idx) = edge_idx {
+            let original_edge = self.edges[idx];
+            self.edges[idx].flags.remove(EdgeFlags::EXCLUDED);
+            Some(EdgeOverride {
+                original_edge,
+                edge_idx: idx,
+            })
+        } else {
+            None
+        }
+    }
+
+    pub fn restore_edge_override(&mut self, edge_override: EdgeOverride) {
+        self.edges[edge_override.edge_idx] = edge_override.original_edge;
+    }
+}
+
+#[derive(Debug)]
+pub struct EdgeOverride {
+    original_edge: Edge,
+    edge_idx: usize,
 }
 
 #[cfg(test)]

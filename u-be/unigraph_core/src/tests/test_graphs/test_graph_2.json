@@ -62,11 +62,11 @@
     },
     "N": {
       "metrics": { "size": 1 },
-      "edges": { "directed": ["M"], "tagged": { "BL": ["F"] } }
+      "edges": { "directed": ["M"] }
     },
     "O": {
       "metrics": { "size": 1 },
-      "edges": { "directed": ["N", "P"] }
+      "edges": { "directed": ["N", "P"], "tagged": { "BL": ["F"] } }
     },
     "P": {
       "metrics": { "size": 1 },

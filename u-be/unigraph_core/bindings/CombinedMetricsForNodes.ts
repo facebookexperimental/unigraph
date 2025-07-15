@@ -5,4 +5,4 @@
  * Not transitive, just aggregated for things like
  * "give me total size of all the nodes i just selected"
  */
-export type CombinedMetricsForNodes = { metrics: { [key in string]?: number }, tiered_metrics: { [key in string]?: { [key in string]?: number } }, };
+export type CombinedMetricsForNodes = { metrics: { [key in string]?: number }, tiered_metrics: { [key in string]?: { [key in string]?: number } }, node_count: number, };

@@ -282,11 +282,15 @@ impl ArrayGraph {
         Ok(CombinedMetricsForNodes {
             metrics: get_metrics_sums_for_nodes(self, node_idxs)?,
             tiered_metrics: get_metrics_sums_tiered_for_nodes(self, node_idxs)?,
+            node_count: node_idxs.len(),
         })
     }
 
-    pub fn get_combined_metrics_for_entry_points(&self) -> Result<CombinedMetricsForNodes> {
-        get_combined_metrics_for_entry_points(self)
+    pub fn get_combined_metrics_for_entry_points(
+        &mut self,
+        force_edge_include: Option<(NodeIDX, NodeIDX)>, // from -> to
+    ) -> Result<CombinedMetricsForNodes> {
+        get_combined_metrics_for_entry_points(self, force_edge_include)
             .context("Failed to get combined metrics for entry points")
     }
 

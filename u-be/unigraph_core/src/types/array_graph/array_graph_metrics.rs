@@ -181,9 +181,21 @@ pub fn get_metrics_sums_tiered_for_nodes(
 
 /// Get Tiered metrics for the set of entry points (which normally means
 /// the whole reachable graph).
-pub fn get_combined_metrics_for_entry_points(ag: &ArrayGraph) -> Result<CombinedMetricsForNodes> {
+pub fn get_combined_metrics_for_entry_points(
+    ag: &mut ArrayGraph,
+    force_edge_include: Option<(NodeIDX, NodeIDX)>,
+) -> Result<CombinedMetricsForNodes> {
     let mut tiered_result = BTreeMap::new();
     let mut metric_result = BTreeMap::new();
+    let mut node_count = 0;
+
+    let edge_override = if let Some((from, to)) = force_edge_include {
+        // if we have a forced edge, we need to include it in the graph
+        // and make sure it's not excluded.
+        ag.edges_forward.override_edge_force_include(from, to)
+    } else {
+        None
+    };
 
     let tier_config = ag
         .traversal_config
@@ -210,6 +222,7 @@ pub fn get_combined_metrics_for_entry_points(ag: &ArrayGraph) -> Result<Combined
             .dfs_tiered_configured(&ascending_tiers.tiers, &entry_points)?
         {
             let (node_idx, tier_idx) = next?;
+            node_count += 1;
 
             //
             for (metric_idx, _metric_name) in metric_names.iter().enumerate() {
@@ -243,9 +256,15 @@ pub fn get_combined_metrics_for_entry_points(ag: &ArrayGraph) -> Result<Combined
         }
     }
 
+    if let Some(edge_override) = edge_override {
+        // restore the edge override
+        ag.edges_forward.restore_edge_override(edge_override);
+    }
+
     Ok(CombinedMetricsForNodes {
         metrics: metric_result,
         tiered_metrics: tiered_result,
+        node_count,
     })
 }
 
@@ -257,4 +276,105 @@ pub fn get_combined_metrics_for_entry_points(ag: &ArrayGraph) -> Result<Combined
 pub struct CombinedMetricsForNodes {
     pub metrics: BTreeMap<MetricName, f32>,
     pub tiered_metrics: BTreeMap<MetricName, BTreeMap<TierName, f32>>,
+    pub node_count: usize,
+}
+
+#[cfg(test)]
+mod tests {
+    use k9::snapshot;
+
+    use super::*;
+    use crate::Decision;
+    use crate::tests::test_graphs::make_test_array_graph_2;
+    use crate::tests::test_graphs::traversal_config_with_tiers;
+    use crate::tests::test_utils::name_to_idx;
+    use crate::tests::test_utils::print_forward_edges;
+
+    #[test]
+    fn metrics_with_overrides() -> Result<()> {
+        let mut ag = make_test_array_graph_2()?;
+        let mut tvc = traversal_config_with_tiers();
+        tvc.force_nodes.insert(
+            "F".into(),
+            Decision {
+                include: false,
+                message: None,
+            },
+        );
+
+        ag.apply_traversal_config(tvc)?;
+
+        snapshot!(
+            print_forward_edges(&ag),
+            "
+A -> B
+A -> D
+B -> C [T]
+B -> J [T]
+D -> F
+D -> E [T]
+E -> K
+F -> G [D]
+F -> H [D]
+F -> I [D]
+J -> K
+L -> D
+L -> M
+M -> O
+N -> M
+O -> N
+O -> P
+O -> F [T]
+"
+        );
+
+        let original_r = ag.get_combined_metrics_for_entry_points(None)?;
+
+        snapshot!(
+            &original_r,
+            r#"
+CombinedMetricsForNodes {
+    metrics: {
+        "size": 12.0,
+    },
+    tiered_metrics: {
+        "size": {
+            "T1": 8.0,
+            "T2": 10.0,
+            "T3": 11.0,
+            "T4": 12.0,
+        },
+    },
+    node_count: 12,
+}
+"#
+        );
+
+        let overridden_r = ag.get_combined_metrics_for_entry_points(Some((
+            name_to_idx(&ag, "O"),
+            name_to_idx(&ag, "F"),
+        )))?;
+
+        snapshot!(
+            overridden_r,
+            r#"
+CombinedMetricsForNodes {
+    metrics: {
+        "size": 16.0,
+    },
+    tiered_metrics: {
+        "size": {
+            "T1": 8.0,
+            "T2": 10.0,
+            "T3": 11.0,
+            "T4": 16.0,
+        },
+    },
+    node_count: 16,
+}
+"#
+        );
+
+        Ok(())
+    }
 }

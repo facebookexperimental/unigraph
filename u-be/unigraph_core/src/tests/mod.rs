@@ -460,7 +460,7 @@ Node: J, Tier: T3
     );
 
     snapshot!(
-        g.get_combined_metrics_for_entry_points()?,
+        g.get_combined_metrics_for_entry_points(None)?,
         r#"
 CombinedMetricsForNodes {
     metrics: {
@@ -474,6 +474,7 @@ CombinedMetricsForNodes {
             "T4": 10.0,
         },
     },
+    node_count: 10,
 }
 "#
     );
