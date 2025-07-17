@@ -57,6 +57,7 @@ pub struct TraversalConfig {
     /// This is useful for cases where you want to exclude all imports
     /// of a specific node (like `MySharedInfraModules.js`) with a single
     /// config.
+    #[serde(default)]
     pub force_children_of: BTreeMap<NodeName, Decision>,
 
     /// Only applied to tagged edges

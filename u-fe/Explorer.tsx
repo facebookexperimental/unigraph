@@ -31,7 +31,6 @@ import { SelectedPathContextProvider } from "./context/SelectedPathContext";
 import { SimulationParamsContextProvider } from "./context/SimulationParamsContext";
 import { TraversalConfigContextProvider } from "./context/TraversalConfigContext";
 import initWasm from "./init_wasm";
-import ColumnsPanel from "./sidebar_panels/ColumnsPanel";
 import GraphInfoPanel from "./sidebar_panels/GraphInfoPanel";
 import GraphTreeTable from "./tree_table/GraphTreeTable";
 import type { NodeIDX } from "./types";
@@ -157,8 +156,6 @@ function Page(props: {
         return null;
       case "GraphInfo":
         return <GraphInfoPanel />;
-      case "ColumnsSettings":
-        return <ColumnsPanel />;
       default: {
         const exhaustiveCheck: never = selectedSidebarPanel;
         throw new Error(`Unexpected panel tab: ${exhaustiveCheck}`);

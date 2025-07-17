@@ -134,7 +134,6 @@ pub enum SidebarPanel {
     None,
     Simulation,
     GraphInfo,
-    ColumnsSettings,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, TS, Clone)]
