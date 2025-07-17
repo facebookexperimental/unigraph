@@ -53,6 +53,12 @@ pub struct TraversalConfig {
     /// From Node Name -> To Node Name -> Decision
     pub force_edges: BTreeMap<NodeName, BTreeMap<NodeName, Decision>>,
 
+    /// This will force all nodes that are children of the given node.
+    /// This is useful for cases where you want to exclude all imports
+    /// of a specific node (like `MySharedInfraModules.js`) with a single
+    /// config.
+    pub force_children_of: BTreeMap<NodeName, Decision>,
+
     /// Only applied to tagged edges
     pub force_tagged: BTreeMap<Tag, Decision>,
     /// These rules are ordered. The first one that matches will be used.
@@ -70,6 +76,7 @@ pub struct TraversalConfig {
 pub struct TraversalConfigIDX {
     pub force_nodes: BTreeMap<NodeIDX, Decision>,
     pub force_edges: BTreeMap<NodeIDX, BTreeMap<NodeIDX, Decision>>,
+    pub force_children_of: BTreeMap<NodeIDX, Decision>,
     pub force_tagged: BTreeMap<Tag, Decision>,
     /// These rules are ordered. The first one that matches will be used.
     pub tag_sets: Vec<NodeTagSetsPredicate>,
@@ -168,9 +175,21 @@ impl TraversalConfig {
             })
             .collect();
 
+        let force_children_of = self
+            .force_children_of
+            .iter()
+            .filter_map(|(name, decision)| {
+                array_graph
+                    .node_names_ordered
+                    .name_to_idx_log(name)
+                    .map(|idx| (idx, decision.clone()))
+            })
+            .collect();
+
         TraversalConfigIDX {
             force_nodes,
             force_edges,
+            force_children_of,
             force_tagged: self.force_tagged.clone(),
             force_dynamic,
             tag_sets: self.tag_sets.clone(),
@@ -199,44 +218,6 @@ impl TraversalConfig {
 }
 
 impl TraversalConfigIDX {
-    pub fn match_dynamic_edge(
-        &self,
-        properties: &BTreeMap<String, String>,
-        from_node: NodeIDX,
-        branch: &str,
-    ) -> Decision {
-        for dynamic_predicate in &self.force_dynamic {
-            if let Some(from_node_idx_predicate) = dynamic_predicate.from_node {
-                // if parent node is specified and it does not match the current node,
-                // skip this whole predicate
-                if from_node_idx_predicate != from_node {
-                    continue;
-                }
-            }
-
-            if let Some(branch_predicate) = &dynamic_predicate.branch {
-                // if branch is specified and it does not match the current branch,
-                // skip this whole predicate
-                if branch_predicate != branch {
-                    continue;
-                }
-            }
-
-            if dynamic_predicate
-                .match_properties
-                .iter()
-                .all(|(key, value)| properties.get(key) == Some(value))
-            {
-                return dynamic_predicate.decision.clone();
-            }
-        }
-
-        Decision {
-            include: true,
-            message_id: None,
-        }
-    }
-
     pub fn ascending_tiers(&self) -> Option<&AscendingTiersConfig> {
         match &self.tiered_traversal {
             Some(TieredTraversalConfig::AscendingTiers(config)) => Some(config),

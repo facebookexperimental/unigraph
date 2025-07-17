@@ -1,5 +1,7 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
+pub mod traversal_config_utils;
+
 use crate::ArrayGraph;
 use crate::types::NodeIDX;
 use crate::types::array_graph::offset_graph::Edge;

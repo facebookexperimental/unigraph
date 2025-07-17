@@ -2,6 +2,7 @@
 
 pub(crate) mod test_graphs;
 pub(crate) mod test_utils;
+mod traversal_test;
 
 use std::collections::BTreeSet;
 
@@ -20,6 +21,7 @@ use crate::NodeIDX;
 use crate::tests::test_graphs::make_test_array_graph_1;
 use crate::tests::test_graphs::make_test_array_graph_2;
 use crate::tests::test_graphs::traversal_config_with_tiers;
+use crate::tests::test_utils::print_arrows;
 use crate::traversal::Decision;
 use crate::traversal::ForceDynamic;
 use crate::traversal::NodeTagSetsPredicate;
@@ -163,6 +165,30 @@ fn test_edges_iter() -> Result<()> {
     };
 
     snapshot!(
+        print_arrows(&g),
+        r#"
+A -> B
+A -> D
+B -> C
+   tag: BL
+B -> J
+   tag: RD
+D -> F
+D -> E
+   tag: RDFD
+F -> G
+   branch: b1
+   properties: {"type": "DDD"}
+F -> H
+   branch: b1
+   properties: {"type": "DDD"}
+F -> I
+   branch: b2
+   properties: {"type": "DDD"}
+"#
+    );
+
+    snapshot!(
         snap(&mut g),
         r#"
 A -> B: 0000_0000_0000_0000 (Directed)
@@ -193,7 +219,7 @@ D -> F: 0000_0000_0000_0000 (Directed)
 D -> E: 0000_0000_0000_0001 (Tagged { tag: "RDFD" })
 F -> G: 0000_0100_0000_0010 (Dynamic { properties: {"type": "DDD"}, branch: "b1" })
 F -> H: 0000_0100_0000_0010 (Dynamic { properties: {"type": "DDD"}, branch: "b1" })
-F -> I: 0000_1001_0000_0110 (Dynamic { properties: {"type": "DDD"}, branch: "b2" })
+F -> I: 0000_1011_0000_0110 (Dynamic { properties: {"type": "DDD"}, branch: "b2" })
 "#
     );
 

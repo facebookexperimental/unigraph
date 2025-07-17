@@ -1,13 +1,17 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use anyhow::Result;
 
 use crate::ArrayGraph;
 use crate::AscendingTiersConfig;
+use crate::Decision;
 use crate::NodeIDX;
+use crate::NodeTagSetsPredicate;
 use crate::TraversalConfig;
+use crate::traversal::ForceDynamicIDX;
 use crate::traversal::TraversalConfigIDX;
 use crate::traversal::messages::BuiltInMessages;
 use crate::traversal::messages::IndexedMessages;
@@ -15,6 +19,7 @@ use crate::traversal::tiered_traversal::TieredTraversalConfig;
 use crate::types::Tag;
 use crate::types::array_graph::NodeFlags;
 use crate::types::array_graph::array_graph_state::ArrayGraphState;
+use crate::types::array_graph::offset_graph::Edge;
 use crate::types::array_graph::offset_graph::NonDirectedEdgeMetadata;
 
 /// This function will take an `ArrayGraph` and a `TraversalConfig`, and apply the traversal configuration to the graph.
@@ -32,18 +37,32 @@ pub fn apply_traversal_config_to_array_graph(
         .ascending_tiers()
         .map(|c| c.make_tag_to_tier_idx_map());
 
+    let TraversalConfigIDX {
+        force_nodes,
+        force_edges,
+        force_children_of,
+        force_tagged,
+        tag_sets,
+        force_dynamic,
+        tiered_traversal: _,
+        messages: _,
+    } = &indexed_config;
+
+    let forced_children = get_forced_children(force_children_of, ag)?;
+
     for (parent_idx, edge, metadata) in ag.edges_forward.iter_edges_mut() {
         // we need to start fresh and make sure all edges that were previously excluded
         // are reset.
         edge.flags.include();
 
-        match_dynamic_edges(&indexed_config, parent_idx, edge, metadata, &m)?;
-        match_tagged(&indexed_config, edge, metadata, &tag_to_tier, &m)?;
+        match_dynamic_edges(force_dynamic, parent_idx, edge, metadata, &m)?;
+        match_tagged(force_tagged, edge, metadata, &tag_to_tier, &m)?;
         if let Some(tag_sets_for_node) = ag.tag_sets.get(&edge.points_to) {
-            match_tag_sets(&indexed_config, edge, tag_sets_for_node, &m)?;
+            match_tag_sets(tag_sets, edge, tag_sets_for_node, &m)?;
         }
-        match_force_edges(&indexed_config, parent_idx, edge, &m)?;
-        match_force_nodes(&indexed_config, edge, &m)?;
+        match_forced_children(&forced_children, edge, &m)?;
+        match_force_edges(force_edges, parent_idx, edge, &m)?;
+        match_force_nodes(force_nodes, edge, &m)?;
     }
 
     apply_tiers(ag, &indexed_config, &entry_points)?;
@@ -57,6 +76,22 @@ pub fn apply_traversal_config_to_array_graph(
         indexed_messages: m,
     };
     Ok(())
+}
+
+fn get_forced_children(
+    force_children_of: &BTreeMap<NodeIDX, Decision>,
+    ag: &mut ArrayGraph,
+) -> Result<BTreeMap<NodeIDX, Arc<Decision>>> {
+    let mut forced_children = BTreeMap::new();
+
+    for (parent, decision) in force_children_of {
+        let decision = Arc::new(decision.clone());
+        for child in ag.edges_forward.edges(*parent) {
+            forced_children.insert(child.points_to, Arc::clone(&decision));
+        }
+    }
+
+    Ok(forced_children)
 }
 
 /// If max tier set, do another traversal of all edges and exclude any edges
@@ -113,11 +148,11 @@ fn apply_tiers(
 }
 
 fn match_force_nodes(
-    indexed_config: &super::TraversalConfigIDX,
-    edge: &mut crate::types::array_graph::offset_graph::Edge,
+    force_nodes: &BTreeMap<NodeIDX, Decision>,
+    edge: &mut Edge,
     indexed_messages: &IndexedMessages,
 ) -> Result<()> {
-    if let Some(decision) = indexed_config.force_nodes.get(&edge.points_to) {
+    if let Some(decision) = force_nodes.get(&edge.points_to) {
         match decision.include {
             true => {
                 edge.flags
@@ -139,13 +174,13 @@ fn match_force_nodes(
 }
 
 fn match_force_edges(
-    indexed_config: &super::TraversalConfigIDX,
+    force_edges: &BTreeMap<NodeIDX, BTreeMap<NodeIDX, Decision>>,
     parent_idx: crate::NodeIDX,
-    edge: &mut crate::types::array_graph::offset_graph::Edge,
+    edge: &mut Edge,
     indexed_messages: &IndexedMessages,
 ) -> Result<()> {
     #[allow(clippy::collapsible_if)]
-    if let Some(force_to) = indexed_config.force_edges.get(&parent_idx) {
+    if let Some(force_to) = force_edges.get(&parent_idx) {
         if let Some(decision) = force_to.get(&edge.points_to) {
             match decision.include {
                 true => edge
@@ -169,12 +204,12 @@ fn match_force_edges(
 }
 
 fn match_tag_sets(
-    indexed_config: &super::TraversalConfigIDX,
-    edge: &mut crate::types::array_graph::offset_graph::Edge,
+    tag_sets: &[NodeTagSetsPredicate],
+    edge: &mut Edge,
     tag_sets_for_node: &std::collections::BTreeMap<String, std::collections::BTreeSet<String>>,
     indexed_messages: &IndexedMessages,
 ) -> Result<()> {
-    for tag_set_predicate in &indexed_config.tag_sets {
+    for tag_set_predicate in tag_sets {
         #[allow(clippy::collapsible_if)]
         if let Some(tags) = tag_sets_for_node.get(&tag_set_predicate.tag_set_name) {
             if tags.contains(&tag_set_predicate.tag_name) == tag_set_predicate.contains {
@@ -200,14 +235,14 @@ fn match_tag_sets(
 }
 
 fn match_dynamic_edges(
-    indexed_config: &super::TraversalConfigIDX,
+    force_dynamic: &[ForceDynamicIDX],
     parent_idx: crate::NodeIDX,
-    edge: &mut crate::types::array_graph::offset_graph::Edge,
+    edge: &mut Edge,
     metadata: &mut NonDirectedEdgeMetadata,
     indexed_messages: &IndexedMessages,
 ) -> Result<()> {
     if let NonDirectedEdgeMetadata::Dynamic { properties, branch } = metadata {
-        let decision = indexed_config.match_dynamic_edge(properties, parent_idx, branch);
+        let decision = match_dynamic_edge(force_dynamic, properties, parent_idx, branch);
         match decision.include {
             true => edge
                 .flags
@@ -227,15 +262,15 @@ fn match_dynamic_edges(
     Ok(())
 }
 fn match_tagged(
-    indexed_config: &super::TraversalConfigIDX,
-    edge: &mut crate::types::array_graph::offset_graph::Edge,
+    force_tagged: &BTreeMap<Tag, Decision>,
+    edge: &mut Edge,
     metadata: &mut NonDirectedEdgeMetadata,
     tag_to_tier: &Option<BTreeMap<Tag, usize>>,
     indexed_messages: &IndexedMessages,
 ) -> Result<()> {
     #[allow(clippy::collapsible_if)]
     if let NonDirectedEdgeMetadata::Tagged { tag } = metadata {
-        if let Some(decision) = indexed_config.force_tagged.get(tag) {
+        if let Some(decision) = force_tagged.get(tag) {
             match decision.include {
                 true => edge
                     .flags
@@ -259,4 +294,62 @@ fn match_tagged(
         }
     }
     Ok(())
+}
+
+fn match_forced_children(
+    forced_children: &BTreeMap<NodeIDX, Arc<Decision>>,
+    edge: &mut Edge,
+    m: &IndexedMessages,
+) -> Result<()> {
+    if let Some(decision) = forced_children.get(&edge.points_to) {
+        match decision.include {
+            true => edge.flags.include_with_message(m.get_or_default(
+                &decision.message_id,
+                BuiltInMessages::FORCED_CHILDREN_OF_INCLUDED_ID,
+            ))?,
+            false => edge.flags.exclude_with_message(m.get_or_default(
+                &decision.message_id,
+                BuiltInMessages::FORCED_CHILDREN_OF_EXCLUDED_ID,
+            ))?,
+        }
+    }
+    Ok(())
+}
+
+pub fn match_dynamic_edge(
+    force_dynamic: &[ForceDynamicIDX],
+    properties: &BTreeMap<String, String>,
+    from_node: NodeIDX,
+    branch: &str,
+) -> Decision {
+    for dynamic_predicate in force_dynamic {
+        if let Some(from_node_idx_predicate) = dynamic_predicate.from_node {
+            // if parent node is specified and it does not match the current node,
+            // skip this whole predicate
+            if from_node_idx_predicate != from_node {
+                continue;
+            }
+        }
+
+        if let Some(branch_predicate) = &dynamic_predicate.branch {
+            // if branch is specified and it does not match the current branch,
+            // skip this whole predicate
+            if branch_predicate != branch {
+                continue;
+            }
+        }
+
+        if dynamic_predicate
+            .match_properties
+            .iter()
+            .all(|(key, value)| properties.get(key) == Some(value))
+        {
+            return dynamic_predicate.decision.clone();
+        }
+    }
+
+    Decision {
+        include: true,
+        message_id: None,
+    }
 }
