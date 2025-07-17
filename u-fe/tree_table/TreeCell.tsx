@@ -104,7 +104,9 @@ function InfoIcon({
   if (!isNodeReachable) {
     content = (
       <>
-        <h2 className="text-xl underline mt-2">Node is not reachable</h2>
+        <h2 className="text-xl underline mt-2 text-foreground">
+          Node is not reachable
+        </h2>
         <p>
           This edge points to a node that is not reachable from the root node
           because all edges that lead to it are excluded.
@@ -114,7 +116,9 @@ function InfoIcon({
   } else if (arrow.excluded) {
     content = (
       <>
-        <h2 className="text-xl underline mt-2">This edge is not followed</h2>
+        <h2 className="text-xl underline mt-2 text-foreground">
+          This edge is not followed
+        </h2>
         <p>
           This edge was not followed during the graph traversal, but this node
           is still reachable through other edges in the graph. You can switch to
@@ -128,7 +132,9 @@ function InfoIcon({
   if (arrow.message != null) {
     message = (
       <>
-        <h2 className="text-xl underline mt-2">Additional Information</h2>
+        <h2 className="text-xl underline mt-2 text-foreground">
+          Additional Information
+        </h2>
         <p className="break-words">{arrow.message}</p>
       </>
     );
