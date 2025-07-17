@@ -47,6 +47,7 @@ impl ArrayGraphStats {
         }
 
         let tier_names = array_graph
+            .state
             .tiers
             .iter()
             .map(|(name, _)| name.to_string())

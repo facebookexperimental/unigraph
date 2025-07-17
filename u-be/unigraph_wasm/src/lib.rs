@@ -284,6 +284,7 @@ pub fn get_available_tiers() -> Result<Vec<String>, WasmJSError> {
     let graph_state = GlobalState::graph_state().get();
     Ok(graph_state
         .array_graph
+        .state
         .tiers
         .iter()
         .map(|(name, _)| name.to_string())
@@ -299,7 +300,7 @@ pub fn get_arrows(node_idx: usize, graph_structure: u8) -> Result<String, WasmJS
 
     let arrows = match graph_structure {
         GraphStructure::Forward => ag.get_arrows_forward(node_idx),
-        GraphStructure::Dominator => Ok(ag.get_arrows_dominator(node_idx)),
+        GraphStructure::Dominator => ag.get_arrows_dominator(node_idx),
         GraphStructure::Reverse => ag.get_arrows_reverse(node_idx),
     }?;
 
@@ -402,6 +403,7 @@ pub fn get_graph_traversal_config() -> Result<String, WasmJSError> {
     let traversal_config = GlobalState::graph_state()
         .get()
         .array_graph
+        .state
         .traversal_config
         .clone()
         .unwrap_or_default();

@@ -178,7 +178,7 @@ F -> I: 0000_0000_0000_0010 (Dynamic { properties: {"type": "DDD"}, branch: "b2"
     );
 
     g.apply_traversal_config(TraversalConfig {
-        force_nodes: btreemap! { "I".into() => Decision { include: false, message: None } },
+        force_nodes: btreemap! { "I".into() => Decision { include: false, message_id: None } },
         ..Default::default()
     })?;
 
@@ -193,12 +193,12 @@ D -> F: 0000_0000_0000_0000 (Directed)
 D -> E: 0000_0000_0000_0001 (Tagged { tag: "RDFD" })
 F -> G: 0000_0000_0000_0010 (Dynamic { properties: {"type": "DDD"}, branch: "b1" })
 F -> H: 0000_0000_0000_0010 (Dynamic { properties: {"type": "DDD"}, branch: "b1" })
-F -> I: 0000_0000_0000_0110 (Dynamic { properties: {"type": "DDD"}, branch: "b2" })
+F -> I: 0000_0001_0000_0110 (Dynamic { properties: {"type": "DDD"}, branch: "b2" })
 "#
     );
 
     g.apply_traversal_config(TraversalConfig {
-        force_tagged: btreemap! { "BL".into() => Decision { include: false, message: None } },
+        force_tagged: btreemap! { "BL".into() => Decision { include: false, message_id: None } },
         ..Default::default()
     })?;
 
@@ -213,7 +213,7 @@ D -> F: 0000_0000_0000_0000 (Directed)
 D -> E: 0000_0000_0000_0001 (Tagged { tag: "RDFD" })
 F -> G: 0000_0000_0000_0010 (Dynamic { properties: {"type": "DDD"}, branch: "b1" })
 F -> H: 0000_0000_0000_0010 (Dynamic { properties: {"type": "DDD"}, branch: "b1" })
-F -> I: 0000_0000_0000_0010 (Dynamic { properties: {"type": "DDD"}, branch: "b2" })
+F -> I: 0000_0001_0000_0010 (Dynamic { properties: {"type": "DDD"}, branch: "b2" })
 "#
     );
     Ok(())
@@ -223,8 +223,8 @@ F -> I: 0000_0000_0000_0010 (Dynamic { properties: {"type": "DDD"}, branch: "b2"
 fn test_dfs_with_traversal_config() -> Result<()> {
     let mut g = make_test_array_graph_1()?;
     let traversal_config = TraversalConfig {
-        force_nodes: btreemap! { "D".into() => Decision { include: false, message: None } },
-        force_edges: btreemap! { "B".into() => btreemap! { "C".into() => Decision { include: false, message: None } } },
+        force_nodes: btreemap! { "D".into() => Decision { include: false, message_id: None } },
+        force_edges: btreemap! { "B".into() => btreemap! { "C".into() => Decision { include: false, message_id: None } } },
         ..Default::default()
     };
 
@@ -266,7 +266,7 @@ fn test_dfs_with_traversal_config_on_dynamic_edges() -> Result<()> {
         branch: Some("b1".into()),
         decision: Decision {
             include: false,
-            message: None,
+            message_id: None,
         },
     }];
 
@@ -279,7 +279,7 @@ fn test_dfs_with_traversal_config_on_dynamic_edges() -> Result<()> {
         branch: Some("b2".into()),
         decision: Decision {
             include: false,
-            message: None,
+            message_id: None,
         },
     }];
 
@@ -294,7 +294,7 @@ fn test_dfs_with_traversal_config_on_dynamic_edges() -> Result<()> {
             branch: Some("b2".into()),
             decision: Decision {
                 include: true,
-                message: None,
+                message_id: None,
             },
         },
         ForceDynamic {
@@ -303,7 +303,7 @@ fn test_dfs_with_traversal_config_on_dynamic_edges() -> Result<()> {
             branch: None,
             decision: Decision {
                 include: false,
-                message: None,
+                message_id: None,
             },
         },
     ];
@@ -318,7 +318,7 @@ fn test_dfs_with_traversal_config_on_dynamic_edges() -> Result<()> {
         branch: None,
         decision: Decision {
             include: false,
-            message: None,
+            message_id: None,
         },
     }];
 
@@ -543,7 +543,7 @@ fn test_edges_len() -> Result<()> {
     assert_equal!(g.parents_len_configured(node_k), 2);
 
     g.apply_traversal_config(TraversalConfig {
-        force_nodes: btreemap! { "D".into() => Decision { include: false, message: None } },
+        force_nodes: btreemap! { "D".into() => Decision { include: false, message_id: None } },
         ..Default::default()
     })?;
 
@@ -551,8 +551,8 @@ fn test_edges_len() -> Result<()> {
 
     g.apply_traversal_config(TraversalConfig {
         force_nodes: btreemap! {
-          "J".into() => Decision { include: false, message: None },
-          "D".into() => Decision { include: false, message: None }
+          "J".into() => Decision { include: false, message_id: None },
+          "D".into() => Decision { include: false, message_id: None }
         },
         ..Default::default()
     })?;

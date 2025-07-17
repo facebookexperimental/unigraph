@@ -6,6 +6,7 @@ pub mod array_graph_derived_state;
 mod array_graph_determine_entrypoints;
 mod array_graph_metrics;
 pub mod array_graph_serializable;
+pub mod array_graph_state;
 mod array_graph_stats;
 mod conjoint_cost;
 pub mod graph_settings;
@@ -39,7 +40,6 @@ use crate::traversal::TraversalConfig;
 use crate::traversal::apply_to_array_graph::apply_traversal_config_to_array_graph;
 use crate::traversal::reachable_subgraph::get_reachable_subgraph_unconfigured;
 use crate::types::NodeName;
-use crate::types::TierIDX;
 use crate::types::TierName;
 use crate::types::array_graph::array_graph_arrows::get_arrows_dominator;
 use crate::types::array_graph::array_graph_arrows::get_arrows_forward;
@@ -53,6 +53,7 @@ use crate::types::array_graph::array_graph_metrics::get_metrics_sums_tiered_for_
 use crate::types::array_graph::array_graph_metrics::get_transitive_metric_value;
 use crate::types::array_graph::array_graph_metrics::get_transitive_tiered_metric_values;
 use crate::types::array_graph::array_graph_metrics::parents_len_configured;
+use crate::types::array_graph::array_graph_state::ArrayGraphState;
 use crate::types::array_graph::array_graph_stats::ArrayGraphStats;
 use crate::types::array_graph::conjoint_cost::ConjointCost;
 use crate::types::array_graph::offset_graph::lengauer_tarjan_dominator_tree::make_dominator_tree;
@@ -66,6 +67,7 @@ pub struct ArrayGraph {
     pub edges_forward: OffsetGraph,
 
     pub derived_state: ArrayGraphDerivedState,
+    pub state: ArrayGraphState,
 
     pub edges_tagged: BTreeMap<NodeIDX, BTreeMap<Tag, BTreeSet<NodeIDX>>>,
     pub edges_dynamic: BTreeMap<NodeIDX, Vec<ArrayGraphDynamicEdge>>,
@@ -73,8 +75,6 @@ pub struct ArrayGraph {
     pub metrics: BTreeMap<MetricName, Vec<f32>>,
     pub tag_sets: BTreeMap<NodeIDX, BTreeMap<TagSetName, BTreeSet<Tag>>>,
 
-    pub traversal_config: Option<TraversalConfig>,
-    pub tiers: Vec<(TierName, TierIDX)>,
     pub graph_settings: Option<GraphSettings>,
 
     /// If present, these graph will use these entrypoints instead
@@ -311,8 +311,8 @@ impl ArrayGraph {
         get_arrows_forward(self, node_idx).context("arrows forward")
     }
 
-    pub fn get_arrows_dominator(&self, node_idx: NodeIDX) -> Vec<Arrow> {
-        get_arrows_dominator(self, node_idx)
+    pub fn get_arrows_dominator(&self, node_idx: NodeIDX) -> Result<Vec<Arrow>> {
+        get_arrows_dominator(self, node_idx).context("arrows dominator")
     }
 
     pub fn get_arrows_reverse(&self, node_idx: NodeIDX) -> Result<Vec<Arrow>> {
@@ -336,6 +336,7 @@ pub struct Arrow {
     pub points_from: NodeIDX,
     pub points_to: NodeIDX,
     pub excluded: bool,
+    pub message: Option<String>,
 }
 
 #[cfg(test)]

@@ -25,6 +25,7 @@ use crate::types::NodeName;
 use crate::types::Tag;
 use crate::types::TagSetName;
 use crate::types::array_graph::array_graph_derived_state::ArrayGraphDerivedState;
+use crate::types::array_graph::array_graph_state::ArrayGraphState;
 
 /// A serializable representation of an array graph, which can be used for
 /// storing or transmitting the graph structure.
@@ -136,7 +137,7 @@ impl From<ArrayGraph> for ArrayGraphSerializable {
                 tag_sets: graph.tag_sets,
             },
             graph_settings: graph.graph_settings,
-            traversal_config: graph.traversal_config,
+            traversal_config: graph.state.traversal_config,
             entry_points: graph.entry_points,
         }
     }
@@ -222,8 +223,11 @@ impl From<ArrayGraphSerializable> for ArrayGraph {
             metrics: serializable.node_metadata.metrics,
             tag_sets: serializable.node_metadata.tag_sets,
             node_flags,
-            traversal_config: serializable.traversal_config.clone(),
-            tiers,
+            state: ArrayGraphState {
+                traversal_config: serializable.traversal_config.clone(),
+                indexed_messages: Default::default(),
+                tiers,
+            },
             graph_settings: serializable.graph_settings,
             entry_points: serializable.entry_points,
         }

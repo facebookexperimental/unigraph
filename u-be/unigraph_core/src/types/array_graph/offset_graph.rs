@@ -1,5 +1,6 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
+pub mod edge_flags;
 pub(super) mod lengauer_tarjan_dominator_tree;
 mod offset_graph_traversal;
 mod shortest_path;
@@ -14,10 +15,9 @@ use super::Arrow;
 use crate::AscendingTier;
 use crate::traversal::tiered_traversal::TieredTraversalIter;
 use crate::types::NodeIDX;
+use crate::types::array_graph::offset_graph::edge_flags::EdgeFlags;
 use crate::types::array_graph::offset_graph::offset_graph_traversal::EdgesIter;
 use crate::types::array_graph::offset_graph::offset_graph_traversal::OffsetGraphDFSUnconfigured;
-use crate::types::array_graph::tiers::ALL_TIER_FLAGS;
-use crate::types::array_graph::tiers::TIER_FLAGS;
 
 pub struct OffsetGraph {
     pub(super) edges: Vec<Edge>,
@@ -38,22 +38,6 @@ pub enum NonDirectedEdgeMetadata {
         properties: BTreeMap<String, String>,
         branch: String,
     },
-}
-
-bitflags::bitflags! {
-    #[repr(transparent)]
-    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-    pub struct EdgeFlags: u32 {
-        const IS_TAGGED =                   0b0000_0001;
-        const IS_DYNAMIC =                  0b0000_0010;
-        const EXCLUDED =                    0b0000_0100;
-
-        const TRANSITIONS_TO_TIER_IDX_0 =   TIER_FLAGS[0];
-        const TRANSITIONS_TO_TIER_IDX_1 =   TIER_FLAGS[1];
-        const TRANSITIONS_TO_TIER_IDX_2 =   TIER_FLAGS[2];
-        const TRANSITIONS_TO_TIER_IDX_3 =   TIER_FLAGS[3];
-        const ALL_TIERS =                   ALL_TIER_FLAGS;
-    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -97,49 +81,6 @@ impl Edge {
     #[inline(always)]
     pub fn is_excluded(&self) -> bool {
         self.flags.contains(EdgeFlags::EXCLUDED)
-    }
-}
-
-impl EdgeFlags {
-    pub fn to_binary_string(self) -> String {
-        let binary = format!("{:016b}", self.bits());
-        let mut result = String::with_capacity(19); // 16 digits + 3 separators
-        for (i, c) in binary.chars().enumerate() {
-            if i > 0 && i % 4 == 0 {
-                result.push('_');
-            }
-            result.push(c);
-        }
-        result
-    }
-
-    pub fn dbg(self) -> String {
-        format!(
-            "
-flags: {}
-excluded: {}
-transitions to tier idx: {:?}
-",
-            self.to_binary_string(),
-            self.is_excluded(),
-            self.transitions_to_tier_idx()
-        )
-    }
-
-    #[inline(always)]
-    pub fn is_excluded(&self) -> bool {
-        self.contains(EdgeFlags::EXCLUDED)
-    }
-
-    pub fn transitions_to_tier_idx(self) -> Option<usize> {
-        let tier_flags = self.intersection(EdgeFlags::ALL_TIERS);
-        match tier_flags {
-            EdgeFlags::TRANSITIONS_TO_TIER_IDX_0 => Some(0),
-            EdgeFlags::TRANSITIONS_TO_TIER_IDX_1 => Some(1),
-            EdgeFlags::TRANSITIONS_TO_TIER_IDX_2 => Some(2),
-            EdgeFlags::TRANSITIONS_TO_TIER_IDX_3 => Some(3),
-            _ => None,
-        }
     }
 }
 
@@ -346,40 +287,4 @@ impl OffsetGraph {
 pub struct EdgeOverride {
     original_edge: Edge,
     edge_idx: usize,
-}
-
-#[cfg(test)]
-mod tests {
-    use anyhow::Result;
-    use k9::*;
-
-    use super::*;
-
-    #[test]
-    fn edge_test() {
-        assert_equal!(std::mem::size_of::<Edge>(), 8);
-    }
-
-    #[test]
-    fn test_edge_flags() -> Result<()> {
-        let edge = Edge::new_with_flags(NodeIDX(1), EdgeFlags::IS_TAGGED);
-        assert_equal!(edge.flags.to_binary_string(), "0000_0000_0000_0001");
-        assert_equal!(edge.flags.contains(EdgeFlags::IS_TAGGED), true);
-        assert_equal!(edge.flags.intersects(EdgeFlags::IS_TAGGED), true);
-        assert_equal!(edge.flags.intersects(EdgeFlags::IS_DYNAMIC), false);
-        assert_equal!(
-            edge.flags
-                .intersects(EdgeFlags::IS_TAGGED | EdgeFlags::IS_DYNAMIC),
-            true
-        );
-
-        assert_equal!(edge.flags.to_binary_string(), "0000_0000_0000_0001");
-
-        let edge = Edge::new_with_flags(NodeIDX(1), EdgeFlags::IS_DYNAMIC);
-        assert_equal!(edge.flags.contains(EdgeFlags::IS_DYNAMIC), true);
-
-        assert_equal!(edge.flags.to_binary_string(), "0000_0000_0000_0010");
-
-        Ok(())
-    }
 }

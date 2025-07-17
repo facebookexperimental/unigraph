@@ -1,6 +1,7 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 pub(crate) mod apply_to_array_graph;
+pub mod messages;
 pub(crate) mod reachable_subgraph;
 pub mod tiered_traversal;
 
@@ -10,13 +11,14 @@ use tiered_traversal::TieredTraversalConfig;
 
 use crate::ArrayGraph;
 use crate::AscendingTiersConfig;
+use crate::traversal::messages::Message;
+use crate::traversal::messages::MessageID;
 use crate::types::NodeIDX;
 use crate::types::NodeName;
 use crate::types::Tag;
 use crate::types::TagSetName;
 use crate::types::TierIDX;
 use crate::types::TierName;
-pub type Message = String;
 
 #[derive(Clone)]
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
@@ -24,21 +26,21 @@ pub type Message = String;
 #[ts(export)]
 pub struct Decision {
     pub include: bool,
-    pub message: Option<Message>,
+    pub message_id: Option<MessageID>,
 }
 
 impl Decision {
     pub fn include() -> Self {
         Decision {
             include: true,
-            message: None,
+            message_id: None,
         }
     }
 
     pub fn exclude() -> Self {
         Decision {
             include: false,
-            message: None,
+            message_id: None,
         }
     }
 }
@@ -59,6 +61,8 @@ pub struct TraversalConfig {
     pub force_dynamic: Vec<ForceDynamic>,
 
     pub tiered_traversal: Option<TieredTraversalConfig>,
+
+    pub messages: BTreeMap<MessageID, Message>,
 }
 
 /// The version of TraversalConfig that is used for NodeIDX instead of string
@@ -73,6 +77,8 @@ pub struct TraversalConfigIDX {
     pub force_dynamic: Vec<ForceDynamicIDX>,
 
     pub tiered_traversal: Option<TieredTraversalConfig>,
+
+    pub messages: BTreeMap<MessageID, Message>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
@@ -125,6 +131,7 @@ pub struct NodeTagSetsPredicate {
 impl TraversalConfig {
     pub fn index(&self, array_graph: &ArrayGraph) -> TraversalConfigIDX {
         let mut force_nodes = BTreeMap::new();
+
         for (name, decision) in &self.force_nodes {
             if let Some(idx) = array_graph.node_names_ordered.name_to_idx_log(name) {
                 force_nodes.insert(idx, decision.clone());
@@ -168,6 +175,7 @@ impl TraversalConfig {
             force_dynamic,
             tag_sets: self.tag_sets.clone(),
             tiered_traversal: self.tiered_traversal.clone(),
+            messages: self.messages.clone(),
         }
     }
 
@@ -225,7 +233,7 @@ impl TraversalConfigIDX {
 
         Decision {
             include: true,
-            message: None,
+            message_id: None,
         }
     }
 

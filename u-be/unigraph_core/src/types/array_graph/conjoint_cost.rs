@@ -64,6 +64,7 @@ impl<'a> ConjointCostBuilder<'a> {
             .keys()
             .map(|metric_name| {
                 let tiered: Vec<Vec<f32>> = ag
+                    .state
                     .tiers
                     .iter()
                     .map(|_| vec![0.0; sccs.len()])
@@ -150,7 +151,7 @@ impl<'a> ConjointCostBuilder<'a> {
 
                 self.set_scc_value_for_metric(metric_name, scc_idx, current_v + node_v)?;
 
-                if !self.ag.tiers.is_empty() {
+                if !self.ag.state.tiers.is_empty() {
                     let tier_idx = self.ag.try_node_tier_idx(node_idx)?;
                     let current_v_tiered =
                         self.get_scc_value_for_tiered_metric(metric_name, tier_idx, scc_idx)?;
@@ -176,7 +177,7 @@ impl<'a> ConjointCostBuilder<'a> {
             let child_v = self.get_scc_value_for_metric(metric_name, child_scc_idx)?;
             self.set_scc_value_for_metric(metric_name, scc_idx, current_v + child_v)?;
 
-            for (_tier_name, tier_idx) in &self.ag.tiers {
+            for (_tier_name, tier_idx) in &self.ag.state.tiers {
                 let current_v =
                     self.get_scc_value_for_tiered_metric(metric_name, *tier_idx, scc_idx)?;
                 let child_v =
@@ -262,7 +263,7 @@ impl<'a> ConjointCostBuilder<'a> {
             let v = self.get_scc_value_for_metric(metric_name, scc_idx)?;
             self.set_scc_value_for_metric(metric_name, scc_idx, v / count)?;
 
-            for (_tier_name, tier_idx) in &self.ag.tiers {
+            for (_tier_name, tier_idx) in &self.ag.state.tiers {
                 let v = self.get_scc_value_for_tiered_metric(metric_name, *tier_idx, scc_idx)?;
                 self.set_scc_value_for_tiered_metric(metric_name, *tier_idx, scc_idx, v / count)?;
             }
@@ -292,7 +293,7 @@ impl<'a> ConjointCostBuilder<'a> {
                 for_metric[node_idx] = conj_value;
             }
 
-            for (tier_name, tier_idx) in &self.ag.tiers {
+            for (tier_name, tier_idx) in &self.ag.state.tiers {
                 let mut for_tier = vec![0.0; self.ag.nodes_len()];
 
                 for node_idx in self.ag.node_idx_iter_reachable() {
@@ -323,13 +324,13 @@ impl<'a> ConjointCostBuilder<'a> {
                 .get_mut(metric_name)
                 .context("missing tiered for metric")?;
 
-            for (tier_name, tier_idx) in &self.ag.tiers {
+            for (tier_name, tier_idx) in &self.ag.state.tiers {
                 if *tier_idx == 0 {
                     continue;
                 }
 
                 let prev_tier_metrics = tiered_for_metric
-                    .get(&self.ag.tiers[tier_idx - 1].0)
+                    .get(&self.ag.state.tiers[tier_idx - 1].0)
                     .context("[conj cost] Missing tiered metric")?;
 
                 let cml_metric_for_current_tier = tiered_for_metric

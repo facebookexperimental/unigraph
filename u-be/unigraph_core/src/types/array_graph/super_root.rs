@@ -10,7 +10,6 @@ use crate::NodeIDX;
 use crate::types::array_graph::NodeFlags;
 use crate::types::array_graph::array_graph_derived_state::ArrayGraphDerivedState;
 use crate::types::array_graph::offset_graph::Edge;
-use crate::types::array_graph::offset_graph::EdgeFlags;
 use crate::types::array_graph::offset_graph::OffsetGraph;
 
 const HIGHEST_UNICODE_CODEPOINT: u32 = 0x10FFFF;
@@ -44,10 +43,9 @@ pub fn append_super_root(ag: ArrayGraph) -> Result<ArrayGraph> {
         edges_dynamic,
         mut metrics,
         tag_sets,
-        traversal_config,
-        tiers,
         graph_settings,
         entry_points: _, // we get them by determining
+        state,
     } = ag;
 
     let highest_unicode_char =
@@ -76,8 +74,7 @@ be no other node already on the list that doesn't start from the same character"
         edges_dynamic,
         metrics,
         tag_sets,
-        traversal_config,
-        tiers,
+        state,
         graph_settings,
         entry_points: Some(BTreeSet::from([super_root_name])),
     })
@@ -89,7 +86,7 @@ fn append_super_root_edges(entrypoints: Vec<NodeIDX>, edges_forward: &mut Offset
     for entrypoint in entrypoints {
         edges_forward.edges.push(Edge {
             points_to: entrypoint,
-            flags: EdgeFlags::empty(),
+            flags: Default::default(),
         });
         edges_forward
             .non_directed_edges_metadata

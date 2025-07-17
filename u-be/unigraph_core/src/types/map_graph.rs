@@ -21,6 +21,7 @@ use super::array_graph::offset_graph::OffsetGraphBuilder;
 use crate::TraversalConfig;
 use crate::graph_settings::GraphSettings;
 use crate::types::array_graph::array_graph_derived_state::ArrayGraphDerivedState;
+use crate::types::array_graph::array_graph_state::ArrayGraphState;
 
 type NodeName = String;
 
@@ -142,6 +143,7 @@ impl MapGraph {
                     points_from: node_idx,
                     points_to: name_to_idx_map.get(&a.points_to).copied().unwrap(),
                     excluded: false,
+                    message: None,
                 }));
                 sizes.push(
                     node.metrics
@@ -178,8 +180,11 @@ impl MapGraph {
             edges_tagged: all_tagged_edges,
             edges_dynamic: all_dynamic_edges,
             tag_sets: all_tag_sets,
-            traversal_config: self.traversal_config.clone(),
-            tiers,
+            state: ArrayGraphState {
+                traversal_config: self.traversal_config.clone(),
+                tiers,
+                indexed_messages: Default::default(),
+            },
             graph_settings: self.graph_settings.clone(),
             entry_points: self.entry_points.clone(),
         })

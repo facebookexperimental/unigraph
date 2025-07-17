@@ -4,7 +4,7 @@ use crate::ArrayGraph;
 use crate::NodeIDX;
 use crate::types::array_graph::NodeFlags;
 use crate::types::array_graph::offset_graph::Edge;
-use crate::types::array_graph::offset_graph::EdgeFlags;
+use crate::types::array_graph::offset_graph::edge_flags::EdgeType;
 
 pub trait ArrayGraphDebugUtils {
     fn to_forward_edges_string(&self) -> Result<String>;
@@ -55,13 +55,10 @@ impl ArrayGraphDebugUtils for ArrayGraph {
 
             for edge in edges_fn(self, node_idx) {
                 let points_to = self.node_names_ordered.idx_to_name(edge.points_to);
-                let edge_type = match edge
-                    .flags
-                    .intersection(EdgeFlags::IS_DYNAMIC | EdgeFlags::IS_TAGGED)
-                {
-                    EdgeFlags::IS_DYNAMIC => " [D]",
-                    EdgeFlags::IS_TAGGED => " [T]",
-                    _ => "",
+                let edge_type = match edge.flags.edge_type() {
+                    EdgeType::Dynamic => " [D]",
+                    EdgeType::Tagged => " [T]",
+                    EdgeType::Directed => "",
                 };
 
                 result.push_str(&format!("  - {points_to}{edge_type}\n"));

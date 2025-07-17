@@ -2,7 +2,6 @@
 
 use std::collections::BTreeMap;
 
-use anyhow::Context;
 use anyhow::Result;
 
 use crate::ArrayGraph;
@@ -10,13 +9,13 @@ use crate::AscendingTiersConfig;
 use crate::NodeIDX;
 use crate::TraversalConfig;
 use crate::traversal::TraversalConfigIDX;
+use crate::traversal::messages::BuiltInMessages;
+use crate::traversal::messages::IndexedMessages;
 use crate::traversal::tiered_traversal::TieredTraversalConfig;
 use crate::types::Tag;
 use crate::types::array_graph::NodeFlags;
-use crate::types::array_graph::array_graph_derived_state::ArrayGraphDerivedState;
-use crate::types::array_graph::offset_graph::EdgeFlags;
+use crate::types::array_graph::array_graph_state::ArrayGraphState;
 use crate::types::array_graph::offset_graph::NonDirectedEdgeMetadata;
-use crate::types::array_graph::tiers::tier_idx_to_flags;
 
 /// This function will take an `ArrayGraph` and a `TraversalConfig`, and apply the traversal configuration to the graph.
 /// which will include figuring out which edges/nodes to follow, which edges/nodes to exclude, assign tiers if
@@ -27,6 +26,7 @@ pub fn apply_traversal_config_to_array_graph(
 ) -> Result<()> {
     let entry_points = ag.determine_entrypoints();
     let indexed_config = traversal_config.index(ag);
+    let m = IndexedMessages::new_with_builtin(&indexed_config.messages);
 
     let tag_to_tier = indexed_config
         .ascending_tiers()
@@ -35,7 +35,7 @@ pub fn apply_traversal_config_to_array_graph(
     for (parent_idx, edge, metadata) in ag.edges_forward.iter_edges_mut() {
         // we need to start fresh and make sure all edges that were previously excluded
         // are reset.
-        edge.flags.remove(EdgeFlags::EXCLUDED);
+        edge.flags.include();
 
         match_dynamic_edges(&indexed_config, parent_idx, edge, metadata);
         match_tagged(&indexed_config, edge, metadata, &tag_to_tier)?;
@@ -43,16 +43,19 @@ pub fn apply_traversal_config_to_array_graph(
             match_tag_sets(&indexed_config, edge, tag_sets_for_node);
         }
         match_force_edges(&indexed_config, parent_idx, edge);
-        match_force_nodes(&indexed_config, edge);
+        match_force_nodes(&indexed_config, edge, &m)?;
     }
 
     apply_tiers(ag, &indexed_config, &entry_points)?;
     exclude_edges_below_max_tier(ag, &indexed_config)?;
 
     apply_node_reachability(ag, entry_points);
-    ag.tiers = traversal_config.get_tiers();
-    ag.traversal_config = Some(traversal_config);
-    ag.derived_state = ArrayGraphDerivedState::from_forward_edges(&ag.edges_forward);
+
+    ag.state = ArrayGraphState {
+        tiers: traversal_config.get_tiers(),
+        traversal_config: Some(traversal_config),
+        indexed_messages: m,
+    };
     Ok(())
 }
 
@@ -71,7 +74,7 @@ fn exclude_edges_below_max_tier(
             #[allow(clippy::collapsible_if)]
             if let Some(points_to_tier) = ag.node_flags[edge.points_to].tier_idx() {
                 if points_to_tier > *max_tier {
-                    edge.flags.insert(EdgeFlags::EXCLUDED);
+                    edge.flags.exclude();
                 }
             }
         }
@@ -112,13 +115,21 @@ fn apply_tiers(
 fn match_force_nodes(
     indexed_config: &super::TraversalConfigIDX,
     edge: &mut crate::types::array_graph::offset_graph::Edge,
-) {
+    indexed_messages: &IndexedMessages,
+) -> Result<()> {
     if let Some(decision) = indexed_config.force_nodes.get(&edge.points_to) {
         match decision.include {
-            true => edge.flags.remove(EdgeFlags::EXCLUDED),
-            false => edge.flags.insert(EdgeFlags::EXCLUDED),
+            true => edge.flags.include(),
+            false => {
+                edge.flags
+                    .exclude_with_message(indexed_messages.get_or_default(
+                        &decision.message_id,
+                        BuiltInMessages::NODE_FORCE_EXCLUDED_ID,
+                    ))?;
+            }
         }
     }
+    Ok(())
 }
 
 fn match_force_edges(
@@ -130,8 +141,8 @@ fn match_force_edges(
     if let Some(force_to) = indexed_config.force_edges.get(&parent_idx) {
         if let Some(decision) = force_to.get(&edge.points_to) {
             match decision.include {
-                true => edge.flags.remove(EdgeFlags::EXCLUDED),
-                false => edge.flags.insert(EdgeFlags::EXCLUDED),
+                true => edge.flags.include(),
+                false => edge.flags.exclude(),
             }
         }
     }
@@ -147,8 +158,8 @@ fn match_tag_sets(
         if let Some(tags) = tag_sets_for_node.get(&tag_set_predicate.tag_set_name) {
             if tags.contains(&tag_set_predicate.tag_name) == tag_set_predicate.contains {
                 match tag_set_predicate.decision.include {
-                    true => edge.flags.remove(EdgeFlags::EXCLUDED),
-                    false => edge.flags.insert(EdgeFlags::EXCLUDED),
+                    true => edge.flags.include(),
+                    false => edge.flags.exclude(),
                 }
             }
         }
@@ -164,8 +175,8 @@ fn match_dynamic_edges(
     if let NonDirectedEdgeMetadata::Dynamic { properties, branch } = metadata {
         let decision = indexed_config.match_dynamic_edge(properties, parent_idx, branch);
         match decision.include {
-            true => edge.flags.remove(EdgeFlags::EXCLUDED),
-            false => edge.flags.insert(EdgeFlags::EXCLUDED),
+            true => edge.flags.include(),
+            false => edge.flags.exclude(),
         }
     }
 }
@@ -179,18 +190,14 @@ fn match_tagged(
     if let NonDirectedEdgeMetadata::Tagged { tag } = metadata {
         if let Some(decision) = indexed_config.force_tagged.get(tag) {
             match decision.include {
-                true => edge.flags.remove(EdgeFlags::EXCLUDED),
-                false => edge.flags.insert(EdgeFlags::EXCLUDED),
+                true => edge.flags.include(),
+                false => edge.flags.exclude(),
             }
         }
 
         if let Some(tag_to_tier) = tag_to_tier {
             if let Some(tier_idx) = tag_to_tier.get(tag).copied() {
-                let tier_transition_flags = tier_idx_to_flags(tier_idx)?;
-                let flags = EdgeFlags::from_bits(tier_transition_flags)
-                    .with_context(|| format!("Invalid tier flags: {tier_transition_flags:#b}"))?;
-
-                edge.flags.insert(flags);
+                edge.flags.set_transitions_to_tier_idx(tier_idx)?;
             }
         }
     }

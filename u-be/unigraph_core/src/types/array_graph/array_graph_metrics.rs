@@ -21,6 +21,7 @@ pub fn get_transitive_tiered_metric_values(
     }
 
     let tier_config = ag
+        .state
         .traversal_config
         .as_ref()
         .and_then(|config| config.tiered_traversal.as_ref());
@@ -141,6 +142,7 @@ pub fn get_metrics_sums_tiered_for_nodes(
     let mut result: BTreeMap<MetricName, BTreeMap<TierName, f32>> = BTreeMap::new();
 
     let tier_config = ag
+        .state
         .traversal_config
         .as_ref()
         .and_then(|config| config.tiered_traversal.as_ref());
@@ -200,6 +202,7 @@ pub fn get_combined_metrics_for_entry_points(
     };
 
     let tier_config = ag
+        .state
         .traversal_config
         .as_ref()
         .and_then(|config| config.tiered_traversal.as_ref());
@@ -302,7 +305,7 @@ mod tests {
             "F".into(),
             Decision {
                 include: false,
-                message: None,
+                message_id: None,
             },
         );
 
