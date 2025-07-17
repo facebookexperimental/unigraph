@@ -1,5 +1,7 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
+#![allow(clippy::collapsible_if)]
+
 pub mod map_graph_builder;
 mod test_graph;
 pub(crate) mod traversal;

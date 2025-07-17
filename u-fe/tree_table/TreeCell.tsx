@@ -6,7 +6,6 @@ import {
   ChevronDown,
   ChevronRight,
   Dot,
-  MessageSquareText,
   RefreshCw,
 } from "lucide-react";
 import type { Arrow } from "u-be/unigraph_core/bindings/Arrow";
@@ -130,10 +129,7 @@ function InfoIcon({
     message = (
       <>
         <h2 className="text-xl underline mt-2">Additional Information</h2>
-        <p>
-          <MessageSquareText size={16} className="inline me-2" />
-          {arrow.message}
-        </p>
+        <p className="break-words">{arrow.message}</p>
       </>
     );
   }

@@ -103,6 +103,16 @@ transitions to tier idx: {:?}
         Ok(())
     }
 
+    pub fn include_with_message(&mut self, message_idx: Option<u8>) -> Result<()> {
+        self.include();
+        if let Some(message_idx) = message_idx {
+            self.set_message_idx(message_idx)?;
+        } else {
+            self.remove_message_idx();
+        }
+        Ok(())
+    }
+
     pub fn include(&mut self) {
         self.remove(EdgeFlags::EXCLUDED);
     }

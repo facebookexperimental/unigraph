@@ -191,9 +191,9 @@ B -> C: 0000_0000_0000_0001 (Tagged { tag: "BL" })
 B -> J: 0000_0000_0000_0001 (Tagged { tag: "RD" })
 D -> F: 0000_0000_0000_0000 (Directed)
 D -> E: 0000_0000_0000_0001 (Tagged { tag: "RDFD" })
-F -> G: 0000_0000_0000_0010 (Dynamic { properties: {"type": "DDD"}, branch: "b1" })
-F -> H: 0000_0000_0000_0010 (Dynamic { properties: {"type": "DDD"}, branch: "b1" })
-F -> I: 0000_0001_0000_0110 (Dynamic { properties: {"type": "DDD"}, branch: "b2" })
+F -> G: 0000_0100_0000_0010 (Dynamic { properties: {"type": "DDD"}, branch: "b1" })
+F -> H: 0000_0100_0000_0010 (Dynamic { properties: {"type": "DDD"}, branch: "b1" })
+F -> I: 0000_1001_0000_0110 (Dynamic { properties: {"type": "DDD"}, branch: "b2" })
 "#
     );
 
@@ -207,13 +207,13 @@ F -> I: 0000_0001_0000_0110 (Dynamic { properties: {"type": "DDD"}, branch: "b2"
         r#"
 A -> B: 0000_0000_0000_0000 (Directed)
 A -> D: 0000_0000_0000_0000 (Directed)
-B -> C: 0000_0000_0000_0101 (Tagged { tag: "BL" })
+B -> C: 0000_0111_0000_0101 (Tagged { tag: "BL" })
 B -> J: 0000_0000_0000_0001 (Tagged { tag: "RD" })
 D -> F: 0000_0000_0000_0000 (Directed)
 D -> E: 0000_0000_0000_0001 (Tagged { tag: "RDFD" })
-F -> G: 0000_0000_0000_0010 (Dynamic { properties: {"type": "DDD"}, branch: "b1" })
-F -> H: 0000_0000_0000_0010 (Dynamic { properties: {"type": "DDD"}, branch: "b1" })
-F -> I: 0000_0001_0000_0010 (Dynamic { properties: {"type": "DDD"}, branch: "b2" })
+F -> G: 0000_0100_0000_0010 (Dynamic { properties: {"type": "DDD"}, branch: "b1" })
+F -> H: 0000_0100_0000_0010 (Dynamic { properties: {"type": "DDD"}, branch: "b1" })
+F -> I: 0000_0100_0000_0010 (Dynamic { properties: {"type": "DDD"}, branch: "b2" })
 "#
     );
     Ok(())

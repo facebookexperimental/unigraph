@@ -37,12 +37,12 @@ pub fn apply_traversal_config_to_array_graph(
         // are reset.
         edge.flags.include();
 
-        match_dynamic_edges(&indexed_config, parent_idx, edge, metadata);
-        match_tagged(&indexed_config, edge, metadata, &tag_to_tier)?;
+        match_dynamic_edges(&indexed_config, parent_idx, edge, metadata, &m)?;
+        match_tagged(&indexed_config, edge, metadata, &tag_to_tier, &m)?;
         if let Some(tag_sets_for_node) = ag.tag_sets.get(&edge.points_to) {
-            match_tag_sets(&indexed_config, edge, tag_sets_for_node);
+            match_tag_sets(&indexed_config, edge, tag_sets_for_node, &m)?;
         }
-        match_force_edges(&indexed_config, parent_idx, edge);
+        match_force_edges(&indexed_config, parent_idx, edge, &m)?;
         match_force_nodes(&indexed_config, edge, &m)?;
     }
 
@@ -119,7 +119,13 @@ fn match_force_nodes(
 ) -> Result<()> {
     if let Some(decision) = indexed_config.force_nodes.get(&edge.points_to) {
         match decision.include {
-            true => edge.flags.include(),
+            true => {
+                edge.flags
+                    .include_with_message(indexed_messages.get_or_default(
+                        &decision.message_id,
+                        BuiltInMessages::NODE_FORCE_INCLUDED_ID,
+                    ))?;
+            }
             false => {
                 edge.flags
                     .exclude_with_message(indexed_messages.get_or_default(
@@ -136,34 +142,61 @@ fn match_force_edges(
     indexed_config: &super::TraversalConfigIDX,
     parent_idx: crate::NodeIDX,
     edge: &mut crate::types::array_graph::offset_graph::Edge,
-) {
+    indexed_messages: &IndexedMessages,
+) -> Result<()> {
     #[allow(clippy::collapsible_if)]
     if let Some(force_to) = indexed_config.force_edges.get(&parent_idx) {
         if let Some(decision) = force_to.get(&edge.points_to) {
             match decision.include {
-                true => edge.flags.include(),
-                false => edge.flags.exclude(),
+                true => edge
+                    .flags
+                    .include_with_message(indexed_messages.get_or_default(
+                        &decision.message_id,
+                        BuiltInMessages::EDGE_FORCE_INCLUDED_ID,
+                    ))?,
+                false => {
+                    edge.flags
+                        .exclude_with_message(indexed_messages.get_or_default(
+                            &decision.message_id,
+                            BuiltInMessages::EDGE_FORCE_EXCLUDED_ID,
+                        ))?;
+                }
             }
         }
     }
+
+    Ok(())
 }
 
 fn match_tag_sets(
     indexed_config: &super::TraversalConfigIDX,
     edge: &mut crate::types::array_graph::offset_graph::Edge,
     tag_sets_for_node: &std::collections::BTreeMap<String, std::collections::BTreeSet<String>>,
-) {
+    indexed_messages: &IndexedMessages,
+) -> Result<()> {
     for tag_set_predicate in &indexed_config.tag_sets {
         #[allow(clippy::collapsible_if)]
         if let Some(tags) = tag_sets_for_node.get(&tag_set_predicate.tag_set_name) {
             if tags.contains(&tag_set_predicate.tag_name) == tag_set_predicate.contains {
                 match tag_set_predicate.decision.include {
-                    true => edge.flags.include(),
-                    false => edge.flags.exclude(),
+                    true => edge
+                        .flags
+                        .include_with_message(indexed_messages.get_or_default(
+                            &tag_set_predicate.decision.message_id,
+                            BuiltInMessages::FORCE_TAG_SETS_INCLUDED_ID,
+                        ))?,
+                    false => edge
+                        .flags
+                        .exclude_with_message(indexed_messages.get_or_default(
+                            &tag_set_predicate.decision.message_id,
+                            BuiltInMessages::FORCE_TAG_SETS_EXCLUDED_ID,
+                        ))?,
                 }
             }
         }
     }
+
+    Ok(())
 }
 
 fn match_dynamic_edges(
@@ -171,27 +204,51 @@ fn match_dynamic_edges(
     parent_idx: crate::NodeIDX,
     edge: &mut crate::types::array_graph::offset_graph::Edge,
     metadata: &mut NonDirectedEdgeMetadata,
-) {
+    indexed_messages: &IndexedMessages,
+) -> Result<()> {
     if let NonDirectedEdgeMetadata::Dynamic { properties, branch } = metadata {
         let decision = indexed_config.match_dynamic_edge(properties, parent_idx, branch);
         match decision.include {
-            true => edge.flags.include(),
-            false => edge.flags.exclude(),
+            true => edge
+                .flags
+                .include_with_message(indexed_messages.get_or_default(
+                    &decision.message_id,
+                    BuiltInMessages::FORCE_DYNAMIC_INCLUDED_ID,
+                ))?,
+            false => edge
+                .flags
+                .exclude_with_message(indexed_messages.get_or_default(
+                    &decision.message_id,
+                    BuiltInMessages::FORCE_DYNAMIC_EXCLUDED_ID,
+                ))?,
         }
     }
+
+    Ok(())
 }
 fn match_tagged(
     indexed_config: &super::TraversalConfigIDX,
     edge: &mut crate::types::array_graph::offset_graph::Edge,
     metadata: &mut NonDirectedEdgeMetadata,
     tag_to_tier: &Option<BTreeMap<Tag, usize>>,
+    indexed_messages: &IndexedMessages,
 ) -> Result<()> {
     #[allow(clippy::collapsible_if)]
     if let NonDirectedEdgeMetadata::Tagged { tag } = metadata {
         if let Some(decision) = indexed_config.force_tagged.get(tag) {
             match decision.include {
-                true => edge.flags.include(),
-                false => edge.flags.exclude(),
+                true => edge
+                    .flags
+                    .include_with_message(indexed_messages.get_or_default(
+                        &decision.message_id,
+                        BuiltInMessages::FORCE_TAGGED_INCLUDED_ID,
+                    ))?,
+                false => edge
+                    .flags
+                    .exclude_with_message(indexed_messages.get_or_default(
+                        &decision.message_id,
+                        BuiltInMessages::FORCE_TAGGED_EXCLUDED_ID,
+                    ))?,
             }
         }
 

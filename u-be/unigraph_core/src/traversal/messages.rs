@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 use anyhow::Result;
 
 use crate::NodeIDX;
+use crate::types::array_graph::offset_graph::NonDirectedEdgeMetadata;
 use crate::types::array_graph::{self};
 
 pub type MessageID = String;
@@ -34,9 +35,17 @@ pub struct Message(pub String);
 
 const MESSAGE_TEMPLATE_POINTS_FROM: &str = "%points_from%";
 const MESSAGE_TEMPLATE_POINTS_TO: &str = "%points_to%";
+const MESSAGE_TEMPLATE_EDGE_TAG: &str = "%edge_tag%";
+const MESSAGE_TEMPLATE_EDGE_BRANCH: &str = "%edge_branch%";
+const MESSAGE_TEMPLATE_EDGE_PROPERTIES: &str = "%edge_properties%";
 
 impl Message {
-    pub fn render(&self, ag: &array_graph::ArrayGraph, points_from: NodeIDX) -> Result<String> {
+    pub fn render(
+        &self,
+        ag: &array_graph::ArrayGraph,
+        points_from: NodeIDX,
+        edge_metadata: &NonDirectedEdgeMetadata,
+    ) -> Result<String> {
         let mut result = self.0.clone();
 
         if result.contains(MESSAGE_TEMPLATE_POINTS_FROM) {
@@ -48,6 +57,25 @@ impl Message {
             let points_to_name = ag.node_names_ordered.idx_to_name(points_from);
             result = result.replace(MESSAGE_TEMPLATE_POINTS_TO, points_to_name);
         }
+
+        match edge_metadata {
+            NonDirectedEdgeMetadata::Directed => {}
+            NonDirectedEdgeMetadata::Tagged { tag } => {
+                if result.contains(MESSAGE_TEMPLATE_EDGE_TAG) {
+                    result = result.replace(MESSAGE_TEMPLATE_EDGE_TAG, tag);
+                }
+            }
+            NonDirectedEdgeMetadata::Dynamic { properties, branch } => {
+                if result.contains(MESSAGE_TEMPLATE_EDGE_BRANCH) {
+                    result = result.replace(MESSAGE_TEMPLATE_EDGE_BRANCH, branch);
+                }
+                if result.contains(MESSAGE_TEMPLATE_EDGE_PROPERTIES) {
+                    let properties_str = format!("{properties:?}");
+                    result = result.replace(MESSAGE_TEMPLATE_EDGE_PROPERTIES, &properties_str);
+                }
+            }
+        }
+
         Ok(result)
     }
 }
@@ -109,13 +137,79 @@ impl IndexedMessages {
 pub struct BuiltInMessages;
 impl BuiltInMessages {
     pub const NODE_FORCE_EXCLUDED_ID: &str = "node_force_excluded";
+    pub const NODE_FORCE_INCLUDED_ID: &str = "node_force_included";
 
-    const NODE_FORCE_EXCLUDED_MESSAGE: &str = "This edge was excluded because the node `%points_to%` was force excluded from the traversal using `force_nodes` config.";
+    pub const EDGE_FORCE_EXCLUDED_ID: &str = "edge_force_excluded";
+    pub const EDGE_FORCE_INCLUDED_ID: &str = "edge_force_included";
 
-    const ALL_MESSAGES: &'static [(&'static str, &'static str)] = &[(
-        Self::NODE_FORCE_EXCLUDED_ID,
-        Self::NODE_FORCE_EXCLUDED_MESSAGE,
-    )];
+    pub const FORCE_TAGGED_INCLUDED_ID: &str = "force_tagged_included";
+    pub const FORCE_TAGGED_EXCLUDED_ID: &str = "force_tagged_excluded";
+
+    pub const FORCE_DYNAMIC_INCLUDED_ID: &str = "force_dynamic_included";
+    pub const FORCE_DYNAMIC_EXCLUDED_ID: &str = "force_dynamic_excluded";
+
+    pub const FORCE_TAG_SETS_INCLUDED_ID: &str = "force_tag_sets_included";
+    pub const FORCE_TAG_SETS_EXCLUDED_ID: &str = "force_tag_sets_excluded";
+
+    const NODE_FORCE_EXCLUDED_MESSAGE: &str = "This edge was EXCLUDED because the node `%points_to%` was force excluded from the traversal using `force_nodes` config.";
+    const NODE_FORCE_INCLUDED_MESSAGE: &str = "This edge was INCLUDED because the node `%points_to%` was force included from the traversal using `force_nodes` config.";
+
+    const EDGE_FORCE_EXCLUDED_MESSAGE: &str = "This edge from `%points_from%` to `%points_to%` was EXCLUDED because it was force excluded from the traversal using `force_edges` config.";
+    const EDGE_FORCE_INCLUDED_MESSAGE: &str = "This edge from `%points_from%` to `%points_to%` was INCLUDED because it was force included from the traversal using `force_edges` config.";
+
+    const FORCE_TAGGED_INCLUDED_MESSAGE: &str =
+        "This edge was INCLUDED because `force_tagged` config for the tag `%edge_tag%`";
+    const FORCE_TAGGED_EXCLUDED_MESSAGE: &str =
+        "This edge was EXCLUDED because `force_tagged` config for the tag `%edge_tag%`";
+
+    const FORCE_DYNAMIC_INCLUDED_MESSAGE: &str = "This edge was INCLUDED because it matched the `force_dynamic` config for the branch `%edge_branch%` with properties `%edge_properties%`.";
+    const FORCE_DYNAMIC_EXCLUDED_MESSAGE: &str = "This edge was EXCLUDED because it matched the `force_dynamic` config for the branch `%edge_branch%` with properties `%edge_properties%`.";
+
+    const FORCE_TAG_SETS_INCLUDED_MESSAGE: &str = "This edge was INCLUDED because it contained tag sets that matched an entry in the `tag_sets` config`.";
+    const FORCE_TAG_SETS_EXCLUDED_MESSAGE: &str = "This edge was EXCLUDED because it contained tag sets that matched an entry in the `tag_sets` config`.";
+
+    const ALL_MESSAGES: &'static [(&'static str, &'static str)] = &[
+        (
+            Self::NODE_FORCE_EXCLUDED_ID,
+            Self::NODE_FORCE_EXCLUDED_MESSAGE,
+        ),
+        (
+            Self::NODE_FORCE_INCLUDED_ID,
+            Self::NODE_FORCE_INCLUDED_MESSAGE,
+        ),
+        (
+            Self::EDGE_FORCE_EXCLUDED_ID,
+            Self::EDGE_FORCE_EXCLUDED_MESSAGE,
+        ),
+        (
+            Self::EDGE_FORCE_INCLUDED_ID,
+            Self::EDGE_FORCE_INCLUDED_MESSAGE,
+        ),
+        (
+            Self::FORCE_TAGGED_INCLUDED_ID,
+            Self::FORCE_TAGGED_INCLUDED_MESSAGE,
+        ),
+        (
+            Self::FORCE_TAGGED_EXCLUDED_ID,
+            Self::FORCE_TAGGED_EXCLUDED_MESSAGE,
+        ),
+        (
+            Self::FORCE_DYNAMIC_INCLUDED_ID,
+            Self::FORCE_DYNAMIC_INCLUDED_MESSAGE,
+        ),
+        (
+            Self::FORCE_DYNAMIC_EXCLUDED_ID,
+            Self::FORCE_DYNAMIC_EXCLUDED_MESSAGE,
+        ),
+        (
+            Self::FORCE_TAG_SETS_INCLUDED_ID,
+            Self::FORCE_TAG_SETS_INCLUDED_MESSAGE,
+        ),
+        (
+            Self::FORCE_TAG_SETS_EXCLUDED_ID,
+            Self::FORCE_TAG_SETS_EXCLUDED_MESSAGE,
+        ),
+    ];
 
     fn get_all() -> BTreeMap<String, Message> {
         Self::ALL_MESSAGES
@@ -160,13 +254,15 @@ E -> K
 F -> G
    branch: b1
    properties: {"type": "DDD"}
+   message: This edge was INCLUDED because it matched the `force_dynamic` config for the branch `b1` with properties `{"type": "DDD"}`.
 F -> H
    branch: b1
    properties: {"type": "DDD"}
+   message: This edge was INCLUDED because it matched the `force_dynamic` config for the branch `b1` with properties `{"type": "DDD"}`.
 F -> I
    branch: b2
    properties: {"type": "DDD"}
-   message: This edge was excluded because the node `F` was force excluded from the traversal using `force_nodes` config.
+   message: This edge was EXCLUDED because the node `F` was force excluded from the traversal using `force_nodes` config.
 J -> K
 L -> D
 L -> M
