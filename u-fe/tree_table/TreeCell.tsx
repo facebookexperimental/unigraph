@@ -9,6 +9,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import type { Arrow } from "u-be/unigraph_core/bindings/Arrow";
+import { H2 } from "../Typography";
 import UHoverCard from "../components/UHoverCard";
 import { Badge } from "../components/ui/badge";
 import { useNativeGraph } from "../context/NativeGraphContext";
@@ -104,9 +105,7 @@ function InfoIcon({
   if (!isNodeReachable) {
     content = (
       <>
-        <h2 className="text-xl underline mt-2 text-foreground">
-          Node is not reachable
-        </h2>
+        <H2 text="Node is not reachable" />
         <p>
           This edge points to a node that is not reachable from the root node
           because all edges that lead to it are excluded.
@@ -116,9 +115,8 @@ function InfoIcon({
   } else if (arrow.excluded) {
     content = (
       <>
-        <h2 className="text-xl underline mt-2 text-foreground">
-          This edge is not followed
-        </h2>
+        <H2 text="This edge is not followed" />
+
         <p>
           This edge was not followed during the graph traversal, but this node
           is still reachable through other edges in the graph. You can switch to
@@ -132,9 +130,8 @@ function InfoIcon({
   if (arrow.message != null) {
     message = (
       <>
-        <h2 className="text-xl underline mt-2 text-foreground">
-          Additional Information
-        </h2>
+        <H2 text="Additional Information" />
+
         <p className="break-words">{arrow.message}</p>
       </>
     );

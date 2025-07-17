@@ -1,5 +1,4 @@
-// Copyright (c) Meta Platforms, Inc. and affiliates.
-
+import { H1 } from "../Typography";
 import { Separator } from "../components/ui/separator";
 
 export function SidebarPanel({
@@ -15,13 +14,13 @@ export function SidebarPanel({
 }
 
 export function SidebarPanelHeader({
-  children,
+  text,
 }: {
-  children?: React.ReactNode;
+  text: string;
 }) {
   return (
     <>
-      <h2 className="!text-3xl !font-bold !text-foreground">{children}</h2>
+      <H1 text={text} />
       <Separator className="my-4" />
     </>
   );

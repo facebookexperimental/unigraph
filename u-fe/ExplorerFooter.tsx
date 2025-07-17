@@ -25,6 +25,7 @@ import {
   useToggleFlatListView,
   useToggleReverseView,
 } from "./GraphStructureHooks";
+import { H3 } from "./Typography";
 import UTooltip from "./components/UTooltip";
 import { Button } from "./components/ui/button";
 import { useGraphSettings } from "./context/GraphSettingsContext";
@@ -458,7 +459,7 @@ function TiersHoverCardContent() {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex gap-2">{metricCards}</div>
-      <h2 className="text-xl">Max Tier</h2>
+      <H3 text="Max Tier" />
       <div className="flex flex-wrap gap-2">{tierSwitches}</div>
     </div>
   );

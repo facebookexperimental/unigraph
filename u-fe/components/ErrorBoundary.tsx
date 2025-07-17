@@ -1,5 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode, useState } from "react";
-import { Pre } from "../Typography";
+import { H2, Pre } from "../Typography";
 import UAlertDialog from "./UAlertDialog";
 import { AlertDialogTitle } from "./ui/alert-dialog";
 import { Button } from "./ui/button";
@@ -27,7 +27,7 @@ export default class ErrorBoundary extends Component<Props, State> {
       // You can render any custom fallback UI
       return (
         <>
-          <h1>Something went wrong.</h1>
+          <H2 text="Something went wrong." />
           <ErrorModal error={this.state.e.error} info={this.state.e.info} />
         </>
       );

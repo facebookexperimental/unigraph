@@ -10,7 +10,7 @@ export default function GraphInfoPanel() {
 
   return (
     <SidebarPanel>
-      <SidebarPanelHeader>Graph Info</SidebarPanelHeader>
+      <SidebarPanelHeader text="Graph Info" />
       <div className="flex flex-col gap-4 pt-4">
         <Card className="p-4">
           <div className="text-xl">Nodes</div>
