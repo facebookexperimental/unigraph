@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode, useState } from "react";
+import { Pre } from "../Typography";
 import UAlertDialog from "./UAlertDialog";
 import { AlertDialogTitle } from "./ui/alert-dialog";
 import { Button } from "./ui/button";
@@ -55,14 +56,6 @@ function ErrorModal({ error, info }: { error: Error; info: ErrorInfo }) {
         </div>
       </div>
     </UAlertDialog>
-  );
-}
-
-function Pre({ text }: { text: string }) {
-  return (
-    <pre className="bg-secondary rounded-md p-2 w-full overflow-auto font-mono">
-      {text}
-    </pre>
   );
 }
 

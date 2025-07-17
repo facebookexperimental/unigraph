@@ -10,6 +10,7 @@ import {
 import type { SelectionType } from "../u-be/unigraph_wgpu/bindings/SelectionType.js";
 import type { SimulationParams } from "../u-be/unigraph_wgpu/bindings/SimulationParams";
 import type { TsVec2 } from "../u-be/unigraph_wgpu/bindings/TsVec2.js";
+import { IS_DEBUG_MODE } from "./DebugMode.js";
 import ErrorBoundary from "./components/ErrorBoundary.js";
 import UToggleButton from "./components/UToggleButton.js";
 import { Button } from "./components/ui/button.js";
@@ -20,9 +21,6 @@ import { Toggle } from "./components/ui/toggle";
 import { useSelectedNodes } from "./context/SelectedNodesContext.js";
 import { useSimulationParams } from "./context/SimulationParamsContext.js";
 import formatNumber from "./lib/formatNumber.js";
-
-/// Gate extra controls that are useful for debugging but not so much for normal use
-const DEBUG = false;
 
 export default function Simulation() {
   const [paramsVisible, setParamsVisible] = useState(false);
@@ -234,7 +232,7 @@ function ParamsPanel(props: {
           }}
         />
 
-        {DEBUG && (
+        {IS_DEBUG_MODE && (
           <SimulationSlider
             label="ln(1 + len * x)"
             value={props.simulationParams.edge_force_b}
@@ -280,7 +278,7 @@ function ParamsPanel(props: {
 
         <Separator />
 
-        {DEBUG && (
+        {IS_DEBUG_MODE && (
           <SimulationSlider
             label="Total Force multiplier"
             value={props.simulationParams.total_force_multiplier}
@@ -327,7 +325,7 @@ function ParamsPanel(props: {
           }}
         />
 
-        {DEBUG && (
+        {IS_DEBUG_MODE && (
           <SimulationSlider
             label="Frames / Compute"
             value={props.simulationParams.compute_forces_every_n_frames}

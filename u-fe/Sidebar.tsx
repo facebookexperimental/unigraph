@@ -2,8 +2,10 @@
 
 import { Info, Waypoints } from "lucide-react";
 import type { SidebarPanel } from "u-be/unigraph_core/bindings/SidebarPanel";
+import { IS_DEBUG_MODE } from "./DebugMode";
 import { Button } from "./components/ui/button";
 import { useGraphSettings } from "./context/GraphSettingsContext";
+import TraversalConfigInspector from "./sidebar_panels/TraversalConfigInspector";
 
 export default function Sidebar({
   selectedPanelTab,
@@ -16,6 +18,7 @@ export default function Sidebar({
       <TabSelector tabName="GraphInfo" selectedPanelTab={selectedPanelTab}>
         <Info />
       </TabSelector>
+      {IS_DEBUG_MODE && <TraversalConfigInspector />}
     </div>
   );
 }
@@ -34,34 +37,32 @@ function TabSelector({
   const [settings, setSettings] = useGraphSettings();
 
   return (
-    <div className="flex flex-col gap-2">
-      <Button
-        size="icon"
-        className="cursor-pointer"
-        variant={selected ? "default" : "ghost"}
-        onClick={() => {
-          const selected = selectedPanelTab === tabName;
-          if (selected) {
-            setSettings({
-              ...settings,
-              ui_settings: {
-                ...settings.ui_settings,
-                selected_sidebar_panel: "None",
-              },
-            });
-          } else {
-            setSettings({
-              ...settings,
-              ui_settings: {
-                ...settings.ui_settings,
-                selected_sidebar_panel: tabName,
-              },
-            });
-          }
-        }}
-      >
-        {children}
-      </Button>
-    </div>
+    <Button
+      size="icon"
+      className="cursor-pointer"
+      variant={selected ? "default" : "ghost"}
+      onClick={() => {
+        const selected = selectedPanelTab === tabName;
+        if (selected) {
+          setSettings({
+            ...settings,
+            ui_settings: {
+              ...settings.ui_settings,
+              selected_sidebar_panel: "None",
+            },
+          });
+        } else {
+          setSettings({
+            ...settings,
+            ui_settings: {
+              ...settings.ui_settings,
+              selected_sidebar_panel: tabName,
+            },
+          });
+        }
+      }}
+    >
+      {children}
+    </Button>
   );
 }

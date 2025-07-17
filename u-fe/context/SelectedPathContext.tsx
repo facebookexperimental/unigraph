@@ -104,7 +104,7 @@ function syncSelectedPathToURLHash(
 ) {
   if (selectedPath == null || selectedPath.length === 0) {
     // If the selected path is empty, remove the hash from the URL
-    window.history.replaceState(null, "", window.location.pathname);
+    window.history.replaceState(null, "", window.location.href.split("#")[0]);
     return;
   }
 
