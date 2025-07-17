@@ -21,4 +21,4 @@ tag_sets: Array<NodeTagSetsPredicate>,
 /**
  * These rules are ordered. The first one that matches will be used.
  */
-force_dynamic: Array<ForceDynamic>, tiered_traversal: TieredTraversalConfig | null, messages: { [key in string]?: Message }, };
+force_dynamic: Array<ForceDynamic>, tiered_traversal: TieredTraversalConfig | null, messages: { [key in string]?: Message } | null, };

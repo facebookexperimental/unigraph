@@ -508,6 +508,7 @@ class TreeTableCtx {
           points_to: nodeIDX,
           points_to_unreachable: false,
           excluded: false,
+          message: null,
         },
         parentRowRef: null,
         childrenRefs: [],

@@ -88,7 +88,7 @@ export function useFlipForceEdge(arrow: Arrow | null): {
         ...tvc.force_edges,
         [fromName]: {
           ...tvc.force_edges[fromName],
-          [toName]: { include: action === "Include", message: null },
+          [toName]: { include: action === "Include", message_id: null },
         },
       },
     });
@@ -128,7 +128,7 @@ export function useFlipForceExcludeNode(arrow: Arrow | null): {
         ...tvc,
         force_nodes: {
           ...tvc.force_nodes,
-          [nodeName]: { include: false, message: null },
+          [nodeName]: { include: false, message_id: null },
         },
       });
     } else {

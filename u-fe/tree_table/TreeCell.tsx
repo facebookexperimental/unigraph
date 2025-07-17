@@ -6,6 +6,7 @@ import {
   ChevronDown,
   ChevronRight,
   Dot,
+  MessageSquareText,
   RefreshCw,
 } from "lucide-react";
 import type { Arrow } from "u-be/unigraph_core/bindings/Arrow";
@@ -100,19 +101,56 @@ function InfoIcon({
   isNodeReachable,
 }: { arrow: Arrow; isNodeReachable: boolean }) {
   let content = null;
+  let message = null;
   if (!isNodeReachable) {
-    content =
-      "This edge points to a node that is not reachable from the root node because all edges that lead to it are excluded.";
+    content = (
+      <>
+        <h2 className="text-xl underline mt-2">Node is not reachable</h2>
+        <p>
+          This edge points to a node that is not reachable from the root node
+          because all edges that lead to it are excluded.
+        </p>
+      </>
+    );
   } else if (arrow.excluded) {
-    content = "This edge was not followed during the graph traversal.";
+    content = (
+      <>
+        <h2 className="text-xl underline mt-2">This edge is not followed</h2>
+        <p>
+          This edge was not followed during the graph traversal, but this node
+          is still reachable through other edges in the graph. You can switch to
+          "Reverse" mode (R keyboard shortcut) to see all edges that lead to
+          this node.
+        </p>
+      </>
+    );
   }
 
-  if (content == null) {
+  if (arrow.message != null) {
+    message = (
+      <>
+        <h2 className="text-xl underline mt-2">Additional Information</h2>
+        <p>
+          <MessageSquareText size={16} className="inline me-2" />
+          {arrow.message}
+        </p>
+      </>
+    );
+  }
+
+  if (content == null && message == null) {
     return null;
   }
 
   return (
-    <UHoverCard content={<p>{content}</p>}>
+    <UHoverCard
+      content={
+        <div className="flex flex-col gap-2">
+          {content}
+          {message}
+        </div>
+      }
+    >
       <BadgeInfo size={16} />
     </UHoverCard>
   );

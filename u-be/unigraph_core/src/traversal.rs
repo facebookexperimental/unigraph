@@ -62,7 +62,7 @@ pub struct TraversalConfig {
 
     pub tiered_traversal: Option<TieredTraversalConfig>,
 
-    pub messages: BTreeMap<MessageID, Message>,
+    pub messages: Option<BTreeMap<MessageID, Message>>,
 }
 
 /// The version of TraversalConfig that is used for NodeIDX instead of string
@@ -175,7 +175,7 @@ impl TraversalConfig {
             force_dynamic,
             tag_sets: self.tag_sets.clone(),
             tiered_traversal: self.tiered_traversal.clone(),
-            messages: self.messages.clone(),
+            messages: self.messages.clone().unwrap_or_default(),
         }
     }
 

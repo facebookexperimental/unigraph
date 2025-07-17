@@ -13,6 +13,7 @@ function arrow(fromIDX: number, toIDX: number): Arrow {
     points_from: fromIDX,
     points_to: toIDX,
     excluded: false,
+    message: null,
   };
 }
 //    1
