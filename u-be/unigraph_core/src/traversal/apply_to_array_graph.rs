@@ -242,20 +242,21 @@ fn match_dynamic_edges(
     indexed_messages: &IndexedMessages,
 ) -> Result<()> {
     if let NonDirectedEdgeMetadata::Dynamic { properties, branch } = metadata {
-        let decision = match_dynamic_edge(force_dynamic, properties, parent_idx, branch);
-        match decision.include {
-            true => edge
-                .flags
-                .include_with_message(indexed_messages.get_or_default(
-                    &decision.message_id,
-                    BuiltInMessages::FORCE_DYNAMIC_INCLUDED_ID,
-                ))?,
-            false => edge
-                .flags
-                .exclude_with_message(indexed_messages.get_or_default(
-                    &decision.message_id,
-                    BuiltInMessages::FORCE_DYNAMIC_EXCLUDED_ID,
-                ))?,
+        if let Some(decision) = match_dynamic_edge(force_dynamic, properties, parent_idx, branch) {
+            match decision.include {
+                true => edge
+                    .flags
+                    .include_with_message(indexed_messages.get_or_default(
+                        &decision.message_id,
+                        BuiltInMessages::FORCE_DYNAMIC_INCLUDED_ID,
+                    ))?,
+                false => edge
+                    .flags
+                    .exclude_with_message(indexed_messages.get_or_default(
+                        &decision.message_id,
+                        BuiltInMessages::FORCE_DYNAMIC_EXCLUDED_ID,
+                    ))?,
+            }
         }
     }
 
@@ -321,7 +322,7 @@ pub fn match_dynamic_edge(
     properties: &BTreeMap<String, String>,
     from_node: NodeIDX,
     branch: &str,
-) -> Decision {
+) -> Option<Decision> {
     for dynamic_predicate in force_dynamic {
         if let Some(from_node_idx_predicate) = dynamic_predicate.from_node {
             // if parent node is specified and it does not match the current node,
@@ -344,12 +345,9 @@ pub fn match_dynamic_edge(
             .iter()
             .all(|(key, value)| properties.get(key) == Some(value))
         {
-            return dynamic_predicate.decision.clone();
+            return Some(dynamic_predicate.decision.clone());
         }
     }
 
-    Decision {
-        include: true,
-        message_id: None,
-    }
+    None
 }

@@ -33,15 +33,12 @@ E -> K
 F -> G
    branch: b1
    properties: {"type": "DDD"}
-   message: This edge was INCLUDED because it matched the `force_dynamic` config for the branch `b1` with properties `{"type": "DDD"}`.
 F -> H
    branch: b1
    properties: {"type": "DDD"}
-   message: This edge was INCLUDED because it matched the `force_dynamic` config for the branch `b1` with properties `{"type": "DDD"}`.
 F -> I
    branch: b2
    properties: {"type": "DDD"}
-   message: This edge was INCLUDED because it matched the `force_dynamic` config for the branch `b2` with properties `{"type": "DDD"}`.
 J -> K
 L -> D
 L -> M
