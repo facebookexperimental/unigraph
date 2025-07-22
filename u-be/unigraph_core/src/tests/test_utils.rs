@@ -1,6 +1,7 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-pub mod traversal_config_utils;
+pub mod array_graph_test_trait;
+pub mod traversal_config_test_trait;
 
 use crate::ArrayGraph;
 use crate::types::NodeIDX;

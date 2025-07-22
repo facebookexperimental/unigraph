@@ -291,23 +291,18 @@ mod tests {
     use k9::snapshot;
 
     use super::*;
-    use crate::Decision;
+    use crate::TraversalConfig;
     use crate::tests::test_graphs::make_test_array_graph_2;
-    use crate::tests::test_graphs::traversal_config_with_tiers;
     use crate::tests::test_utils::name_to_idx;
     use crate::tests::test_utils::print_forward_edges;
+    use crate::tests::test_utils::traversal_config_test_trait::TraversalConfigTestTrait;
 
     #[test]
     fn metrics_with_overrides() -> Result<()> {
         let mut ag = make_test_array_graph_2()?;
-        let mut tvc = traversal_config_with_tiers();
-        tvc.force_nodes.insert(
-            "F".into(),
-            Decision {
-                include: false,
-                message_id: None,
-            },
-        );
+        let mut tvc = TraversalConfig::default();
+        tvc.with_tier_config();
+        tvc.set_force_node("F", false);
 
         ag.apply_traversal_config(tvc)?;
 

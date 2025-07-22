@@ -1,12 +1,12 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use anyhow::Result;
 
 use crate::ArrayGraph;
-use crate::AscendingTiersConfig;
 use crate::Decision;
 use crate::NodeIDX;
 use crate::NodeTagSetsPredicate;
@@ -17,6 +17,7 @@ use crate::traversal::messages::BuiltInMessages;
 use crate::traversal::messages::IndexedMessages;
 use crate::traversal::tiered_traversal::TieredTraversalConfig;
 use crate::types::Tag;
+use crate::types::TierName;
 use crate::types::array_graph::NodeFlags;
 use crate::types::array_graph::array_graph_state::ArrayGraphState;
 use crate::types::array_graph::offset_graph::Edge;
@@ -44,19 +45,20 @@ pub fn apply_traversal_config_to_array_graph(
         force_tagged,
         tag_sets,
         force_dynamic,
-        tiered_traversal: _,
+        tiered_traversal,
         messages: _,
     } = &indexed_config;
 
     let forced_children = get_forced_children(force_children_of, ag)?;
+    let exclude_tags = exclude_tags_for_tier_above_the_max(tiered_traversal);
 
-    for (parent_idx, edge, metadata) in ag.edges_forward.iter_edges_mut() {
+    for (parent_idx, edge, md) in ag.edges_forward.iter_edges_mut() {
         // we need to start fresh and make sure all edges that were previously excluded
         // are reset.
         edge.flags.include();
 
-        match_dynamic_edges(force_dynamic, parent_idx, edge, metadata, &m)?;
-        match_tagged(force_tagged, edge, metadata, &tag_to_tier, &m)?;
+        match_dynamic_edges(force_dynamic, parent_idx, edge, md, &m)?;
+        match_tagged(force_tagged, &exclude_tags, edge, md, &tag_to_tier, &m)?;
         if let Some(tag_sets_for_node) = ag.tag_sets.get(&edge.points_to) {
             match_tag_sets(tag_sets, edge, tag_sets_for_node, &m)?;
         }
@@ -66,7 +68,6 @@ pub fn apply_traversal_config_to_array_graph(
     }
 
     apply_tiers(ag, &indexed_config, &entry_points)?;
-    exclude_edges_below_max_tier(ag, &indexed_config)?;
 
     apply_node_reachability(ag, entry_points);
 
@@ -76,6 +77,36 @@ pub fn apply_traversal_config_to_array_graph(
         indexed_messages: m,
     };
     Ok(())
+}
+
+/// If we have `max_tier` set we can look at what tags these tiers use to transition to
+/// greater tiers and exclude those tags
+fn exclude_tags_for_tier_above_the_max(
+    tiered_traversal: &Option<TieredTraversalConfig>,
+) -> Option<BTreeSet<TierName>> {
+    if let Some(TieredTraversalConfig::AscendingTiers(config)) = tiered_traversal {
+        if let Some(max_tier) = config.max_tier {
+            let exclude_tags = config
+                .tiers
+                .iter()
+                .enumerate()
+                .filter_map(|(tier_idx, tier)| {
+                    if tier_idx > max_tier {
+                        Some(tier.tags_that_transition_to_this_tier.clone())
+                    } else {
+                        None
+                    }
+                })
+                .flatten()
+                .collect::<BTreeSet<_>>();
+
+            if !exclude_tags.is_empty() {
+                return Some(exclude_tags);
+            }
+        }
+    }
+
+    None
 }
 
 fn get_forced_children(
@@ -92,30 +123,6 @@ fn get_forced_children(
     }
 
     Ok(forced_children)
-}
-
-/// If max tier set, do another traversal of all edges and exclude any edges
-/// that point to a node with a tier above the max tier.
-fn exclude_edges_below_max_tier(
-    ag: &mut ArrayGraph,
-    indexed_config: &TraversalConfigIDX,
-) -> Result<()> {
-    if let Some(AscendingTiersConfig {
-        max_tier: Some(max_tier),
-        ..
-    }) = indexed_config.ascending_tiers()
-    {
-        for (_from, edge, _metadata) in ag.edges_forward.iter_edges_mut() {
-            #[allow(clippy::collapsible_if)]
-            if let Some(points_to_tier) = ag.node_flags[edge.points_to].tier_idx() {
-                if points_to_tier > *max_tier {
-                    edge.flags.exclude();
-                }
-            }
-        }
-    }
-
-    Ok(())
 }
 
 fn apply_node_reachability(ag: &mut ArrayGraph, entry_points: Vec<NodeIDX>) {
@@ -264,6 +271,7 @@ fn match_dynamic_edges(
 }
 fn match_tagged(
     force_tagged: &BTreeMap<Tag, Decision>,
+    exclude_tags: &Option<BTreeSet<Tag>>,
     edge: &mut Edge,
     metadata: &mut NonDirectedEdgeMetadata,
     tag_to_tier: &Option<BTreeMap<Tag, usize>>,
@@ -271,6 +279,16 @@ fn match_tagged(
 ) -> Result<()> {
     #[allow(clippy::collapsible_if)]
     if let NonDirectedEdgeMetadata::Tagged { tag } = metadata {
+        if let Some(exclude_tags) = exclude_tags {
+            if exclude_tags.contains(tag) {
+                edge.flags.exclude_with_message(
+                    indexed_messages
+                        .get(BuiltInMessages::EDGE_EXCLUDED_BECAUSE_GREATER_THAN_MAX_TIER_ID),
+                )?;
+                return Ok(());
+            }
+        }
+
         if let Some(decision) = force_tagged.get(tag) {
             match decision.include {
                 true => edge

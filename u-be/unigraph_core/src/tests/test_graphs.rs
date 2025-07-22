@@ -4,11 +4,7 @@ use anyhow::Result;
 use k9::snapshot;
 
 use crate::ArrayGraph;
-use crate::AscendingTier;
-use crate::AscendingTiersConfig;
 use crate::MapGraph;
-use crate::TieredTraversalConfig;
-use crate::TraversalConfig;
 
 // https://fburl.com/excalidraw/vgjzlq2q
 const TEST_GRAPH_1: &str = include_str!("./test_graphs/test_graph_1.json");
@@ -28,35 +24,6 @@ pub(crate) fn make_test_array_graph_1() -> Result<ArrayGraph> {
 
 pub(crate) fn make_test_array_graph_2() -> Result<ArrayGraph> {
     MapGraph::from_json(TEST_GRAPH_2)?.to_array_graph()
-}
-
-pub(crate) fn traversal_config_with_tiers() -> TraversalConfig {
-    let tiered_config = AscendingTiersConfig {
-        tiers: vec![
-            AscendingTier {
-                name: "T1".into(),
-                tags_that_transition_to_this_tier: vec![],
-            },
-            AscendingTier {
-                name: "T2".into(),
-                tags_that_transition_to_this_tier: vec!["RDFD".into()],
-            },
-            AscendingTier {
-                name: "T3".into(),
-                tags_that_transition_to_this_tier: vec!["RD".into()],
-            },
-            AscendingTier {
-                name: "T4".into(),
-                tags_that_transition_to_this_tier: vec!["BL".into()],
-            },
-        ],
-        max_tier: None,
-    };
-
-    TraversalConfig {
-        tiered_traversal: Some(TieredTraversalConfig::AscendingTiers(tiered_config.clone())),
-        ..Default::default()
-    }
 }
 
 #[test]

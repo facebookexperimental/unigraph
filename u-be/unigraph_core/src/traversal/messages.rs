@@ -148,6 +148,8 @@ impl BuiltInMessages {
     pub const FORCE_TAG_SETS_EXCLUDED_ID: &str = "force_tag_sets_excluded";
     pub const FORCED_CHILDREN_OF_EXCLUDED_ID: &str = "forced_children_of_excluded";
     pub const FORCED_CHILDREN_OF_INCLUDED_ID: &str = "forced_children_of_included";
+    pub const EDGE_EXCLUDED_BECAUSE_GREATER_THAN_MAX_TIER_ID: &str =
+        "edge_excluded_because_greater_than_max_tier";
 
     const NODE_FORCE_EXCLUDED_MESSAGE: &str = "This edge was EXCLUDED because the node `%points_to%` was force excluded from the traversal using `force_nodes` config.";
     const NODE_FORCE_INCLUDED_MESSAGE: &str = "This edge was INCLUDED because the node `%points_to%` was force included from the traversal using `force_nodes` config.";
@@ -163,6 +165,7 @@ impl BuiltInMessages {
     const FORCE_TAG_SETS_EXCLUDED_MESSAGE: &str = "This edge was EXCLUDED because it contained tag sets that matched an entry in the `tag_sets` config`.";
     const FORCED_CHILDREN_OF_EXCLUDED_MESSAGE: &str = "This edge was EXCLUDED because the node `%points_to%` is a child of a node whose children were excluded from the traversal using `force_children_of` config.";
     const FORCED_CHILDREN_OF_INCLUDED_MESSAGE: &str = "This edge was INCLUDED because the node `%points_to%` is a child of a node whose children were included from the traversal using `force_children_of` config.";
+    const EDGE_EXCLUDED_BECAUSE_GREATER_THAN_MAX_TIER_MESSAGE: &str = "This edge was EXCLUDED because its tag `%edge_tag%` is transitions to a tier that is greater than the maximum tier configured in the `tiered_traversal` config.";
 
     const ALL_MESSAGES: &'static [(&'static str, &'static str)] = &[
         (
@@ -212,6 +215,10 @@ impl BuiltInMessages {
         (
             Self::FORCED_CHILDREN_OF_EXCLUDED_ID,
             Self::FORCED_CHILDREN_OF_EXCLUDED_MESSAGE,
+        ),
+        (
+            Self::EDGE_EXCLUDED_BECAUSE_GREATER_THAN_MAX_TIER_ID,
+            Self::EDGE_EXCLUDED_BECAUSE_GREATER_THAN_MAX_TIER_MESSAGE,
         ),
     ];
 

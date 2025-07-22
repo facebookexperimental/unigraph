@@ -20,13 +20,12 @@ use crate::ArrayGraphSerializable;
 use crate::NodeIDX;
 use crate::tests::test_graphs::make_test_array_graph_1;
 use crate::tests::test_graphs::make_test_array_graph_2;
-use crate::tests::test_graphs::traversal_config_with_tiers;
 use crate::tests::test_utils::print_arrows;
+use crate::tests::test_utils::traversal_config_test_trait::TraversalConfigTestTrait;
 use crate::traversal::Decision;
 use crate::traversal::ForceDynamic;
 use crate::traversal::NodeTagSetsPredicate;
 use crate::traversal::TraversalConfig;
-use crate::traversal::tiered_traversal::TieredTraversalConfig;
 use crate::types::array_graph::NodeFlags;
 
 #[test]
@@ -219,7 +218,7 @@ D -> F: 0000_0000_0000_0000 (Directed)
 D -> E: 0000_0000_0000_0001 (Tagged { tag: "RDFD" })
 F -> G: 0000_0000_0000_0010 (Dynamic { properties: {"type": "DDD"}, branch: "b1" })
 F -> H: 0000_0000_0000_0010 (Dynamic { properties: {"type": "DDD"}, branch: "b1" })
-F -> I: 0000_1011_0000_0110 (Dynamic { properties: {"type": "DDD"}, branch: "b2" })
+F -> I: 0000_1100_0000_0110 (Dynamic { properties: {"type": "DDD"}, branch: "b2" })
 "#
     );
 
@@ -233,13 +232,13 @@ F -> I: 0000_1011_0000_0110 (Dynamic { properties: {"type": "DDD"}, branch: "b2"
         r#"
 A -> B: 0000_0000_0000_0000 (Directed)
 A -> D: 0000_0000_0000_0000 (Directed)
-B -> C: 0000_0111_0000_0101 (Tagged { tag: "BL" })
+B -> C: 0000_1000_0000_0101 (Tagged { tag: "BL" })
 B -> J: 0000_0000_0000_0001 (Tagged { tag: "RD" })
 D -> F: 0000_0000_0000_0000 (Directed)
 D -> E: 0000_0000_0000_0001 (Tagged { tag: "RDFD" })
 F -> G: 0000_0000_0000_0010 (Dynamic { properties: {"type": "DDD"}, branch: "b1" })
 F -> H: 0000_0000_0000_0010 (Dynamic { properties: {"type": "DDD"}, branch: "b1" })
-F -> I: 0000_1011_0000_0010 (Dynamic { properties: {"type": "DDD"}, branch: "b2" })
+F -> I: 0000_1100_0000_0010 (Dynamic { properties: {"type": "DDD"}, branch: "b2" })
 "#
     );
     Ok(())
@@ -432,10 +431,9 @@ J [UNREACHABLE] (tag sets: assert_tags: [a, b]):
 #[test]
 fn test_tiered_traversal() -> Result<()> {
     let mut g = make_test_array_graph_1()?;
-    let traversal_config = traversal_config_with_tiers();
-    let tiered_config = match traversal_config.tiered_traversal.as_ref().unwrap() {
-        TieredTraversalConfig::AscendingTiers(tiered_config) => tiered_config.clone(),
-    };
+    let mut traversal_config = TraversalConfig::default();
+    traversal_config.with_tier_config();
+    let tiered_config = traversal_config.get_tier_config();
 
     g.apply_traversal_config(traversal_config)?;
 

@@ -354,8 +354,9 @@ mod tests {
     use k9::snapshot;
 
     use super::*;
+    use crate::TraversalConfig;
     use crate::tests::test_graphs::make_test_array_graph_2;
-    use crate::tests::test_graphs::traversal_config_with_tiers;
+    use crate::tests::test_utils::traversal_config_test_trait::TraversalConfigTestTrait;
 
     #[test]
     fn test_conjoint_cost() -> Result<()> {
@@ -442,7 +443,9 @@ P
     #[test]
     fn conj_cost_with_tiers() -> Result<()> {
         let mut ag = make_test_array_graph_2()?.append_super_root()?;
-        let tvc = traversal_config_with_tiers();
+        let mut tvc = TraversalConfig::default();
+        tvc.with_tier_config();
+
         ag.apply_traversal_config(tvc)?;
         snapshot!(
             print_conj_cost(&ag),
