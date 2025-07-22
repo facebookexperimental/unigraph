@@ -440,6 +440,34 @@ function TiersHoverCardContent() {
         tooltip={`Only show nodes that are on or below '${tierName}'`}
         selected={selected}
         onSelectedChange={(selected) => {
+          let newGraphSettings = { ...graphSettings };
+
+          for (const metricName of Object.keys(
+            newGraphSettings.metric_settings ?? {},
+          )) {
+            /// When max tier is selected we want to hide columns for all tiers above it, because
+            /// their value will be 0 anyway and showing it will clutter the UI and make it confusing.
+            for (let idx = 0; idx < allTiers.length; idx++) {
+              const tierName = allTiers[idx] as string;
+              const value = idx > tierIDX ? "Never" : "WhenEnabledGlobally";
+              newGraphSettings = {
+                ...newGraphSettings,
+                metric_settings: {
+                  ...newGraphSettings.metric_settings,
+                  [metricName]: {
+                    ...newGraphSettings.metric_settings?.[metricName],
+                    column_show_tiered: {
+                      ...newGraphSettings.metric_settings?.[metricName]
+                        ?.column_show_tiered,
+                      [tierName]: value,
+                    },
+                  },
+                },
+              };
+            }
+          }
+
+          setGraphSettings(newGraphSettings);
           setTvc({
             ...tvc,
             tiered_traversal: {
