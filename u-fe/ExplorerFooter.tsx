@@ -288,6 +288,13 @@ function ConjointCostHoverCardContent() {
             onSelectedChange={(selected) => {
               setGraphSettings({
                 ...graphSettings,
+                ui_settings: {
+                  ...graphSettings.ui_settings,
+                  columns: {
+                    ...graphSettings.ui_settings?.columns,
+                    show_conjoint: true,
+                  },
+                },
                 metric_settings: {
                   ...graphSettings.metric_settings,
                   [metricName]: {
@@ -307,7 +314,10 @@ function ConjointCostHoverCardContent() {
       });
 
       return (
-        <div key={`conjoint-metric-${metricName}`} className="flex gap-2">
+        <div
+          key={`conjoint-metric-${metricName}`}
+          className="flex gap-2 flex-wrap"
+        >
           <UToggleButton
             key={`conjoint-self-${metricName}`}
             size="sm"
@@ -316,6 +326,13 @@ function ConjointCostHoverCardContent() {
             onSelectedChange={(selected) => {
               setGraphSettings({
                 ...graphSettings,
+                ui_settings: {
+                  ...graphSettings.ui_settings,
+                  columns: {
+                    ...graphSettings.ui_settings?.columns,
+                    show_conjoint: true,
+                  },
+                },
                 metric_settings: {
                   ...graphSettings.metric_settings,
                   [metricName]: {
@@ -347,9 +364,12 @@ function ConjointCostHoverCardContent() {
         and dividing it by the number of parents.
       </p>
       <pre className="text-wrap break-words bg-secondary rounded-md p-2">
-        {
-          "conj(A) = (1_for_self + A.children.map(child -> conj(child)).sum()) / A.parents.length"
-        }
+        {`conj(A) = (
+    1_for_self + 
+    A.children.map(
+      child -> conj(child)
+    ).sum()
+) / A.parents.length`}
       </pre>
       <p>
         This way people will be penalized less for things that are popular. E.g.
@@ -357,7 +377,12 @@ function ConjointCostHoverCardContent() {
         would not make sense for it to try to remove that depenedncy, since it
         will likely still stay in the graph.
       </p>
-      <div className="flex gap-2">
+      <p>
+        Best way to use this metric is to show the graph as a flat list, order
+        by conjoint cost "descending" and then look for nodes that have high
+        conjoint cost but don't seem like they should be there.
+      </p>
+      <div className="flex gap-2 flex-wrap">
         <UToggleButton
           size="sm"
           tooltip="Conjoint cost of simple transitive children count"
@@ -371,6 +396,7 @@ function ConjointCostHoverCardContent() {
                 ...graphSettings.ui_settings,
                 columns: {
                   ...graphSettings.ui_settings?.columns,
+                  show_conjoint: true,
                   show_conjoint_count: selected
                     ? "WhenEnabledGlobally"
                     : "Never",
