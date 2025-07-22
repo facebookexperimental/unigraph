@@ -5,11 +5,13 @@ import type { Arrow } from "u-be/unigraph_core/bindings/Arrow";
 import type { GraphSettings } from "u-be/unigraph_core/bindings/GraphSettings";
 import type { MetricFormat } from "u-be/unigraph_core/bindings/MetricFormat";
 import type { MetricSettings } from "u-be/unigraph_core/bindings/MetricSettings";
+import type { TraversalConfig } from "u-be/unigraph_core/bindings/TraversalConfig";
 import { ARROW_POINTS_FROM_NON_EXISTENT } from "../ArrowUtils";
 import type NativeGraph from "../NativeGraph";
 import UTooltip from "../components/UTooltip";
 import { useGraphSettings } from "../context/GraphSettingsContext";
 import { useNativeGraph } from "../context/NativeGraphContext";
+import { useTVC } from "../context/TraversalConfigContext";
 import formatMetric from "../lib/formatMetric";
 import ContextMenuCell from "./ContextMenuCell";
 import type {
@@ -31,15 +33,17 @@ const NO_PRECISION_FORMAT: MetricFormat = {
 export default function useGraphTreeTableColumns(): ColumnDefinitions {
   const nativeGraph = useNativeGraph();
   const [graphSettings] = useGraphSettings();
+  const { tvc } = useTVC();
 
   return useMemo(() => {
-    return defaultColumnDefinitions(nativeGraph, graphSettings);
-  }, [nativeGraph, graphSettings]);
+    return defaultColumnDefinitions(nativeGraph, graphSettings, tvc);
+  }, [nativeGraph, graphSettings, tvc]);
 }
 
 function defaultColumnDefinitions(
   nativeGraph: NativeGraph,
   graphSettings: GraphSettings,
+  tvc: TraversalConfig,
 ): ColumnDefinitions {
   const showTransitive =
     graphSettings.ui_settings?.columns?.show_transitive ?? false;
@@ -74,6 +78,7 @@ function defaultColumnDefinitions(
         metricName,
         nativeGraph,
         metricSettings,
+        tvc,
         graphSettings.ui_settings?.graph_structure === "Dominator",
       );
       for (const { columnID, definition } of tieredTransitiveColumns) {
@@ -212,11 +217,19 @@ function createTieredTransitiveMetricColumn(
   metricName: string,
   nativeGraph: NativeGraph,
   metricSettings: MetricSettings | null,
+  tvc: TraversalConfig,
   dominated: boolean,
 ): { columnID: string; definition: NumericValueColumnDefinition }[] {
   const tiers = nativeGraph.stats().tier_names;
+  const maxTier = tvc.tiered_traversal?.AscendingTiers?.max_tier;
 
-  return tiers.flatMap((tierName) => {
+  return tiers.flatMap((tierName, tier_idx) => {
+    if (metricSettings?.column_show_tiered == null && maxTier != null) {
+      if (tier_idx > maxTier) {
+        return [];
+      }
+    }
+
     if (metricSettings?.column_show_tiered?.[tierName] === "Never") {
       return [];
     }
