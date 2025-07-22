@@ -8,7 +8,6 @@ import {
   set_simulation_params,
 } from "../.build/wasm/unigraph_wasm.js";
 import type { SelectionType } from "../u-be/unigraph_wgpu/bindings/SelectionType.js";
-import type { SimulationParams } from "../u-be/unigraph_wgpu/bindings/SimulationParams";
 import type { TsVec2 } from "../u-be/unigraph_wgpu/bindings/TsVec2.js";
 import { IS_DEBUG_MODE } from "./DebugMode.js";
 import { H2 } from "./Typography.js";
@@ -29,6 +28,7 @@ const HIDE_IF_TOO_MANY_NODES_THRESHOLD = 50000;
 
 export default function Simulation() {
   const nativeGraph = useNativeGraph();
+  const [paramsVisible, setParamsVisible] = useState(false);
 
   const reachableCount =
     nativeGraph.stats().num_all_nodes -
@@ -40,6 +40,8 @@ export default function Simulation() {
 
   return (
     <div className="flex h-full border-r">
+      {paramsVisible && <ParamsPanel />}
+
       <div className="flex w-[600px] grow-1 shrink-0 relative">
         {isTooMany && !bypassTooMany ? (
           <TooManyNodesDialog
@@ -47,7 +49,10 @@ export default function Simulation() {
             reachableNodesCount={reachableCount}
           />
         ) : (
-          <SimulationImpl />
+          <SimulationImpl
+            setParamsVisible={setParamsVisible}
+            paramsVisible={paramsVisible}
+          />
         )}
       </div>
     </div>
@@ -84,8 +89,10 @@ function TooManyNodesDialog({
   );
 }
 
-function SimulationImpl() {
-  const [paramsVisible, setParamsVisible] = useState(false);
+function SimulationImpl({
+  setParamsVisible,
+  paramsVisible,
+}: { setParamsVisible: (visible: boolean) => void; paramsVisible: boolean }) {
   const [_selectedNodes, setSelectedNodes] = useSelectedNodes();
 
   const [simulationParams, setSimulationParams] = useSimulationParams();
@@ -165,12 +172,6 @@ function SimulationImpl() {
 
   return (
     <ErrorBoundary>
-      {paramsVisible && (
-        <ParamsPanel
-          simulationParams={simulationParams}
-          setSimulationParams={setSimulationParams}
-        />
-      )}
       <Canvas
         onClick={onCanvasClick}
         onSelect={onCanvasSelect}
@@ -204,18 +205,17 @@ function SimulationParamsToggle({
   );
 }
 
-function ParamsPanel(props: {
-  simulationParams: SimulationParams;
-  setSimulationParams: (params: SimulationParams) => void;
-}) {
+function ParamsPanel() {
+  const [simulationParams, setSimulationParams] = useSimulationParams();
+
   return (
     <div className="px-6 py-4 flex flex-col gap-4 w-52 bg-card">
       <div className="flex gap-4">
         <Toggle
-          pressed={props.simulationParams.active}
+          pressed={simulationParams.active}
           onPressedChange={(active) => {
-            props.setSimulationParams({
-              ...props.simulationParams,
+            setSimulationParams({
+              ...simulationParams,
               active,
             });
           }}
@@ -223,10 +223,10 @@ function ParamsPanel(props: {
           <Play />
         </Toggle>
         <Toggle
-          pressed={props.simulationParams.render_edges}
+          pressed={simulationParams.render_edges}
           onPressedChange={(render_edges) => {
-            props.setSimulationParams({
-              ...props.simulationParams,
+            setSimulationParams({
+              ...simulationParams,
               render_edges,
             });
           }}
@@ -237,26 +237,26 @@ function ParamsPanel(props: {
       <div className="flex flex-col gap-4 grow-1">
         <UToggleButton
           className="w-full"
-          selected={!props.simulationParams.disable_gravity}
+          selected={!simulationParams.disable_gravity}
           onSelectedChange={(disable_gravity) => {
-            props.setSimulationParams({
-              ...props.simulationParams,
+            setSimulationParams({
+              ...simulationParams,
               disable_gravity: !disable_gravity,
             });
           }}
         >
-          {`Antigravity (${formatNumber(props.simulationParams.gravity_force_a)})`}
+          {`Antigravity (${formatNumber(simulationParams.gravity_force_a)})`}
         </UToggleButton>
 
         <SimulationSlider
-          value={props.simulationParams.gravity_force_a}
+          value={simulationParams.gravity_force_a}
           min={0.0}
           max={200.0}
           precision={0}
           scale="logarithmic"
           onChange={(gravity_force_a) => {
-            props.setSimulationParams({
-              ...props.simulationParams,
+            setSimulationParams({
+              ...simulationParams,
               gravity_force_a,
             });
           }}
@@ -264,26 +264,26 @@ function ParamsPanel(props: {
 
         <UToggleButton
           className="w-full"
-          selected={!props.simulationParams.disable_edge_forces}
+          selected={!simulationParams.disable_edge_forces}
           onSelectedChange={(disable_edge_forces) => {
-            props.setSimulationParams({
-              ...props.simulationParams,
+            setSimulationParams({
+              ...simulationParams,
               disable_edge_forces: !disable_edge_forces,
             });
           }}
         >
-          {`Edge Forces (${formatNumber(props.simulationParams.edge_force_a)})`}
+          {`Edge Forces (${formatNumber(simulationParams.edge_force_a)})`}
         </UToggleButton>
 
         <SimulationSlider
-          value={props.simulationParams.edge_force_a}
+          value={simulationParams.edge_force_a}
           min={0}
           max={300}
           precision={4}
           scale="logarithmic"
           onChange={(edge_force_a) => {
-            props.setSimulationParams({
-              ...props.simulationParams,
+            setSimulationParams({
+              ...simulationParams,
               edge_force_a,
             });
           }}
@@ -292,14 +292,14 @@ function ParamsPanel(props: {
         {IS_DEBUG_MODE && (
           <SimulationSlider
             label="ln(1 + len * x)"
-            value={props.simulationParams.edge_force_b}
+            value={simulationParams.edge_force_b}
             min={0.0}
             max={10.0}
             precision={2}
             scale="linear"
             onChange={(edge_force_b) => {
-              props.setSimulationParams({
-                ...props.simulationParams,
+              setSimulationParams({
+                ...simulationParams,
                 edge_force_b,
               });
             }}
@@ -308,26 +308,26 @@ function ParamsPanel(props: {
 
         <UToggleButton
           className="w-full"
-          selected={!props.simulationParams.disable_center_pull}
+          selected={!simulationParams.disable_center_pull}
           onSelectedChange={(disable_center_pull) => {
-            props.setSimulationParams({
-              ...props.simulationParams,
+            setSimulationParams({
+              ...simulationParams,
               disable_center_pull: !disable_center_pull,
             });
           }}
         >
-          {`Center Pull (${formatNumber(props.simulationParams.center_pull_force_multiplier)})`}
+          {`Center Pull (${formatNumber(simulationParams.center_pull_force_multiplier)})`}
         </UToggleButton>
 
         <SimulationSlider
-          value={props.simulationParams.center_pull_force_multiplier}
+          value={simulationParams.center_pull_force_multiplier}
           min={0.0}
           max={100.0}
           precision={2}
           scale="logarithmic"
           onChange={(center_pull_force_multiplier) => {
-            props.setSimulationParams({
-              ...props.simulationParams,
+            setSimulationParams({
+              ...simulationParams,
               center_pull_force_multiplier,
             });
           }}
@@ -338,14 +338,14 @@ function ParamsPanel(props: {
         {IS_DEBUG_MODE && (
           <SimulationSlider
             label="Total Force multiplier"
-            value={props.simulationParams.total_force_multiplier}
+            value={simulationParams.total_force_multiplier}
             min={0.001}
             max={100.0}
             precision={2}
             scale="logarithmic"
             onChange={(total_force_multiplier) => {
-              props.setSimulationParams({
-                ...props.simulationParams,
+              setSimulationParams({
+                ...simulationParams,
                 total_force_multiplier,
               });
             }}
@@ -354,14 +354,14 @@ function ParamsPanel(props: {
 
         <SimulationSlider
           label="Max Velocity"
-          value={props.simulationParams.max_velocity_multiplier}
+          value={simulationParams.max_velocity_multiplier}
           min={0.0001}
           max={0.3}
           precision={2}
           scale="logarithmic"
           onChange={(max_velocity_multiplier) => {
-            props.setSimulationParams({
-              ...props.simulationParams,
+            setSimulationParams({
+              ...simulationParams,
               max_velocity_multiplier,
             });
           }}
@@ -369,14 +369,14 @@ function ParamsPanel(props: {
 
         <SimulationSlider
           label="Slowdown"
-          value={props.simulationParams.slowdown}
+          value={simulationParams.slowdown}
           min={0.01}
           max={1.0}
           precision={2}
           scale="logarithmic"
           onChange={(slowdown) => {
-            props.setSimulationParams({
-              ...props.simulationParams,
+            setSimulationParams({
+              ...simulationParams,
               slowdown,
             });
           }}
@@ -385,13 +385,13 @@ function ParamsPanel(props: {
         {IS_DEBUG_MODE && (
           <SimulationSlider
             label="Frames / Compute"
-            value={props.simulationParams.compute_forces_every_n_frames}
+            value={simulationParams.compute_forces_every_n_frames}
             min={1}
             max={10}
             precision={0}
             onChange={(compute_forces_every_n_frames) => {
-              props.setSimulationParams({
-                ...props.simulationParams,
+              setSimulationParams({
+                ...simulationParams,
                 compute_forces_every_n_frames: Math.floor(
                   compute_forces_every_n_frames,
                 ),
