@@ -11,18 +11,80 @@ import type { SelectionType } from "../u-be/unigraph_wgpu/bindings/SelectionType
 import type { SimulationParams } from "../u-be/unigraph_wgpu/bindings/SimulationParams";
 import type { TsVec2 } from "../u-be/unigraph_wgpu/bindings/TsVec2.js";
 import { IS_DEBUG_MODE } from "./DebugMode.js";
+import { H2 } from "./Typography.js";
 import ErrorBoundary from "./components/ErrorBoundary.js";
+import UButton from "./components/UButton.js";
 import UToggleButton from "./components/UToggleButton.js";
 import { Button } from "./components/ui/button.js";
 import { Label } from "./components/ui/label";
 import { Separator } from "./components/ui/separator.js";
 import { Slider } from "./components/ui/slider";
 import { Toggle } from "./components/ui/toggle";
+import { useNativeGraph } from "./context/NativeGraphContext.js";
 import { useSelectedNodes } from "./context/SelectedNodesContext.js";
 import { useSimulationParams } from "./context/SimulationParamsContext.js";
 import formatNumber from "./lib/formatNumber.js";
 
+const HIDE_IF_TOO_MANY_NODES_THRESHOLD = 50000;
+
 export default function Simulation() {
+  const nativeGraph = useNativeGraph();
+
+  const reachableCount =
+    nativeGraph.stats().num_all_nodes -
+    nativeGraph.stats().num_unreachable_nodes;
+
+  const isTooMany = reachableCount > HIDE_IF_TOO_MANY_NODES_THRESHOLD;
+
+  const [bypassTooMany, setBypassTooMany] = useState(false);
+
+  return (
+    <div className="flex h-full border-r">
+      <div className="flex w-[600px] grow-1 shrink-0 relative">
+        {isTooMany && !bypassTooMany ? (
+          <TooManyNodesDialog
+            setBypassTooMany={setBypassTooMany}
+            reachableNodesCount={reachableCount}
+          />
+        ) : (
+          <SimulationImpl />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TooManyNodesDialog({
+  setBypassTooMany,
+  reachableNodesCount,
+}: {
+  setBypassTooMany: (hide: boolean) => void;
+  reachableNodesCount: number;
+}) {
+  return (
+    <div className="flex flex-col gap-2 items-center justify-center h-full p-4 bg-card text-center">
+      <H2 text="Too Many Nodes to Visualize" />
+      <p>
+        The graph has too many nodes. The visualization may become very slow and
+        is hidden by default.
+      </p>
+      <p className="text-muted-foreground">
+        {formatNumber(reachableNodesCount)} reachable nodes found.
+      </p>
+      <UButton
+        variant="default"
+        className="mt-4"
+        onClick={() => {
+          setBypassTooMany(true);
+        }}
+      >
+        Enable Anyway
+      </UButton>
+    </div>
+  );
+}
+
+function SimulationImpl() {
   const [paramsVisible, setParamsVisible] = useState(false);
   const [_selectedNodes, setSelectedNodes] = useSelectedNodes();
 
@@ -102,28 +164,23 @@ export default function Simulation() {
   );
 
   return (
-    <div className="flex h-full border-r">
+    <ErrorBoundary>
       {paramsVisible && (
         <ParamsPanel
           simulationParams={simulationParams}
           setSimulationParams={setSimulationParams}
         />
       )}
-
-      <div className="flex w-[600px] grow-1 shrink-0 relative">
-        <ErrorBoundary>
-          <Canvas
-            onClick={onCanvasClick}
-            onSelect={onCanvasSelect}
-            onSelectComplete={onCanvasSelectComplete}
-          />
-          <SimulationParamsToggle
-            selected={paramsVisible}
-            onSelectedChange={setParamsVisible}
-          />
-        </ErrorBoundary>
-      </div>
-    </div>
+      <Canvas
+        onClick={onCanvasClick}
+        onSelect={onCanvasSelect}
+        onSelectComplete={onCanvasSelectComplete}
+      />
+      <SimulationParamsToggle
+        selected={paramsVisible}
+        onSelectedChange={setParamsVisible}
+      />
+    </ErrorBoundary>
   );
 }
 
