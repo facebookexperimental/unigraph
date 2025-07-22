@@ -395,39 +395,64 @@ function TiersHoverCardContent() {
 
   const metricCards = Object.entries(graphSettings.metric_settings ?? {}).map(
     ([metricName, metricSettings]) => {
-      const tiers = allTiers.map((tierName) => {
-        return (
-          <UToggleButton
-            key={`tiered-${metricName}-${tierName}`}
-            size="sm"
-            tooltip={`Transitive values of '${metricName}' metric for ${tierName} tier`}
-            selected={
-              metricSettings?.column_show_tiered?.[tierName] !== "Never"
-            }
-            onSelectedChange={(selected) => {
-              setGraphSettings({
-                ...graphSettings,
-                metric_settings: {
-                  ...graphSettings.metric_settings,
-                  [metricName]: {
-                    ...metricSettings,
-                    column_show_tiered: {
-                      ...metricSettings?.column_show_tiered,
-                      [tierName]: selected ? "WhenEnabledGlobally" : "Never",
-                    },
-                  },
+      return (
+        <UToggleButton
+          key={`${metricName}`}
+          size="sm"
+          tooltip={`Show a column with the values of '${metricName}' metric`}
+          selected={metricSettings?.column_hide_self !== true}
+          onSelectedChange={(selected) => {
+            setGraphSettings({
+              ...graphSettings,
+              metric_settings: {
+                ...graphSettings.metric_settings,
+                [metricName]: {
+                  ...metricSettings,
+                  column_hide_self: !selected,
                 },
-              });
-            }}
-          >
-            <span className="text-sm">{`${metricName}: ${tierName}`}</span>
-          </UToggleButton>
-        );
-      });
-
-      return tiers;
+              },
+            });
+          }}
+        >
+          <span className="text-sm">{`${metricName}`}</span>
+        </UToggleButton>
+      );
     },
   );
+
+  const TieredMetricCards = Object.entries(
+    graphSettings.metric_settings ?? {},
+  ).map(([metricName, metricSettings]) => {
+    const tiers = allTiers.map((tierName) => {
+      return (
+        <UToggleButton
+          key={`tiered-${metricName}-${tierName}`}
+          size="sm"
+          tooltip={`Show a column for transitive values of '${metricName}' metric for ${tierName} tier`}
+          selected={metricSettings?.column_show_tiered?.[tierName] !== "Never"}
+          onSelectedChange={(selected) => {
+            setGraphSettings({
+              ...graphSettings,
+              metric_settings: {
+                ...graphSettings.metric_settings,
+                [metricName]: {
+                  ...metricSettings,
+                  column_show_tiered: {
+                    ...metricSettings?.column_show_tiered,
+                    [tierName]: selected ? "WhenEnabledGlobally" : "Never",
+                  },
+                },
+              },
+            });
+          }}
+        >
+          <span className="text-sm">{`${metricName}: ${tierName}`}</span>
+        </UToggleButton>
+      );
+    });
+
+    return tiers;
+  });
 
   const tierSwitches = allTiers.map((tierName, tierIDX) => {
     const selected = tvc.tiered_traversal?.AscendingTiers?.max_tier === tierIDX;
@@ -486,7 +511,10 @@ function TiersHoverCardContent() {
 
   return (
     <div className="flex flex-col gap-2">
+      <H3 text="Metric Columns" />
       <div className="flex gap-2">{metricCards}</div>
+      <H3 text="Tiered Metric Columns" />
+      <div className="flex gap-2">{TieredMetricCards}</div>
       <H3 text="Max Tier" />
       <div className="flex flex-wrap gap-2">{tierSwitches}</div>
     </div>
