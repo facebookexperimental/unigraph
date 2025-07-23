@@ -14,7 +14,6 @@ bitflags = { version = "2.6", features = ["serde", "std"], default-features = fa
 bytemuck = { version = "1.19", features = ["const_zeroed", "derive", "min_const_generics", "nightly_portable_simd", "nightly_stdsimd"] }
 maplit = "1.0"
 readonly = "0.2.10"
-ruzstd = "0.8"
 serde = { version = "1.0.185", features = ["derive", "rc"] }
 serde_json = { version = "1.0.140", features = ["alloc", "float_roundtrip", "unbounded_depth"] }
 ts-rs = "10.1"
