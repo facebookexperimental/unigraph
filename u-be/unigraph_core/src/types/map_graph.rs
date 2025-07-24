@@ -8,7 +8,6 @@ use std::sync::OnceLock;
 
 use anyhow::Context;
 use anyhow::Result;
-use maplit::btreemap;
 
 use super::NodeIDX;
 use super::Tag;
@@ -83,7 +82,17 @@ pub struct DynamicEdge {
 
 impl MapGraph {
     pub fn to_array_graph(&self) -> Result<ArrayGraph> {
-        let mut sizes = Vec::new();
+        let all_metric_names = self
+            .nodes
+            .values()
+            .flat_map(|n| &n.metrics)
+            .flat_map(|m| m.keys())
+            .collect::<HashSet<_>>();
+
+        let mut metrics: BTreeMap<String, Vec<f32>> = all_metric_names
+            .into_iter()
+            .map(|name| (name.clone(), vec![]))
+            .collect();
 
         let mut all_tag_sets: BTreeMap<NodeIDX, BTreeMap<TagSetName, BTreeSet<Tag>>> =
             BTreeMap::new();
@@ -147,17 +156,23 @@ impl MapGraph {
                     excluded: false,
                     message: None,
                 }));
-                sizes.push(
-                    node.metrics
-                        .as_ref()
-                        .map_or(0.0, |m| m.get("size").cloned().unwrap_or(0.0)),
-                );
+                for (metrc_name, metric_values) in metrics.iter_mut() {
+                    if let Some(metric_value) =
+                        node.metrics.as_ref().and_then(|m| m.get(metrc_name))
+                    {
+                        metric_values.push(*metric_value);
+                    } else {
+                        metric_values.push(0.0);
+                    }
+                }
                 if let Some(tag_sets) = &node.tag_sets {
                     all_tag_sets.insert(node_idx, tag_sets.clone());
                 }
             } else {
                 offset_graph_builder.push_node(vec![]);
-                sizes.push(0.0);
+                for (_metric_name, metric_values) in metrics.iter_mut() {
+                    metric_values.push(0.0);
+                }
             }
         }
 
@@ -178,9 +193,7 @@ impl MapGraph {
             node_flags: vec![NodeFlags::empty(); edges_forward.node_count()],
             edges_forward,
             derived_state,
-            metrics: btreemap! {
-                "size".to_string() => sizes,
-            },
+            metrics,
             edges_tagged: all_tagged_edges,
             edges_dynamic: all_dynamic_edges,
             tag_sets: all_tag_sets,
