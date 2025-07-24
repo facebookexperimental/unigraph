@@ -5,8 +5,8 @@ use anyhow::Context;
 use anyhow::Result;
 
 use crate::ArrayGraphDynamicEdge;
+use crate::ArrayGraphNodes;
 use crate::NodeIDX;
-use crate::NodeNamesOrdered;
 use crate::types::Tag;
 use crate::types::array_graph::array_graph_serializable::ArrayGraphSerializableEdges;
 use crate::types::array_graph::array_graph_serializable::ArrayGraphSerializableNodeMetadata;
@@ -63,9 +63,9 @@ pub struct RemapContext {
 }
 
 pub fn remap_node_names_ordered(
-    node_names_ordered: &NodeNamesOrdered,
+    node_names_ordered: &ArrayGraphNodes,
     remap_context: &RemapContext,
-) -> NodeNamesOrdered {
+) -> ArrayGraphNodes {
     let mut names = String::new();
     let mut offsets = vec![0];
 
@@ -75,7 +75,7 @@ pub fn remap_node_names_ordered(
         offsets.push(names.len());
     }
 
-    NodeNamesOrdered::from_parts(names, offsets)
+    ArrayGraphNodes::from_parts(names, offsets)
 }
 
 pub fn remap_edges(
@@ -143,7 +143,7 @@ fn remap_tagged_edges(
     Ok(result)
 }
 
-pub fn make_remapped_node_names_ordered(new_node_names: &[String]) -> NodeNamesOrdered {
+pub fn make_remapped_node_names_ordered(new_node_names: &[String]) -> ArrayGraphNodes {
     let mut names = String::new();
     let mut offsets = vec![0];
 
@@ -152,7 +152,7 @@ pub fn make_remapped_node_names_ordered(new_node_names: &[String]) -> NodeNamesO
         offsets.push(names.len());
     }
 
-    NodeNamesOrdered::from_parts(names, offsets)
+    ArrayGraphNodes::from_parts(names, offsets)
 }
 
 fn remap_dynamic_edges(

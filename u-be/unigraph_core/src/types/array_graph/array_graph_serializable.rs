@@ -9,7 +9,7 @@ use anyhow::Result;
 use super::ArrayGraph;
 use super::ArrayGraphDynamicEdge;
 use super::NodeFlags;
-use super::node_names_ordered::NodeNamesOrdered;
+use super::array_graph_nodes::ArrayGraphNodes;
 use super::offset_graph::Edge;
 use super::offset_graph::NonDirectedEdgeMetadata;
 use super::offset_graph::OffsetGraph;
@@ -31,7 +31,7 @@ use crate::types::array_graph::array_graph_state::ArrayGraphState;
 /// storing or transmitting the graph structure.
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct ArrayGraphSerializable {
-    pub node_names_ordered: NodeNamesOrdered,
+    pub node_names_ordered: ArrayGraphNodes,
     pub edges: ArrayGraphSerializableEdges,
     pub node_metadata: ArrayGraphSerializableNodeMetadata,
 

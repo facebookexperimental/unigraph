@@ -15,12 +15,12 @@ use crate::types::NodeName;
 /// also faster because we can optimize for CPU cache hits and
 /// SIMD instructions.
 #[derive(serde::Deserialize, serde::Serialize)]
-pub struct NodeNamesOrdered {
+pub struct ArrayGraphNodes {
     pub(super) node_names: String,
     offsets: Vec<usize>,
 }
 
-impl NodeNamesOrdered {
+impl ArrayGraphNodes {
     pub fn from_parts(node_names: String, offsets: Vec<usize>) -> Self {
         Self {
             node_names,
@@ -101,7 +101,7 @@ pub(crate) struct NodeNamesOrderedBuilder {}
 impl NodeNamesOrderedBuilder {
     pub(crate) fn from_names<I: IntoIterator<Item = NodeName>>(
         node_names: I,
-    ) -> (NodeNamesOrdered, HashMap<NodeName, NodeIDX>) {
+    ) -> (ArrayGraphNodes, HashMap<NodeName, NodeIDX>) {
         let mut node_names = node_names.into_iter().collect::<Vec<_>>();
         node_names.sort();
         let mut offsets = vec![0];
@@ -113,7 +113,7 @@ impl NodeNamesOrderedBuilder {
             map.insert(name, NodeIDX::from(idx));
         }
         (
-            NodeNamesOrdered {
+            ArrayGraphNodes {
                 node_names: node_names_flat,
                 offsets,
             },
@@ -123,7 +123,7 @@ impl NodeNamesOrderedBuilder {
 }
 
 pub struct NodeNamesOrderedNamesIter<'a> {
-    node_names: &'a NodeNamesOrdered,
+    node_names: &'a ArrayGraphNodes,
     idx: usize,
 }
 
@@ -149,7 +149,7 @@ mod tests {
 
     #[test]
     fn test_appending() -> Result<()> {
-        let mut nn = NodeNamesOrdered {
+        let mut nn = ArrayGraphNodes {
             node_names: String::new(),
             offsets: vec![0],
         };

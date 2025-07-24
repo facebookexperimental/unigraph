@@ -16,7 +16,7 @@ use super::array_graph::ArrayGraph;
 use super::array_graph::ArrayGraphDynamicEdge;
 use super::array_graph::Arrow;
 use super::array_graph::NodeFlags;
-use super::array_graph::node_names_ordered::NodeNamesOrderedBuilder;
+use super::array_graph::array_graph_nodes::NodeNamesOrderedBuilder;
 use super::array_graph::offset_graph::OffsetGraphBuilder;
 use crate::TraversalConfig;
 use crate::graph_settings::GraphSettings;

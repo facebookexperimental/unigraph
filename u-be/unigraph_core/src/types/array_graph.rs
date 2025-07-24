@@ -5,12 +5,12 @@ pub mod array_graph_debug_utils;
 pub mod array_graph_derived_state;
 mod array_graph_determine_entrypoints;
 mod array_graph_metrics;
+pub(crate) mod array_graph_nodes;
 pub mod array_graph_serializable;
 pub mod array_graph_state;
 mod array_graph_stats;
 mod conjoint_cost;
 pub mod graph_settings;
-pub(crate) mod node_names_ordered;
 pub(crate) mod offset_graph;
 pub mod remap_utils;
 mod super_root;
@@ -23,7 +23,7 @@ use std::collections::BTreeSet;
 
 use anyhow::Context;
 use anyhow::Result;
-use node_names_ordered::NodeNamesOrdered;
+use array_graph_nodes::ArrayGraphNodes;
 use offset_graph::Edge;
 use offset_graph::OffsetGraph;
 
@@ -61,7 +61,7 @@ use crate::types::array_graph::tiers::ALL_TIER_FLAGS;
 use crate::types::array_graph::tiers::TIER_FLAGS;
 
 pub struct ArrayGraph {
-    pub node_names_ordered: NodeNamesOrdered,
+    pub node_names_ordered: ArrayGraphNodes,
     pub node_flags: Vec<NodeFlags>,
 
     pub edges_forward: OffsetGraph,
