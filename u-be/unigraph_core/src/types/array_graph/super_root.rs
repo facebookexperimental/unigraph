@@ -1,6 +1,7 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 use std::collections::BTreeSet;
+use std::sync::Arc;
 
 use anyhow::Context;
 use anyhow::Result;
@@ -9,6 +10,7 @@ use crate::ArrayGraph;
 use crate::NodeIDX;
 use crate::types::array_graph::NodeFlags;
 use crate::types::array_graph::array_graph_derived_state::ArrayGraphDerivedState;
+use crate::types::array_graph::array_graph_nodes::SharedArrayGraphNodes;
 use crate::types::array_graph::offset_graph::Edge;
 use crate::types::array_graph::offset_graph::OffsetGraph;
 
@@ -35,7 +37,7 @@ pub fn append_super_root(ag: ArrayGraph) -> Result<ArrayGraph> {
     }
 
     let ArrayGraph {
-        mut node_names_ordered,
+        nodes,
         mut node_flags,
         mut edges_forward,
         derived_state: _, // this is invalidated and need to be recomputed
@@ -51,6 +53,12 @@ pub fn append_super_root(ag: ArrayGraph) -> Result<ArrayGraph> {
     let highest_unicode_char =
         char::from_u32(HIGHEST_UNICODE_CODEPOINT).context("Failed to get highest unicode char")?;
     let super_root_name = format!("{highest_unicode_char}__root__{highest_unicode_char}");
+
+    let mut node_names_ordered = match Arc::try_unwrap(nodes.node_names) {
+        Ok(node_names) => node_names,
+        Err(arc) => (*arc).clone(),
+    };
+
     node_names_ordered
         .append_node_name(&super_root_name)
         .context(
@@ -65,8 +73,10 @@ be no other node already on the list that doesn't start from the same character"
 
     let derived_state = ArrayGraphDerivedState::from_forward_edges(&edges_forward);
 
+    let nodes = SharedArrayGraphNodes::new_left_only(Arc::new(node_names_ordered));
+
     Ok(ArrayGraph {
-        node_names_ordered,
+        nodes,
         node_flags,
         edges_forward,
         derived_state,

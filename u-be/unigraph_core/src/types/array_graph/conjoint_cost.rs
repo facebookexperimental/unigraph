@@ -615,10 +615,7 @@ P
         let mut result = String::new();
 
         for node_idx in ag.node_idx_iter() {
-            result.push_str(&format!(
-                "{}\n",
-                ag.node_names_ordered.idx_to_name(node_idx)
-            ));
+            result.push_str(&format!("{}\n", ag.idx_to_name(node_idx)));
             result.push_str(&format!(". Count: {}\n", conj.count[node_idx]));
             result.push_str(". Metrics:\n");
             for (metric_name, values) in &conj.metrics {

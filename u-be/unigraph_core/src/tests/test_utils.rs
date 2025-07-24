@@ -15,12 +15,12 @@ pub fn idx_to_names<I: IntoIterator<Item = NodeIDX>>(graph: &ArrayGraph, idxs: I
 }
 
 pub fn name_to_idx(graph: &ArrayGraph, name: &str) -> NodeIDX {
-    graph.node_names_ordered.name_to_idx_log(name).unwrap()
+    graph.nodes.name_to_idx_log(name).unwrap()
 }
 
 pub fn print_all_node_names(graph: &ArrayGraph) -> String {
     graph
-        .node_names_ordered
+        .nodes
         .iter_names()
         .map(|name| name.to_string())
         .collect::<Vec<String>>()

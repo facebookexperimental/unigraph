@@ -49,12 +49,12 @@ impl Message {
         let mut result = self.0.clone();
 
         if result.contains(MESSAGE_TEMPLATE_POINTS_FROM) {
-            let points_from_name = ag.node_names_ordered.idx_to_name(points_from);
+            let points_from_name = ag.idx_to_name(points_from);
             result = result.replace(MESSAGE_TEMPLATE_POINTS_FROM, points_from_name);
         }
 
         if result.contains(MESSAGE_TEMPLATE_POINTS_TO) {
-            let points_to_name = ag.node_names_ordered.idx_to_name(points_from);
+            let points_to_name = ag.idx_to_name(points_from);
             result = result.replace(MESSAGE_TEMPLATE_POINTS_TO, points_to_name);
         }
 

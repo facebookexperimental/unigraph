@@ -23,7 +23,6 @@ use std::collections::BTreeSet;
 
 use anyhow::Context;
 use anyhow::Result;
-use array_graph_nodes::ArrayGraphNodes;
 use offset_graph::Edge;
 use offset_graph::OffsetGraph;
 
@@ -53,6 +52,8 @@ use crate::types::array_graph::array_graph_metrics::get_metrics_sums_tiered_for_
 use crate::types::array_graph::array_graph_metrics::get_transitive_metric_value;
 use crate::types::array_graph::array_graph_metrics::get_transitive_tiered_metric_values;
 use crate::types::array_graph::array_graph_metrics::parents_len_configured;
+use crate::types::array_graph::array_graph_nodes::NodeIDXsArcIter;
+use crate::types::array_graph::array_graph_nodes::SharedArrayGraphNodes;
 use crate::types::array_graph::array_graph_state::ArrayGraphState;
 use crate::types::array_graph::array_graph_stats::ArrayGraphStats;
 use crate::types::array_graph::conjoint_cost::ConjointCost;
@@ -61,7 +62,7 @@ use crate::types::array_graph::tiers::ALL_TIER_FLAGS;
 use crate::types::array_graph::tiers::TIER_FLAGS;
 
 pub struct ArrayGraph {
-    pub node_names_ordered: ArrayGraphNodes,
+    pub nodes: SharedArrayGraphNodes,
     pub node_flags: Vec<NodeFlags>,
 
     pub edges_forward: OffsetGraph,
@@ -154,11 +155,11 @@ impl ArrayGraph {
     }
 
     pub fn nodes_len(&self) -> usize {
-        self.node_names_ordered.nodes_len()
+        self.nodes.nodes_len
     }
 
     pub fn is_empty(&self) -> bool {
-        self.node_names_ordered.nodes_len() == 0
+        self.nodes.nodes_len == 0
     }
 
     pub fn children(&self, node_idx: NodeIDX) -> &[Edge] {
@@ -187,8 +188,9 @@ impl ArrayGraph {
             .get_or_init(|| ConjointCost::build(self).expect("Failed to build conjoint cost"))
     }
 
-    pub fn node_idx_iter(&self) -> std::iter::Map<std::ops::Range<usize>, fn(usize) -> NodeIDX> {
-        (0..self.node_names_ordered.nodes_len()).map(NodeIDX::from)
+    #[inline(always)]
+    pub fn node_idx_iter(&self) -> NodeIDXsArcIter {
+        self.nodes.node_idx_iter()
     }
 
     pub fn node_idx_iter_reachable(&self) -> impl Iterator<Item = NodeIDX> {
@@ -196,8 +198,12 @@ impl ArrayGraph {
             .filter(|&node_idx| !self.is_node_unreachable(node_idx))
     }
 
-    pub fn idx_to_name(&self, idx: NodeIDX) -> &str {
-        self.node_names_ordered.idx_to_name(idx)
+    #[inline(always)]
+    pub fn idx_to_name<I>(&self, node_idx: I) -> &str
+    where
+        I: Into<NodeIDX> + Copy,
+    {
+        self.nodes.idx_to_name(node_idx.into())
     }
 
     #[inline(always)]
@@ -207,7 +213,7 @@ impl ArrayGraph {
 
     pub fn idxs_to_names(&self, idxs: &[NodeIDX]) -> Vec<&str> {
         idxs.iter()
-            .map(|idx| self.node_names_ordered.idx_to_name(*idx))
+            .map(|idx| self.nodes.idx_to_name(*idx))
             .collect()
     }
 
@@ -368,16 +374,11 @@ mod tests {
                 .collect::<Vec<_>>()
         };
 
-        assert_equal!(array_graph.node_names_ordered.node_names, "ABCDEF");
+        assert_equal!(array_graph.nodes.node_names.node_names, "ABCDEF");
         assert_equal!(children_names(0), vec!["B", "C"]);
         assert_equal!(children_names(5), vec!["D", "E"]);
 
-        let find_name = |name: &str| {
-            array_graph
-                .node_names_ordered
-                .name_to_idx_log(name)
-                .map(|idx| idx.0)
-        };
+        let find_name = |name: &str| array_graph.nodes.name_to_idx_log(name).map(|idx| idx.0);
 
         assert_equal!(find_name("A"), Some(0));
         assert_equal!(find_name("B"), Some(1));

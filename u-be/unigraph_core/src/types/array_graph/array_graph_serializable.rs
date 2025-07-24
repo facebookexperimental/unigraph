@@ -2,6 +2,7 @@
 
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
+use std::sync::Arc;
 
 use anyhow::Context;
 use anyhow::Result;
@@ -25,13 +26,14 @@ use crate::types::NodeName;
 use crate::types::Tag;
 use crate::types::TagSetName;
 use crate::types::array_graph::array_graph_derived_state::ArrayGraphDerivedState;
+use crate::types::array_graph::array_graph_nodes::SharedArrayGraphNodes;
 use crate::types::array_graph::array_graph_state::ArrayGraphState;
 
 /// A serializable representation of an array graph, which can be used for
 /// storing or transmitting the graph structure.
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct ArrayGraphSerializable {
-    pub node_names_ordered: ArrayGraphNodes,
+    pub node_names_ordered: Arc<ArrayGraphNodes>,
     pub edges: ArrayGraphSerializableEdges,
     pub node_metadata: ArrayGraphSerializableNodeMetadata,
 
@@ -71,7 +73,7 @@ impl ArrayGraphSerializableNodeMetadata {
 
 impl ArrayGraphSerializable {
     pub fn node_idx_iter(&self) -> impl Iterator<Item = NodeIDX> {
-        (0..self.node_names_ordered.nodes_len()).map(NodeIDX::from)
+        (0..self.node_names_ordered.combined_nodes_len()).map(NodeIDX::from)
     }
 
     /// Converts this serializable representation back into an `ArrayGraph`.
@@ -94,7 +96,7 @@ impl ArrayGraphSerializable {
 
     pub fn remap(self, ctx: &RemapContext) -> Result<Self> {
         Ok(ArrayGraphSerializable {
-            node_names_ordered: remap_node_names_ordered(&self.node_names_ordered, ctx),
+            node_names_ordered: Arc::new(remap_node_names_ordered(&self.node_names_ordered, ctx)),
             edges: self.edges.remap(ctx)?,
             node_metadata: self.node_metadata.remap(ctx)?,
             graph_settings: self.graph_settings,
@@ -125,7 +127,7 @@ impl From<ArrayGraph> for ArrayGraphSerializable {
         }
 
         ArrayGraphSerializable {
-            node_names_ordered: graph.node_names_ordered,
+            node_names_ordered: graph.nodes.node_names,
             edges: ArrayGraphSerializableEdges {
                 directed: directed_edges,
                 directed_offsets: directed_edge_offsets,
@@ -205,7 +207,8 @@ impl From<ArrayGraphSerializable> for ArrayGraph {
         }
 
         // Node flags are initialized on traversal config application, so we'll just create an empty vector
-        let node_flags = vec![NodeFlags::empty(); serializable.node_names_ordered.nodes_len()];
+        let node_flags =
+            vec![NodeFlags::empty(); serializable.node_names_ordered.combined_nodes_len()];
 
         let tiers = serializable
             .traversal_config
@@ -214,8 +217,10 @@ impl From<ArrayGraphSerializable> for ArrayGraph {
 
         let derived_state = ArrayGraphDerivedState::from_forward_edges(&edges_forward);
 
+        let nodes = SharedArrayGraphNodes::new_left_only(serializable.node_names_ordered);
+
         ArrayGraph {
-            node_names_ordered: serializable.node_names_ordered,
+            nodes,
             edges_forward,
             derived_state,
             edges_tagged: serializable.edges.tagged,

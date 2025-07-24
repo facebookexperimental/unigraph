@@ -9,7 +9,7 @@ pub fn determine_entrypoints(array_graph: &ArrayGraph) -> Vec<NodeIDX> {
     let mut entrypoints = if let Some(graph_entry_points) = &array_graph.entry_points {
         graph_entry_points
             .iter()
-            .filter_map(|name| array_graph.node_names_ordered.name_to_idx_log(name))
+            .filter_map(|name| array_graph.nodes.name_to_idx_log(name))
             .collect()
     } else {
         Vec::new()

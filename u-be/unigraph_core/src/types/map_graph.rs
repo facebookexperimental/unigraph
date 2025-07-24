@@ -3,6 +3,7 @@
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashSet;
+use std::sync::Arc;
 use std::sync::OnceLock;
 
 use anyhow::Context;
@@ -21,6 +22,7 @@ use super::array_graph::offset_graph::OffsetGraphBuilder;
 use crate::TraversalConfig;
 use crate::graph_settings::GraphSettings;
 use crate::types::array_graph::array_graph_derived_state::ArrayGraphDerivedState;
+use crate::types::array_graph::array_graph_nodes::SharedArrayGraphNodes;
 use crate::types::array_graph::array_graph_state::ArrayGraphState;
 
 type NodeName = String;
@@ -99,7 +101,7 @@ impl MapGraph {
             BTreeMap::new();
         let mut all_dynamic_edges: BTreeMap<NodeIDX, Vec<ArrayGraphDynamicEdge>> = BTreeMap::new();
 
-        for node_name in node_names_ordered.iter_names() {
+        for node_name in node_names_ordered.combined_node_names_iter() {
             let node_idx = *name_to_idx_map
                 .get(node_name)
                 .with_context(|| format!("Node name not found: {node_name}"))?;
@@ -169,8 +171,10 @@ impl MapGraph {
 
         let derived_state = ArrayGraphDerivedState::from_forward_edges(&edges_forward);
 
+        let nodes = SharedArrayGraphNodes::new_left_only(Arc::new(node_names_ordered));
+
         Ok(ArrayGraph {
-            node_names_ordered,
+            nodes,
             node_flags: vec![NodeFlags::empty(); edges_forward.node_count()],
             edges_forward,
             derived_state,

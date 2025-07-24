@@ -42,13 +42,13 @@ fn test_edge_flags() -> Result<()> {
 
     let get_flags = |node_name: &str| {
         g.edges_forward
-            .edges(g.node_names_ordered.name_to_idx_log(node_name).unwrap())
+            .edges(g.nodes.name_to_idx_log(node_name).unwrap())
             .iter()
             .map(|e| {
                 format!(
                     "{} -> {}: {}",
                     node_name,
-                    g.node_names_ordered.idx_to_name(e.points_to),
+                    g.idx_to_name(e.points_to),
                     e.flags.to_binary_string()
                 )
             })
@@ -562,7 +562,7 @@ F -> I [D]
 #[test]
 fn test_edges_len() -> Result<()> {
     let mut g = make_test_array_graph_2()?;
-    let node_k = g.node_names_ordered.name_to_idx_log("K").unwrap();
+    let node_k = g.nodes.name_to_idx_log("K").unwrap();
 
     assert_equal!(g.parents_len_configured(node_k), 2);
 
@@ -589,7 +589,7 @@ fn test_edges_len() -> Result<()> {
 #[test]
 fn test_reacable_subgraph_unconfigured() -> Result<()> {
     let g = make_test_array_graph_1()?;
-    let d = g.node_names_ordered.name_to_idx_log("D").unwrap();
+    let d = g.nodes.name_to_idx_log("D").unwrap();
     let sg = g.get_reachable_subgraph_unconfigured(&[d])?;
     let reachable = sg.into_array_graph();
     snapshot!(

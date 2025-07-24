@@ -21,12 +21,7 @@ pub fn to_map_graph(graph: &ArrayGraph) -> Result<MapGraph> {
         let mut directed = BTreeSet::new();
         for edge in graph.edges_forward.edges(node_idx) {
             if !edge.is_tagged_or_dynamic() {
-                directed.insert(
-                    graph
-                        .node_names_ordered
-                        .idx_to_name(edge.points_to)
-                        .to_string(),
-                );
+                directed.insert(graph.idx_to_name(edge.points_to).to_string());
             }
         }
 
@@ -38,9 +33,7 @@ pub fn to_map_graph(graph: &ArrayGraph) -> Result<MapGraph> {
                         tag,
                         points_to_set
                             .into_iter()
-                            .map(|points_to| {
-                                graph.node_names_ordered.idx_to_name(points_to).to_string()
-                            })
+                            .map(|points_to| graph.idx_to_name(points_to).to_string())
                             .collect(),
                     )
                 })
@@ -60,9 +53,7 @@ pub fn to_map_graph(graph: &ArrayGraph) -> Result<MapGraph> {
                                 branch.clone(),
                                 points_to_set
                                     .iter()
-                                    .map(|points_to| {
-                                        graph.node_names_ordered.idx_to_name(*points_to).to_string()
-                                    })
+                                    .map(|points_to| graph.idx_to_name(*points_to).to_string())
                                     .collect::<Vec<_>>(),
                             )
                         })
@@ -99,10 +90,9 @@ pub fn to_map_graph(graph: &ArrayGraph) -> Result<MapGraph> {
             },
             metrics: Some(metrics),
         };
-        result.nodes.insert(
-            graph.node_names_ordered.idx_to_name(node_idx).to_string(),
-            map_node,
-        );
+        result
+            .nodes
+            .insert(graph.idx_to_name(node_idx).to_string(), map_node);
     }
 
     Ok(result)

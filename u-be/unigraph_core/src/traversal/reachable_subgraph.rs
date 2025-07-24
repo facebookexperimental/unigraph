@@ -16,7 +16,7 @@ pub(crate) fn get_reachable_subgraph_unconfigured(
 
     let root_names = roots
         .iter()
-        .map(|&idx| graph.node_names_ordered.idx_to_name(idx).to_string())
+        .map(|&idx| graph.idx_to_name(idx).to_string())
         .collect::<BTreeSet<_>>();
 
     for node_idx in graph.edges_forward.dfs_unconfigured(roots) {
@@ -33,7 +33,7 @@ pub(crate) fn get_reachable_subgraph_unconfigured(
 
     for (node_idx, &reachable) in reachable.iter().enumerate() {
         if reachable {
-            let name = graph.node_names_ordered.idx_to_name(node_idx);
+            let name = graph.idx_to_name(node_idx);
             names.push_str(name);
             offsets.push(names.len());
 

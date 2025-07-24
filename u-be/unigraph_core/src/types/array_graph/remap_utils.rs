@@ -219,6 +219,8 @@ pub fn remap_node_metadata(
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use anyhow::Result;
     use k9::assert_equal;
     use k9::snapshot;
@@ -282,7 +284,7 @@ J (tag sets: assert_tags: [a, b]):
         // Make a new set of names prefixed with reverse indexes
         // to test the remapping functionality.
         let mut new_node_names = g
-            .node_names_ordered
+            .nodes
             .iter_names()
             .collect::<Vec<&str>>()
             .into_iter()
@@ -302,7 +304,7 @@ J (tag sets: assert_tags: [a, b]):
         let ctx = sort_and_return_mapping(&mut new_node_names);
 
         let new_sg = ArrayGraphSerializable {
-            node_names_ordered: make_remapped_node_names_ordered(&new_node_names),
+            node_names_ordered: Arc::new(make_remapped_node_names_ordered(&new_node_names)),
             edges: remap_edges(&sg.edges, &ctx)?,
             node_metadata: remap_node_metadata(&sg.node_metadata, &ctx)?,
             graph_settings: None,

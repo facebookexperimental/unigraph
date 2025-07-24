@@ -30,7 +30,7 @@ impl ArrayGraphDebugUtils for ArrayGraph {
         let mut result = String::new();
 
         for node_idx in self.node_idx_iter() {
-            let node_name = self.node_names_ordered.idx_to_name(node_idx);
+            let node_name = self.idx_to_name(node_idx);
 
             let mut tag_sets_str = String::new();
             if let Some(tag_sets) = self.tag_sets.get(&node_idx) {
@@ -54,7 +54,7 @@ impl ArrayGraphDebugUtils for ArrayGraph {
             result.push_str(&format!("{node_name}{unreachable_str}{tag_sets_str}:\n"));
 
             for edge in edges_fn(self, node_idx) {
-                let points_to = self.node_names_ordered.idx_to_name(edge.points_to);
+                let points_to = self.idx_to_name(edge.points_to);
                 let edge_type = match edge.flags.edge_type() {
                     EdgeType::Dynamic => " [D]",
                     EdgeType::Tagged => " [T]",

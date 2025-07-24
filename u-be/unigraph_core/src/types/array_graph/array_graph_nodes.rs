@@ -1,6 +1,8 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 use std::collections::HashMap;
+use std::sync::Arc;
+use std::sync::OnceLock;
 
 use anyhow::Result;
 
@@ -14,10 +16,40 @@ use crate::types::NodeName;
 /// whole thing in one chunk. Searching though a single string is
 /// also faster because we can optimize for CPU cache hits and
 /// SIMD instructions.
-#[derive(serde::Deserialize, serde::Serialize)]
+#[derive(serde::Deserialize, serde::Serialize, Clone)]
 pub struct ArrayGraphNodes {
     pub(super) node_names: String,
     offsets: Vec<usize>,
+}
+#[readonly::make]
+
+pub struct SharedArrayGraphNodes {
+    pub(super) node_names: Arc<ArrayGraphNodes>,
+    existence: Vec<NodeExistenceFlags>,
+    side: GraphSide,
+    // Precomputed. only nodes that exist in the side of the graph.
+    #[readonly]
+    pub nodes_len: usize,
+    pub existing_node_idxes: OnceLock<Arc<Vec<NodeIDX>>>,
+}
+
+/// Enum that represents one of the sides of the twin graph, either left graph or right graph.
+#[derive(Clone, Copy)]
+pub enum GraphSide {
+    Left = 0b0001,
+    Right = 0b0010,
+}
+
+bitflags::bitflags! {
+    /// Flags that represent whether a node does not exist in one of the
+    /// sides of the twin graph.
+    #[repr(transparent)]
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub struct NodeExistenceFlags: u32 {
+        const NOT_IN_LEFT =  GraphSide::Left as u32;
+        const NOT_IN_RIGHT = GraphSide::Right as u32;
+        const IN_BOTH = 0b0000;
+    }
 }
 
 impl ArrayGraphNodes {
@@ -28,7 +60,7 @@ impl ArrayGraphNodes {
         }
     }
 
-    pub fn nodes_len(&self) -> usize {
+    pub fn combined_nodes_len(&self) -> usize {
         self.offsets.len() - 1
     }
 
@@ -43,11 +75,17 @@ impl ArrayGraphNodes {
         &self.node_names[start..end]
     }
 
-    pub fn iter_names(&self) -> NodeNamesOrderedNamesIter {
-        NodeNamesOrderedNamesIter {
-            node_names: self,
-            idx: 0,
-        }
+    /// Iterator over all node idxs for both graphs, they might or might not exist in one of
+    /// the graphs.
+    fn combined_node_idx_iter(
+        &self,
+    ) -> std::iter::Map<std::ops::Range<usize>, fn(usize) -> NodeIDX> {
+        (0..self.combined_nodes_len()).map(NodeIDX::from)
+    }
+
+    pub fn combined_node_names_iter(&self) -> impl Iterator<Item = &str> {
+        self.combined_node_idx_iter()
+            .map(|idx| self.idx_to_name(idx))
     }
 
     /// Given a name of the node name return its IDX if exists.
@@ -57,9 +95,9 @@ impl ArrayGraphNodes {
     /// Which is enough for searching hundreds of nodes at a time
     /// but it can get pretty slow if we run it agains the entire big
     /// graph with 1M+ nodes.
-    pub fn name_to_idx_log(&self, name: &str) -> Option<NodeIDX> {
+    fn name_to_idx_log(&self, name: &str) -> Option<NodeIDX> {
         let mut low = 0;
-        let mut high = self.nodes_len();
+        let mut high = self.combined_nodes_len();
         while low < high {
             let mid = (low + high) / 2;
             let mid_name = self.idx_to_name(NodeIDX::from(mid));
@@ -75,11 +113,11 @@ impl ArrayGraphNodes {
     }
 
     pub fn append_node_name(&mut self, name: &str) -> Result<NodeIDX> {
-        let names_count = self.nodes_len();
+        let names_count = self.combined_nodes_len();
 
         if names_count > 0 {
             // ensure the new name is > than the last name
-            let last_name = self.idx_to_name(NodeIDX::from(self.nodes_len() - 1));
+            let last_name = self.idx_to_name(NodeIDX::from(self.combined_nodes_len() - 1));
             if last_name >= name {
                 return Err(anyhow::anyhow!(
                     "Node names must be ordered incrementally.
@@ -96,6 +134,63 @@ Last name must be `<` the new name, which was not the case.
         Ok(NodeIDX::from(idx))
     }
 }
+
+impl SharedArrayGraphNodes {
+    pub fn new_left_only(nodes: Arc<ArrayGraphNodes>) -> Self {
+        let existence = vec![NodeExistenceFlags::IN_BOTH; nodes.combined_nodes_len()];
+        let nodes_len = nodes.combined_nodes_len(); // all nodes exist in the left side
+        Self {
+            node_names: nodes,
+            existence,
+            side: GraphSide::Left,
+            nodes_len,
+            existing_node_idxes: OnceLock::new(),
+        }
+    }
+
+    fn existing_node_idxes(&self) -> Arc<Vec<NodeIDX>> {
+        self.existing_node_idxes
+            .get_or_init(|| {
+                Arc::new(
+                    self.node_names
+                        .combined_node_idx_iter()
+                        .filter(|&idx| !self.existence[idx].does_not_exist_in(self.side))
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .clone()
+    }
+
+    #[inline]
+    pub fn idx_to_name<I>(&self, node_idx: I) -> &str
+    where
+        I: Into<NodeIDX> + Copy,
+    {
+        self.node_names.idx_to_name(node_idx.into())
+    }
+
+    pub fn iter_names(&self) -> NodeNamesOrderedNamesIter {
+        NodeNamesOrderedNamesIter {
+            node_names: &self.node_names,
+            existence: &self.existence,
+            side: self.side,
+            idx: 0,
+        }
+    }
+
+    pub fn node_idx_iter(&self) -> NodeIDXsArcIter {
+        NodeIDXsArcIter {
+            existing_node_idxes: self.existing_node_idxes(),
+            current_idx: 0,
+        }
+    }
+
+    #[inline(always)]
+    pub fn name_to_idx_log(&self, name: &str) -> Option<NodeIDX> {
+        self.node_names.name_to_idx_log(name)
+    }
+}
+
 pub(crate) struct NodeNamesOrderedBuilder {}
 
 impl NodeNamesOrderedBuilder {
@@ -124,6 +219,8 @@ impl NodeNamesOrderedBuilder {
 
 pub struct NodeNamesOrderedNamesIter<'a> {
     node_names: &'a ArrayGraphNodes,
+    existence: &'a [NodeExistenceFlags],
+    side: GraphSide,
     idx: usize,
 }
 
@@ -131,8 +228,13 @@ impl<'a> Iterator for NodeNamesOrderedNamesIter<'a> {
     type Item = &'a str;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.idx >= self.node_names.nodes_len() {
+        if self.idx >= self.node_names.combined_nodes_len() {
             return None;
+        }
+        let existence = self.existence[self.idx];
+        if existence.does_not_exist_in(self.side) {
+            self.idx += 1;
+            return self.next(); // skip nodes that do not exist in the current side
         }
         let name = self.node_names.idx_to_name(NodeIDX::from(self.idx));
         self.idx += 1;
@@ -140,6 +242,33 @@ impl<'a> Iterator for NodeNamesOrderedNamesIter<'a> {
     }
 }
 
+pub struct NodeIDXsArcIter {
+    existing_node_idxes: Arc<Vec<NodeIDX>>,
+    current_idx: usize,
+}
+
+impl Iterator for NodeIDXsArcIter {
+    type Item = NodeIDX;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.current_idx >= self.existing_node_idxes.len() {
+            None
+        } else {
+            let node_idx = self.existing_node_idxes[self.current_idx];
+            self.current_idx += 1;
+            Some(node_idx)
+        }
+    }
+}
+
+impl NodeExistenceFlags {
+    pub fn does_not_exist_in(self, side: GraphSide) -> bool {
+        match side {
+            GraphSide::Left => self.contains(NodeExistenceFlags::NOT_IN_LEFT),
+            GraphSide::Right => self.contains(NodeExistenceFlags::NOT_IN_RIGHT),
+        }
+    }
+}
 #[cfg(test)]
 mod tests {
     use k9::assert_equal;
