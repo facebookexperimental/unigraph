@@ -226,6 +226,12 @@ pub struct ColumnSettings {
     #[ts(optional)]
     show_conjoint_count: Option<IndividualOptionEnabled>,
 
+    /// Global setting for showing metric values
+    /// It is shown by default, but can be hidden
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub hide_metrics: Option<bool>,
+
     /// Global setting for showing tiered values for metrics
     /// (if tiers are defined)
     /// It is shown by default, but can be hidden

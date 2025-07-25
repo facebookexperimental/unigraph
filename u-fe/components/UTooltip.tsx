@@ -7,14 +7,16 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 export default function UTooltip({
   tooltip,
   children,
+  delayDuration = 100,
 }: {
   tooltip: React.ReactNode | null;
   children: React.ReactNode;
+  delayDuration?: number;
 }) {
   const container = usePortalContainer();
 
   return (
-    <Tooltip>
+    <Tooltip delayDuration={delayDuration}>
       <TooltipTrigger asChild>{children}</TooltipTrigger>
       {tooltip != null && (
         <TooltipPortal container={container?.current}>

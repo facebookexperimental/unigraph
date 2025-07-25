@@ -9,6 +9,7 @@ export default function UToggleButton({
   onSelectedChange,
   children,
   tooltip,
+  tooltipDelayDuration = 400,
   size = "icon",
   className = "",
 }: {
@@ -16,11 +17,12 @@ export default function UToggleButton({
   onSelectedChange?: (selected: boolean) => void;
   children: React.ReactNode;
   tooltip?: React.ReactNode;
+  tooltipDelayDuration?: number;
   size?: "default" | "sm" | "lg" | "icon";
   className?: string;
 }) {
   return (
-    <UTooltip tooltip={tooltip}>
+    <UTooltip tooltip={tooltip} delayDuration={tooltipDelayDuration}>
       <Button
         size={size}
         className={clsx("cursor-pointer", className)}

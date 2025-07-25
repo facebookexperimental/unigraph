@@ -3,6 +3,7 @@
 import {
   ArrowLeftRight,
   ArrowUpNarrowWide,
+  ChartNoAxesCombined,
   CircleDollarSign,
   Layers,
   List,
@@ -194,6 +195,27 @@ function Toggles() {
       >
         <ArrowUpNarrowWide />
       </UToggleButton>
+
+      <UHoverCard content={<MetricsHovercardContent />}>
+        <UToggleButton
+          size="sm"
+          selected={graphSettings.ui_settings?.columns?.hide_metrics !== true}
+          onSelectedChange={(checked) => {
+            setGraphSettings({
+              ...graphSettings,
+              ui_settings: {
+                ...graphSettings.ui_settings,
+                columns: {
+                  ...graphSettings.ui_settings?.columns,
+                  hide_metrics: !checked,
+                },
+              },
+            });
+          }}
+        >
+          <ChartNoAxesCombined />
+        </UToggleButton>
+      </UHoverCard>
 
       {hasTiers && (
         <UHoverCard content={<TiersHoverCardContent />}>
@@ -409,6 +431,54 @@ function ConjointCostHoverCardContent() {
         </UToggleButton>
         {metricCards}
       </div>
+    </div>
+  );
+}
+
+function MetricsHovercardContent() {
+  const [graphSettings, setGraphSettings] = useGraphSettings();
+  const nativeGraph = useNativeGraph();
+
+  const metricCards = nativeGraph.metricNames.map((metricName) => {
+    const metricSettings = graphSettings.metric_settings?.[metricName] ?? {};
+    return (
+      <UToggleButton
+        key={`${metricName}`}
+        size="sm"
+        tooltip={`Show a column with the values of '${metricName}' metric`}
+        selected={metricSettings?.column_hide_self !== true}
+        onSelectedChange={(selected) => {
+          setGraphSettings({
+            ...graphSettings,
+            ui_settings: {
+              ...graphSettings.ui_settings,
+              columns: {
+                ...graphSettings.ui_settings?.columns,
+                // if we select something under the metrics card
+                // we probably want to show these automatically to avoid
+                // "why is it not doing anything??" confusion
+                hide_metrics: false,
+              },
+            },
+            metric_settings: {
+              ...graphSettings.metric_settings,
+              [metricName]: {
+                ...metricSettings,
+                column_hide_self: !selected,
+              },
+            },
+          });
+        }}
+      >
+        <span className="text-sm">{`${metricName}`}</span>
+      </UToggleButton>
+    );
+  });
+
+  return (
+    <div className="flex flex-col gap-2">
+      <H3 text="Metric Columns" />
+      <div className="flex flex-wrap gap-2">{metricCards}</div>
     </div>
   );
 }

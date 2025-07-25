@@ -3,6 +3,11 @@ import type { IndividualOptionEnabled } from "./IndividualOptionEnabled";
 
 export type ColumnSettings = { show_parents_count?: boolean, show_transitive_count?: IndividualOptionEnabled, show_conjoint_count?: IndividualOptionEnabled, 
 /**
+ * Global setting for showing metric values
+ * It is shown by default, but can be hidden
+ */
+hide_metrics?: boolean, 
+/**
  * Global setting for showing tiered values for metrics
  * (if tiers are defined)
  * It is shown by default, but can be hidden

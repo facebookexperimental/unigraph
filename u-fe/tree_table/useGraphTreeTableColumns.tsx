@@ -49,13 +49,14 @@ function defaultColumnDefinitions(
     graphSettings.ui_settings?.columns?.show_transitive ?? false;
   const showConjoint =
     graphSettings.ui_settings?.columns?.show_conjoint ?? false;
+  const showMetrics = graphSettings.ui_settings?.columns?.hide_metrics !== true;
   const showTiered = graphSettings.ui_settings?.columns?.hide_tiered !== true;
 
   const columnDefinitions: { [name: string]: NonTreeColumnDefinition } = {};
   for (const metricName of nativeGraph.metricNames) {
     const metricSettings = graphSettings.metric_settings?.[metricName] ?? null;
 
-    if (metricSettings?.column_hide_self !== true) {
+    if (metricSettings?.column_hide_self !== true && showMetrics) {
       const [metricColumnID, metricColumnDefinition] = createMetricColumn(
         nativeGraph,
         metricName,
