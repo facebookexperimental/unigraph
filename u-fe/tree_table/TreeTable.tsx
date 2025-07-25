@@ -9,13 +9,21 @@ import {
   ArrowUp10,
   ArrowUpZA,
 } from "lucide-react";
-import { useEffect, useMemo, useReducer, useRef } from "react";
+import {
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import type { ArrayGraphUISettingsTreeTableEntryPoints } from "u-be/unigraph_core/bindings/ArrayGraphUISettingsTreeTableEntryPoints";
 import type { GraphStructure } from "u-be/unigraph_core/bindings/GraphStructure";
 import type { GraphTableSort } from "u-be/unigraph_core/bindings/GraphTableSort";
 import type { SortOrder } from "u-be/unigraph_core/bindings/SortOrder";
 import type { Arrow } from "../../u-be/unigraph_core/bindings/Arrow";
 import { ARROW_POINTS_FROM_NON_EXISTENT } from "../ArrowUtils";
+import { Progress } from "../components/ui/progress";
 import { useSelectedPath } from "../context/SelectedPathContext";
 import type { NodeIDX } from "../types";
 import TreeCell from "./TreeCell";
@@ -92,6 +100,10 @@ type ColumnInternal =
       isHidden: boolean;
     };
 
+type SetSortingProgressFn = (
+  progress: [done: number, total: number] | null,
+) => void;
+
 export function TreeTable(props: {
   columnDefinitions: ColumnDefinitions;
   treeTableGraph: TreeTableGraph;
@@ -101,6 +113,11 @@ export function TreeTable(props: {
   sortOrder: SortOrder | null;
   onSortChange: (sort: GraphTableSort | null) => void;
 }) {
+  const [sortingProgress, setSortingProgress] = useState<
+    null | [number, number]
+  >(null);
+  const [isPending, startTransition] = useTransition();
+
   const forceUpdate = useReducer((x) => {
     return x + 1;
   }, 0)[1];
@@ -119,22 +136,27 @@ export function TreeTable(props: {
     const ctx = new TreeTableCtx(
       columns,
       selectedPath ?? [],
-      props.treeTableGraph,
+      // We start from an empty graph. This will render an empty table
+      // and once we get the first render done the effects will kick in
+      // and we will update the graph to the actual graph that is passed
+      // with props and perform all needed initialization/sorting/etc.
+      // This is done because the initial render might be extremely heavy.
+      // Eg. if we have a massive graph that we want to sort by some
+      // transitive column (which can take multiple minutes).
+      // So we want to render/mount the table and then start rendering
+      // loading progress bars and stuff instead of just being synchronously
+      // stuck in the initial render
+      EMPTY_TREE_TABLE_GRAPH,
     );
     ctx.updateSortState(props.sortColumnID, props.sortOrder);
     ctx.forceUpdate = forceUpdate;
+
     return ctx;
   }, []);
 
   const parentRef = useRef<HTMLDivElement>(null); // scrollable element for virtualizer
 
   const headerHeight = props.headerHeight ?? 35;
-
-  useEffect(() => {
-    ctx.treeTableGraph = props.treeTableGraph;
-    ctx.resetTable();
-    ctx.navigateToCurrentPathOrFallbackToShortestPath();
-  }, [ctx, props.treeTableGraph]);
 
   useEffect(() => {
     pathSelector.navigate = (path: NodeIDX[] | null) => {
@@ -146,10 +168,23 @@ export function TreeTable(props: {
   }, [pathSelector, ctx]);
 
   useEffect(() => {
-    ctx.columns = columns;
-    ctx.updateSortState(props.sortColumnID, props.sortOrder);
-    ctx.resortRows();
-  }, [props.sortColumnID, props.sortOrder, ctx, columns]);
+    // if the graph changed we nuke the whole table
+    // and start over from clean state.
+    if (props.treeTableGraph !== ctx.treeTableGraph) {
+      startTransition(async () => {
+        ctx.treeTableGraph = props.treeTableGraph;
+        await ctx.resetTableAsync(setSortingProgress);
+        ctx.navigateToCurrentPathOrFallbackToShortestPath();
+      });
+    } else {
+      // When other dependencies change we just resort the rows
+      ctx.columns = columns;
+      ctx.updateSortState(props.sortColumnID, props.sortOrder);
+      startTransition(async () => {
+        await ctx.resortRowsAsync(setSortingProgress);
+      });
+    }
+  }, [props.sortColumnID, props.sortOrder, ctx, columns, props.treeTableGraph]);
 
   useEffect(() => {
     setSelectedPath(ctx.selectedNodeIDXPath);
@@ -232,7 +267,9 @@ export function TreeTable(props: {
                 minDepth={minDepth}
                 onToggleExpand={(expanded) => {
                   if (expanded) {
-                    ctx.expandRow(rowIDX);
+                    startTransition(async () => {
+                      await ctx.expandRowAsync(rowIDX, setSortingProgress);
+                    });
                   } else {
                     ctx.collapseRow(rowIDX);
                   }
@@ -351,8 +388,8 @@ export function TreeTable(props: {
   });
 
   return (
-    <>
-      {/* The scrollable element for your list */}
+    <div className="relative flex flex-col grow shrink min-h-0">
+      {/* The scrollable element  */}
       <div
         ref={parentRef}
         // biome-ignore lint/a11y/noNoninteractiveTabindex: <explanation>
@@ -382,7 +419,9 @@ export function TreeTable(props: {
             }
             case "ArrowRight": {
               e.preventDefault();
-              ctx.navigateRight();
+              startTransition(async () => {
+                await ctx.navigateRightAsync(setSortingProgress);
+              });
               break;
             }
             case "ArrowLeft": {
@@ -402,13 +441,15 @@ export function TreeTable(props: {
           {columnsElements}
         </div>
       </div>
-    </>
+      {isPending && <SortingProgress progress={sortingProgress} />}
+    </div>
   );
 }
 
 export type SortState = {
   sortFn: SortFn;
   sortColumnID: TreeColumnID | ColumnID;
+  sortColumn: ColumnInternal | null;
 };
 
 class TreeTableCtx {
@@ -434,7 +475,6 @@ class TreeTableCtx {
     this.selectedRowIDX = null;
     this.scrollToIndex = () => {};
     this.selectedNodeIDXPath = selectedNodeIDXPath;
-    this.resetTable();
   }
 
   updateSortState(
@@ -477,6 +517,7 @@ class TreeTableCtx {
 
     this.sortState = {
       sortColumnID: columnID,
+      sortColumn: column ?? null,
       sortFn: (a: Row, b: Row) => {
         const aValue = getSortValue(a.arrow.points_to);
         const bValue = getSortValue(b.arrow.points_to);
@@ -491,7 +532,7 @@ class TreeTableCtx {
     };
   }
 
-  resetTable() {
+  async resetTableAsync(setSortingProgress: SetSortingProgressFn) {
     this.rows = this.treeTableGraph.roots.map((nodeIDX) => {
       return {
         depth: 0,
@@ -515,11 +556,11 @@ class TreeTableCtx {
         transitiveChildrenCount: 0,
       };
     });
-    this.resortRows();
+    await this.resortRowsAsync(setSortingProgress);
     this.forceUpdate();
   }
 
-  expandRow(rowIDX: number) {
+  async expandRowAsync(rowIDX: number, setProgress: SetSortingProgressFn) {
     const row = this.rows[rowIDX];
     if (row == null || row.expanded === true) {
       return;
@@ -543,7 +584,11 @@ class TreeTableCtx {
           // get all the values for the children. We will need them
           // anyway to order the rows, even if they're virtualized and
           // not visible
-          column.c.getNumericValues(childrenIDXs);
+          await this.warmUpNumericValuesCache(
+            column,
+            childrenIDXs,
+            setProgress,
+          );
         } else {
           // If we're not sorting by this column we can
           // just get a few. For most cases this will cover
@@ -567,12 +612,20 @@ class TreeTableCtx {
     this.forceUpdate();
   }
 
-  resortRows() {
+  async resortRowsAsync(setProgress: SetSortingProgressFn) {
     if (this.sortState == null) {
       return;
     }
     const selectedRow =
       this.selectedRowIDX != null ? this.rows[this.selectedRowIDX] : null;
+
+    const allRowIDXsChuncked = this.rows.map((row) => row.arrow.points_to);
+    const column = this.sortState.sortColumn;
+    await this.warmUpNumericValuesCache(
+      column,
+      allRowIDXsChuncked,
+      setProgress,
+    );
 
     this.rows = sortRows(this.rows, this.sortState.sortFn);
 
@@ -592,6 +645,93 @@ class TreeTableCtx {
       }
     }
     this.forceUpdate();
+  }
+
+  // This is a helper function to warm up the numeric values cache
+  // for a specific column and a set of nodeIDXs.
+  // It will call the getNumericValues method on the column
+  // to populate the cache.
+  async warmUpNumericValuesCache(
+    columnInternal: ColumnInternal | null,
+    nodeIDXs: NodeIDX[],
+    setProgress: SetSortingProgressFn,
+  ) {
+    console.log("YASSS");
+    const startTime = Date.now();
+    let elapsed = 0;
+
+    if (columnInternal == null || columnInternal.t !== "numeric_value_column") {
+      return;
+    }
+
+    // Randomize the order of the nodeIDXs to avoid
+    // having unevenly distributed value. Eg. if it was already sorted
+    // by a similar column name, the heaviest rows to compute might be
+    // at the top while the bottom will be instantaneous.
+    // Randomizing will make the progress look more even
+    const randomizedNodeIDXs = shuffleArray(nodeIDXs);
+
+    const column = columnInternal.c;
+
+    const computeChunk = async (
+      c: NumericValueColumnDefinition,
+      chunk: NodeIDX[],
+    ) => {
+      return new Promise<void>((resolve) => {
+        // we do it in chunks to let the event loop breathe.
+        // Otherwise we'll lock everything in a single synchronous
+        // loop.
+        setTimeout(() => {
+          c.getNumericValues(chunk);
+          resolve();
+        }, 1);
+      });
+    };
+
+    const total = randomizedNodeIDXs.length;
+    let done = 0;
+
+    const MIN_CHUNK_SIZE = 20;
+    const MAX_CHUNK_SIZE = 10000;
+    const TARGET_CHUNK_DURATION_MS = 100;
+    const CHUNK_MULTIPLIER = 2;
+    // We don't want to report progress for small warm ups.
+    // to avoid flickering. We'll wait for a bit before actually
+    // showing the progress bar.
+    const REPORT_PROGRESS_AFTER_MS = 700;
+
+    let currentChunkSize = MIN_CHUNK_SIZE;
+
+    while (randomizedNodeIDXs.length > 0) {
+      const chunkStartTime = Date.now();
+      // pop `currentChunkSize` items from the array
+      const chunk = randomizedNodeIDXs.splice(0, currentChunkSize);
+      await computeChunk(column, chunk);
+      done += chunk.length;
+      const chunkTime = Date.now() - chunkStartTime;
+
+      // Adjust chunk size for next iteration
+      if (chunkTime < TARGET_CHUNK_DURATION_MS) {
+        currentChunkSize = Math.min(
+          currentChunkSize * CHUNK_MULTIPLIER,
+          MAX_CHUNK_SIZE,
+        );
+      } else {
+        currentChunkSize = Math.max(
+          currentChunkSize / CHUNK_MULTIPLIER,
+          MIN_CHUNK_SIZE,
+        );
+      }
+      elapsed = Date.now() - startTime;
+      if (elapsed > REPORT_PROGRESS_AFTER_MS) {
+        // If we already spent some time on this, we can report progress
+        setProgress([done, total]);
+      }
+      console.log({ elapsed, currentChunkSize, chunkTime, done });
+    }
+
+    // If we finished the warm up, we can set progress to null
+    setProgress(null);
   }
 
   setSelectedRowIDX(rowIDX: number) {
@@ -650,7 +790,7 @@ class TreeTableCtx {
       }
     }
   }
-  navigateRight() {
+  async navigateRightAsync(setProgress: SetSortingProgressFn) {
     if (this.selectedRowIDX == null) {
       this.navigateDown(1);
       return;
@@ -670,7 +810,7 @@ class TreeTableCtx {
       ) {
         this.navigateDown(1);
       } else {
-        this.expandRow(selectedRowIDX);
+        await this.expandRowAsync(selectedRowIDX, setProgress);
       }
     }
   }
@@ -839,3 +979,52 @@ type TreeTableGraph = {
   graphStructure: GraphStructure;
   treeTableEntryPoints: ArrayGraphUISettingsTreeTableEntryPoints;
 };
+
+const EMPTY_TREE_TABLE_GRAPH: TreeTableGraph = {
+  roots: [],
+  getArrows: () => [],
+  getShortestPath: () => null,
+  graphStructure: "Forward",
+  treeTableEntryPoints: "Determine",
+};
+
+function SortingProgress({
+  progress,
+}: {
+  progress: null | [done: number, total: number];
+}) {
+  if (progress == null || progress[1] < 1000) {
+    return null; // no progress to show
+  }
+  return (
+    <div className="absolute top-0 left-0 right-0 bottom-0 w-full h-full bg-[rgba(0,0,0,0.8)] flex items-center justify-center">
+      <div className="flex flex-col items-center w-[600px] bg-card p-4 px-8 rounded-lg">
+        <p className="text-lg text-foreground mb-4">
+          Sorting rows{" "}
+          {progress != null ? `${progress[0]} / ${progress[1]}` : "..."}
+        </p>
+        <p className="text-sm text-muted-foreground mb-4">
+          Sorting requires computing numeric values for each row, which is a
+          quadratic operation for transitive columns and might take a while.
+        </p>
+        {progress != null ? (
+          <Progress
+            value={(100 * progress[0]) / progress[1]}
+            className="w-full mb-4"
+          />
+        ) : (
+          "Loading..."
+        )}
+      </div>
+    </div>
+  );
+}
+
+function shuffleArray<T>(array: T[]): T[] {
+  const shuffled = array.slice();
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j] as T, shuffled[i] as T];
+  }
+  return shuffled;
+}
