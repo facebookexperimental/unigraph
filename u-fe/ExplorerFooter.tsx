@@ -225,7 +225,7 @@ function Toggles() {
         <UHoverCard content={<TiersHoverCardContent />}>
           <UToggleButton
             size="sm"
-            selected={graphSettings.ui_settings?.columns?.hide_tiered !== true}
+            selected={graphSettings.ui_settings?.columns?.show_tiered === true}
             onSelectedChange={(checked) => {
               setGraphSettings({
                 ...graphSettings,
@@ -233,7 +233,7 @@ function Toggles() {
                   ...graphSettings.ui_settings,
                   columns: {
                     ...graphSettings.ui_settings?.columns,
-                    hide_tiered: !checked,
+                    show_tiered: checked,
                   },
                 },
               });
@@ -450,6 +450,9 @@ function TransitiveHovercardContent() {
         key={`${metricName}`}
         size="sm"
         tooltip={`Show a column with the values of '${metricName}' metric`}
+        selected={
+          metricSettings?.column_show_transitive === "WhenEnabledGlobally"
+        }
         onSelectedChange={(selected) => {
           setGraphSettings({
             ...graphSettings,
@@ -457,14 +460,19 @@ function TransitiveHovercardContent() {
               ...graphSettings.ui_settings,
               columns: {
                 ...graphSettings.ui_settings?.columns,
+                // if we select something under the transitive card
                 // we probably want to show these automatically to avoid
                 // "why is it not doing anything??" confusion
+                show_transitive: true,
               },
             },
             metric_settings: {
               ...graphSettings.metric_settings,
               [metricName]: {
                 ...metricSettings,
+                column_show_transitive: selected
+                  ? "WhenEnabledGlobally"
+                  : "Never",
               },
             },
           });
@@ -478,6 +486,34 @@ function TransitiveHovercardContent() {
   return (
     <div className="flex flex-col gap-2">
       <H3 text="Metric Columns" />
+      <div className="flex flex-wrap gap-2">
+        <UToggleButton
+          size="sm"
+          tooltip="Show transitive children count"
+          selected={
+            graphSettings.ui_settings?.columns?.show_transitive_count !==
+            "Never"
+          }
+          onSelectedChange={(selected) => {
+            setGraphSettings({
+              ...graphSettings,
+              ui_settings: {
+                ...graphSettings.ui_settings,
+                columns: {
+                  ...graphSettings.ui_settings?.columns,
+                  show_transitive: true,
+                  show_transitive_count: selected
+                    ? "WhenEnabledGlobally"
+                    : "Never",
+                },
+              },
+            });
+          }}
+        >
+          <Tally5 />
+        </UToggleButton>
+        {metricCards}
+      </div>
     </div>
   );
 }
