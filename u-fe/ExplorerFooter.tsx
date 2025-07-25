@@ -489,36 +489,8 @@ function TiersHoverCardContent() {
   const allTiers = nativeGraph.stats().tier_names;
   const { tvc, setTvc } = useTVC();
 
-  const metricCards = Object.entries(graphSettings.metric_settings ?? {}).map(
-    ([metricName, metricSettings]) => {
-      return (
-        <UToggleButton
-          key={`${metricName}`}
-          size="sm"
-          tooltip={`Show a column with the values of '${metricName}' metric`}
-          selected={metricSettings?.column_hide_self !== true}
-          onSelectedChange={(selected) => {
-            setGraphSettings({
-              ...graphSettings,
-              metric_settings: {
-                ...graphSettings.metric_settings,
-                [metricName]: {
-                  ...metricSettings,
-                  column_hide_self: !selected,
-                },
-              },
-            });
-          }}
-        >
-          <span className="text-sm">{`${metricName}`}</span>
-        </UToggleButton>
-      );
-    },
-  );
-
-  const TieredMetricCards = Object.entries(
-    graphSettings.metric_settings ?? {},
-  ).map(([metricName, metricSettings]) => {
+  const tieredmetricCards = nativeGraph.metricNames.map((metricName) => {
+    const metricSettings = graphSettings.metric_settings?.[metricName] ?? {};
     const tiers = allTiers.map((tierName) => {
       return (
         <UToggleButton
@@ -542,12 +514,17 @@ function TiersHoverCardContent() {
             });
           }}
         >
-          <span className="text-sm">{`${metricName}: ${tierName}`}</span>
+          <span className="text-sm">{tierName}</span>
         </UToggleButton>
       );
     });
 
-    return tiers;
+    return (
+      <div key={metricName} className="flex flex-col gap-2">
+        <H3 className="text-muted-foreground" text={`${metricName} Tiers`} />
+        <div className="flex flex-wrap gap-2">{tiers}</div>
+      </div>
+    );
   });
 
   const tierSwitches = allTiers.map((tierName, tierIDX) => {
@@ -607,10 +584,8 @@ function TiersHoverCardContent() {
 
   return (
     <div className="flex flex-col gap-2">
-      <H3 text="Metric Columns" />
-      <div className="flex gap-2">{metricCards}</div>
       <H3 text="Tiered Metric Columns" />
-      <div className="flex gap-2">{TieredMetricCards}</div>
+      <div className="flex flex-col gap-2">{tieredmetricCards}</div>
       <H3 text="Max Tier" />
       <div className="flex flex-wrap gap-2">{tierSwitches}</div>
     </div>

@@ -221,6 +221,7 @@ function createTieredTransitiveMetricColumn(
   tvc: TraversalConfig,
   dominated: boolean,
 ): { columnID: string; definition: NumericValueColumnDefinition }[] {
+  const graphHasMoreThanOneMetric = nativeGraph.metricNames.length > 1;
   const tiers = nativeGraph.stats().tier_names;
   const maxTier = tvc.tiered_traversal?.AscendingTiers?.max_tier;
 
@@ -238,7 +239,9 @@ function createTieredTransitiveMetricColumn(
     const [columnID, label, getValue] = (() => {
       if (dominated) {
         const columnID = `[tiered_transitive dominated ${tierName}] ${metricName}`;
-        const label = `D(${tierName})`;
+        const label = graphHasMoreThanOneMetric
+          ? `D(${metricName}(${tierName}))`
+          : `D(${tierName})`;
         const getValue = (idxs: NodeIDX[]) =>
           nativeGraph
             .getTieredTransitiveMetricsDominatedBatched(idxs, metricName)
@@ -247,7 +250,9 @@ function createTieredTransitiveMetricColumn(
         return [columnID, label, getValue];
       } else {
         const columnID = `[tiered_transitive ${tierName}] ${metricName}`;
-        const label = tierName;
+        const label = graphHasMoreThanOneMetric
+          ? `${metricName}(${tierName})`
+          : tierName;
         const getValue = (idxs: NodeIDX[]) =>
           nativeGraph
             .getTieredTransitiveMetricsBatched(idxs, metricName)
