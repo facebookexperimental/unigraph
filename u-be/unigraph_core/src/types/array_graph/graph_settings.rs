@@ -136,7 +136,7 @@ pub enum SidebarPanel {
     GraphInfo,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, TS, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, TS, Clone, Default)]
 #[ts(export)]
 pub struct ArrayGraphUISettings {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -212,19 +212,19 @@ pub enum ArrayGraphUISettingsTreeTableEntryPoints {
     Specified,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, TS, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, TS, Clone, Default)]
 #[ts(export)]
 pub struct ColumnSettings {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
-    show_parents_count: Option<bool>,
+    pub show_parents_count: Option<bool>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
-    show_transitive_count: Option<IndividualOptionEnabled>,
+    pub show_transitive_count: Option<IndividualOptionEnabled>,
 
     #[ts(optional)]
-    show_conjoint_count: Option<IndividualOptionEnabled>,
+    pub show_conjoint_count: Option<IndividualOptionEnabled>,
 
     /// Global setting for showing metric values
     /// (if tiers are defined)
