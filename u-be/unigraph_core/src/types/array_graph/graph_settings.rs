@@ -227,6 +227,7 @@ pub struct ColumnSettings {
     show_conjoint_count: Option<IndividualOptionEnabled>,
 
     /// Global setting for showing metric values
+    /// (if tiers are defined)
     /// It is shown by default, but can be hidden
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
@@ -234,10 +235,10 @@ pub struct ColumnSettings {
 
     /// Global setting for showing tiered values for metrics
     /// (if tiers are defined)
-    /// It is shown by default, but can be hidden
+    /// It is hidden by default, but can be endabled
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
-    pub hide_tiered: Option<bool>,
+    pub show_tiered: Option<bool>,
 
     /// Global setting for showing transitive values.
     /// Individual columns will be enabled/disabled based on

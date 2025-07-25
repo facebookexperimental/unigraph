@@ -50,7 +50,7 @@ function defaultColumnDefinitions(
   const showConjoint =
     graphSettings.ui_settings?.columns?.show_conjoint ?? false;
   const showMetrics = graphSettings.ui_settings?.columns?.hide_metrics !== true;
-  const showTiered = graphSettings.ui_settings?.columns?.hide_tiered !== true;
+  const showTiered = graphSettings.ui_settings?.columns?.show_tiered === true;
 
   const columnDefinitions: { [name: string]: NonTreeColumnDefinition } = {};
   for (const metricName of nativeGraph.metricNames) {
@@ -66,7 +66,10 @@ function defaultColumnDefinitions(
       columnDefinitions[metricColumnID] = metricColumnDefinition;
     }
 
-    if (showTransitive && metricSettings?.column_show_transitive !== "Never") {
+    if (
+      showTransitive &&
+      metricSettings?.column_show_transitive === "WhenEnabledGlobally"
+    ) {
       const [transitiveMetricColumnID, transitiveMetricColumnDefinition] =
         createTransitiveMetricColumn(metricName, nativeGraph, metricSettings);
 
@@ -189,7 +192,7 @@ function createTransitiveMetricColumn(
   nativeGraph: NativeGraph,
   metricSettings: MetricSettings | null,
 ): [string, NumericValueColumnDefinition] {
-  const columnID = `[transitive] ${metricName}`;
+  const columnID = `T(${metricName})`;
   const definition: NumericValueColumnDefinition = {
     t: "numeric_value_column",
     label: columnID,

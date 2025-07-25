@@ -135,25 +135,29 @@ function Toggles() {
 
   return (
     <div className="flex gap-4 items-center m-4">
-      <UToggleButton
-        tooltip="Show number of transitive children nodes"
-        size="sm"
-        selected={graphSettings.ui_settings?.columns?.show_transitive === true}
-        onSelectedChange={(checked) => {
-          setGraphSettings({
-            ...graphSettings,
-            ui_settings: {
-              ...graphSettings.ui_settings,
-              columns: {
-                ...graphSettings.ui_settings?.columns,
-                show_transitive: checked,
+      <UHoverCard content={<TransitiveHovercardContent />}>
+        <UToggleButton
+          size="sm"
+          selected={
+            graphSettings.ui_settings?.columns?.show_transitive === true
+          }
+          onSelectedChange={(checked) => {
+            setGraphSettings({
+              ...graphSettings,
+              ui_settings: {
+                ...graphSettings.ui_settings,
+                columns: {
+                  ...graphSettings.ui_settings?.columns,
+                  show_transitive: checked,
+                },
               },
-            },
-          });
-        }}
-      >
-        <Network />
-      </UToggleButton>
+            });
+          }}
+        >
+          <Network />
+        </UToggleButton>
+      </UHoverCard>
+
       <UHoverCard content={<ConjointCostHoverCardContent />}>
         <UToggleButton
           size="sm"
@@ -431,6 +435,49 @@ function ConjointCostHoverCardContent() {
         </UToggleButton>
         {metricCards}
       </div>
+    </div>
+  );
+}
+
+function TransitiveHovercardContent() {
+  const [graphSettings, setGraphSettings] = useGraphSettings();
+  const nativeGraph = useNativeGraph();
+
+  const metricCards = nativeGraph.metricNames.map((metricName) => {
+    const metricSettings = graphSettings.metric_settings?.[metricName] ?? {};
+    return (
+      <UToggleButton
+        key={`${metricName}`}
+        size="sm"
+        tooltip={`Show a column with the values of '${metricName}' metric`}
+        onSelectedChange={(selected) => {
+          setGraphSettings({
+            ...graphSettings,
+            ui_settings: {
+              ...graphSettings.ui_settings,
+              columns: {
+                ...graphSettings.ui_settings?.columns,
+                // we probably want to show these automatically to avoid
+                // "why is it not doing anything??" confusion
+              },
+            },
+            metric_settings: {
+              ...graphSettings.metric_settings,
+              [metricName]: {
+                ...metricSettings,
+              },
+            },
+          });
+        }}
+      >
+        <span className="text-sm">{`${metricName}`}</span>
+      </UToggleButton>
+    );
+  });
+
+  return (
+    <div className="flex flex-col gap-2">
+      <H3 text="Metric Columns" />
     </div>
   );
 }

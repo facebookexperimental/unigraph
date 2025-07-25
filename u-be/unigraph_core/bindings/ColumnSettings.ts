@@ -10,9 +10,9 @@ hide_metrics?: boolean,
 /**
  * Global setting for showing tiered values for metrics
  * (if tiers are defined)
- * It is shown by default, but can be hidden
+ * It is hidden by default, but can be enabled
  */
-hide_tiered?: boolean, 
+show_tiered?: boolean, 
 /**
  * Global setting for showing transitive values.
  * Individual columns will be enabled/disabled based on
