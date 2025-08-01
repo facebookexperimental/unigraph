@@ -9,7 +9,6 @@ license = "MIT"
 
 [dependencies]
 anyhow = "1.0.98"
-base64 = { version = "0.22.1", features = ["alloc"] }
 bitflags = { version = "2.9", features = ["serde", "std"], default-features = false }
 bytemuck = { version = "1.23.1", features = ["const_zeroed", "derive", "min_const_generics", "nightly_portable_simd", "nightly_stdsimd"] }
 maplit = "1.0"
