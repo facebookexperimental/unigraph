@@ -1,7 +1,7 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 pub(crate) mod array_graph;
-pub(crate) mod map_graph;
+pub mod map_graph;
 
 use std::fmt::Display;
 use std::ops::Add;

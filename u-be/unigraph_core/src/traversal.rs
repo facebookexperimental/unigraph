@@ -21,7 +21,7 @@ use crate::types::TierIDX;
 use crate::types::TierName;
 
 #[derive(Clone)]
-#[derive(serde::Serialize, serde::Deserialize, Debug)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, typegen::TypeGen)]
 #[derive(ts_rs::TS)]
 #[ts(export)]
 pub struct Decision {

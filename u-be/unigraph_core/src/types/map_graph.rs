@@ -74,8 +74,12 @@ impl MapGraphEdges {
     }
 }
 
+/// Represents an edge that can point to multiple nodes with branches,
+/// as well as have properties associated with it.
 #[derive(serde::Deserialize, serde::Serialize, Default)]
 pub struct DynamicEdge {
+    /// string -> string key-value pairs that hold properties for the edge that can encode
+    /// any additional information about the edge.
     pub properties: BTreeMap<String, String>,
     pub branches: BTreeMap<String, Vec<NodeName>>,
 }
