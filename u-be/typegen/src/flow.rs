@@ -276,6 +276,12 @@ impl FlowGenerator {
             TypeRef::Vec(inner) => {
                 format!("Array<{}>", Self::resolve_flow_type(inner, imports))
             }
+            TypeRef::Array { element_type, size } => {
+                let element_flow = Self::resolve_flow_type(element_type, imports);
+                // Generate tuple type like [number, number, number]
+                let elements = (0..*size).map(|_| element_flow.clone()).collect::<Vec<_>>();
+                format!("[{}]", elements.join(", "))
+            }
             TypeRef::Map { key, value } => {
                 format!(
                     "{{ [key: {}]: {} }}",

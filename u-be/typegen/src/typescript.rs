@@ -285,6 +285,12 @@ impl TypeScriptGenerator {
             TypeRef::Vec(inner) => {
                 format!("{}[]", Self::resolve_typescript_type(inner, imports))
             }
+            TypeRef::Array { element_type, size } => {
+                let element_ts = Self::resolve_typescript_type(element_type, imports);
+                // Generate tuple type like [number, number, number]
+                let elements = (0..*size).map(|_| element_ts.clone()).collect::<Vec<_>>();
+                format!("[{}]", elements.join(", "))
+            }
             TypeRef::Map { key, value } => {
                 format!(
                     "{{ [key: {}]: {} }}",

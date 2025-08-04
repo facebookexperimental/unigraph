@@ -12,6 +12,7 @@ pub struct Address {
     pub street: StringAlias,
     pub city: String,
     pub zip_code: u32,
+    pub coordinates: [f32; 3],
 }
 
 /// Person struct that references Address
@@ -108,6 +109,7 @@ export interface Address {
   street: string;
   city: string;
   zip_code: number;
+  coordinates: [number, number, number];
 }
 
 ---------------- Person
@@ -190,6 +192,7 @@ export type Address = {
   street: string,
   city: string,
   zip_code: number,
+  coordinates: [number, number, number],
 };
 
 ---------------- Person
@@ -286,6 +289,16 @@ export type Shape =
                         type_ref: Primitive(
                             U32,
                         ),
+                        docs: None,
+                    },
+                    FieldDeclaration {
+                        field_name: "coordinates",
+                        type_ref: Array {
+                            element_type: Primitive(
+                                F32,
+                            ),
+                            size: 3,
+                        },
                         docs: None,
                     },
                 ],

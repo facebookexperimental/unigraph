@@ -10,6 +10,10 @@ pub enum TypeRef {
     Primitive(PrimitiveTypeRef),
     Option(Box<TypeRef>),
     Vec(Box<TypeRef>),
+    Array {
+        element_type: Box<TypeRef>,
+        size: usize,
+    },
     Map {
         key: Box<TypeRef>,
         value: Box<TypeRef>,
@@ -324,6 +328,16 @@ impl<K: TypeGenTypeRefTrait, V: TypeGenTypeRefTrait> TypeGenTypeRefTrait for BTr
         TypeRef::Map {
             key: Box::new(K::type_ref()),
             value: Box::new(V::type_ref()),
+        }
+    }
+}
+
+// Implement for arrays of known sizes
+impl<T: TypeGenTypeRefTrait, const N: usize> TypeGenTypeRefTrait for [T; N] {
+    fn type_ref() -> TypeRef {
+        TypeRef::Array {
+            element_type: Box::new(T::type_ref()),
+            size: N,
         }
     }
 }
