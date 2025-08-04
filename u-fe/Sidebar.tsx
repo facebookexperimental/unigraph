@@ -1,8 +1,8 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 import { Info, Waypoints } from "lucide-react";
-import type { SidebarPanel } from "u-be/unigraph_core/bindings/SidebarPanel";
 import { IS_DEBUG_MODE } from "./DebugMode";
+import type { SidebarPanel } from "./__generated__/ts/SidebarPanel";
 import { Button } from "./components/ui/button";
 import { useGraphSettings } from "./context/GraphSettingsContext";
 import TraversalConfigInspector from "./sidebar_panels/TraversalConfigInspector";

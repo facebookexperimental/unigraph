@@ -277,7 +277,10 @@ impl TypeScriptGenerator {
                 name.clone()
             }
             TypeRef::Option(inner) => {
-                format!("{} | null", Self::resolve_typescript_type(inner, imports))
+                format!(
+                    "{} | undefined",
+                    Self::resolve_typescript_type(inner, imports)
+                )
             }
             TypeRef::Vec(inner) => {
                 format!("{}[]", Self::resolve_typescript_type(inner, imports))

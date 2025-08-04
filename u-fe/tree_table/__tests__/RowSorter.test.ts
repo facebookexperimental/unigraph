@@ -1,7 +1,7 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
+import type { SortOrder } from "@/__generated__/ts/SortOrder";
 import type { Arrow } from "u-be/unigraph_core/bindings/Arrow";
-import type { SortOrder } from "u-be/unigraph_core/bindings/SortOrder";
 import { expect, test } from "vitest";
 import { type Row, sortRows } from "../TreeTableRows";
 

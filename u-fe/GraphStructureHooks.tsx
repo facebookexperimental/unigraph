@@ -1,8 +1,8 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 import { useCallback } from "react";
-import type { ArrayGraphUISettingsTreeTableEntryPoints } from "u-be/unigraph_core/bindings/ArrayGraphUISettingsTreeTableEntryPoints";
-import type { GraphStructure } from "u-be/unigraph_core/bindings/GraphStructure";
+import type { ArrayGraphUISettingsTreeTableEntryPoints } from "./__generated__/ts/ArrayGraphUISettingsTreeTableEntryPoints";
+import type { GraphStructure } from "./__generated__/ts/GraphStructure";
 import { useGraphSettings } from "./context/GraphSettingsContext";
 import { useNativeGraph } from "./context/NativeGraphContext";
 import { useSelectedNodeIDX } from "./context/SelectedPathContext";

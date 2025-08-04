@@ -16,6 +16,6 @@ export interface TraversalConfig {
   tag_sets: NodeTagSetsPredicate[];
   /** These rules are ordered. The first one that matches will be used. */
   force_dynamic: ForceDynamic[];
-  tiered_traversal?: TieredTraversalConfig | null;
-  messages?: { [key: string]: Message } | null;
+  tiered_traversal?: TieredTraversalConfig | undefined;
+  messages?: { [key: string]: Message } | undefined;
 }

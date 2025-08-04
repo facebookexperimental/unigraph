@@ -3,8 +3,8 @@
 import type { NodeIDX } from "../types";
 import { TreeTable } from "./TreeTable";
 
+import type { GraphTableSort } from "@/__generated__/ts/GraphTableSort";
 import { useCallback, useMemo } from "react";
-import type { GraphTableSort } from "u-be/unigraph_core/bindings/GraphTableSort";
 import ErrorBoundary from "../components/ErrorBoundary";
 import { useGraphSettings } from "../context/GraphSettingsContext";
 import { useNativeGraph } from "../context/NativeGraphContext";

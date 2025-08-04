@@ -1,17 +1,17 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 import { useCallback, useMemo, useRef } from "react";
-import type { ArrayGraphUISettingsTreeTableEntryPoints } from "u-be/unigraph_core/bindings/ArrayGraphUISettingsTreeTableEntryPoints";
 import {
   from_zstd_base64_url_safe_no_pad,
   to_zstd_base64_url_safe_no_pad,
 } from "../.build/wasm/unigraph_wasm";
-import type { GraphSettings } from "../u-be/unigraph_core/bindings/GraphSettings";
 import ExplorerFooter from "./ExplorerFooter";
 import { useExplorerKeyboardShortcuts } from "./ExplorerKeyboardShortcutsWrapper";
 import NativeGraph from "./NativeGraph";
 import Sidebar from "./Sidebar";
 import Simulation from "./Simulation";
+import type { ArrayGraphUISettingsTreeTableEntryPoints } from "./__generated__/ts/ArrayGraphUISettingsTreeTableEntryPoints";
+import type { GraphSettings } from "./__generated__/ts/GraphSettings";
 import type { TraversalConfig } from "./__generated__/ts/TraversalConfig";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { PortalContextProvider } from "./components/PortalContext";

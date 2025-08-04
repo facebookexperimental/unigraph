@@ -2,7 +2,7 @@
 export interface User {
   id: number;
   email: string;
-  profile?: string | null;
+  profile?: string | undefined;
   verified: boolean;
   tags: { [key: string]: string };
   metadata: { [key: string]: boolean };

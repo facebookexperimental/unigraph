@@ -4,59 +4,46 @@ use std::collections::BTreeMap;
 
 use anyhow::Result;
 use anyhow::bail;
-use ts_rs::TS;
 
 use crate::types::NodeName;
 use crate::types::TierName;
 
-#[derive(serde::Serialize, serde::Deserialize, TS, Clone, Default)]
-#[ts(export)]
+#[derive(serde::Serialize, serde::Deserialize, typegen::TypeGen, Clone, Default)]
 pub struct GraphSettings {
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
     pub metric_settings: Option<BTreeMap<String, MetricSettings>>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
     pub ui_settings: Option<ArrayGraphUISettings>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, TS, Clone)]
-#[ts(export)]
+#[derive(serde::Serialize, serde::Deserialize, typegen::TypeGen, Clone)]
 pub struct MetricSettings {
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
     pub description: Option<String>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
     pub format: Option<MetricFormat>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
     /// Hide table column that displays the metric itself.
     pub column_hide_self: Option<bool>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
     /// Column that displays transitive value for the metric.
     pub column_show_transitive: Option<IndividualOptionEnabled>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
     pub column_show_tiered: Option<BTreeMap<TierName, IndividualOptionEnabled>>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
     pub show_conjoint_self: Option<IndividualOptionEnabled>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
     pub show_conjoint_tiered: Option<BTreeMap<TierName, IndividualOptionEnabled>>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, TS, Clone)]
-#[ts(export)]
+#[derive(serde::Serialize, serde::Deserialize, typegen::TypeGen, Clone)]
 /// Value that defines how to format metric values (in the UI or CLI output)
 /// This value is cross platform enum type which is represented as an object/shape
 /// with all keys/properties optional and expected to have exactly ONE key/property
@@ -91,8 +78,7 @@ pub enum MetricFormat {
     },
 }
 
-#[derive(serde::Serialize, serde::Deserialize, TS, Clone, Copy)]
-#[ts(export)]
+#[derive(serde::Serialize, serde::Deserialize, typegen::TypeGen, Clone, Copy)]
 /// Configuration for size formatting
 pub enum SizeConfig {
     /// Flexible units to display readable sizes, but will units will be inconsistent across sizes with variation
@@ -114,48 +100,39 @@ pub enum SizeConfig {
     ForceGiB {},
 }
 
-#[derive(serde::Serialize, serde::Deserialize, TS, Clone, Copy)]
-#[ts(export)]
+#[derive(serde::Serialize, serde::Deserialize, typegen::TypeGen, Clone, Copy)]
 pub enum SortOrder {
     Asc,
     Desc,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, TS, Clone)]
-#[ts(export)]
+#[derive(serde::Serialize, serde::Deserialize, typegen::TypeGen, Clone)]
 pub struct GraphTableSort {
     pub column_id: String,
     pub order: SortOrder,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, TS, Clone, Copy)]
-#[ts(export)]
+#[derive(serde::Serialize, serde::Deserialize, typegen::TypeGen, Clone, Copy)]
 pub enum SidebarPanel {
     None,
     Simulation,
     GraphInfo,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, TS, Clone, Default)]
-#[ts(export)]
+#[derive(serde::Serialize, serde::Deserialize, typegen::TypeGen, Clone, Default)]
 pub struct ArrayGraphUISettings {
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
     pub selected_sidebar_panel: Option<SidebarPanel>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
     pub graph_table_sort: Option<GraphTableSort>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
     pub columns: Option<ColumnSettings>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
     pub graph_structure: Option<GraphStructure>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
     pub entry_points: Option<ArrayGraphUISettingsTreeTableEntryPoints>,
 
     /// Used in combination with `entry_points` settings.`
@@ -168,16 +145,14 @@ pub struct ArrayGraphUISettings {
     /// the selected entry points, so when we switch back to "reverse"
     /// we keep the same selected entry point
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
     pub entry_points_specified: Option<Vec<NodeName>>,
 }
 
 /// Enum that defines how the graph structure is displayed in the UI.
 /// e.g. which edges we will be following when visualizing the
 /// graph in the tree table.
-#[derive(serde::Serialize, serde::Deserialize, TS, Clone, Default)]
+#[derive(serde::Serialize, serde::Deserialize, typegen::TypeGen, Clone, Default)]
 #[repr(u8)]
-#[ts(export)]
 pub enum GraphStructure {
     // default, follow the forward edges
     #[default]
@@ -203,8 +178,7 @@ impl GraphStructure {
 /// Otherwise we will use the determined entry points.
 /// This is needed for things like: show as flat list, show selected nodes,
 /// show reverse from a specific node, etc.
-#[derive(serde::Serialize, serde::Deserialize, TS, Clone, Default)]
-#[ts(export)]
+#[derive(serde::Serialize, serde::Deserialize, typegen::TypeGen, Clone, Default)]
 pub enum ArrayGraphUISettingsTreeTableEntryPoints {
     #[default]
     Determine,
@@ -212,46 +186,38 @@ pub enum ArrayGraphUISettingsTreeTableEntryPoints {
     Specified,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, TS, Clone, Default)]
-#[ts(export)]
+#[derive(serde::Serialize, serde::Deserialize, typegen::TypeGen, Clone, Default)]
 pub struct ColumnSettings {
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
     pub show_parents_count: Option<bool>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
     pub show_transitive_count: Option<IndividualOptionEnabled>,
 
-    #[ts(optional)]
     pub show_conjoint_count: Option<IndividualOptionEnabled>,
 
     /// Global setting for showing metric values
     /// (if tiers are defined)
     /// It is shown by default, but can be hidden
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
     pub hide_metrics: Option<bool>,
 
     /// Global setting for showing tiered values for metrics
     /// (if tiers are defined)
     /// It is hidden by default, but can be endabled
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
     pub show_tiered: Option<bool>,
 
     /// Global setting for showing transitive values.
     /// Individual columns will be enabled/disabled based on
     /// their individual settings.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
     pub show_transitive: Option<bool>,
 
     /// Global setting for showing conjoint cost values.
     /// Individual columns will be enabled/disabled based on
     /// their individual settings.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
     pub show_conjoint: Option<bool>,
 }
 
@@ -265,8 +231,14 @@ pub struct ColumnSettings {
 /// to only care about one or two.
 /// For that reason we can add these settings to individual columns that can make them
 /// be disabled even when the global setting is enabled.
-#[derive(serde::Serialize, serde::Deserialize, TS, Clone, Copy, Default)]
-#[ts(export)]
+#[derive(
+    serde::Serialize,
+    serde::Deserialize,
+    typegen::TypeGen,
+    Clone,
+    Copy,
+    Default
+)]
 pub enum IndividualOptionEnabled {
     #[default]
     WhenEnabledGlobally,

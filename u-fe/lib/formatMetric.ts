@@ -1,7 +1,7 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-import type { MetricFormat } from "u-be/unigraph_core/bindings/MetricFormat";
-import type { SizeConfig } from "u-be/unigraph_core/bindings/SizeConfig";
+import type { MetricFormat } from "@/__generated__/ts/MetricFormat";
+import type { SizeConfig } from "@/__generated__/ts/SizeConfig";
 import formatNumber from "./formatNumber";
 
 const DEFAULT_METRIC_FORMAT: MetricFormat = {
@@ -24,7 +24,7 @@ export default function formatMetric(
     return formatNumber(pctValue, 0, 2, true) + "%";
   } else if ("SizeBytes" in format) {
     const sizeConfig = format.SizeBytes.config;
-    if (sizeConfig === null) {
+    if (sizeConfig == null) {
       return formatNumber(value, 0, 0, true) + " bytes";
     } else {
       return formatSizeBytes(value, sizeConfig);

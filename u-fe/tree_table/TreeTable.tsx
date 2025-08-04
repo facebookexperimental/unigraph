@@ -1,5 +1,9 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
+import type { ArrayGraphUISettingsTreeTableEntryPoints } from "@/__generated__/ts/ArrayGraphUISettingsTreeTableEntryPoints";
+import type { GraphStructure } from "@/__generated__/ts/GraphStructure";
+import type { GraphTableSort } from "@/__generated__/ts/GraphTableSort";
+import type { SortOrder } from "@/__generated__/ts/SortOrder";
 import { type VirtualItem, useVirtualizer } from "@tanstack/react-virtual";
 import clsx from "clsx";
 import {
@@ -17,10 +21,6 @@ import {
   useState,
   useTransition,
 } from "react";
-import type { ArrayGraphUISettingsTreeTableEntryPoints } from "u-be/unigraph_core/bindings/ArrayGraphUISettingsTreeTableEntryPoints";
-import type { GraphStructure } from "u-be/unigraph_core/bindings/GraphStructure";
-import type { GraphTableSort } from "u-be/unigraph_core/bindings/GraphTableSort";
-import type { SortOrder } from "u-be/unigraph_core/bindings/SortOrder";
 import type { Arrow } from "../../u-be/unigraph_core/bindings/Arrow";
 import { ARROW_POINTS_FROM_NON_EXISTENT } from "../ArrowUtils";
 import { Progress } from "../components/ui/progress";

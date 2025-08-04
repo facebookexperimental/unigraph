@@ -654,7 +654,7 @@ function TiersHoverCardContent() {
             tiered_traversal: {
               AscendingTiers: {
                 tiers: tvc.tiered_traversal?.AscendingTiers?.tiers ?? [],
-                max_tier: selected ? tierIDX : null,
+                max_tier: selected ? tierIDX : undefined,
               },
             },
           });

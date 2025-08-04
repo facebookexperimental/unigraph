@@ -2,8 +2,6 @@
 
 // This is a wrapper class over the state of the graph on the WASM side.
 
-import type { GraphSettings } from "u-be/unigraph_core/bindings/GraphSettings";
-import type { GraphStructure } from "u-be/unigraph_core/bindings/GraphStructure";
 import {
   apply_traversal_config,
   determine_entrypoints,
@@ -33,6 +31,8 @@ import type { ArrayGraphStats } from "../u-be/unigraph_core/bindings/ArrayGraphS
 import type { Arrow } from "../u-be/unigraph_core/bindings/Arrow";
 import type { CombinedMetricsForNodes } from "../u-be/unigraph_core/bindings/CombinedMetricsForNodes";
 import type { ConjointCost } from "../u-be/unigraph_core/bindings/ConjointCost";
+import type { GraphSettings } from "./__generated__/ts/GraphSettings";
+import type { GraphStructure } from "./__generated__/ts/GraphStructure";
 import type { TraversalConfig } from "./__generated__/ts/TraversalConfig";
 import type { NodeIDX } from "./types";
 

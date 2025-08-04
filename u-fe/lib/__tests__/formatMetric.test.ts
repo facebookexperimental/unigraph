@@ -1,7 +1,7 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-import type { MetricFormat } from "u-be/unigraph_core/bindings/MetricFormat";
-import type { SizeConfig } from "u-be/unigraph_core/bindings/SizeConfig";
+import type { MetricFormat } from "@/__generated__/ts/MetricFormat";
+import type { SizeConfig } from "@/__generated__/ts/SizeConfig";
 import { expect, test } from "vitest";
 import formatMetric from "../formatMetric";
 
