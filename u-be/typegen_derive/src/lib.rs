@@ -230,6 +230,9 @@ pub fn type_gen(input: TokenStream) -> TokenStream {
                 }
             }).collect::<Vec<_>>();
 
+            // Generate field validation tests for enums
+            let field_tests = generate_field_validation_tests(name, &input.data);
+
             let expanded = quote! {
                 impl ::typegen::TypeGenDeclTrait for #name {
                     fn to_type_decl() -> ::typegen::TypeGenGeneratedType {
@@ -249,6 +252,8 @@ pub fn type_gen(input: TokenStream) -> TokenStream {
                         ::typegen::TypeRef::TypeReference(stringify!(#name).to_string())
                     }
                 }
+
+                #field_tests
             };
 
             TokenStream::from(expanded)
@@ -309,8 +314,19 @@ fn generate_field_validation_tests(name: &syn::Ident, data: &Data) -> proc_macro
             }
         }
         Data::Enum(_) => {
-            // TODO: Add enum tests when enum support is implemented
-            quote! {}
+            let test_name = syn::Ident::new(
+                &format!("test_{}_type_generation", name.to_string().to_lowercase()),
+                name.span(),
+            );
+            quote! {
+                #[cfg(test)]
+                #[test]
+                fn #test_name() {
+                    // Generate and write TypeScript/Flow files for this enum type
+                    let type_decl = <#name as ::typegen::TypeGenDeclTrait>::to_type_decl();
+                    type_decl.write_to_file().expect("Failed to write type files");
+                }
+            }
         }
         _ => quote! {},
     }

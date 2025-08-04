@@ -362,4 +362,23 @@ export type Shape =
 "#
         );
     }
+
+    #[test]
+    fn test_enum_implementations() {
+        // Test that the enum implementations are working
+        let animal_decl = Animal::to_type_decl();
+        let shape_decl = Shape::to_type_decl();
+
+        assert_eq!(animal_decl.type_name, "Animal");
+        assert_eq!(shape_decl.type_name, "Shape");
+
+        // Test TypeScript generation
+        let animal_ts = animal_decl.export_typescript();
+        let shape_ts = shape_decl.export_typescript();
+
+        assert!(animal_ts.contains("Animal"));
+        assert!(animal_ts.contains("Cat"));
+        assert!(shape_ts.contains("Shape"));
+        assert!(shape_ts.contains("Circle"));
+    }
 }
