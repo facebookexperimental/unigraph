@@ -1,3 +1,4 @@
+import type { TraversalConfig } from "@/__generated__/ts/TraversalConfig";
 import type { NodeIDX } from "@/types";
 import clsx from "clsx";
 import { useMemo } from "react";
@@ -5,7 +6,6 @@ import type { Arrow } from "u-be/unigraph_core/bindings/Arrow";
 import type { GraphSettings } from "u-be/unigraph_core/bindings/GraphSettings";
 import type { MetricFormat } from "u-be/unigraph_core/bindings/MetricFormat";
 import type { MetricSettings } from "u-be/unigraph_core/bindings/MetricSettings";
-import type { TraversalConfig } from "u-be/unigraph_core/bindings/TraversalConfig";
 import { ARROW_POINTS_FROM_NON_EXISTENT } from "../ArrowUtils";
 import type NativeGraph from "../NativeGraph";
 import UTooltip from "../components/UTooltip";

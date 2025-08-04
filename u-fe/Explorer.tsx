@@ -2,7 +2,6 @@
 
 import { useCallback, useMemo, useRef } from "react";
 import type { ArrayGraphUISettingsTreeTableEntryPoints } from "u-be/unigraph_core/bindings/ArrayGraphUISettingsTreeTableEntryPoints";
-import type { TraversalConfig } from "u-be/unigraph_core/bindings/TraversalConfig";
 import {
   from_zstd_base64_url_safe_no_pad,
   to_zstd_base64_url_safe_no_pad,
@@ -13,6 +12,7 @@ import { useExplorerKeyboardShortcuts } from "./ExplorerKeyboardShortcutsWrapper
 import NativeGraph from "./NativeGraph";
 import Sidebar from "./Sidebar";
 import Simulation from "./Simulation";
+import type { TraversalConfig } from "./__generated__/ts/TraversalConfig";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { PortalContextProvider } from "./components/PortalContext";
 import {

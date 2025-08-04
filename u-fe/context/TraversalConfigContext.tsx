@@ -1,8 +1,8 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
+import type { TraversalConfig } from "@/__generated__/ts/TraversalConfig";
 import { createContext, useCallback, useContext, useMemo } from "react";
 import type { Arrow } from "u-be/unigraph_core/bindings/Arrow";
-import type { TraversalConfig } from "../../u-be/unigraph_core/bindings/TraversalConfig";
 import {
   ARROW_POINTS_FROM_NON_EXISTENT,
   useCanEdgeBeForced,

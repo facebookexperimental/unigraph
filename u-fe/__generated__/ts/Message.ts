@@ -18,4 +18,4 @@
  *     %points_from%   - name of the node the edge is coming from
  *     %points_to%     - name of the node the edge is pointing to
  */
-export type Message = [string];
+export type Message = string;
