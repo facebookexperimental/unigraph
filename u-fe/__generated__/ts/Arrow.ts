@@ -1,4 +1,4 @@
-import type { NodeIDX } from "./NodeIDX.ts";
+import type { NodeIDX } from './NodeIDX.ts';
 
 /**
  * This is a more heavyweight struct describing an edge in the graph.

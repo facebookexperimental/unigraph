@@ -1,7 +1,7 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
+import type { SimulationParams } from "@/__generated__/ts/SimulationParams";
 import { createContext, useContext, useMemo, useState } from "react";
-import type { SimulationParams } from "u-be/unigraph_wgpu/bindings/SimulationParams";
 import { get_simulation_params } from "../../.build/wasm/unigraph_wasm";
 
 export type SimulationParamsContextType = [

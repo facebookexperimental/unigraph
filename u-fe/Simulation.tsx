@@ -7,10 +7,10 @@ import {
   set_event_loop_active,
   set_simulation_params,
 } from "../.build/wasm/unigraph_wasm.js";
-import type { SelectionType } from "../u-be/unigraph_wgpu/bindings/SelectionType.js";
-import type { TsVec2 } from "../u-be/unigraph_wgpu/bindings/TsVec2.js";
 import { IS_DEBUG_MODE } from "./DebugMode.js";
 import { H2 } from "./Typography.js";
+import type { SelectionType } from "./__generated__/ts/SelectionType.js";
+import type { TsVec2 } from "./__generated__/ts/TsVec2.js";
 import ErrorBoundary from "./components/ErrorBoundary.js";
 import UButton from "./components/UButton.js";
 import UToggleButton from "./components/UToggleButton.js";

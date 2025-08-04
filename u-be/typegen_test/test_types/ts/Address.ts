@@ -4,4 +4,8 @@ export interface Address {
   street: string;
   city: string;
   zip_code: number;
+  coordinates: [number, number, number];
+  typegen_as: number;
+  string_list: string[];
+  maybe_flag?: boolean | undefined;
 }

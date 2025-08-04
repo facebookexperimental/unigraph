@@ -5,4 +5,4 @@ export type Shape =
   /** Rectangle with width and height */
   { "Rectangle": [number, number] } | 
   /** Point with coordinates */
-  { "Point": { x: number, y: number } };
+  { "Point": { x: number, y: number, z: number } };

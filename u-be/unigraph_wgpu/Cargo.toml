@@ -16,11 +16,11 @@ log = "0.4"
 rand = "0.9.1"
 serde = { version = "1.0.219" }
 serde_json = "1.0.140"
-ts-rs = "10.1.0"
 unigraph_core = { path = "../unigraph_core" }
 web-time = "1.1.0"
 wgpu = "25.0.0"
 winit = "0.30.9"
+typegen = { path = "../typegen" }
 
 [dev-dependencies]
 k9 = "*"

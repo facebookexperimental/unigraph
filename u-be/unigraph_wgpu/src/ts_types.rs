@@ -10,12 +10,9 @@ use bytemuck::Zeroable;
 use glam::Vec2;
 use serde::Deserialize;
 use serde::Serialize;
-use ts_rs::TS;
 
-#[derive(TS)]
-#[ts(export)]
+#[derive(typegen::TypeGen)]
 #[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
-
 pub struct TsVec2 {
     pub x: f32,
     pub y: f32,
@@ -53,8 +50,7 @@ pub(crate) mod ts_vec2_serde {
     }
 }
 
-#[derive(TS)]
-#[ts(export)]
+#[derive(typegen::TypeGen)]
 #[derive(Deserialize, Serialize, Debug)]
 pub struct SimulationColors {
     pub background: [f32; 3],
@@ -62,8 +58,7 @@ pub struct SimulationColors {
     pub node_selected: [f32; 3],
 }
 
-#[derive(TS)]
-#[ts(export)]
+#[derive(typegen::TypeGen)]
 #[derive(Deserialize, Serialize, Debug)]
 pub struct SimulationParams {
     /// This flag is used to enable or disable the simulation, but not the rendering.
@@ -180,8 +175,7 @@ impl Default for SimulationParams {
     }
 }
 
-#[derive(TS)]
-#[ts(export)]
+#[derive(typegen::TypeGen)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[repr(C)]
 pub enum SelectionType {
@@ -193,15 +187,14 @@ pub enum SelectionType {
 
 // Current selection from the mouse.
 // Can be a box (selectiong nodes) a line (selectiong edges) or none.
-#[derive(TS)]
-#[ts(export)]
+#[derive(typegen::TypeGen)]
 #[derive(Copy, Clone, Debug, Pod, Zeroable, Serialize, Deserialize, Default)]
 #[repr(C)]
 pub struct Selection {
-    #[ts(as = "TsVec2")]
+    #[typegen(as = "TsVec2")]
     #[serde(with = "ts_vec2_serde")]
     pub selection_from_point: Vec2,
-    #[ts(as = "TsVec2")]
+    #[typegen(as = "TsVec2")]
     #[serde(with = "ts_vec2_serde")]
     pub selection_to_point: Vec2,
     pub selection_type: SelectionType,
