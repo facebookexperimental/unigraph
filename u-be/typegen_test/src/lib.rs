@@ -5,6 +5,8 @@ use typegen::TypeGen;
 
 type StringAlias = String;
 
+pub struct NotTypeGennable(pub u32);
+
 /// Simple address struct for testing
 #[derive(TypeGen)]
 pub struct Address {
@@ -13,6 +15,12 @@ pub struct Address {
     pub city: String,
     pub zip_code: u32,
     pub coordinates: [f32; 3],
+    #[typegen(as = "u32")]
+    pub typegen_as: NotTypeGennable,
+    #[typegen(as = "Vec<String>")]
+    pub string_list: NotTypeGennable,
+    #[typegen(as = "Option<bool>")]
+    pub maybe_flag: NotTypeGennable,
 }
 
 /// Person struct that references Address
@@ -66,7 +74,12 @@ pub enum Shape {
     /// Rectangle with width and height
     Rectangle(f64, f64),
     /// Point with coordinates
-    Point { x: f64, y: f64 },
+    Point {
+        x: f64,
+        y: f64,
+        #[typegen(as = "f64")]
+        z: NotTypeGennable,
+    },
 }
 
 #[cfg(test)]
@@ -110,6 +123,9 @@ export interface Address {
   city: string;
   zip_code: number;
   coordinates: [number, number, number];
+  typegen_as: number;
+  string_list: string[];
+  maybe_flag?: boolean | undefined;
 }
 
 ---------------- Person
@@ -167,7 +183,7 @@ export type Shape =
   /** Rectangle with width and height */
   { "Rectangle": [number, number] } | 
   /** Point with coordinates */
-  { "Point": { x: number, y: number } };
+  { "Point": { x: number, y: number, z: number } };
 "#
         );
     }
@@ -193,6 +209,9 @@ export type Address = {
   city: string,
   zip_code: number,
   coordinates: [number, number, number],
+  typegen_as: number,
+  string_list: Array<string>,
+  maybe_flag?: ?boolean,
 };
 
 ---------------- Person
@@ -248,7 +267,7 @@ export type Shape =
   // Rectangle with width and height
   { "Rectangle": [number, number] } | 
   // Point with coordinates
-  { "Point": { x: number, y: number } };
+  { "Point": { x: number, y: number, z: number } };
 "#
         );
     }
@@ -299,6 +318,31 @@ export type Shape =
                             ),
                             size: 3,
                         },
+                        docs: None,
+                    },
+                    FieldDeclaration {
+                        field_name: "typegen_as",
+                        type_ref: Primitive(
+                            U32,
+                        ),
+                        docs: None,
+                    },
+                    FieldDeclaration {
+                        field_name: "string_list",
+                        type_ref: Vec(
+                            Primitive(
+                                String,
+                            ),
+                        ),
+                        docs: None,
+                    },
+                    FieldDeclaration {
+                        field_name: "maybe_flag",
+                        type_ref: Option(
+                            Primitive(
+                                Bool,
+                            ),
+                        ),
                         docs: None,
                     },
                 ],
@@ -533,6 +577,13 @@ should be transparent in the generated code and point directly to the string typ
                                 ),
                                 docs: None,
                             },
+                            FieldDeclaration {
+                                field_name: "z",
+                                type_ref: Primitive(
+                                    F64,
+                                ),
+                                docs: None,
+                            },
                         ],
                     },
                 ],
@@ -542,24 +593,5 @@ should be transparent in the generated code and point directly to the string typ
 ]
 "#
         );
-    }
-
-    #[test]
-    fn test_enum_implementations() {
-        // Test that the enum implementations are working
-        let animal_decl = Animal::to_type_decl();
-        let shape_decl = Shape::to_type_decl();
-
-        assert_eq!(animal_decl.type_name, "Animal");
-        assert_eq!(shape_decl.type_name, "Shape");
-
-        // Test TypeScript generation
-        let animal_ts = animal_decl.export_typescript();
-        let shape_ts = shape_decl.export_typescript();
-
-        assert!(animal_ts.contains("Animal"));
-        assert!(animal_ts.contains("Cat"));
-        assert!(shape_ts.contains("Shape"));
-        assert!(shape_ts.contains("Circle"));
     }
 }
