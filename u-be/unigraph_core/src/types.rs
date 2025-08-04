@@ -36,8 +36,7 @@ pub type TierIDX = usize;
 #[derive(
     Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Pod, Zeroable
 )]
-#[derive(ts_rs::TS, serde::Deserialize, serde::Serialize)]
-#[ts(export, as = "u32")]
+#[derive(serde::Deserialize, serde::Serialize, typegen::TypeGen)]
 #[serde(transparent)]
 #[repr(transparent)]
 pub struct NodeIDX(pub u32);

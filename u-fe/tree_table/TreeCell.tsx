@@ -1,5 +1,6 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
+import type { Arrow } from "@/__generated__/ts/Arrow";
 import clsx from "clsx";
 import {
   BadgeInfo,
@@ -8,7 +9,6 @@ import {
   Dot,
   RefreshCw,
 } from "lucide-react";
-import type { Arrow } from "u-be/unigraph_core/bindings/Arrow";
 import { H2 } from "../Typography";
 import UHoverCard from "../components/UHoverCard";
 import { Badge } from "../components/ui/badge";

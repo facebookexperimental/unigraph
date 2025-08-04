@@ -1,6 +1,7 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 import type { ArrayGraphUISettingsTreeTableEntryPoints } from "@/__generated__/ts/ArrayGraphUISettingsTreeTableEntryPoints";
+import type { Arrow } from "@/__generated__/ts/Arrow";
 import type { GraphStructure } from "@/__generated__/ts/GraphStructure";
 import type { GraphTableSort } from "@/__generated__/ts/GraphTableSort";
 import type { SortOrder } from "@/__generated__/ts/SortOrder";
@@ -21,7 +22,6 @@ import {
   useState,
   useTransition,
 } from "react";
-import type { Arrow } from "../../u-be/unigraph_core/bindings/Arrow";
 import { ARROW_POINTS_FROM_NON_EXISTENT } from "../ArrowUtils";
 import { Progress } from "../components/ui/progress";
 import { useSelectedPath } from "../context/SelectedPathContext";
@@ -542,14 +542,14 @@ class TreeTableCtx {
         // edges and roots don't have edges leading to them. We create
         // default empty arrows for them to make the code simpler.
         arrow: {
-          tag: null,
-          branch: null,
-          properties: null,
+          tag: undefined,
+          branch: undefined,
+          properties: undefined,
           points_from: ARROW_POINTS_FROM_NON_EXISTENT,
           points_to: nodeIDX,
           points_to_unreachable: false,
           excluded: false,
-          message: null,
+          message: undefined,
         },
         parentRowRef: null,
         childrenRefs: [],

@@ -1,7 +1,7 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
+import type { Arrow } from "@/__generated__/ts/Arrow";
 import { Ellipsis } from "lucide-react";
-import type { Arrow } from "u-be/unigraph_core/bindings/Arrow";
 import {
   KEYBOARD_SHORTCUTS,
   KeyboardShortcutLabel,

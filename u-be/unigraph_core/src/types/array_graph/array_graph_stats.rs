@@ -1,12 +1,9 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-use ts_rs::TS;
-
 use crate::ArrayGraph;
 use crate::types::array_graph::offset_graph::NonDirectedEdgeMetadata;
 
-#[derive(serde::Serialize, TS)]
-#[ts(export)]
+#[derive(serde::Serialize, typegen::TypeGen)]
 pub struct ArrayGraphStats {
     pub num_all_nodes: usize,
     pub num_all_edges: usize,

@@ -278,8 +278,7 @@ pub fn get_combined_metrics_for_entry_points(
 /// Represents values for metrics for a set of nodes.
 /// Not transitive, just aggregated for things like
 /// "give me total size of all the nodes i just selected"
-#[derive(serde::Serialize, serde::Deserialize, ts_rs::TS, Clone, Debug)]
-#[ts(export)]
+#[derive(serde::Serialize, serde::Deserialize, typegen::TypeGen, Clone, Debug)]
 pub struct CombinedMetricsForNodes {
     pub metrics: BTreeMap<MetricName, f32>,
     pub tiered_metrics: BTreeMap<MetricName, BTreeMap<TierName, f32>>,

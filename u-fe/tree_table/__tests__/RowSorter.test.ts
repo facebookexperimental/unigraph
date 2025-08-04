@@ -1,19 +1,19 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
+import type { Arrow } from "@/__generated__/ts/Arrow";
 import type { SortOrder } from "@/__generated__/ts/SortOrder";
-import type { Arrow } from "u-be/unigraph_core/bindings/Arrow";
 import { expect, test } from "vitest";
 import { type Row, sortRows } from "../TreeTableRows";
 
 function arrow(fromIDX: number, toIDX: number): Arrow {
   return {
-    tag: null,
-    branch: null,
-    properties: null,
+    tag: undefined,
+    branch: undefined,
+    properties: undefined,
     points_from: fromIDX,
     points_to: toIDX,
     excluded: false,
-    message: null,
+    message: undefined,
   };
 }
 //    1

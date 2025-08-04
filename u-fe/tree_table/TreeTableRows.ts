@@ -1,6 +1,6 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-import type { Arrow } from "../../u-be/unigraph_core/bindings/Arrow";
+import type { Arrow } from "@/__generated__/ts/Arrow";
 import type { NodeIDX } from "../types";
 import type { SortState } from "./TreeTable";
 

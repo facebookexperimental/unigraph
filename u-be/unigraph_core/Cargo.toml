@@ -15,7 +15,6 @@ maplit = "1.0"
 readonly = "0.2.10"
 serde = { version = "1.0.219", features = ["derive", "rc"] }
 serde_json = { version = "1.0.140", features = ["alloc", "float_roundtrip", "unbounded_depth"] }
-ts-rs = "10.1"
 typegen = { path = "../typegen" }
 
 [dev-dependencies]

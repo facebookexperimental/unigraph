@@ -332,9 +332,7 @@ impl ArrayGraph {
 /// edges in the UI, or for debugging. Since these are much heavier they
 /// are not fit for heavy computations, like DFS/BFS, computing transitive
 /// metrics, etc.
-#[derive(ts_rs::TS)]
-#[ts(export)]
-#[derive(serde::Deserialize, serde::Serialize)]
+#[derive(serde::Deserialize, serde::Serialize, typegen::TypeGen)]
 pub struct Arrow {
     pub tag: Option<String>,
     pub branch: Option<String>,

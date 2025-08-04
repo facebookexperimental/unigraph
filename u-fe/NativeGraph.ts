@@ -27,10 +27,10 @@ import {
   set_array_graph_json_zstd_base64,
   set_map_graph,
 } from "../.build/wasm/unigraph_wasm";
-import type { ArrayGraphStats } from "../u-be/unigraph_core/bindings/ArrayGraphStats";
-import type { Arrow } from "../u-be/unigraph_core/bindings/Arrow";
-import type { CombinedMetricsForNodes } from "../u-be/unigraph_core/bindings/CombinedMetricsForNodes";
-import type { ConjointCost } from "../u-be/unigraph_core/bindings/ConjointCost";
+import type { ArrayGraphStats } from "./__generated__/ts/ArrayGraphStats";
+import type { Arrow } from "./__generated__/ts/Arrow";
+import type { CombinedMetricsForNodes } from "./__generated__/ts/CombinedMetricsForNodes";
+import type { ConjointCost } from "./__generated__/ts/ConjointCost";
 import type { GraphSettings } from "./__generated__/ts/GraphSettings";
 import type { GraphStructure } from "./__generated__/ts/GraphStructure";
 import type { TraversalConfig } from "./__generated__/ts/TraversalConfig";

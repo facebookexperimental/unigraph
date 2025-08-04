@@ -1,6 +1,6 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-import type { Arrow } from "u-be/unigraph_core/bindings/Arrow";
+import type { Arrow } from "@/__generated__/ts/Arrow";
 import { useGraphSettings } from "./context/GraphSettingsContext";
 import { useNativeGraph } from "./context/NativeGraphContext";
 import { useTVC } from "./context/TraversalConfigContext";
