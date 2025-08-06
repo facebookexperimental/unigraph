@@ -24,11 +24,13 @@
 
 mod config;
 mod flow;
+mod hack;
 mod types;
 mod typescript;
 
 pub use config::*;
 pub use flow::*;
+pub use hack::*;
 // Always export the derive macro
 pub use typegen_derive::TypeGen;
 pub use types::*;

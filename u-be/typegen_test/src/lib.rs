@@ -87,6 +87,7 @@ mod tests {
     use std::path::PathBuf;
 
     use typegen::FlowConfig;
+    use typegen::HackConfig;
     use typegen::SharedConfig;
     use typegen::TypeGenConfig;
     use typegen::TypeGenDeclTrait;
@@ -123,6 +124,13 @@ mod tests {
                     export_path: Some("./flow".to_string()),
                     header: Some("/* flow header */".to_string()),
                     file_name_prefix: Some("FlowPrefix".to_string()),
+                },
+            }),
+            hack: Some(HackConfig {
+                shared_config: SharedConfig {
+                    export_path: Some("./hack".to_string()),
+                    header: Some("<?hh\n/* hack header */".to_string()),
+                    file_name_prefix: Some("HackPrefix".to_string()),
                 },
             }),
             config_file_path: PathBuf::from("typegen_config.json"),

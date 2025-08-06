@@ -11,6 +11,7 @@ use anyhow::Result;
 use serde::Deserialize;
 
 use crate::FlowGenerator;
+use crate::HackGenerator;
 use crate::TypeGenGeneratedType;
 use crate::TypeScriptGenerator;
 
@@ -19,11 +20,13 @@ use crate::TypeScriptGenerator;
 pub struct TypeGenConfigSerialized {
     pub typescript: Option<TypeScriptConfig>,
     pub flow: Option<FlowConfig>,
+    pub hack: Option<HackConfig>,
 }
 
 pub struct TypeGenConfig {
     pub typescript: Option<TypeScriptConfig>,
     pub flow: Option<FlowConfig>,
+    pub hack: Option<HackConfig>,
     pub config_file_path: PathBuf,
 }
 
@@ -42,6 +45,12 @@ pub struct TypeScriptConfig {
 
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct FlowConfig {
+    #[serde(flatten)]
+    pub shared_config: SharedConfig,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct HackConfig {
     #[serde(flatten)]
     pub shared_config: SharedConfig,
 }
@@ -91,6 +100,19 @@ impl TypeGenConfig {
         Ok(None)
     }
 
+    pub fn make_hack_file(&self, decl: TypeGenGeneratedType) -> Result<Option<TypeGenFile>> {
+        if let Some(HackConfig { shared_config }) = &self.hack {
+            if let Some(export_path) = &shared_config.export_path {
+                let type_content = HackGenerator::generate_hack(self, &decl);
+                let content = shared_config.prepend_header(type_content);
+                let mut path = self.resolve_path(export_path)?;
+                path.push(self.hack_file_name(&decl.type_name));
+                return Ok(Some(TypeGenFile { path, content }));
+            }
+        }
+        Ok(None)
+    }
+
     pub fn flow_file_name(&self, type_name: &str) -> PathBuf {
         let name = if let Some(FlowConfig { shared_config }) = &self.flow {
             shared_config.add_file_prefix(type_name)
@@ -107,6 +129,15 @@ impl TypeGenConfig {
             type_name.to_string()
         };
         PathBuf::from(format!("{}.ts", name))
+    }
+
+    pub fn hack_file_name(&self, type_name: &str) -> PathBuf {
+        let name = if let Some(HackConfig { shared_config }) = &self.hack {
+            shared_config.add_file_prefix(type_name)
+        } else {
+            type_name.to_string()
+        };
+        PathBuf::from(format!("{}.hhi", name))
     }
 
     /// Make a path relative to this config file's path
@@ -205,6 +236,7 @@ fn find_closest_config(start_dir: &Path) -> Result<TypeGenConfig> {
             let config = TypeGenConfig {
                 typescript: config.typescript,
                 flow: config.flow,
+                hack: config.hack,
                 config_file_path: config_path.clone(),
             };
 

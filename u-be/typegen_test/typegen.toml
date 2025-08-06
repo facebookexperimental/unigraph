@@ -1,2 +1,5 @@
 [typescript]
 export_path = "test_types/ts"
+
+[hack]
+export_path = "test_types/hack"

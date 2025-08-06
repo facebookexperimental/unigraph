@@ -74,6 +74,10 @@ impl TypeGenGeneratedType {
             ts_file.write()?;
         }
 
+        if let Some(hack_file) = config.make_hack_file(self.clone())? {
+            hack_file.write()?;
+        }
+
         Ok(())
     }
 }
