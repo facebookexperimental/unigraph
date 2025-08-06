@@ -84,8 +84,15 @@ pub enum Shape {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
+    use typegen::FlowConfig;
+    use typegen::SharedConfig;
+    use typegen::TypeGenConfig;
     use typegen::TypeGenDeclTrait;
+    use typegen::TypeGenFile;
     use typegen::TypeGenGeneratedType;
+    use typegen::TypeScriptConfig;
 
     use super::*;
 
@@ -102,19 +109,52 @@ mod tests {
         ]
     }
 
+    fn gen_config() -> TypeGenConfig {
+        TypeGenConfig {
+            typescript: Some(TypeScriptConfig {
+                shared_config: SharedConfig {
+                    export_path: Some("./ts".to_string()),
+                    header: Some("/* ts header */".to_string()),
+                },
+            }),
+            flow: Some(FlowConfig {
+                shared_config: SharedConfig {
+                    export_path: Some("./flow".to_string()),
+                    header: Some("/* flow header */".to_string()),
+                },
+            }),
+            config_file_path: PathBuf::from("typegen_config.json"),
+        }
+    }
+
+    fn format_types(files: &[TypeGenFile]) -> String {
+        files
+            .iter()
+            .map(|file| {
+                format!(
+                    "---------------- {}\n\n{}",
+                    file.path.display(),
+                    file.content
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
     #[test]
     fn test_typescript_generation() {
-        let mut ts_output = String::new();
-        for decl in get_all_declarations() {
-            ts_output.push_str(&format!("---------------- {}\n\n", &decl.type_name));
-            ts_output.push_str(&decl.export_typescript());
-            ts_output.push_str("\n\n");
-        }
+        let config = gen_config();
+        let files = get_all_declarations()
+            .iter()
+            .filter_map(|decl| config.make_typescript_file(decl.clone()).unwrap())
+            .collect::<Vec<_>>();
 
         k9::snapshot!(
-            ts_output.trim(),
+            format_types(&files),
             r#"
----------------- Address
+---------------- ./ts/Address.ts
+
+/* ts header */
 
 /** Simple address struct for testing */
 export interface Address {
@@ -127,8 +167,9 @@ export interface Address {
   string_list: string[];
   maybe_flag?: boolean | undefined;
 }
+---------------- ./ts/Person.ts
 
----------------- Person
+/* ts header */
 
 import type { Address } from './Address.ts';
 
@@ -138,8 +179,9 @@ export interface Person {
   age: number;
   address: Address;
 }
+---------------- ./ts/User.ts
 
----------------- User
+/* ts header */
 
 /** Test struct with optional fields */
 export interface User {
@@ -150,31 +192,36 @@ export interface User {
   tags: { [key: string]: string };
   metadata: { [key: string]: boolean };
 }
+---------------- ./ts/Point.ts
 
----------------- Point
+/* ts header */
 
 /** Test tuple struct */
 export type Point = [number, number];
+---------------- ./ts/Unit.ts
 
----------------- Unit
+/* ts header */
 
 /** Test unit struct */
 export type Unit = null;
+---------------- ./ts/WrappedString.ts
 
----------------- WrappedString
+/* ts header */
 
 /**
  * This is a wrapper for a String type. The type
  * should be transparent in the generated code and point directly to the string type.
  */
 export type WrappedString = string;
+---------------- ./ts/Animal.ts
 
----------------- Animal
+/* ts header */
 
 /** Simple enum with unit variants */
 export type Animal = "Cat" | "Dog" | "Fish";
+---------------- ./ts/Shape.ts
 
----------------- Shape
+/* ts header */
 
 /** Complex enum with different variant types */
 export type Shape = 
@@ -190,17 +237,18 @@ export type Shape =
 
     #[test]
     fn test_flow_generation() {
-        let mut flow_output = String::new();
-        for decl in get_all_declarations() {
-            flow_output.push_str(&format!("---------------- {}\n\n", &decl.type_name));
-            flow_output.push_str(&decl.export_flow());
-            flow_output.push_str("\n\n");
-        }
+        let config = gen_config();
+        let files = get_all_declarations()
+            .iter()
+            .filter_map(|decl| config.make_flow_file(decl.clone()).unwrap())
+            .collect::<Vec<_>>();
 
         k9::snapshot!(
-            flow_output.trim(),
+            format_types(&files),
             r#"
----------------- Address
+---------------- ./flow/Address.js.flow
+
+/* flow header */
 
 // Simple address struct for testing
 export type Address = {
@@ -213,8 +261,9 @@ export type Address = {
   string_list: Array<string>,
   maybe_flag?: ?boolean,
 };
+---------------- ./flow/Person.js.flow
 
----------------- Person
+/* flow header */
 
 import type { Address } from './Address.js';
 
@@ -224,8 +273,9 @@ export type Person = {
   age: number,
   address: Address,
 };
+---------------- ./flow/User.js.flow
 
----------------- User
+/* flow header */
 
 // Test struct with optional fields
 export type User = {
@@ -236,29 +286,34 @@ export type User = {
   tags: { [key: string]: string },
   metadata: { [key: string]: boolean },
 };
+---------------- ./flow/Point.js.flow
 
----------------- Point
+/* flow header */
 
 // Test tuple struct
 export type Point = [number, number];
+---------------- ./flow/Unit.js.flow
 
----------------- Unit
+/* flow header */
 
 // Test unit struct
 export type Unit = null;
+---------------- ./flow/WrappedString.js.flow
 
----------------- WrappedString
+/* flow header */
 
 // This is a wrapper for a String type. The type
 // should be transparent in the generated code and point directly to the string type.
 export type WrappedString = string;
+---------------- ./flow/Animal.js.flow
 
----------------- Animal
+/* flow header */
 
 // Simple enum with unit variants
 export type Animal = "Cat" | "Dog" | "Fish";
+---------------- ./flow/Shape.js.flow
 
----------------- Shape
+/* flow header */
 
 // Complex enum with different variant types
 export type Shape = 

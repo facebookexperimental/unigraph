@@ -67,7 +67,8 @@ impl TypeGenConfig {
             if let Some(export_path) = &shared_config.export_path {
                 let type_content = decl.export_flow();
                 let content = self.prepend_header(type_content, shared_config);
-                let path = self.resolve_path(export_path)?;
+                let mut path = self.resolve_path(export_path)?;
+                path.push(format!("{}.js.flow", decl.type_name));
                 return Ok(Some(TypeGenFile { path, content }));
             }
         }
@@ -79,7 +80,8 @@ impl TypeGenConfig {
             if let Some(export_path) = &shared_config.export_path {
                 let type_content = decl.export_typescript();
                 let content = self.prepend_header(type_content, shared_config);
-                let path = self.resolve_path(export_path)?;
+                let mut path = self.resolve_path(export_path)?;
+                path.push(format!("{}.ts", decl.type_name));
                 return Ok(Some(TypeGenFile { path, content }));
             }
         }
