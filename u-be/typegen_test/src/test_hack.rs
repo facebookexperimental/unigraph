@@ -18,7 +18,6 @@ fn test_flow_generation() {
 <?hh
 /* hack header */
 
-<?hh
 /**
  * Simple address struct for testing
  */
@@ -38,7 +37,6 @@ type HackTypeAddress = shape(
 <?hh
 /* hack header */
 
-<?hh
 /**
  * Person struct that references Address
  */
@@ -53,7 +51,6 @@ type HackTypePerson = shape(
 <?hh
 /* hack header */
 
-<?hh
 /**
  * Test struct with optional fields
  */
@@ -71,7 +68,6 @@ type HackTypeUser = shape(
 <?hh
 /* hack header */
 
-<?hh
 /**
  * Test tuple struct
  */
@@ -82,7 +78,6 @@ type HackTypePoint = (float, float);
 <?hh
 /* hack header */
 
-<?hh
 /**
  * Test unit struct
  */
@@ -93,7 +88,6 @@ type HackTypeUnit = null;
 <?hh
 /* hack header */
 
-<?hh
 /**
  * This is a wrapper for a String type. The type
 should be transparent in the generated code and point directly to the string type.
@@ -105,7 +99,6 @@ type HackTypeWrappedString = string;
 <?hh
 /* hack header */
 
-<?hh
 /**
  * Simple enum with unit variants
  */
@@ -120,7 +113,6 @@ enum HackTypeAnimal: string as string {
 <?hh
 /* hack header */
 
-<?hh
 /**
  * Complex enum with different variant types
  */

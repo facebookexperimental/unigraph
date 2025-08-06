@@ -34,7 +34,6 @@ impl HackGenerator {
 
         // Generate use statements
         let mut result = String::new();
-        result.push_str("<?hh\n");
 
         result.push_str(&type_code);
         result
