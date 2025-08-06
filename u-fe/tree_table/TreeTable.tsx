@@ -11,8 +11,11 @@ import {
   ArrowDown01,
   ArrowDownAZ,
   ArrowDownUp,
+  ArrowLeftRight,
   ArrowUp10,
   ArrowUpZA,
+  Dot,
+  TreePalm,
 } from "lucide-react";
 import {
   useEffect,
@@ -242,6 +245,20 @@ export function TreeTable(props: {
     }
   }
 
+  const paddingComponent = useMemo(() => {
+    switch (props.treeTableGraph.graphStructure) {
+      case "Forward": {
+        return Dot;
+      }
+      case "Dominator": {
+        return TreePalm;
+      }
+      case "Reverse": {
+        return ArrowLeftRight;
+      }
+    }
+  }, [props.treeTableGraph.graphStructure]);
+
   const columnsElements = columns.map((column, columnIDX) => {
     if (column.isHidden === true) {
       return null; // skip hidden columns
@@ -265,6 +282,7 @@ export function TreeTable(props: {
               <TreeCell
                 row={row}
                 minDepth={minDepth}
+                paddingComponent={paddingComponent}
                 onToggleExpand={(expanded) => {
                   if (expanded) {
                     startTransition(async () => {

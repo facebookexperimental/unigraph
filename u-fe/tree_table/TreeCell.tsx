@@ -2,13 +2,7 @@
 
 import type { Arrow } from "@/__generated__/ts/Arrow";
 import clsx from "clsx";
-import {
-  BadgeInfo,
-  ChevronDown,
-  ChevronRight,
-  Dot,
-  RefreshCw,
-} from "lucide-react";
+import { BadgeInfo, ChevronDown, ChevronRight, RefreshCw } from "lucide-react";
 import { H2 } from "../Typography";
 import UHoverCard from "../components/UHoverCard";
 import { Badge } from "../components/ui/badge";
@@ -21,6 +15,11 @@ export default function TreeCell(props: {
   onToggleExpand: (expanded: boolean) => void;
   minDepth: number;
   nodeName: string;
+  paddingComponent: React.ComponentType<{
+    size: number;
+    className: string;
+    color?: string;
+  }>;
 }) {
   const nativeGraph = useNativeGraph();
   const isNodeReachable = nativeGraph.isNodeReachable(
@@ -54,8 +53,11 @@ export default function TreeCell(props: {
   })();
 
   const padding = [];
+  const PaddingComponent = props.paddingComponent;
   for (let i = Math.max(props.minDepth - 1, 0); i < props.row.depth; i++) {
-    padding.push(<Dot key={i} size={16} className="mx-2" />);
+    padding.push(
+      <PaddingComponent key={i} size={16} color="#333" className="mx-2" />,
+    );
   }
 
   const badge = (() => {

@@ -8,7 +8,7 @@
     "ts": "tsc --noEmit --project ./tsconfig.json",
     "lint": "biome check",
     "test": "vitest",
-    "dev": "concurrently 'pnpm run tailwind' 'pnpm run build-js'"
+    "dev": "concurrently 'pnpm run tailwind' 'pnpm run build-js -w'"
   },
   "keywords": [],
   "author": "",
