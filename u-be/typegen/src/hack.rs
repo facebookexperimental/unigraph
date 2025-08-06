@@ -1,3 +1,4 @@
+use crate::Lang;
 use crate::TypeGenConfig;
 use crate::types::EnumDecl;
 use crate::types::EnumVariant;
@@ -13,24 +14,22 @@ pub struct HackGenerator;
 
 impl HackGenerator {
     /// Generate Hack code from a type declaration
-    pub fn generate_hack(_config: &TypeGenConfig, generated_type: &TypeGenGeneratedType) -> String {
+    pub fn generate_hack(config: &TypeGenConfig, generated_type: &TypeGenGeneratedType) -> String {
+        let type_name = config.get_type_name(&generated_type.original_type_name, Lang::Hack);
+
         let type_code = match &generated_type.declaration {
-            TypeGenDecl::StructDecl(struct_decl) => Self::generate_struct_hack(
-                &generated_type.type_name,
-                &generated_type.docs,
-                struct_decl,
-            ),
+            TypeGenDecl::StructDecl(struct_decl) => {
+                Self::generate_struct_hack(&type_name, &generated_type.docs, struct_decl)
+            }
             TypeGenDecl::TupleStructDecl(tuple_struct_decl) => Self::generate_tuple_struct_hack(
-                &generated_type.type_name,
+                &type_name,
                 &generated_type.docs,
                 tuple_struct_decl,
             ),
             TypeGenDecl::EnumDecl(enum_decl) => {
-                Self::generate_enum_hack(&generated_type.type_name, &generated_type.docs, enum_decl)
+                Self::generate_enum_hack(&type_name, &generated_type.docs, enum_decl)
             }
-            TypeGenDecl::Null => {
-                Self::generate_null_hack(&generated_type.type_name, &generated_type.docs)
-            }
+            TypeGenDecl::Null => Self::generate_null_hack(&type_name, &generated_type.docs),
         };
 
         // Generate use statements
@@ -91,8 +90,7 @@ impl HackGenerator {
             result.push_str(&format!("type {} = {};\n", type_name, field_types[0]));
         } else {
             result.push_str(&format!(
-                "type {} = ({});\n",
-                type_name,
+                "type {type_name} = ({});\n",
                 field_types.join(", ")
             ));
         }

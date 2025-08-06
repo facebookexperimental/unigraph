@@ -18,7 +18,7 @@ fn test_typescript_generation() {
 /* ts header */
 
 /** Simple address struct for testing */
-export interface Address {
+export interface TSTypeAddress {
   /** Street address */
   street: string;
   city: string;
@@ -32,10 +32,10 @@ export interface Address {
 
 /* ts header */
 
-import type { Address } from './TSPrefixAddress.ts';
+import type { TSTypeAddress } from './TSPrefixAddress.ts';
 
 /** Person struct that references Address */
-export interface Person {
+export interface TSTypePerson {
   name: string;
   age: number;
   address: Address;
@@ -45,7 +45,7 @@ export interface Person {
 /* ts header */
 
 /** Test struct with optional fields */
-export interface User {
+export interface TSTypeUser {
   id: number;
   email: string;
   profile?: string | undefined;
@@ -58,13 +58,13 @@ export interface User {
 /* ts header */
 
 /** Test tuple struct */
-export type Point = [number, number];
+export type TSTypePoint = [number, number];
 ---------------- ./ts/TSPrefixUnit.ts
 
 /* ts header */
 
 /** Test unit struct */
-export type Unit = null;
+export type TSTypeUnit = null;
 ---------------- ./ts/TSPrefixWrappedString.ts
 
 /* ts header */
@@ -73,19 +73,19 @@ export type Unit = null;
  * This is a wrapper for a String type. The type
  * should be transparent in the generated code and point directly to the string type.
  */
-export type WrappedString = string;
+export type TSTypeWrappedString = string;
 ---------------- ./ts/TSPrefixAnimal.ts
 
 /* ts header */
 
 /** Simple enum with unit variants */
-export type Animal = "Cat" | "Dog" | "Fish";
+export type TSTypeAnimal = "Cat" | "Dog" | "Fish";
 ---------------- ./ts/TSPrefixShape.ts
 
 /* ts header */
 
 /** Complex enum with different variant types */
-export type Shape =
+export type TSTypeShape =
   /** Circle with radius */
   { "Circle": number } |
   /** Rectangle with width and height */

@@ -119,7 +119,7 @@ mod tests {
             sanitized,
             r#"
 TypeGenGeneratedType {
-    type_name: "Address",
+    original_type_name: "Address",
     docs: Some(
         "Simple address struct for testing",
     ),
@@ -191,7 +191,7 @@ TypeGenGeneratedType {
 }
 
 TypeGenGeneratedType {
-    type_name: "Person",
+    original_type_name: "Person",
     docs: Some(
         "Person struct that references Address",
     ),
@@ -226,7 +226,7 @@ TypeGenGeneratedType {
 }
 
 TypeGenGeneratedType {
-    type_name: "User",
+    original_type_name: "User",
     docs: Some(
         "Test struct with optional fields",
     ),
@@ -294,7 +294,7 @@ TypeGenGeneratedType {
 }
 
 TypeGenGeneratedType {
-    type_name: "Point",
+    original_type_name: "Point",
     docs: Some(
         "Test tuple struct",
     ),
@@ -314,7 +314,7 @@ TypeGenGeneratedType {
 }
 
 TypeGenGeneratedType {
-    type_name: "Unit",
+    original_type_name: "Unit",
     docs: Some(
         "Test unit struct",
     ),
@@ -323,7 +323,7 @@ TypeGenGeneratedType {
 }
 
 TypeGenGeneratedType {
-    type_name: "WrappedString",
+    original_type_name: "WrappedString",
     docs: Some(
         "This is a wrapper for a String type. The type\
 should be transparent in the generated code and point directly to the string type.",
@@ -341,7 +341,7 @@ should be transparent in the generated code and point directly to the string typ
 }
 
 TypeGenGeneratedType {
-    type_name: "Animal",
+    original_type_name: "Animal",
     docs: Some(
         "Simple enum with unit variants",
     ),
@@ -373,7 +373,7 @@ TypeGenGeneratedType {
 }
 
 TypeGenGeneratedType {
-    type_name: "Shape",
+    original_type_name: "Shape",
     docs: Some(
         "Complex enum with different variant types",
     ),

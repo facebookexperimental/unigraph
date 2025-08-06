@@ -22,7 +22,7 @@ fn test_flow_generation() {
 /**
  * Simple address struct for testing
  */
-type Address = shape(
+type HackTypeAddress = shape(
   // Street address
   'street' => string,
   'city' => string,
@@ -42,7 +42,7 @@ type Address = shape(
 /**
  * Person struct that references Address
  */
-type Person = shape(
+type HackTypePerson = shape(
   'name' => string,
   'age' => int,
   'address' => Address,
@@ -57,7 +57,7 @@ type Person = shape(
 /**
  * Test struct with optional fields
  */
-type User = shape(
+type HackTypeUser = shape(
   'id' => int,
   'email' => string,
   'profile' => ?string,
@@ -75,7 +75,7 @@ type User = shape(
 /**
  * Test tuple struct
  */
-type Point = (float, float);
+type HackTypePoint = (float, float);
 
 ---------------- ./hack/HackPrefixUnit.hhi
 
@@ -86,7 +86,7 @@ type Point = (float, float);
 /**
  * Test unit struct
  */
-type Unit = null;
+type HackTypeUnit = null;
 
 ---------------- ./hack/HackPrefixWrappedString.hhi
 
@@ -98,7 +98,7 @@ type Unit = null;
  * This is a wrapper for a String type. The type
 should be transparent in the generated code and point directly to the string type.
  */
-type WrappedString = string;
+type HackTypeWrappedString = string;
 
 ---------------- ./hack/HackPrefixAnimal.hhi
 
@@ -109,7 +109,7 @@ type WrappedString = string;
 /**
  * Simple enum with unit variants
  */
-enum Animal: string as string {
+enum HackTypeAnimal: string as string {
   CAT = "Cat";
   DOG = "Dog";
   FISH = "Fish";
@@ -124,7 +124,7 @@ enum Animal: string as string {
 /**
  * Complex enum with different variant types
  */
-type Shape = shape(
+type HackTypeShape = shape(
   ?'Circle' => ?float,
   ?'Rectangle' => ?(float, float),
   ?'Point' => ?shape(

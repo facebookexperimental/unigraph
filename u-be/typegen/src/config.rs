@@ -15,6 +15,13 @@ use crate::HackGenerator;
 use crate::TypeGenGeneratedType;
 use crate::TypeScriptGenerator;
 
+#[derive(Clone, Copy)]
+pub enum Lang {
+    TypeScript,
+    Flow,
+    Hack,
+}
+
 /// Configuration for TypeGen exports
 #[derive(Debug, Clone, Deserialize)]
 pub struct TypeGenConfigSerialized {
@@ -34,6 +41,7 @@ pub struct TypeGenConfig {
 pub struct SharedConfig {
     pub export_path: Option<String>,
     pub header: Option<String>,
+    pub type_name_prefix: Option<String>,
     pub file_name_prefix: Option<String>,
 }
 
@@ -74,13 +82,30 @@ impl TypeGenFile {
 }
 
 impl TypeGenConfig {
+    pub fn get_shared_config(&self, lang: Lang) -> Option<&SharedConfig> {
+        match lang {
+            Lang::TypeScript => self.typescript.as_ref().map(|c| &c.shared_config),
+            Lang::Flow => self.flow.as_ref().map(|c| &c.shared_config),
+            Lang::Hack => self.hack.as_ref().map(|c| &c.shared_config),
+        }
+    }
+
+    pub fn get_type_name(&self, original_type_name: &str, lang: Lang) -> String {
+        let shared_config = self.get_shared_config(lang);
+        if let Some(prefix) = shared_config.and_then(|c| c.type_name_prefix.as_ref()) {
+            format!("{}{}", prefix, original_type_name)
+        } else {
+            original_type_name.to_string()
+        }
+    }
+
     pub fn make_flow_file(&self, decl: TypeGenGeneratedType) -> Result<Option<TypeGenFile>> {
         if let Some(FlowConfig { shared_config }) = &self.flow {
             if let Some(export_path) = &shared_config.export_path {
                 let type_content = FlowGenerator::generate_flow(self, &decl);
                 let content = shared_config.prepend_header(type_content);
                 let mut path = self.resolve_path(export_path)?;
-                path.push(self.flow_file_name(&decl.type_name));
+                path.push(self.flow_file_name(&decl.original_type_name));
                 return Ok(Some(TypeGenFile { path, content }));
             }
         }
@@ -93,7 +118,7 @@ impl TypeGenConfig {
                 let type_content = TypeScriptGenerator::generate_typescript(self, &decl);
                 let content = shared_config.prepend_header(type_content);
                 let mut path = self.resolve_path(export_path)?;
-                path.push(self.typescript_file_name(&decl.type_name));
+                path.push(self.typescript_file_name(&decl.original_type_name));
                 return Ok(Some(TypeGenFile { path, content }));
             }
         }
@@ -106,7 +131,7 @@ impl TypeGenConfig {
                 let type_content = HackGenerator::generate_hack(self, &decl);
                 let content = shared_config.prepend_header(type_content);
                 let mut path = self.resolve_path(export_path)?;
-                path.push(self.hack_file_name(&decl.type_name));
+                path.push(self.hack_file_name(&decl.original_type_name));
                 return Ok(Some(TypeGenFile { path, content }));
             }
         }

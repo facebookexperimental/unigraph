@@ -1,3 +1,4 @@
+use crate::Lang;
 use crate::TypeGenConfig;
 use crate::types::EnumDecl;
 use crate::types::EnumVariant;
@@ -18,30 +19,30 @@ impl TypeScriptGenerator {
         generated_type: &TypeGenGeneratedType,
     ) -> String {
         let mut imports = std::collections::HashSet::new();
+        let type_name = config.get_type_name(&generated_type.original_type_name, Lang::TypeScript);
+
         let type_code = match &generated_type.declaration {
             TypeGenDecl::StructDecl(struct_decl) => Self::generate_struct_typescript(
-                &generated_type.type_name,
+                &type_name,
                 &generated_type.docs,
                 struct_decl,
                 &mut imports,
             ),
             TypeGenDecl::TupleStructDecl(tuple_struct_decl) => {
                 Self::generate_tuple_struct_typescript(
-                    &generated_type.type_name,
+                    &type_name,
                     &generated_type.docs,
                     tuple_struct_decl,
                     &mut imports,
                 )
             }
             TypeGenDecl::EnumDecl(enum_decl) => Self::generate_enum_typescript(
-                &generated_type.type_name,
+                &type_name,
                 &generated_type.docs,
                 enum_decl,
                 &mut imports,
             ),
-            TypeGenDecl::Null => {
-                Self::generate_null_typescript(&generated_type.type_name, &generated_type.docs)
-            }
+            TypeGenDecl::Null => Self::generate_null_typescript(&type_name, &generated_type.docs),
         };
 
         // Generate import statements
@@ -49,11 +50,13 @@ impl TypeScriptGenerator {
         if !imports.is_empty() {
             let mut sorted_imports: Vec<_> = imports.into_iter().collect();
             sorted_imports.sort();
-            for import in sorted_imports {
+            for import_original_type_name in sorted_imports {
                 result.push_str(&format!(
                     "import type {{ {} }} from './{}';\n",
-                    import,
-                    config.typescript_file_name(&import).display()
+                    config.get_type_name(&import_original_type_name, Lang::TypeScript),
+                    config
+                        .typescript_file_name(&import_original_type_name)
+                        .display()
                 ));
             }
             result.push('\n');

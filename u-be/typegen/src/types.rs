@@ -45,7 +45,7 @@ pub enum PrimitiveTypeRef {
 /// Top-level struct representing a generated type with shared metadata
 #[derive(Debug, Clone)]
 pub struct TypeGenGeneratedType {
-    pub type_name: String,
+    pub original_type_name: String,
     pub docs: Option<String>,
     pub file_path: PathBuf,
     pub declaration: TypeGenDecl,

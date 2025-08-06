@@ -38,6 +38,7 @@ pub fn gen_config() -> TypeGenConfig {
                 export_path: Some("./ts".to_string()),
                 header: Some("/* ts header */".to_string()),
                 file_name_prefix: Some("TSPrefix".to_string()),
+                type_name_prefix: Some("TSType".to_string()),
             },
         }),
         flow: Some(FlowConfig {
@@ -45,6 +46,7 @@ pub fn gen_config() -> TypeGenConfig {
                 export_path: Some("./flow".to_string()),
                 header: Some("/* flow header */".to_string()),
                 file_name_prefix: Some("FlowPrefix".to_string()),
+                type_name_prefix: Some("FlowType".to_string()),
             },
         }),
         hack: Some(HackConfig {
@@ -52,6 +54,7 @@ pub fn gen_config() -> TypeGenConfig {
                 export_path: Some("./hack".to_string()),
                 header: Some("<?hh\n/* hack header */".to_string()),
                 file_name_prefix: Some("HackPrefix".to_string()),
+                type_name_prefix: Some("HackType".to_string()),
             },
         }),
         config_file_path: PathBuf::from("typegen_config.json"),

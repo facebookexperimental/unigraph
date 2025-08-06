@@ -18,7 +18,7 @@ fn test_flow_generation() {
 /* flow header */
 
 // Simple address struct for testing
-export type Address = {
+export type FlowTypeAddress = {
   // Street address
   street: string,
   city: string,
@@ -32,10 +32,10 @@ export type Address = {
 
 /* flow header */
 
-import type { Address } from './FlowPrefixAddress.js.flow';
+import type { FlowTypeAddress } from './FlowPrefixAddress.js.flow';
 
 // Person struct that references Address
-export type Person = {
+export type FlowTypePerson = {
   name: string,
   age: number,
   address: Address,
@@ -45,7 +45,7 @@ export type Person = {
 /* flow header */
 
 // Test struct with optional fields
-export type User = {
+export type FlowTypeUser = {
   id: number,
   email: string,
   profile?: ?string,
@@ -58,32 +58,32 @@ export type User = {
 /* flow header */
 
 // Test tuple struct
-export type Point = [number, number];
+export type FlowTypePoint = [number, number];
 ---------------- ./flow/FlowPrefixUnit.js.flow
 
 /* flow header */
 
 // Test unit struct
-export type Unit = null;
+export type FlowTypeUnit = null;
 ---------------- ./flow/FlowPrefixWrappedString.js.flow
 
 /* flow header */
 
 // This is a wrapper for a String type. The type
 // should be transparent in the generated code and point directly to the string type.
-export type WrappedString = string;
+export type FlowTypeWrappedString = string;
 ---------------- ./flow/FlowPrefixAnimal.js.flow
 
 /* flow header */
 
 // Simple enum with unit variants
-export type Animal = "Cat" | "Dog" | "Fish";
+export type FlowTypeAnimal = "Cat" | "Dog" | "Fish";
 ---------------- ./flow/FlowPrefixShape.js.flow
 
 /* flow header */
 
 // Complex enum with different variant types
-export type Shape =
+export type FlowTypeShape =
   // Circle with radius
   { "Circle": number } |
   // Rectangle with width and height

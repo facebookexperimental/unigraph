@@ -1,6 +1,4 @@
 <?hh
-use Address;
-
 /**
  * Person struct that references Address
  */

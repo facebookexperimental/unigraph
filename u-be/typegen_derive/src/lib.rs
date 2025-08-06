@@ -57,7 +57,7 @@ pub fn type_gen(input: TokenStream) -> TokenStream {
                         impl ::typegen::TypeGenDeclTrait for #name {
                             fn to_type_decl() -> ::typegen::TypeGenGeneratedType {
                                 ::typegen::TypeGenGeneratedType {
-                                    type_name: stringify!(#name).to_string(),
+                                    original_type_name: stringify!(#name).to_string(),
                                     docs: #docs_token,
                                     file_path: std::path::PathBuf::from(file!()),
                                     declaration: ::typegen::TypeGenDecl::StructDecl(::typegen::StructDecl {
@@ -103,7 +103,7 @@ pub fn type_gen(input: TokenStream) -> TokenStream {
                         impl ::typegen::TypeGenDeclTrait for #name {
                             fn to_type_decl() -> ::typegen::TypeGenGeneratedType {
                                 ::typegen::TypeGenGeneratedType {
-                                    type_name: stringify!(#name).to_string(),
+                                    original_type_name: stringify!(#name).to_string(),
                                     docs: #docs_token,
                                     file_path: std::path::PathBuf::from(file!()),
                                     declaration: ::typegen::TypeGenDecl::TupleStructDecl(::typegen::TupleStructDecl {
@@ -137,7 +137,7 @@ pub fn type_gen(input: TokenStream) -> TokenStream {
                         impl ::typegen::TypeGenDeclTrait for #name {
                             fn to_type_decl() -> ::typegen::TypeGenGeneratedType {
                                 ::typegen::TypeGenGeneratedType {
-                                    type_name: stringify!(#name).to_string(),
+                                    original_type_name: stringify!(#name).to_string(),
                                     docs: #docs_token,
                                     file_path: std::path::PathBuf::from(file!()),
                                     declaration: ::typegen::TypeGenDecl::Null
@@ -261,7 +261,7 @@ pub fn type_gen(input: TokenStream) -> TokenStream {
                 impl ::typegen::TypeGenDeclTrait for #name {
                     fn to_type_decl() -> ::typegen::TypeGenGeneratedType {
                         ::typegen::TypeGenGeneratedType {
-                            type_name: stringify!(#name).to_string(),
+                            original_type_name: stringify!(#name).to_string(),
                             docs: #docs_token,
                             file_path: std::path::PathBuf::from(file!()),
                             declaration: ::typegen::TypeGenDecl::EnumDecl(::typegen::EnumDecl {
