@@ -10,7 +10,9 @@ use anyhow::Context;
 use anyhow::Result;
 use serde::Deserialize;
 
+use crate::FlowGenerator;
 use crate::TypeGenGeneratedType;
+use crate::TypeScriptGenerator;
 
 /// Configuration for TypeGen exports
 #[derive(Debug, Clone, Deserialize)]
@@ -65,10 +67,10 @@ impl TypeGenConfig {
     pub fn make_flow_file(&self, decl: TypeGenGeneratedType) -> Result<Option<TypeGenFile>> {
         if let Some(FlowConfig { shared_config }) = &self.flow {
             if let Some(export_path) = &shared_config.export_path {
-                let type_content = decl.export_flow();
+                let type_content = FlowGenerator::generate_flow(self, &decl);
                 let content = self.prepend_header(type_content, shared_config);
                 let mut path = self.resolve_path(export_path)?;
-                path.push(format!("{}.js.flow", decl.type_name));
+                path.push(self.flow_file_name(&decl.type_name));
                 return Ok(Some(TypeGenFile { path, content }));
             }
         }
@@ -78,14 +80,22 @@ impl TypeGenConfig {
     pub fn make_typescript_file(&self, decl: TypeGenGeneratedType) -> Result<Option<TypeGenFile>> {
         if let Some(TypeScriptConfig { shared_config }) = &self.typescript {
             if let Some(export_path) = &shared_config.export_path {
-                let type_content = decl.export_typescript();
+                let type_content = TypeScriptGenerator::generate_typescript(self, &decl);
                 let content = self.prepend_header(type_content, shared_config);
                 let mut path = self.resolve_path(export_path)?;
-                path.push(format!("{}.ts", decl.type_name));
+                path.push(self.typescript_file_name(&decl.type_name));
                 return Ok(Some(TypeGenFile { path, content }));
             }
         }
         Ok(None)
+    }
+
+    pub fn flow_file_name(&self, type_name: &str) -> PathBuf {
+        PathBuf::from(format!("{}.js.flow", type_name))
+    }
+
+    pub fn typescript_file_name(&self, type_name: &str) -> PathBuf {
+        PathBuf::from(format!("{}.ts", type_name))
     }
 
     /// Make a path relative to this config file's path

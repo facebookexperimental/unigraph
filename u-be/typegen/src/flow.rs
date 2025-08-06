@@ -1,3 +1,4 @@
+use crate::TypeGenConfig;
 use crate::types::EnumDecl;
 use crate::types::EnumVariant;
 use crate::types::PrimitiveTypeRef;
@@ -12,7 +13,7 @@ pub struct FlowGenerator;
 
 impl FlowGenerator {
     /// Generate Flow.js code from a type declaration
-    pub fn generate_flow(generated_type: &TypeGenGeneratedType) -> String {
+    pub fn generate_flow(config: &TypeGenConfig, generated_type: &TypeGenGeneratedType) -> String {
         let mut imports = std::collections::HashSet::new();
         let type_code = match &generated_type.declaration {
             TypeGenDecl::StructDecl(struct_decl) => Self::generate_struct_flow(
@@ -45,8 +46,9 @@ impl FlowGenerator {
             sorted_imports.sort();
             for import in sorted_imports {
                 result.push_str(&format!(
-                    "import type {{ {} }} from './{}.js';\n",
-                    import, import
+                    "import type {{ {} }} from './{}';\n",
+                    import,
+                    config.flow_file_name(&import).display()
                 ));
             }
             result.push('\n');

@@ -60,7 +60,7 @@ pub struct Unit;
 pub enum Animal {
     /// A cat
     Cat,
-    /// A dog  
+    /// A dog
     Dog,
     /// A fish
     Fish,
@@ -265,7 +265,7 @@ export type Address = {
 
 /* flow header */
 
-import type { Address } from './Address.js';
+import type { Address } from './Address.js.flow';
 
 // Person struct that references Address
 export type Person = {
@@ -329,323 +329,346 @@ export type Shape =
 
     #[test]
     fn test_type_declarations() {
+        let output = get_all_declarations()
+            .into_iter()
+            .map(|d| format!("{d:#?}"))
+            .collect::<Vec<_>>()
+            .join("\n\n");
+
+        let sanitized = output
+            .lines()
+            .map(|line| {
+                if line.contains("file_path") {
+                    let no_path = line.split(":").next().unwrap();
+                    format!("{no_path}: <SANITIZED>")
+                } else {
+                    line.to_string()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
         k9::snapshot!(
-            get_all_declarations(),
+            sanitized,
             r#"
-[
-    TypeGenGeneratedType {
-        type_name: "Address",
-        docs: Some(
-            "Simple address struct for testing",
-        ),
-        file_path: <SANITIZED>/lib.rs,
-        declaration: StructDecl(
-            StructDecl {
-                fields: [
-                    FieldDeclaration {
-                        field_name: "street",
-                        type_ref: Primitive(
-                            String,
-                        ),
-                        docs: Some(
-                            "Street address",
-                        ),
-                    },
-                    FieldDeclaration {
-                        field_name: "city",
-                        type_ref: Primitive(
-                            String,
-                        ),
-                        docs: None,
-                    },
-                    FieldDeclaration {
-                        field_name: "zip_code",
-                        type_ref: Primitive(
-                            U32,
-                        ),
-                        docs: None,
-                    },
-                    FieldDeclaration {
-                        field_name: "coordinates",
-                        type_ref: Array {
-                            element_type: Primitive(
-                                F32,
-                            ),
-                            size: 3,
-                        },
-                        docs: None,
-                    },
-                    FieldDeclaration {
-                        field_name: "typegen_as",
-                        type_ref: Primitive(
-                            U32,
-                        ),
-                        docs: None,
-                    },
-                    FieldDeclaration {
-                        field_name: "string_list",
-                        type_ref: Vec(
-                            Primitive(
-                                String,
-                            ),
-                        ),
-                        docs: None,
-                    },
-                    FieldDeclaration {
-                        field_name: "maybe_flag",
-                        type_ref: Option(
-                            Primitive(
-                                Bool,
-                            ),
-                        ),
-                        docs: None,
-                    },
-                ],
-            },
-        ),
-    },
-    TypeGenGeneratedType {
-        type_name: "Person",
-        docs: Some(
-            "Person struct that references Address",
-        ),
-        file_path: <SANITIZED>/lib.rs,
-        declaration: StructDecl(
-            StructDecl {
-                fields: [
-                    FieldDeclaration {
-                        field_name: "name",
-                        type_ref: Primitive(
-                            String,
-                        ),
-                        docs: None,
-                    },
-                    FieldDeclaration {
-                        field_name: "age",
-                        type_ref: Primitive(
-                            U32,
-                        ),
-                        docs: None,
-                    },
-                    FieldDeclaration {
-                        field_name: "address",
-                        type_ref: TypeReference(
-                            "Address",
-                        ),
-                        docs: None,
-                    },
-                ],
-            },
-        ),
-    },
-    TypeGenGeneratedType {
-        type_name: "User",
-        docs: Some(
-            "Test struct with optional fields",
-        ),
-        file_path: <SANITIZED>/lib.rs,
-        declaration: StructDecl(
-            StructDecl {
-                fields: [
-                    FieldDeclaration {
-                        field_name: "id",
-                        type_ref: Primitive(
-                            U64,
-                        ),
-                        docs: None,
-                    },
-                    FieldDeclaration {
-                        field_name: "email",
-                        type_ref: Primitive(
-                            String,
-                        ),
-                        docs: None,
-                    },
-                    FieldDeclaration {
-                        field_name: "profile",
-                        type_ref: Option(
-                            Primitive(
-                                String,
-                            ),
-                        ),
-                        docs: None,
-                    },
-                    FieldDeclaration {
-                        field_name: "verified",
-                        type_ref: Primitive(
-                            Bool,
-                        ),
-                        docs: None,
-                    },
-                    FieldDeclaration {
-                        field_name: "tags",
-                        type_ref: Map {
-                            key: Primitive(
-                                String,
-                            ),
-                            value: Primitive(
-                                String,
-                            ),
-                        },
-                        docs: None,
-                    },
-                    FieldDeclaration {
-                        field_name: "metadata",
-                        type_ref: Map {
-                            key: Primitive(
-                                String,
-                            ),
-                            value: Primitive(
-                                Bool,
-                            ),
-                        },
-                        docs: None,
-                    },
-                ],
-            },
-        ),
-    },
-    TypeGenGeneratedType {
-        type_name: "Point",
-        docs: Some(
-            "Test tuple struct",
-        ),
-        file_path: <SANITIZED>/lib.rs,
-        declaration: TupleStructDecl(
-            TupleStructDecl {
-                fields: [
-                    Primitive(
-                        F64,
-                    ),
-                    Primitive(
-                        F64,
-                    ),
-                ],
-            },
-        ),
-    },
-    TypeGenGeneratedType {
-        type_name: "Unit",
-        docs: Some(
-            "Test unit struct",
-        ),
-        file_path: <SANITIZED>/lib.rs,
-        declaration: Null,
-    },
-    TypeGenGeneratedType {
-        type_name: "WrappedString",
-        docs: Some(
-            "This is a wrapper for a String type. The type
-should be transparent in the generated code and point directly to the string type.",
-        ),
-        file_path: <SANITIZED>/lib.rs,
-        declaration: TupleStructDecl(
-            TupleStructDecl {
-                fields: [
-                    Primitive(
+TypeGenGeneratedType {
+    type_name: "Address",
+    docs: Some(
+        "Simple address struct for testing",
+    ),
+    file_path: <SANITIZED>
+    declaration: StructDecl(
+        StructDecl {
+            fields: [
+                FieldDeclaration {
+                    field_name: "street",
+                    type_ref: Primitive(
                         String,
                     ),
-                ],
-            },
-        ),
-    },
-    TypeGenGeneratedType {
-        type_name: "Animal",
-        docs: Some(
-            "Simple enum with unit variants",
-        ),
-        file_path: <SANITIZED>/lib.rs,
-        declaration: EnumDecl(
-            EnumDecl {
-                variants: [
-                    Unit {
-                        name: "Cat",
-                        docs: Some(
-                            "A cat",
+                    docs: Some(
+                        "Street address",
+                    ),
+                },
+                FieldDeclaration {
+                    field_name: "city",
+                    type_ref: Primitive(
+                        String,
+                    ),
+                    docs: None,
+                },
+                FieldDeclaration {
+                    field_name: "zip_code",
+                    type_ref: Primitive(
+                        U32,
+                    ),
+                    docs: None,
+                },
+                FieldDeclaration {
+                    field_name: "coordinates",
+                    type_ref: Array {
+                        element_type: Primitive(
+                            F32,
+                        ),
+                        size: 3,
+                    },
+                    docs: None,
+                },
+                FieldDeclaration {
+                    field_name: "typegen_as",
+                    type_ref: Primitive(
+                        U32,
+                    ),
+                    docs: None,
+                },
+                FieldDeclaration {
+                    field_name: "string_list",
+                    type_ref: Vec(
+                        Primitive(
+                            String,
+                        ),
+                    ),
+                    docs: None,
+                },
+                FieldDeclaration {
+                    field_name: "maybe_flag",
+                    type_ref: Option(
+                        Primitive(
+                            Bool,
+                        ),
+                    ),
+                    docs: None,
+                },
+            ],
+        },
+    ),
+}
+
+TypeGenGeneratedType {
+    type_name: "Person",
+    docs: Some(
+        "Person struct that references Address",
+    ),
+    file_path: <SANITIZED>
+    declaration: StructDecl(
+        StructDecl {
+            fields: [
+                FieldDeclaration {
+                    field_name: "name",
+                    type_ref: Primitive(
+                        String,
+                    ),
+                    docs: None,
+                },
+                FieldDeclaration {
+                    field_name: "age",
+                    type_ref: Primitive(
+                        U32,
+                    ),
+                    docs: None,
+                },
+                FieldDeclaration {
+                    field_name: "address",
+                    type_ref: TypeReference(
+                        "Address",
+                    ),
+                    docs: None,
+                },
+            ],
+        },
+    ),
+}
+
+TypeGenGeneratedType {
+    type_name: "User",
+    docs: Some(
+        "Test struct with optional fields",
+    ),
+    file_path: <SANITIZED>
+    declaration: StructDecl(
+        StructDecl {
+            fields: [
+                FieldDeclaration {
+                    field_name: "id",
+                    type_ref: Primitive(
+                        U64,
+                    ),
+                    docs: None,
+                },
+                FieldDeclaration {
+                    field_name: "email",
+                    type_ref: Primitive(
+                        String,
+                    ),
+                    docs: None,
+                },
+                FieldDeclaration {
+                    field_name: "profile",
+                    type_ref: Option(
+                        Primitive(
+                            String,
+                        ),
+                    ),
+                    docs: None,
+                },
+                FieldDeclaration {
+                    field_name: "verified",
+                    type_ref: Primitive(
+                        Bool,
+                    ),
+                    docs: None,
+                },
+                FieldDeclaration {
+                    field_name: "tags",
+                    type_ref: Map {
+                        key: Primitive(
+                            String,
+                        ),
+                        value: Primitive(
+                            String,
                         ),
                     },
-                    Unit {
-                        name: "Dog",
-                        docs: Some(
-                            "A dog  ",
+                    docs: None,
+                },
+                FieldDeclaration {
+                    field_name: "metadata",
+                    type_ref: Map {
+                        key: Primitive(
+                            String,
+                        ),
+                        value: Primitive(
+                            Bool,
                         ),
                     },
-                    Unit {
-                        name: "Fish",
-                        docs: Some(
-                            "A fish",
-                        ),
-                    },
-                ],
-            },
-        ),
-    },
-    TypeGenGeneratedType {
-        type_name: "Shape",
-        docs: Some(
-            "Complex enum with different variant types",
-        ),
-        file_path: <SANITIZED>/lib.rs,
-        declaration: EnumDecl(
-            EnumDecl {
-                variants: [
-                    Newtype {
-                        name: "Circle",
-                        docs: Some(
-                            "Circle with radius",
-                        ),
-                        field_type: Primitive(
+                    docs: None,
+                },
+            ],
+        },
+    ),
+}
+
+TypeGenGeneratedType {
+    type_name: "Point",
+    docs: Some(
+        "Test tuple struct",
+    ),
+    file_path: <SANITIZED>
+    declaration: TupleStructDecl(
+        TupleStructDecl {
+            fields: [
+                Primitive(
+                    F64,
+                ),
+                Primitive(
+                    F64,
+                ),
+            ],
+        },
+    ),
+}
+
+TypeGenGeneratedType {
+    type_name: "Unit",
+    docs: Some(
+        "Test unit struct",
+    ),
+    file_path: <SANITIZED>
+    declaration: Null,
+}
+
+TypeGenGeneratedType {
+    type_name: "WrappedString",
+    docs: Some(
+        "This is a wrapper for a String type. The type\
+should be transparent in the generated code and point directly to the string type.",
+    ),
+    file_path: <SANITIZED>
+    declaration: TupleStructDecl(
+        TupleStructDecl {
+            fields: [
+                Primitive(
+                    String,
+                ),
+            ],
+        },
+    ),
+}
+
+TypeGenGeneratedType {
+    type_name: "Animal",
+    docs: Some(
+        "Simple enum with unit variants",
+    ),
+    file_path: <SANITIZED>
+    declaration: EnumDecl(
+        EnumDecl {
+            variants: [
+                Unit {
+                    name: "Cat",
+                    docs: Some(
+                        "A cat",
+                    ),
+                },
+                Unit {
+                    name: "Dog",
+                    docs: Some(
+                        "A dog",
+                    ),
+                },
+                Unit {
+                    name: "Fish",
+                    docs: Some(
+                        "A fish",
+                    ),
+                },
+            ],
+        },
+    ),
+}
+
+TypeGenGeneratedType {
+    type_name: "Shape",
+    docs: Some(
+        "Complex enum with different variant types",
+    ),
+    file_path: <SANITIZED>
+    declaration: EnumDecl(
+        EnumDecl {
+            variants: [
+                Newtype {
+                    name: "Circle",
+                    docs: Some(
+                        "Circle with radius",
+                    ),
+                    field_type: Primitive(
+                        F64,
+                    ),
+                },
+                Tuple {
+                    name: "Rectangle",
+                    docs: Some(
+                        "Rectangle with width and height",
+                    ),
+                    fields: [
+                        Primitive(
                             F64,
                         ),
-                    },
-                    Tuple {
-                        name: "Rectangle",
-                        docs: Some(
-                            "Rectangle with width and height",
+                        Primitive(
+                            F64,
                         ),
-                        fields: [
-                            Primitive(
+                    ],
+                },
+                Struct {
+                    name: "Point",
+                    docs: Some(
+                        "Point with coordinates",
+                    ),
+                    fields: [
+                        FieldDeclaration {
+                            field_name: "x",
+                            type_ref: Primitive(
                                 F64,
                             ),
-                            Primitive(
+                            docs: None,
+                        },
+                        FieldDeclaration {
+                            field_name: "y",
+                            type_ref: Primitive(
                                 F64,
                             ),
-                        ],
-                    },
-                    Struct {
-                        name: "Point",
-                        docs: Some(
-                            "Point with coordinates",
-                        ),
-                        fields: [
-                            FieldDeclaration {
-                                field_name: "x",
-                                type_ref: Primitive(
-                                    F64,
-                                ),
-                                docs: None,
-                            },
-                            FieldDeclaration {
-                                field_name: "y",
-                                type_ref: Primitive(
-                                    F64,
-                                ),
-                                docs: None,
-                            },
-                            FieldDeclaration {
-                                field_name: "z",
-                                type_ref: Primitive(
-                                    F64,
-                                ),
-                                docs: None,
-                            },
-                        ],
-                    },
-                ],
-            },
-        ),
-    },
-]
+                            docs: None,
+                        },
+                        FieldDeclaration {
+                            field_name: "z",
+                            type_ref: Primitive(
+                                F64,
+                            ),
+                            docs: None,
+                        },
+                    ],
+                },
+            ],
+        },
+    ),
+}
 "#
         );
     }

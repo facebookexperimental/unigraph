@@ -1,6 +1,5 @@
 use std::collections::BTreeMap;
 use std::collections::HashMap;
-use std::path::Path;
 use std::path::PathBuf;
 
 use anyhow::Result;
@@ -43,49 +42,16 @@ pub enum PrimitiveTypeRef {
     F64,
 }
 
-#[derive(Clone)]
-pub struct SourceFilePath(pub PathBuf);
-
-impl AsRef<Path> for SourceFilePath {
-    fn as_ref(&self) -> &Path {
-        &self.0
-    }
-}
-
-/// Because we get different paths in different environments, we sanitize the output
-/// to only show the last segment of the path, which is usually the file name.
-/// This way we can write snapshot tests.
-impl std::fmt::Debug for SourceFilePath {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // let get last segment of the path
-        if let Some(last) = self.0.file_name() {
-            write!(f, "<SANITIZED>/{}", last.to_string_lossy())
-        } else {
-            write!(f, "<SANITIZED>")
-        }
-    }
-}
-
 /// Top-level struct representing a generated type with shared metadata
 #[derive(Debug, Clone)]
 pub struct TypeGenGeneratedType {
     pub type_name: String,
     pub docs: Option<String>,
-    pub file_path: SourceFilePath,
+    pub file_path: PathBuf,
     pub declaration: TypeGenDecl,
 }
 
 impl TypeGenGeneratedType {
-    /// Export TypeScript type definition
-    pub fn export_typescript(&self) -> String {
-        crate::typescript::TypeScriptGenerator::generate_typescript(self)
-    }
-
-    /// Export Flow type definition
-    pub fn export_flow(&self) -> String {
-        crate::flow::FlowGenerator::generate_flow(self)
-    }
-
     /// Write this type to TypeScript and Flow files based on the configuration
     /// found by looking up the directory tree from the source file path.
     /// Only writes files when TYPEGEN=1 environment variable is set.

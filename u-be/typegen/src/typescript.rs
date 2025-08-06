@@ -1,3 +1,4 @@
+use crate::TypeGenConfig;
 use crate::types::EnumDecl;
 use crate::types::EnumVariant;
 use crate::types::PrimitiveTypeRef;
@@ -12,7 +13,10 @@ pub struct TypeScriptGenerator;
 
 impl TypeScriptGenerator {
     /// Generate TypeScript code from a type declaration
-    pub fn generate_typescript(generated_type: &TypeGenGeneratedType) -> String {
+    pub fn generate_typescript(
+        config: &TypeGenConfig,
+        generated_type: &TypeGenGeneratedType,
+    ) -> String {
         let mut imports = std::collections::HashSet::new();
         let type_code = match &generated_type.declaration {
             TypeGenDecl::StructDecl(struct_decl) => Self::generate_struct_typescript(
@@ -47,8 +51,9 @@ impl TypeScriptGenerator {
             sorted_imports.sort();
             for import in sorted_imports {
                 result.push_str(&format!(
-                    "import type {{ {} }} from './{}.ts';\n",
-                    import, import
+                    "import type {{ {} }} from './{}';\n",
+                    import,
+                    config.typescript_file_name(&import).display()
                 ));
             }
             result.push('\n');

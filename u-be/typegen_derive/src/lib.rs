@@ -59,7 +59,7 @@ pub fn type_gen(input: TokenStream) -> TokenStream {
                                 ::typegen::TypeGenGeneratedType {
                                     type_name: stringify!(#name).to_string(),
                                     docs: #docs_token,
-                                    file_path: ::typegen::SourceFilePath(std::path::PathBuf::from(file!())),
+                                    file_path: std::path::PathBuf::from(file!()),
                                     declaration: ::typegen::TypeGenDecl::StructDecl(::typegen::StructDecl {
                                         fields: vec![#(#fields),*],
                                     })
@@ -105,7 +105,7 @@ pub fn type_gen(input: TokenStream) -> TokenStream {
                                 ::typegen::TypeGenGeneratedType {
                                     type_name: stringify!(#name).to_string(),
                                     docs: #docs_token,
-                                    file_path: ::typegen::SourceFilePath(std::path::PathBuf::from(file!())),
+                                    file_path: std::path::PathBuf::from(file!()),
                                     declaration: ::typegen::TypeGenDecl::TupleStructDecl(::typegen::TupleStructDecl {
                                         fields: vec![#(#field_types),*],
                                     })
@@ -139,7 +139,7 @@ pub fn type_gen(input: TokenStream) -> TokenStream {
                                 ::typegen::TypeGenGeneratedType {
                                     type_name: stringify!(#name).to_string(),
                                     docs: #docs_token,
-                                    file_path: ::typegen::SourceFilePath(std::path::PathBuf::from(file!())),
+                                    file_path: std::path::PathBuf::from(file!()),
                                     declaration: ::typegen::TypeGenDecl::Null
                                 }
                             }
@@ -263,7 +263,7 @@ pub fn type_gen(input: TokenStream) -> TokenStream {
                         ::typegen::TypeGenGeneratedType {
                             type_name: stringify!(#name).to_string(),
                             docs: #docs_token,
-                            file_path: ::typegen::SourceFilePath(std::path::PathBuf::from(file!())),
+                            file_path: std::path::PathBuf::from(file!()),
                             declaration: ::typegen::TypeGenDecl::EnumDecl(::typegen::EnumDecl {
                                 variants: vec![#(#variants),*],
                             })
