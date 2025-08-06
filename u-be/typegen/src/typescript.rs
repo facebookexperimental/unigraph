@@ -243,9 +243,9 @@ impl TypeScriptGenerator {
                 .collect();
 
             result.push_str(&format!(
-                "export type {} = \n{};",
+                "export type {} =\n{};",
                 type_name,
-                variants.join(" | \n")
+                variants.join(" |\n")
             ));
         }
 

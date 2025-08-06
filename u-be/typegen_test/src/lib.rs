@@ -115,12 +115,14 @@ mod tests {
                 shared_config: SharedConfig {
                     export_path: Some("./ts".to_string()),
                     header: Some("/* ts header */".to_string()),
+                    file_name_prefix: Some("TSPrefix".to_string()),
                 },
             }),
             flow: Some(FlowConfig {
                 shared_config: SharedConfig {
                     export_path: Some("./flow".to_string()),
                     header: Some("/* flow header */".to_string()),
+                    file_name_prefix: Some("FlowPrefix".to_string()),
                 },
             }),
             config_file_path: PathBuf::from("typegen_config.json"),
@@ -152,7 +154,7 @@ mod tests {
         k9::snapshot!(
             format_types(&files),
             r#"
----------------- ./ts/Address.ts
+---------------- ./ts/TSPrefixAddress.ts
 
 /* ts header */
 
@@ -167,11 +169,11 @@ export interface Address {
   string_list: string[];
   maybe_flag?: boolean | undefined;
 }
----------------- ./ts/Person.ts
+---------------- ./ts/TSPrefixPerson.ts
 
 /* ts header */
 
-import type { Address } from './Address.ts';
+import type { Address } from './TSPrefixAddress.ts';
 
 /** Person struct that references Address */
 export interface Person {
@@ -179,7 +181,7 @@ export interface Person {
   age: number;
   address: Address;
 }
----------------- ./ts/User.ts
+---------------- ./ts/TSPrefixUser.ts
 
 /* ts header */
 
@@ -192,19 +194,19 @@ export interface User {
   tags: { [key: string]: string };
   metadata: { [key: string]: boolean };
 }
----------------- ./ts/Point.ts
+---------------- ./ts/TSPrefixPoint.ts
 
 /* ts header */
 
 /** Test tuple struct */
 export type Point = [number, number];
----------------- ./ts/Unit.ts
+---------------- ./ts/TSPrefixUnit.ts
 
 /* ts header */
 
 /** Test unit struct */
 export type Unit = null;
----------------- ./ts/WrappedString.ts
+---------------- ./ts/TSPrefixWrappedString.ts
 
 /* ts header */
 
@@ -213,22 +215,22 @@ export type Unit = null;
  * should be transparent in the generated code and point directly to the string type.
  */
 export type WrappedString = string;
----------------- ./ts/Animal.ts
+---------------- ./ts/TSPrefixAnimal.ts
 
 /* ts header */
 
 /** Simple enum with unit variants */
 export type Animal = "Cat" | "Dog" | "Fish";
----------------- ./ts/Shape.ts
+---------------- ./ts/TSPrefixShape.ts
 
 /* ts header */
 
 /** Complex enum with different variant types */
-export type Shape = 
+export type Shape =
   /** Circle with radius */
-  { "Circle": number } | 
+  { "Circle": number } |
   /** Rectangle with width and height */
-  { "Rectangle": [number, number] } | 
+  { "Rectangle": [number, number] } |
   /** Point with coordinates */
   { "Point": { x: number, y: number, z: number } };
 "#
@@ -246,7 +248,7 @@ export type Shape =
         k9::snapshot!(
             format_types(&files),
             r#"
----------------- ./flow/Address.js.flow
+---------------- ./flow/FlowPrefixAddress.js.flow
 
 /* flow header */
 
@@ -261,11 +263,11 @@ export type Address = {
   string_list: Array<string>,
   maybe_flag?: ?boolean,
 };
----------------- ./flow/Person.js.flow
+---------------- ./flow/FlowPrefixPerson.js.flow
 
 /* flow header */
 
-import type { Address } from './Address.js.flow';
+import type { Address } from './FlowPrefixAddress.js.flow';
 
 // Person struct that references Address
 export type Person = {
@@ -273,7 +275,7 @@ export type Person = {
   age: number,
   address: Address,
 };
----------------- ./flow/User.js.flow
+---------------- ./flow/FlowPrefixUser.js.flow
 
 /* flow header */
 
@@ -286,41 +288,41 @@ export type User = {
   tags: { [key: string]: string },
   metadata: { [key: string]: boolean },
 };
----------------- ./flow/Point.js.flow
+---------------- ./flow/FlowPrefixPoint.js.flow
 
 /* flow header */
 
 // Test tuple struct
 export type Point = [number, number];
----------------- ./flow/Unit.js.flow
+---------------- ./flow/FlowPrefixUnit.js.flow
 
 /* flow header */
 
 // Test unit struct
 export type Unit = null;
----------------- ./flow/WrappedString.js.flow
+---------------- ./flow/FlowPrefixWrappedString.js.flow
 
 /* flow header */
 
 // This is a wrapper for a String type. The type
 // should be transparent in the generated code and point directly to the string type.
 export type WrappedString = string;
----------------- ./flow/Animal.js.flow
+---------------- ./flow/FlowPrefixAnimal.js.flow
 
 /* flow header */
 
 // Simple enum with unit variants
 export type Animal = "Cat" | "Dog" | "Fish";
----------------- ./flow/Shape.js.flow
+---------------- ./flow/FlowPrefixShape.js.flow
 
 /* flow header */
 
 // Complex enum with different variant types
-export type Shape = 
+export type Shape =
   // Circle with radius
-  { "Circle": number } | 
+  { "Circle": number } |
   // Rectangle with width and height
-  { "Rectangle": [number, number] } | 
+  { "Rectangle": [number, number] } |
   // Point with coordinates
   { "Point": { x: number, y: number, z: number } };
 "#

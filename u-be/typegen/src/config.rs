@@ -31,6 +31,7 @@ pub struct TypeGenConfig {
 pub struct SharedConfig {
     pub export_path: Option<String>,
     pub header: Option<String>,
+    pub file_name_prefix: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -68,7 +69,7 @@ impl TypeGenConfig {
         if let Some(FlowConfig { shared_config }) = &self.flow {
             if let Some(export_path) = &shared_config.export_path {
                 let type_content = FlowGenerator::generate_flow(self, &decl);
-                let content = self.prepend_header(type_content, shared_config);
+                let content = shared_config.prepend_header(type_content);
                 let mut path = self.resolve_path(export_path)?;
                 path.push(self.flow_file_name(&decl.type_name));
                 return Ok(Some(TypeGenFile { path, content }));
@@ -81,7 +82,7 @@ impl TypeGenConfig {
         if let Some(TypeScriptConfig { shared_config }) = &self.typescript {
             if let Some(export_path) = &shared_config.export_path {
                 let type_content = TypeScriptGenerator::generate_typescript(self, &decl);
-                let content = self.prepend_header(type_content, shared_config);
+                let content = shared_config.prepend_header(type_content);
                 let mut path = self.resolve_path(export_path)?;
                 path.push(self.typescript_file_name(&decl.type_name));
                 return Ok(Some(TypeGenFile { path, content }));
@@ -91,11 +92,21 @@ impl TypeGenConfig {
     }
 
     pub fn flow_file_name(&self, type_name: &str) -> PathBuf {
-        PathBuf::from(format!("{}.js.flow", type_name))
+        let name = if let Some(FlowConfig { shared_config }) = &self.flow {
+            shared_config.add_file_prefix(type_name)
+        } else {
+            type_name.to_string()
+        };
+        PathBuf::from(format!("{}.js.flow", name))
     }
 
     pub fn typescript_file_name(&self, type_name: &str) -> PathBuf {
-        PathBuf::from(format!("{}.ts", type_name))
+        let name = if let Some(TypeScriptConfig { shared_config }) = &self.typescript {
+            shared_config.add_file_prefix(type_name)
+        } else {
+            type_name.to_string()
+        };
+        PathBuf::from(format!("{}.ts", name))
     }
 
     /// Make a path relative to this config file's path
@@ -114,12 +125,22 @@ impl TypeGenConfig {
         resolved_path.push(path);
         Ok(resolved_path)
     }
+}
 
-    fn prepend_header(&self, type_content: String, shared_config: &SharedConfig) -> String {
-        if let Some(header) = &shared_config.header {
+impl SharedConfig {
+    fn prepend_header(&self, type_content: String) -> String {
+        if let Some(header) = &self.header {
             format!("{header}\n\n{type_content}")
         } else {
             type_content
+        }
+    }
+
+    fn add_file_prefix(&self, file_name: &str) -> String {
+        if let Some(prefix) = &self.file_name_prefix {
+            format!("{prefix}{file_name}")
+        } else {
+            file_name.to_string()
         }
     }
 }
