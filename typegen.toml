@@ -9,7 +9,8 @@ header = """
 """
 
 [flow]
-export_path = "../../../../www/html/intern/js/unigraph/__generated__/typegen"
+export_path = "../../../www/html/intern/js/unigraph/__generated__/typegen"
+file_name_prefix = "UnigraphTypeGen"
 header = """
 /**
  * Copyright (c) Meta Platforms, Inc. and affiliates.
