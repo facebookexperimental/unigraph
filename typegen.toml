@@ -15,7 +15,27 @@ header = """
 /**
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
+ * @oncall unigraph
  * @flow
  * @generated
+ * @codegen-command: cd ~/fbsource/fbcode && buck test //unigraph/oss/... -- --env TYPEGEN=1
  */
+"""
+
+[hack]
+export_path = "../../../www/flib/intern/unigraph/__generated__/typegen"
+type_name_prefix = "TUnigraph"
+file_name_prefix = "UnigraphTypeGen"
+header = """
+<?hh
+
+/**
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ *
+ * @flow
+ * @generated
+ * @codegen-command: cd ~/fbsource/fbcode && buck test //unigraph/oss/... -- --env TYPEGEN=1
+ */
+
+<<Oncalls('unigraph')>>
 """
