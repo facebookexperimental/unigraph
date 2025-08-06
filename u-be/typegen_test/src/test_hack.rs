@@ -39,8 +39,6 @@ type Address = shape(
 /* hack header */
 
 <?hh
-use Address;
-
 /**
  * Person struct that references Address
  */
@@ -126,7 +124,15 @@ enum Animal: string as string {
 /**
  * Complex enum with different variant types
  */
-type Shape = shape('type' => 'Circle', 'data' => float) | shape('type' => 'Rectangle', 'data' => ('0' => float, '1' => float)) | shape('type' => 'Point', 'x' => float, 'y' => float, 'z' => float);
+type Shape = shape(
+  ?'Circle' => ?float,
+  ?'Rectangle' => ?(float, float),
+  ?'Point' => ?shape(
+    'x' => float,
+    'y' => float,
+    'z' => float,
+  ),
+);
 
 "#
     );

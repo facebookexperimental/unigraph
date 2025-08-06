@@ -14,26 +14,20 @@ pub struct HackGenerator;
 impl HackGenerator {
     /// Generate Hack code from a type declaration
     pub fn generate_hack(_config: &TypeGenConfig, generated_type: &TypeGenGeneratedType) -> String {
-        let mut imports = std::collections::HashSet::new();
         let type_code = match &generated_type.declaration {
             TypeGenDecl::StructDecl(struct_decl) => Self::generate_struct_hack(
                 &generated_type.type_name,
                 &generated_type.docs,
                 struct_decl,
-                &mut imports,
             ),
             TypeGenDecl::TupleStructDecl(tuple_struct_decl) => Self::generate_tuple_struct_hack(
                 &generated_type.type_name,
                 &generated_type.docs,
                 tuple_struct_decl,
-                &mut imports,
             ),
-            TypeGenDecl::EnumDecl(enum_decl) => Self::generate_enum_hack(
-                &generated_type.type_name,
-                &generated_type.docs,
-                enum_decl,
-                &mut imports,
-            ),
+            TypeGenDecl::EnumDecl(enum_decl) => {
+                Self::generate_enum_hack(&generated_type.type_name, &generated_type.docs, enum_decl)
+            }
             TypeGenDecl::Null => {
                 Self::generate_null_hack(&generated_type.type_name, &generated_type.docs)
             }
@@ -42,14 +36,6 @@ impl HackGenerator {
         // Generate use statements
         let mut result = String::new();
         result.push_str("<?hh\n");
-        if !imports.is_empty() {
-            let mut sorted_imports: Vec<_> = imports.into_iter().collect();
-            sorted_imports.sort();
-            for import in sorted_imports {
-                result.push_str(&format!("use {};\n", import));
-            }
-            result.push('\n');
-        }
 
         result.push_str(&type_code);
         result
@@ -59,7 +45,6 @@ impl HackGenerator {
         type_name: &str,
         docs: &Option<String>,
         struct_decl: &StructDecl,
-        imports: &mut std::collections::HashSet<String>,
     ) -> String {
         let mut result = String::new();
 
@@ -71,7 +56,7 @@ impl HackGenerator {
         result.push_str(&format!("type {} = shape(\n", type_name));
 
         for field in &struct_decl.fields {
-            let field_type = Self::type_ref_to_hack(&field.type_ref, imports);
+            let field_type = Self::type_ref_to_hack(&field.type_ref);
 
             if let Some(field_docs) = &field.docs {
                 result.push_str(&format!("  // {}\n", field_docs));
@@ -87,7 +72,6 @@ impl HackGenerator {
         type_name: &str,
         docs: &Option<String>,
         tuple_struct_decl: &TupleStructDecl,
-        imports: &mut std::collections::HashSet<String>,
     ) -> String {
         let mut result = String::new();
 
@@ -99,7 +83,7 @@ impl HackGenerator {
         let field_types: Vec<String> = tuple_struct_decl
             .fields
             .iter()
-            .map(|field| Self::type_ref_to_hack(field, imports))
+            .map(Self::type_ref_to_hack)
             .collect();
 
         // For single-element tuples, just use the inner type directly
@@ -115,12 +99,7 @@ impl HackGenerator {
         result
     }
 
-    fn generate_enum_hack(
-        type_name: &str,
-        docs: &Option<String>,
-        enum_decl: &EnumDecl,
-        imports: &mut std::collections::HashSet<String>,
-    ) -> String {
+    fn generate_enum_hack(type_name: &str, docs: &Option<String>, enum_decl: &EnumDecl) -> String {
         let mut result = String::new();
 
         // Add documentation comment
@@ -145,64 +124,67 @@ impl HackGenerator {
             }
             result.push_str("}\n");
         } else {
-            // For complex enums, use union types with shapes
-            let mut variants = Vec::new();
+            // For complex enums, use a shape with all variants as keys
+            result.push_str(&format!("type {} = shape(\n", type_name));
 
             for variant in &enum_decl.variants {
                 match variant {
                     EnumVariant::Unit { name, docs: _ } => {
-                        // Unit variants become string literals
-                        variants.push(format!("'{}'", name));
+                        // Unit variants get null as value
+                        result.push_str(&format!("  ?'{}' => ?null,\n", name));
                     }
                     EnumVariant::Newtype {
                         name,
                         field_type,
                         docs: _,
                     } => {
-                        // Newtype variants become shapes with a 'type' field and data
-                        variants.push(format!(
-                            "shape('type' => '{}', 'data' => {})",
-                            name,
-                            Self::type_ref_to_hack(field_type, imports)
-                        ));
+                        // Newtype variants get the wrapped type
+                        let hack_type = Self::type_ref_to_hack(field_type);
+                        result.push_str(&format!("  ?'{}' => ?{},\n", name, hack_type));
                     }
                     EnumVariant::Tuple {
                         name,
                         fields,
                         docs: _,
                     } => {
-                        // Tuple variants become shapes with a 'type' field and data
-                        let field_types: Vec<String> = fields
-                            .iter()
-                            .enumerate()
-                            .map(|(i, field)| {
-                                format!("'{}' => {}", i, Self::type_ref_to_hack(field, imports))
-                            })
-                            .collect();
+                        // Tuple variants get a tuple type
+                        let field_types: Vec<String> =
+                            fields.iter().map(Self::type_ref_to_hack).collect();
 
-                        variants.push(format!(
-                            "shape('type' => '{}', 'data' => ({}))",
-                            name,
-                            field_types.join(", ")
-                        ));
+                        if field_types.len() == 1 {
+                            result.push_str(&format!("  ?'{}' => ?{},\n", name, field_types[0]));
+                        } else {
+                            result.push_str(&format!(
+                                "  ?'{}' => ?({}),\n",
+                                name,
+                                field_types.join(", ")
+                            ));
+                        }
                     }
                     EnumVariant::Struct {
                         name,
                         fields,
                         docs: _,
                     } => {
-                        // Struct variants become shapes with a 'type' field and named fields
-                        let mut shape_fields = vec![format!("'type' => '{}'", name)];
-                        for field in fields {
-                            let field_type = Self::type_ref_to_hack(&field.type_ref, imports);
-                            shape_fields.push(format!("'{}' => {}", field.field_name, field_type));
+                        // Struct variants get a shape with their fields
+                        if fields.is_empty() {
+                            result.push_str(&format!("  ?'{}' => ?shape(),\n", name));
+                        } else {
+                            result.push_str(&format!("  ?'{}' => ?shape(\n", name));
+                            for field in fields {
+                                let field_type = Self::type_ref_to_hack(&field.type_ref);
+                                result.push_str(&format!(
+                                    "    '{}' => {},\n",
+                                    field.field_name, field_type
+                                ));
+                            }
+                            result.push_str("  ),\n");
                         }
-                        variants.push(format!("shape({})", shape_fields.join(", ")));
                     }
                 }
             }
 
-            result.push_str(&format!("type {} = {};\n", type_name, variants.join(" | ")));
+            result.push_str(");\n");
         }
         result
     }
@@ -219,37 +201,30 @@ impl HackGenerator {
         result
     }
 
-    fn type_ref_to_hack(
-        type_ref: &TypeRef,
-        imports: &mut std::collections::HashSet<String>,
-    ) -> String {
+    fn type_ref_to_hack(type_ref: &TypeRef) -> String {
         match type_ref {
             TypeRef::Primitive(primitive) => Self::primitive_to_hack(primitive),
             TypeRef::Option(inner) => {
-                format!("?{}", Self::type_ref_to_hack(inner, imports))
+                format!("?{}", Self::type_ref_to_hack(inner))
             }
             TypeRef::Vec(inner) => {
-                format!("vec<{}>", Self::type_ref_to_hack(inner, imports))
+                format!("vec<{}>", Self::type_ref_to_hack(inner))
             }
             TypeRef::Array {
                 element_type,
                 size: _,
             } => {
                 // Hack doesn't have fixed-size arrays, so we'll use vec
-                format!("vec<{}>", Self::type_ref_to_hack(element_type, imports))
+                format!("vec<{}>", Self::type_ref_to_hack(element_type))
             }
             TypeRef::Map { key, value } => {
                 format!(
                     "dict<{}, {}>",
-                    Self::type_ref_to_hack(key, imports),
-                    Self::type_ref_to_hack(value, imports)
+                    Self::type_ref_to_hack(key),
+                    Self::type_ref_to_hack(value)
                 )
             }
-            TypeRef::TypeReference(type_name) => {
-                // Add to imports for cross-type references
-                imports.insert(type_name.clone());
-                type_name.clone()
-            }
+            TypeRef::TypeReference(type_name) => type_name.clone(),
         }
     }
 
