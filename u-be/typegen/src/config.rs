@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::env;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
@@ -7,37 +6,56 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::OnceLock;
 
+use anyhow::Context;
+use anyhow::Result;
 use serde::Deserialize;
 
 /// Configuration for TypeGen exports
 #[derive(Debug, Clone, Deserialize)]
+pub struct TypeGenConfigSerialized {
+    pub typescript: Option<TypeScriptConfig>,
+    pub flow: Option<FlowConfig>,
+}
+
 pub struct TypeGenConfig {
-    #[serde(default)]
-    pub typescript: TypeScriptConfig,
-    #[serde(default)]
-    pub flow: FlowConfig,
+    pub typescript: Option<TypeScriptConfig>,
+    pub flow: Option<FlowConfig>,
+    pub config_file_path: PathBuf,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct SharedConfig {
+    pub export_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct TypeScriptConfig {
-    pub export_path: Option<String>,
+    #[serde(flatten)]
+    pub shared_config: SharedConfig,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct FlowConfig {
-    pub export_path: Option<String>,
+    #[serde(flatten)]
+    pub shared_config: SharedConfig,
 }
 
-impl Default for TypeGenConfig {
-    fn default() -> Self {
-        Self {
-            typescript: TypeScriptConfig {
-                export_path: env::var("TS_EXPORT_PATH").ok(),
-            },
-            flow: FlowConfig {
-                export_path: env::var("FLOW_EXPORT_PATH").ok(),
-            },
-        }
+impl TypeGenConfig {
+    /// Make a path relative to this config file's path
+    pub fn resolve_path(&self, path: &str) -> Result<PathBuf> {
+        let mut resolved_path = self
+            .config_file_path
+            .clone()
+            .parent()
+            .with_context(|| {
+                format!(
+                    "Failed to get parent directory of config file: {}",
+                    self.config_file_path.display()
+                )
+            })?
+            .to_owned();
+        resolved_path.push(path);
+        Ok(resolved_path)
     }
 }
 
@@ -45,7 +63,7 @@ impl Default for TypeGenConfig {
 static CONFIG_CACHE: OnceLock<Mutex<HashMap<PathBuf, Arc<TypeGenConfig>>>> = OnceLock::new();
 
 /// Get the configuration for a specific source file path, resolving the closest config
-pub fn get_config_for_file<P: AsRef<Path>>(source_file_path: P) -> Arc<TypeGenConfig> {
+pub fn get_config_for_file<P: AsRef<Path>>(source_file_path: P) -> Result<Arc<TypeGenConfig>> {
     let cache = CONFIG_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
 
     let rel_source_path = source_file_path.as_ref();
@@ -64,12 +82,15 @@ pub fn get_config_for_file<P: AsRef<Path>>(source_file_path: P) -> Arc<TypeGenCo
     {
         let cache_guard = cache.lock().unwrap();
         if let Some(config) = cache_guard.get(source_dir) {
-            return config.clone();
+            return Ok(config.clone());
         }
     }
 
     // Find the closest config file by walking up the directory tree
-    let config = find_closest_config(source_dir);
+    let config = Arc::new(
+        find_closest_config(source_dir)
+            .context("Failed to find closest typegen.toml config file")?,
+    );
 
     // Cache the result
     {
@@ -77,45 +98,31 @@ pub fn get_config_for_file<P: AsRef<Path>>(source_file_path: P) -> Arc<TypeGenCo
         cache_guard.insert(source_dir.to_path_buf(), config.clone());
     }
 
-    config
-}
-
-/// Get the global TypeGen configuration (fallback for backwards compatibility)
-pub fn get_config() -> &'static TypeGenConfig {
-    // For backwards compatibility, use the current directory as the source
-    let current_dir = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    let config = get_config_for_file(&current_dir);
-
-    // We need to leak this to return a static reference
-    // This is safe because we're only using it for backwards compatibility
-    Box::leak(Box::new((*config).clone()))
+    Ok(config)
 }
 
 /// Find the closest typegen.toml config file by walking up the directory tree
-fn find_closest_config(start_dir: &Path) -> Arc<TypeGenConfig> {
+fn find_closest_config(start_dir: &Path) -> Result<TypeGenConfig> {
     let mut current_dir = start_dir;
+    let mut checked_paths = vec![];
 
     loop {
         let config_path = current_dir.join("typegen.toml");
+        checked_paths.push(config_path.clone());
 
         if config_path.exists() {
-            if let Ok(content) = fs::read_to_string(&config_path) {
-                if let Ok(mut config) = toml::from_str::<TypeGenConfig>(&content) {
-                    // Resolve paths relative to the config file location
-                    if let Some(ref export_path) = config.typescript.export_path {
-                        let resolved_path = current_dir.join(export_path);
-                        config.typescript.export_path =
-                            Some(resolved_path.to_string_lossy().to_string());
-                    }
+            let content = fs::read_to_string(&config_path).context("Failed to read config file")?;
+            let config =
+                toml::from_str::<TypeGenConfigSerialized>(&content).with_context(|| {
+                    format!("Failed to parse config file: {}", config_path.display())
+                })?;
+            let config = TypeGenConfig {
+                typescript: config.typescript,
+                flow: config.flow,
+                config_file_path: config_path.clone(),
+            };
 
-                    if let Some(ref export_path) = config.flow.export_path {
-                        let resolved_path = current_dir.join(export_path);
-                        config.flow.export_path = Some(resolved_path.to_string_lossy().to_string());
-                    }
-
-                    return Arc::new(config);
-                }
-            }
+            return Ok(config);
         }
 
         // Move up one directory
@@ -127,16 +134,21 @@ fn find_closest_config(start_dir: &Path) -> Arc<TypeGenConfig> {
         }
     }
 
-    // No config file found, return default
-    Arc::new(TypeGenConfig::default())
+    anyhow::bail!(
+        "No typegen.toml found in any parent directories of {:?}. Checked paths: {:#?}",
+        start_dir,
+        checked_paths
+    )
 }
 
 /// Utility function to write type definition to a file
-pub fn write_type_to_file(content: &str, file_path: &str) -> Result<(), std::io::Error> {
-    if let Some(parent) = std::path::Path::new(file_path).parent() {
-        fs::create_dir_all(parent)?;
+pub fn write_type_to_file(content: &str, file_path: &Path) -> Result<()> {
+    if let Some(parent) = file_path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("Failed to create directory for {}", file_path.display()))?;
     }
-    fs::write(file_path, content)?;
+    fs::write(file_path, content)
+        .with_context(|| format!("Failed to write to {}", file_path.display()))?;
     Ok(())
 }
 

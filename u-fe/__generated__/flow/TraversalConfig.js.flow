@@ -1,0 +1,21 @@
+import type { Decision } from './Decision.js';
+import type { ForceDynamic } from './ForceDynamic.js';
+import type { Message } from './Message.js';
+import type { NodeTagSetsPredicate } from './NodeTagSetsPredicate.js';
+import type { TieredTraversalConfig } from './TieredTraversalConfig.js';
+
+export type TraversalConfig = {
+  force_nodes: { [key: string]: Decision },
+  // From Node Name -> To Node Name -> Decision
+  force_edges: { [key: string]: { [key: string]: Decision } },
+  // This will force all nodes that are children of the given node. This is useful for cases where you want to exclude all imports of a specific node (like `MySharedInfraModules.js`) with a single config.
+  force_children_of: { [key: string]: Decision },
+  // Only applied to tagged edges
+  force_tagged: { [key: string]: Decision },
+  // These rules are ordered. The first one that matches will be used.
+  tag_sets: Array<NodeTagSetsPredicate>,
+  // These rules are ordered. The first one that matches will be used.
+  force_dynamic: Array<ForceDynamic>,
+  tiered_traversal?: ?TieredTraversalConfig,
+  messages?: ?{ [key: string]: Message },
+};

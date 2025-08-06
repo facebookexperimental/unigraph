@@ -1,2 +1,5 @@
 [typescript]
 export_path = "u-fe/__generated__/ts"
+
+[flow]
+export_path = "u-fe/__generated__/flow"

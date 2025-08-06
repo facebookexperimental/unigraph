@@ -1,0 +1,1 @@
+export type SidebarPanel = "None" | "Simulation" | "GraphInfo";

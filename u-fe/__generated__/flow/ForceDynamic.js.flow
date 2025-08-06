@@ -1,0 +1,8 @@
+import type { Decision } from './Decision.js';
+
+export type ForceDynamic = {
+  from_node?: ?string,
+  match_properties: { [key: string]: string },
+  branch?: ?string,
+  decision: Decision,
+};

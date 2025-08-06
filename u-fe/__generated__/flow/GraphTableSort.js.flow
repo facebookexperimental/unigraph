@@ -1,0 +1,6 @@
+import type { SortOrder } from './SortOrder.js';
+
+export type GraphTableSort = {
+  column_id: string,
+  order: SortOrder,
+};

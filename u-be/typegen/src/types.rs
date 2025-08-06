@@ -3,6 +3,12 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
 
+use anyhow::Result;
+
+use crate::FlowConfig;
+use crate::SharedConfig;
+use crate::TypeScriptConfig;
+
 /// Enum representing different type references
 #[derive(Debug, Clone)]
 pub enum TypeRef {
@@ -87,7 +93,7 @@ impl TypeGenGeneratedType {
     /// Write this type to TypeScript and Flow files based on the configuration
     /// found by looking up the directory tree from the source file path.
     /// Only writes files when TYPEGEN=1 environment variable is set.
-    pub fn write_to_file(&self) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn write_to_file(&self) -> Result<()> {
         // Only proceed if TYPEGEN=1 environment variable is set
         let enabled = std::env::var("TYPEGEN").unwrap_or_default() == "1";
 
@@ -96,22 +102,36 @@ impl TypeGenGeneratedType {
         }
 
         // Get the config for this file's directory
-        let config = crate::config::get_config_for_file(&self.file_path);
+        let config = crate::config::get_config_for_file(&self.file_path)?;
 
         // Generate TypeScript if configured
-        if let Some(ref ts_export_path) = config.typescript.export_path {
+        if let Some(TypeScriptConfig {
+            shared_config:
+                SharedConfig {
+                    export_path: Some(ts_export_path),
+                },
+        }) = &config.typescript
+        {
+            let mut ts_path = config.resolve_path(ts_export_path)?;
             let ts_content = crate::typescript::TypeScriptGenerator::generate_typescript(self);
-            let ts_file_path = format!("{}/{}.ts", ts_export_path, self.type_name);
-            crate::config::write_type_to_file(&ts_content, &ts_file_path)?;
-            println!("Wrote TypeScript definition to: {}", ts_file_path);
+            ts_path.push(format!("{}.ts", self.type_name));
+            crate::config::write_type_to_file(&ts_content, &ts_path)?;
+            println!("Wrote TypeScript definition to: {}", ts_path.display());
         }
 
         // Generate Flow if configured
-        if let Some(ref flow_export_path) = config.flow.export_path {
+        if let Some(FlowConfig {
+            shared_config:
+                SharedConfig {
+                    export_path: Some(flow_export_path),
+                },
+        }) = &config.flow
+        {
             let flow_content = crate::flow::FlowGenerator::generate_flow(self);
-            let flow_file_path = format!("{}/{}.js", flow_export_path, self.type_name);
-            crate::config::write_type_to_file(&flow_content, &flow_file_path)?;
-            println!("Wrote Flow definition to: {}", flow_file_path);
+            let mut flow_path = config.resolve_path(flow_export_path)?;
+            flow_path.push(format!("{}.js.flow", self.type_name));
+            crate::config::write_type_to_file(&flow_content, &flow_path)?;
+            println!("Wrote Flow definition to: {}", flow_path.display());
         }
 
         Ok(())

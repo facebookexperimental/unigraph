@@ -1,0 +1,7 @@
+import type { ArrayGraphUISettings } from './ArrayGraphUISettings.js';
+import type { MetricSettings } from './MetricSettings.js';
+
+export type GraphSettings = {
+  metric_settings?: ?{ [key: string]: MetricSettings },
+  ui_settings?: ?ArrayGraphUISettings,
+};

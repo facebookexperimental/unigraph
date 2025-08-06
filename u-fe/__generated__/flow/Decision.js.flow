@@ -1,0 +1,4 @@
+export type Decision = {
+  include: boolean,
+  message_id?: ?string,
+};
