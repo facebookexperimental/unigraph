@@ -102,11 +102,16 @@ impl HackGenerator {
             .map(|field| Self::type_ref_to_hack(field, imports))
             .collect();
 
-        result.push_str(&format!(
-            "type {} = ({});\n",
-            type_name,
-            field_types.join(", ")
-        ));
+        // For single-element tuples, just use the inner type directly
+        if field_types.len() == 1 {
+            result.push_str(&format!("type {} = {};\n", type_name, field_types[0]));
+        } else {
+            result.push_str(&format!(
+                "type {} = ({});\n",
+                type_name,
+                field_types.join(", ")
+            ));
+        }
         result
     }
 
