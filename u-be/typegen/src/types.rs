@@ -5,10 +5,6 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 
-use crate::FlowConfig;
-use crate::SharedConfig;
-use crate::TypeScriptConfig;
-
 /// Enum representing different type references
 #[derive(Debug, Clone)]
 pub enum TypeRef {
@@ -104,43 +100,12 @@ impl TypeGenGeneratedType {
         // Get the config for this file's directory
         let config = crate::config::get_config_for_file(&self.file_path)?;
 
-        // Generate TypeScript if configured
-        if let Some(TypeScriptConfig {
-            shared_config:
-                SharedConfig {
-                    export_path: Some(ts_export_path),
-                    header,
-                },
-        }) = &config.typescript
-        {
-            let mut ts_path = config.resolve_path(ts_export_path)?;
-            let mut content = crate::typescript::TypeScriptGenerator::generate_typescript(self);
-            if let Some(header) = header {
-                content = format!("{}\n\n{}", header, content);
-            }
-            ts_path.push(format!("{}.ts", self.type_name));
-            crate::config::write_type_to_file(&content, &ts_path)?;
-            println!("Wrote TypeScript definition to: {}", ts_path.display());
+        if let Some(flow_file) = config.make_flow_file(self.clone())? {
+            flow_file.write()?;
         }
 
-        // Generate Flow if configured
-        if let Some(FlowConfig {
-            shared_config:
-                SharedConfig {
-                    export_path: Some(flow_export_path),
-                    header,
-                },
-        }) = &config.flow
-        {
-            let mut content = crate::flow::FlowGenerator::generate_flow(self);
-            if let Some(header) = header {
-                content = format!("{}\n\n{}", header, content);
-            }
-
-            let mut flow_path = config.resolve_path(flow_export_path)?;
-            flow_path.push(format!("{}.js.flow", self.type_name));
-            crate::config::write_type_to_file(&content, &flow_path)?;
-            println!("Wrote Flow definition to: {}", flow_path.display());
+        if let Some(ts_file) = config.make_typescript_file(self.clone())? {
+            ts_file.write()?;
         }
 
         Ok(())

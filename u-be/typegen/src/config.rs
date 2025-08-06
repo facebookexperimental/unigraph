@@ -10,6 +10,8 @@ use anyhow::Context;
 use anyhow::Result;
 use serde::Deserialize;
 
+use crate::TypeGenGeneratedType;
+
 /// Configuration for TypeGen exports
 #[derive(Debug, Clone, Deserialize)]
 pub struct TypeGenConfigSerialized {
@@ -41,9 +43,51 @@ pub struct FlowConfig {
     pub shared_config: SharedConfig,
 }
 
+pub struct TypeGenFile {
+    pub path: PathBuf,
+    pub content: String,
+}
+
+impl TypeGenFile {
+    pub fn write(&self) -> Result<()> {
+        if let Some(parent) = self.path.parent() {
+            fs::create_dir_all(parent).with_context(|| {
+                format!("Failed to create directory for {}", self.path.display())
+            })?;
+        }
+        fs::write(&self.path, &self.content)
+            .with_context(|| format!("Failed to write to {}", self.path.display()))?;
+        Ok(())
+    }
+}
+
 impl TypeGenConfig {
+    pub fn make_flow_file(&self, decl: TypeGenGeneratedType) -> Result<Option<TypeGenFile>> {
+        if let Some(FlowConfig { shared_config }) = &self.flow {
+            if let Some(export_path) = &shared_config.export_path {
+                let type_content = decl.export_flow();
+                let content = self.prepend_header(type_content, shared_config);
+                let path = self.resolve_path(export_path)?;
+                return Ok(Some(TypeGenFile { path, content }));
+            }
+        }
+        Ok(None)
+    }
+
+    pub fn make_typescript_file(&self, decl: TypeGenGeneratedType) -> Result<Option<TypeGenFile>> {
+        if let Some(TypeScriptConfig { shared_config }) = &self.typescript {
+            if let Some(export_path) = &shared_config.export_path {
+                let type_content = decl.export_typescript();
+                let content = self.prepend_header(type_content, shared_config);
+                let path = self.resolve_path(export_path)?;
+                return Ok(Some(TypeGenFile { path, content }));
+            }
+        }
+        Ok(None)
+    }
+
     /// Make a path relative to this config file's path
-    pub fn resolve_path(&self, path: &str) -> Result<PathBuf> {
+    fn resolve_path(&self, path: &str) -> Result<PathBuf> {
         let mut resolved_path = self
             .config_file_path
             .clone()
@@ -57,6 +101,14 @@ impl TypeGenConfig {
             .to_owned();
         resolved_path.push(path);
         Ok(resolved_path)
+    }
+
+    fn prepend_header(&self, type_content: String, shared_config: &SharedConfig) -> String {
+        if let Some(header) = &shared_config.header {
+            format!("{header}\n\n{type_content}")
+        } else {
+            type_content
+        }
     }
 }
 
