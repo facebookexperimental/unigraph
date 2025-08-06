@@ -1,5 +1,7 @@
 use crate::Lang;
 use crate::TypeGenConfig;
+use crate::docs::DocFormat;
+use crate::docs::render_docs;
 use crate::types::EnumDecl;
 use crate::types::EnumVariant;
 use crate::types::PrimitiveTypeRef;
@@ -74,18 +76,13 @@ impl TypeScriptGenerator {
     ) -> String {
         let mut result = String::new();
 
-        // Add documentation if present
-        if let Some(docs) = docs {
-            result.push_str(&Self::format_ts_jsdoc(docs));
-        }
+        result.push_str(&render_docs(docs, DocFormat::Block, 0));
 
         // Named struct - use interface
         result.push_str(&format!("export interface {} {{\n", type_name));
 
         for field in &struct_decl.fields {
-            if let Some(field_docs) = &field.docs {
-                result.push_str(&format!("  /** {} */\n", field_docs.replace('\n', " ")));
-            }
+            result.push_str(&render_docs(&field.docs, DocFormat::Block, 2));
 
             let field_name = &field.field_name;
             let question_mark = matches!(field.type_ref, TypeRef::Option(_))
@@ -112,10 +109,7 @@ impl TypeScriptGenerator {
     ) -> String {
         let mut result = String::new();
 
-        // Add documentation if present
-        if let Some(docs) = docs {
-            result.push_str(&Self::format_ts_jsdoc(docs));
-        }
+        result.push_str(&render_docs(docs, DocFormat::Block, 0));
 
         // For single-field tuple structs, make them transparent (direct type alias)
         if tuple_struct_decl.fields.len() == 1 {
@@ -147,10 +141,7 @@ impl TypeScriptGenerator {
     ) -> String {
         let mut result = String::new();
 
-        // Add documentation if present
-        if let Some(docs) = docs {
-            result.push_str(&Self::format_ts_jsdoc(docs));
-        }
+        result.push_str(&render_docs(docs, DocFormat::Block, 0));
 
         // Check if this is a simple enum (all unit variants)
         let is_simple_enum = enum_decl
@@ -182,10 +173,7 @@ impl TypeScriptGenerator {
                 .map(|variant| match variant {
                     EnumVariant::Unit { name, docs } => {
                         let mut variant_result = String::new();
-                        if let Some(docs) = docs {
-                            variant_result
-                                .push_str(&format!("  /** {} */\n", docs.replace('\n', " ")));
-                        }
+                        variant_result.push_str(&render_docs(docs, DocFormat::Block, 2));
                         variant_result.push_str(&format!("  \"{}\"", name));
                         variant_result
                     }
@@ -195,20 +183,14 @@ impl TypeScriptGenerator {
                         field_type,
                     } => {
                         let mut variant_result = String::new();
-                        if let Some(docs) = docs {
-                            variant_result
-                                .push_str(&format!("  /** {} */\n", docs.replace('\n', " ")));
-                        }
+                        variant_result.push_str(&render_docs(docs, DocFormat::Block, 2));
                         let ts_type = Self::resolve_typescript_type(field_type, imports);
                         variant_result.push_str(&format!("  {{ \"{}\": {} }}", name, ts_type));
                         variant_result
                     }
                     EnumVariant::Tuple { name, docs, fields } => {
                         let mut variant_result = String::new();
-                        if let Some(docs) = docs {
-                            variant_result
-                                .push_str(&format!("  /** {} */\n", docs.replace('\n', " ")));
-                        }
+                        variant_result.push_str(&render_docs(docs, DocFormat::Block, 2));
                         let field_types: Vec<String> = fields
                             .iter()
                             .map(|field_type| Self::resolve_typescript_type(field_type, imports))
@@ -222,10 +204,9 @@ impl TypeScriptGenerator {
                     }
                     EnumVariant::Struct { name, docs, fields } => {
                         let mut variant_result = String::new();
-                        if let Some(docs) = docs {
-                            variant_result
-                                .push_str(&format!("  /** {} */\n", docs.replace('\n', " ")));
-                        }
+
+                        variant_result.push_str(&render_docs(docs, DocFormat::Block, 2));
+
                         let struct_fields: Vec<String> = fields
                             .iter()
                             .map(|field| {
@@ -312,33 +293,11 @@ impl TypeScriptGenerator {
     fn generate_null_typescript(type_name: &str, docs: &Option<String>) -> String {
         let mut result = String::new();
 
-        // Add documentation if present
-        if let Some(docs) = docs {
-            result.push_str(&Self::format_ts_jsdoc(docs));
-        }
+        result.push_str(&render_docs(docs, DocFormat::Block, 2));
 
         // Null type (for unit structs)
         result.push_str(&format!("export type {} = null;", type_name));
 
         result
-    }
-
-    /// Format documentation as TypeScript JSDoc comment
-    fn format_ts_jsdoc(doc: &str) -> String {
-        if doc.is_empty() {
-            String::new()
-        } else {
-            let lines: Vec<&str> = doc.lines().collect();
-            if lines.len() == 1 {
-                format!("/** {} */\n", lines[0])
-            } else {
-                let formatted_lines = lines
-                    .iter()
-                    .map(|line| format!(" * {}", line))
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                format!("/**\n{}\n */\n", formatted_lines)
-            }
-        }
     }
 }

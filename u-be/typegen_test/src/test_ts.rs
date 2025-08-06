@@ -63,7 +63,7 @@ export type TSTypePoint = [number, number];
 
 /* ts header */
 
-/** Test unit struct */
+  /** Test unit struct */
 export type TSTypeUnit = null;
 ---------------- ./ts/TSPrefixWrappedString.ts
 

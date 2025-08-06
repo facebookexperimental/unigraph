@@ -1,5 +1,7 @@
 use crate::Lang;
 use crate::TypeGenConfig;
+use crate::docs::DocFormat;
+use crate::docs::render_docs;
 use crate::types::EnumDecl;
 use crate::types::EnumVariant;
 use crate::types::PrimitiveTypeRef;
@@ -46,19 +48,15 @@ impl HackGenerator {
     ) -> String {
         let mut result = String::new();
 
-        // Add documentation comment
-        if let Some(docs) = docs {
-            result.push_str(&format!("/**\n * {}\n */\n", docs));
-        }
+        result.push_str(&render_docs(docs, DocFormat::TwoSlash, 0));
 
         result.push_str(&format!("type {} = shape(\n", type_name));
 
         for field in &struct_decl.fields {
             let field_type = Self::type_ref_to_hack(&field.type_ref);
 
-            if let Some(field_docs) = &field.docs {
-                result.push_str(&format!("  // {}\n", field_docs));
-            }
+            result.push_str(&render_docs(&field.docs, DocFormat::TwoSlash, 2));
+
             result.push_str(&format!("  '{}' => {},\n", field.field_name, field_type));
         }
 
@@ -73,10 +71,7 @@ impl HackGenerator {
     ) -> String {
         let mut result = String::new();
 
-        // Add documentation comment
-        if let Some(docs) = docs {
-            result.push_str(&format!("/**\n * {}\n */\n", docs));
-        }
+        result.push_str(&render_docs(docs, DocFormat::TwoSlash, 0));
 
         let field_types: Vec<String> = tuple_struct_decl
             .fields
@@ -99,10 +94,7 @@ impl HackGenerator {
     fn generate_enum_hack(type_name: &str, docs: &Option<String>, enum_decl: &EnumDecl) -> String {
         let mut result = String::new();
 
-        // Add documentation comment
-        if let Some(docs) = docs {
-            result.push_str(&format!("/**\n * {}\n */\n", docs));
-        }
+        result.push_str(&render_docs(docs, DocFormat::TwoSlash, 0));
 
         // Check if this is a simple enum (all unit variants)
         let is_simple_enum = enum_decl
@@ -114,8 +106,9 @@ impl HackGenerator {
             // Generate Hack enum for simple enums
             result.push_str(&format!("enum {}: string as string {{\n", type_name));
             for variant in &enum_decl.variants {
-                if let EnumVariant::Unit { name, docs: _ } = variant {
+                if let EnumVariant::Unit { name, docs } = variant {
                     let constant_name = name.to_uppercase();
+                    result.push_str(&render_docs(docs, DocFormat::TwoSlash, 2));
                     result.push_str(&format!("  {} = \"{}\";\n", constant_name, name));
                 }
             }
@@ -126,24 +119,24 @@ impl HackGenerator {
 
             for variant in &enum_decl.variants {
                 match variant {
-                    EnumVariant::Unit { name, docs: _ } => {
+                    EnumVariant::Unit { name, docs } => {
+                        result.push_str(&render_docs(docs, DocFormat::TwoSlash, 2));
                         // Unit variants get null as value
                         result.push_str(&format!("  ?'{}' => ?null,\n", name));
                     }
                     EnumVariant::Newtype {
                         name,
                         field_type,
-                        docs: _,
+                        docs,
                     } => {
+                        result.push_str(&render_docs(docs, DocFormat::TwoSlash, 2));
                         // Newtype variants get the wrapped type
                         let hack_type = Self::type_ref_to_hack(field_type);
                         result.push_str(&format!("  ?'{}' => ?{},\n", name, hack_type));
                     }
-                    EnumVariant::Tuple {
-                        name,
-                        fields,
-                        docs: _,
-                    } => {
+                    EnumVariant::Tuple { name, fields, docs } => {
+                        result.push_str(&render_docs(docs, DocFormat::TwoSlash, 2));
+
                         // Tuple variants get a tuple type
                         let field_types: Vec<String> =
                             fields.iter().map(Self::type_ref_to_hack).collect();
@@ -158,11 +151,8 @@ impl HackGenerator {
                             ));
                         }
                     }
-                    EnumVariant::Struct {
-                        name,
-                        fields,
-                        docs: _,
-                    } => {
+                    EnumVariant::Struct { name, fields, docs } => {
+                        result.push_str(&render_docs(docs, DocFormat::TwoSlash, 2));
                         // Struct variants get a shape with their fields
                         if fields.is_empty() {
                             result.push_str(&format!("  ?'{}' => ?shape(),\n", name));
@@ -189,10 +179,7 @@ impl HackGenerator {
     fn generate_null_hack(type_name: &str, docs: &Option<String>) -> String {
         let mut result = String::new();
 
-        // Add documentation comment
-        if let Some(docs) = docs {
-            result.push_str(&format!("/**\n * {}\n */\n", docs));
-        }
+        result.push_str(&render_docs(docs, DocFormat::TwoSlash, 0));
 
         result.push_str(&format!("type {} = null;\n", type_name));
         result

@@ -23,6 +23,7 @@
 //! specified in the typegen.toml file.
 
 mod config;
+mod docs;
 mod flow;
 mod hack;
 mod types;

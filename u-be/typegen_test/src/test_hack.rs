@@ -18,9 +18,7 @@ fn test_flow_generation() {
 <?hh
 /* hack header */
 
-/**
- * Simple address struct for testing
- */
+// Simple address struct for testing
 type HackTypeAddress = shape(
   // Street address
   'street' => string,
@@ -37,9 +35,7 @@ type HackTypeAddress = shape(
 <?hh
 /* hack header */
 
-/**
- * Person struct that references Address
- */
+// Person struct that references Address
 type HackTypePerson = shape(
   'name' => string,
   'age' => int,
@@ -51,9 +47,7 @@ type HackTypePerson = shape(
 <?hh
 /* hack header */
 
-/**
- * Test struct with optional fields
- */
+// Test struct with optional fields
 type HackTypeUser = shape(
   'id' => int,
   'email' => string,
@@ -68,9 +62,7 @@ type HackTypeUser = shape(
 <?hh
 /* hack header */
 
-/**
- * Test tuple struct
- */
+// Test tuple struct
 type HackTypePoint = (float, float);
 
 ---------------- ./hack/HackPrefixUnit.hhi
@@ -78,9 +70,7 @@ type HackTypePoint = (float, float);
 <?hh
 /* hack header */
 
-/**
- * Test unit struct
- */
+// Test unit struct
 type HackTypeUnit = null;
 
 ---------------- ./hack/HackPrefixWrappedString.hhi
@@ -88,10 +78,8 @@ type HackTypeUnit = null;
 <?hh
 /* hack header */
 
-/**
- * This is a wrapper for a String type. The type
-should be transparent in the generated code and point directly to the string type.
- */
+// This is a wrapper for a String type. The type
+// should be transparent in the generated code and point directly to the string type.
 type HackTypeWrappedString = string;
 
 ---------------- ./hack/HackPrefixAnimal.hhi
@@ -99,12 +87,13 @@ type HackTypeWrappedString = string;
 <?hh
 /* hack header */
 
-/**
- * Simple enum with unit variants
- */
+// Simple enum with unit variants
 enum HackTypeAnimal: string as string {
+  // A cat
   CAT = "Cat";
+  // A dog
   DOG = "Dog";
+  // A fish
   FISH = "Fish";
 }
 
@@ -113,12 +102,13 @@ enum HackTypeAnimal: string as string {
 <?hh
 /* hack header */
 
-/**
- * Complex enum with different variant types
- */
+// Complex enum with different variant types
 type HackTypeShape = shape(
+  // Circle with radius
   ?'Circle' => ?float,
+  // Rectangle with width and height
   ?'Rectangle' => ?(float, float),
+  // Point with coordinates
   ?'Point' => ?shape(
     'x' => float,
     'y' => float,
