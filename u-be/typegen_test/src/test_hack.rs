@@ -111,7 +111,11 @@ type WrappedString = string;
 /**
  * Simple enum with unit variants
  */
-type Animal = 'Cat' | 'Dog' | 'Fish';
+enum Animal: string as string {
+  CAT = "Cat";
+  DOG = "Dog";
+  FISH = "Fish";
+}
 
 ---------------- ./hack/HackPrefixShape.hhi
 

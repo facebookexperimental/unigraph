@@ -128,64 +128,82 @@ impl HackGenerator {
             result.push_str(&format!("/**\n * {}\n */\n", docs));
         }
 
-        // For Hack, we'll generate a union type for enums
-        let mut variants = Vec::new();
+        // Check if this is a simple enum (all unit variants)
+        let is_simple_enum = enum_decl
+            .variants
+            .iter()
+            .all(|variant| matches!(variant, EnumVariant::Unit { .. }));
 
-        for variant in &enum_decl.variants {
-            match variant {
-                EnumVariant::Unit { name, docs: _ } => {
-                    // Unit variants become string literals
-                    variants.push(format!("'{}'", name));
-                }
-                EnumVariant::Newtype {
-                    name,
-                    field_type,
-                    docs: _,
-                } => {
-                    // Newtype variants become shapes with a 'type' field and data
-                    variants.push(format!(
-                        "shape('type' => '{}', 'data' => {})",
-                        name,
-                        Self::type_ref_to_hack(field_type, imports)
-                    ));
-                }
-                EnumVariant::Tuple {
-                    name,
-                    fields,
-                    docs: _,
-                } => {
-                    // Tuple variants become shapes with a 'type' field and data
-                    let field_types: Vec<String> = fields
-                        .iter()
-                        .enumerate()
-                        .map(|(i, field)| {
-                            format!("'{}' => {}", i, Self::type_ref_to_hack(field, imports))
-                        })
-                        .collect();
-
-                    variants.push(format!(
-                        "shape('type' => '{}', 'data' => ({}))",
-                        name,
-                        field_types.join(", ")
-                    ));
-                }
-                EnumVariant::Struct {
-                    name,
-                    fields,
-                    docs: _,
-                } => {
-                    // Struct variants become shapes with a 'type' field and named fields
-                    let mut shape_fields = vec![format!("'type' => '{}'", name)];
-                    for field in fields {
-                        let field_type = Self::type_ref_to_hack(&field.type_ref, imports);
-                        shape_fields.push(format!("'{}' => {}", field.field_name, field_type));
-                    }
-                    variants.push(format!("shape({})", shape_fields.join(", ")));
+        if is_simple_enum {
+            // Generate Hack enum for simple enums
+            result.push_str(&format!("enum {}: string as string {{\n", type_name));
+            for variant in &enum_decl.variants {
+                if let EnumVariant::Unit { name, docs: _ } = variant {
+                    let constant_name = name.to_uppercase();
+                    result.push_str(&format!("  {} = \"{}\";\n", constant_name, name));
                 }
             }
-        }
+            result.push_str("}\n");
+        } else {
+            // For complex enums, use union types with shapes
+            let mut variants = Vec::new();
 
-        result.push_str(&format!("type {} = {};\n", type_name, variants.join(" | ")));
+            for variant in &enum_decl.variants {
+                match variant {
+                    EnumVariant::Unit { name, docs: _ } => {
+                        // Unit variants become string literals
+                        variants.push(format!("'{}'", name));
+                    }
+                    EnumVariant::Newtype {
+                        name,
+                        field_type,
+                        docs: _,
+                    } => {
+                        // Newtype variants become shapes with a 'type' field and data
+                        variants.push(format!(
+                            "shape('type' => '{}', 'data' => {})",
+                            name,
+                            Self::type_ref_to_hack(field_type, imports)
+                        ));
+                    }
+                    EnumVariant::Tuple {
+                        name,
+                        fields,
+                        docs: _,
+                    } => {
+                        // Tuple variants become shapes with a 'type' field and data
+                        let field_types: Vec<String> = fields
+                            .iter()
+                            .enumerate()
+                            .map(|(i, field)| {
+                                format!("'{}' => {}", i, Self::type_ref_to_hack(field, imports))
+                            })
+                            .collect();
+
+                        variants.push(format!(
+                            "shape('type' => '{}', 'data' => ({}))",
+                            name,
+                            field_types.join(", ")
+                        ));
+                    }
+                    EnumVariant::Struct {
+                        name,
+                        fields,
+                        docs: _,
+                    } => {
+                        // Struct variants become shapes with a 'type' field and named fields
+                        let mut shape_fields = vec![format!("'type' => '{}'", name)];
+                        for field in fields {
+                            let field_type = Self::type_ref_to_hack(&field.type_ref, imports);
+                            shape_fields.push(format!("'{}' => {}", field.field_name, field_type));
+                        }
+                        variants.push(format!("shape({})", shape_fields.join(", ")));
+                    }
+                }
+            }
+
+            result.push_str(&format!("type {} = {};\n", type_name, variants.join(" | ")));
+        }
         result
     }
 
