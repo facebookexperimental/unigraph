@@ -1,3 +1,10 @@
+/**
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ *
+ * @generated
+ */
+
+
 import type { IndividualOptionEnabled } from './IndividualOptionEnabled.ts';
 import type { MetricFormat } from './MetricFormat.ts';
 

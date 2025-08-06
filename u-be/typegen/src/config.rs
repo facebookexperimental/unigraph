@@ -26,6 +26,7 @@ pub struct TypeGenConfig {
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct SharedConfig {
     pub export_path: Option<String>,
+    pub header: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -59,7 +60,7 @@ impl TypeGenConfig {
     }
 }
 
-// Cache for resolved configs - maps directory paths to configs
+/// Cache for resolved configs - maps directory paths to configs
 static CONFIG_CACHE: OnceLock<Mutex<HashMap<PathBuf, Arc<TypeGenConfig>>>> = OnceLock::new();
 
 /// Get the configuration for a specific source file path, resolving the closest config

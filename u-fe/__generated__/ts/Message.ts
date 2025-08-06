@@ -1,4 +1,11 @@
 /**
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ *
+ * @generated
+ */
+
+
+/**
  * Traversal config messages are little pieces of extra information
  * that we can show in the UI to help users understand why a certain
  * edge was followed or not followed.

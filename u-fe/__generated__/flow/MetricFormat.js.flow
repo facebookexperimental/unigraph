@@ -1,3 +1,11 @@
+/** 
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ *
+ * @flow
+ * @generated
+ */
+
+
 import type { SizeConfig } from './SizeConfig.js';
 
 // Value that defines how to format metric values (in the UI or CLI output)

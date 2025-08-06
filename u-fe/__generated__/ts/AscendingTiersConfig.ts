@@ -1,3 +1,10 @@
+/**
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ *
+ * @generated
+ */
+
+
 import type { AscendingTier } from './AscendingTier.ts';
 
 export interface AscendingTiersConfig {

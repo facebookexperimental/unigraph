@@ -1,3 +1,11 @@
+/** 
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ *
+ * @flow
+ * @generated
+ */
+
+
 import type { Decision } from './Decision.js';
 
 export type ForceDynamic = {

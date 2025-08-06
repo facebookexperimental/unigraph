@@ -1,3 +1,10 @@
+/**
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ *
+ * @generated
+ */
+
+
 /** Configuration for size formatting */
 export type SizeConfig = 
   /** Flexible units to display readable sizes, but will units will be inconsistent across sizes with variation */

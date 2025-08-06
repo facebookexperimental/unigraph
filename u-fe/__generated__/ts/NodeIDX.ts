@@ -1,4 +1,11 @@
 /**
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ *
+ * @generated
+ */
+
+
+/**
  * Why is NodeIDX a u32?
  * We pass this across the WASM boundary in batch (as Vec<u64>) where
  * the NodeIDX is packed together with other data.

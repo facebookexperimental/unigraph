@@ -1,3 +1,10 @@
+/**
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ *
+ * @generated
+ */
+
+
 export interface ArrayGraphStats {
   num_all_nodes: number;
   num_all_edges: number;

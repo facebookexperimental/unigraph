@@ -1,3 +1,11 @@
+/** 
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ *
+ * @flow
+ * @generated
+ */
+
+
 // Enum that defines whether an individual option is enabled or not.
 // This is for cases where we have a global settings that can show/hide certain
 // things plus individual settings for the same thing on each metric/tier/etc.

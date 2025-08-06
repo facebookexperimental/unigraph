@@ -1,5 +1,20 @@
 [typescript]
 export_path = "u-fe/__generated__/ts"
+header = """
+/**
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ *
+ * @generated
+ */
+"""
 
 [flow]
-export_path = "u-fe/__generated__/flow"
+export_path = "../../../../www/html/intern/js/unigraph/__generated__/typegen"
+header = """
+/**
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ *
+ * @flow
+ * @generated
+ */
+"""

@@ -1,3 +1,11 @@
+/** 
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ *
+ * @flow
+ * @generated
+ */
+
+
 export type SimulationColors = {
   background: [number, number, number],
   node_main: [number, number, number],

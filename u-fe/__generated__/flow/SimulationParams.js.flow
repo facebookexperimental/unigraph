@@ -1,3 +1,11 @@
+/** 
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ *
+ * @flow
+ * @generated
+ */
+
+
 import type { Selection } from './Selection.js';
 import type { SimulationColors } from './SimulationColors.js';
 

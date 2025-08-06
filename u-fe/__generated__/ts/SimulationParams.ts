@@ -1,3 +1,10 @@
+/**
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ *
+ * @generated
+ */
+
+
 import type { Selection } from './Selection.ts';
 import type { SimulationColors } from './SimulationColors.ts';
 

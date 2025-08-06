@@ -1,3 +1,10 @@
+/**
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ *
+ * @generated
+ */
+
+
 import type { ArrayGraphUISettingsTreeTableEntryPoints } from './ArrayGraphUISettingsTreeTableEntryPoints.ts';
 import type { ColumnSettings } from './ColumnSettings.ts';
 import type { GraphStructure } from './GraphStructure.ts';

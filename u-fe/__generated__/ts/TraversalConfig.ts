@@ -1,3 +1,10 @@
+/**
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ *
+ * @generated
+ */
+
+
 import type { Decision } from './Decision.ts';
 import type { ForceDynamic } from './ForceDynamic.ts';
 import type { Message } from './Message.ts';

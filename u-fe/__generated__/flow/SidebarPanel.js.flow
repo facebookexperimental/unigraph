@@ -1,1 +1,9 @@
+/** 
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ *
+ * @flow
+ * @generated
+ */
+
+
 export type SidebarPanel = "None" | "Simulation" | "GraphInfo";

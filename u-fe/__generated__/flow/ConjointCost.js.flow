@@ -1,3 +1,11 @@
+/** 
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ *
+ * @flow
+ * @generated
+ */
+
+
 // Conjoint cost of the component is a value that represents its transitive
 // size adjusted for how many other nodes it depends on.
 // It's calculated by summing up the cost of all ConjCost(direct children) and

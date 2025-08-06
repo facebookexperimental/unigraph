@@ -1,3 +1,10 @@
+/**
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ *
+ * @generated
+ */
+
+
 import type { SelectionType } from './SelectionType.ts';
 import type { TsVec2 } from './TsVec2.ts';
 
