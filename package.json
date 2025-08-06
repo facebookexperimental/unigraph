@@ -7,7 +7,8 @@
     "build-js": "rolldown -c ./rolldown.config.ts",
     "ts": "tsc --noEmit --project ./tsconfig.json",
     "lint": "biome check",
-    "test": "vitest"
+    "test": "vitest",
+    "dev": "concurrently 'pnpm run tailwind' 'pnpm run build-js'"
   },
   "keywords": [],
   "author": "",
@@ -18,6 +19,7 @@
     "@types/node": "^22.15.21",
     "@types/react": "19.1.2",
     "@types/react-dom": "19.1.2",
+    "concurrently": "^9.2.0",
     "rolldown": "1.0.0-beta.8",
     "tailwindcss": "4.1.4",
     "typescript": "^5.8.3",
