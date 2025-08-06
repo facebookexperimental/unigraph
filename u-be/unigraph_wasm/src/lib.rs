@@ -206,13 +206,16 @@ pub fn get_node_metrics(node_idxs: Vec<u32>, metric_name: &str) -> Result<Vec<f3
 pub fn get_transitive_metrics(
     node_idxs: Vec<u32>,
     metric_name: &str,
+    dominated: bool,
 ) -> Result<Vec<f32>, WasmJSError> {
     let graph_state = GlobalState::graph_state().get();
     let mut result = Vec::with_capacity(node_idxs.len());
     for node_idx in node_idxs {
-        let transitive_value = graph_state
-            .array_graph
-            .get_transitive_metric_value(NodeIDX(node_idx), metric_name)?;
+        let transitive_value = graph_state.array_graph.get_transitive_metric_value(
+            NodeIDX(node_idx),
+            metric_name,
+            dominated,
+        )?;
         result.push(transitive_value);
     }
     Ok(result)

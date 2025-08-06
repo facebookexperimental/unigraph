@@ -90,14 +90,21 @@ pub fn get_transitive_metric_value(
     ag: &ArrayGraph,
     node_idx: NodeIDX,
     metric_name: &str,
+    dominated: bool,
 ) -> Result<f32> {
     if ag.is_node_unreachable(node_idx) {
         return Ok(0.0);
     }
 
+    let edges = if dominated {
+        ag.edges_dom()
+    } else {
+        &ag.edges_forward
+    };
+
     let mut total = 0.0;
     if let Some(metrics) = ag.metrics.get(metric_name) {
-        for node_idx in ag.edges_forward.dfs_configured(&[node_idx]) {
+        for node_idx in edges.dfs_configured(&[node_idx]) {
             let value = metrics[node_idx];
             total += value
         }

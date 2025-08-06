@@ -51,6 +51,7 @@ function defaultColumnDefinitions(
     graphSettings.ui_settings?.columns?.show_conjoint ?? false;
   const showMetrics = graphSettings.ui_settings?.columns?.hide_metrics !== true;
   const showTiered = graphSettings.ui_settings?.columns?.show_tiered === true;
+  const dominated = graphSettings.ui_settings?.graph_structure === "Dominator";
 
   const columnDefinitions: { [name: string]: NonTreeColumnDefinition } = {};
   for (const metricName of nativeGraph.metricNames) {
@@ -71,7 +72,12 @@ function defaultColumnDefinitions(
       metricSettings?.column_show_transitive === "WhenEnabledGlobally"
     ) {
       const [transitiveMetricColumnID, transitiveMetricColumnDefinition] =
-        createTransitiveMetricColumn(metricName, nativeGraph, metricSettings);
+        createTransitiveMetricColumn(
+          metricName,
+          nativeGraph,
+          metricSettings,
+          dominated,
+        );
 
       columnDefinitions[transitiveMetricColumnID] =
         transitiveMetricColumnDefinition;
@@ -83,7 +89,7 @@ function defaultColumnDefinitions(
         nativeGraph,
         metricSettings,
         tvc,
-        graphSettings.ui_settings?.graph_structure === "Dominator",
+        dominated,
       );
       for (const { columnID, definition } of tieredTransitiveColumns) {
         columnDefinitions[columnID] = definition;
@@ -101,18 +107,9 @@ function defaultColumnDefinitions(
       graphSettings.ui_settings?.columns?.show_transitive_count !== "Never"
     ) {
       const [transitiveCountColumnID, transitiveCountColumnDefinition] =
-        createTransitiveCountColumn(nativeGraph);
+        createTransitiveCountColumn(nativeGraph, dominated);
       columnDefinitions[transitiveCountColumnID] =
         transitiveCountColumnDefinition;
-
-      if (graphSettings.ui_settings?.graph_structure === "Dominator") {
-        const [
-          transitiveCountDominatedColumnID,
-          transitiveCountDominatedColumnDefinition,
-        ] = createTransitiveCountDominatedColumn(nativeGraph);
-        columnDefinitions[transitiveCountDominatedColumnID] =
-          transitiveCountDominatedColumnDefinition;
-      }
     }
 
     if (showConjoint) {
@@ -191,16 +188,34 @@ function createTransitiveMetricColumn(
   metricName: string,
   nativeGraph: NativeGraph,
   metricSettings: MetricSettings | null,
+  dominated: boolean,
 ): [string, NumericValueColumnDefinition] {
-  const columnID = `T(${metricName})`;
+  const columnID = `transitive_${metricName}`;
+
+  const { getValues, label } = (() => {
+    if (dominated) {
+      return {
+        getValues: (idxs: NodeIDX[]) =>
+          nativeGraph.getTransitiveDominatedMetricsBatched(idxs, metricName),
+        label: `D(${metricName})`,
+      };
+    } else {
+      return {
+        getValues: (idxs: NodeIDX[]) =>
+          nativeGraph.getTransitiveMetricsBatched(idxs, metricName),
+        label: `T(${metricName})`,
+      };
+    }
+  })();
+
   const definition: NumericValueColumnDefinition = {
     t: "numeric_value_column",
-    label: columnID,
+    label,
     renderer: (arrow: Arrow) => {
       if (nativeGraph.isNodeReachable(arrow.points_to)) {
         return (
           <MetricCell
-            value={nativeGraph.getTransitiveMetric(arrow.points_to, metricName)}
+            value={getValues([arrow.points_to])[0] as number}
             format={metricSettings?.format}
           />
         );
@@ -208,9 +223,7 @@ function createTransitiveMetricColumn(
         return <MissingMetric />;
       }
     },
-    getNumericValues: (idxs: NodeIDX[]) => {
-      return nativeGraph.getTransitiveMetricsBatched(idxs, metricName);
-    },
+    getNumericValues: getValues,
     sortable: true,
     isHidden: false,
   };
@@ -437,16 +450,32 @@ function createParentsCountColumn(
 
 function createTransitiveCountColumn(
   nativeGraph: NativeGraph,
+  dominated: boolean,
 ): [string, NumericValueColumnDefinition] {
-  const columnID = "T(count)";
+  const columnID = "transitive_count";
+  const { getValues, label } = (() => {
+    if (dominated) {
+      return {
+        getValues: (idxs: NodeIDX[]) =>
+          nativeGraph.getTransitiveCountDominated(idxs),
+        label: "D(count)",
+      };
+    } else {
+      return {
+        getValues: (idxs: NodeIDX[]) => nativeGraph.getTransitiveCount(idxs),
+        label: "T(count)",
+      };
+    }
+  })();
+
   const definition: NumericValueColumnDefinition = {
     t: "numeric_value_column",
-    label: columnID,
+    label: label,
     renderer: (arrow: Arrow) => {
       if (nativeGraph.isNodeReachable(arrow.points_to)) {
         return (
           <MetricCell
-            value={nativeGraph.getTransitiveCount([arrow.points_to])[0] ?? 0}
+            value={getValues([arrow.points_to])[0] ?? 0}
             format={NO_PRECISION_FORMAT}
           />
         );
@@ -470,9 +499,7 @@ function createTransitiveCountColumn(
         );
       }
     },
-    getNumericValues: (idxs: NodeIDX[]) => {
-      return nativeGraph.getTransitiveCount(idxs);
-    },
+    getNumericValues: getValues,
     sortable: true,
     isHidden: false,
   };
@@ -501,36 +528,6 @@ function createConjointCountColumn(
     getNumericValues: (idxs: NodeIDX[]) => {
       const count = nativeGraph.getConjointCost().count;
       return new Float32Array(idxs.map((idx) => count[idx] ?? 0));
-    },
-    sortable: true,
-    isHidden: false,
-  };
-  return [columnID, definition];
-}
-
-function createTransitiveCountDominatedColumn(
-  nativeGraph: NativeGraph,
-): [string, NumericValueColumnDefinition] {
-  const columnID = "D(T(count))";
-  const definition: NumericValueColumnDefinition = {
-    t: "numeric_value_column",
-    label: columnID,
-    renderer: (arrow: Arrow) => {
-      if (nativeGraph.isNodeReachable(arrow.points_to)) {
-        return (
-          <MetricCell
-            value={
-              nativeGraph.getTransitiveCountDominated([arrow.points_to])[0] ?? 0
-            }
-            format={NO_PRECISION_FORMAT}
-          />
-        );
-      } else {
-        return <MissingMetric />;
-      }
-    },
-    getNumericValues: (idxs: NodeIDX[]) => {
-      return nativeGraph.getTransitiveCountDominated(idxs);
     },
     sortable: true,
     isHidden: false,

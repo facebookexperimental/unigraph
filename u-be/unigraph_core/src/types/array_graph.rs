@@ -233,8 +233,13 @@ impl ArrayGraph {
         determine_entrypoints(self)
     }
 
-    pub fn get_transitive_metric_value(&self, node_idx: NodeIDX, metric_name: &str) -> Result<f32> {
-        get_transitive_metric_value(self, node_idx, metric_name)
+    pub fn get_transitive_metric_value(
+        &self,
+        node_idx: NodeIDX,
+        metric_name: &str,
+        dominated: bool,
+    ) -> Result<f32> {
+        get_transitive_metric_value(self, node_idx, metric_name, dominated)
     }
 
     pub fn get_transitive_tiered_metric_values(

@@ -245,6 +245,15 @@ export default class NativeGraph {
       .getForIDXs(nodeIDXs);
   }
 
+  getTransitiveDominatedMetricsBatched(
+    nodeIDXs: NodeIDX[],
+    metricName: string,
+  ): Float32Array {
+    return this.metricCaches
+      .getOrInitForTransitiveDominated(metricName)
+      .getForIDXs(nodeIDXs);
+  }
+
   getTieredTransitiveMetric(
     nodeIDX: NodeIDX,
     metricName: string,
@@ -338,12 +347,14 @@ class MetricCaches {
   // side as is and we'll use it to avoid crossing the boundary
   private node_metrics: Map<string, SingleMetricsCache>;
   private transitive: Map<string, SingleMetricsCache>;
+  private transitive_dominated: Map<string, SingleMetricsCache>;
   private transitive_tiered: Map<string, KeyedMetricsCache>;
   private transitive_tiered_dominated: Map<string, KeyedMetricsCache>;
 
   constructor(private nodeCount: number) {
     this.node_metrics = new Map<string, SingleMetricsCache>();
     this.transitive = new Map<string, SingleMetricsCache>();
+    this.transitive_dominated = new Map<string, SingleMetricsCache>();
     this.transitive_tiered = new Map<string, KeyedMetricsCache>();
     this.transitive_tiered_dominated = new Map<string, KeyedMetricsCache>();
   }
@@ -353,10 +364,22 @@ class MetricCaches {
       return this.transitive.get(metricName) as SingleMetricsCache;
     }
     const getMetrics = (nodeIDXs: NodeIDX[]) =>
-      get_transitive_metrics(new Uint32Array(nodeIDXs), metricName);
+      get_transitive_metrics(new Uint32Array(nodeIDXs), metricName, false);
 
     const metricsCache = new SingleMetricsCache(this.nodeCount, getMetrics);
     this.transitive.set(metricName, metricsCache);
+    return metricsCache;
+  }
+
+  getOrInitForTransitiveDominated(metricName: string): SingleMetricsCache {
+    if (this.transitive_dominated.has(metricName)) {
+      return this.transitive_dominated.get(metricName) as SingleMetricsCache;
+    }
+    const getMetrics = (nodeIDXs: NodeIDX[]) =>
+      get_transitive_metrics(new Uint32Array(nodeIDXs), metricName, true);
+
+    const metricsCache = new SingleMetricsCache(this.nodeCount, getMetrics);
+    this.transitive_dominated.set(metricName, metricsCache);
     return metricsCache;
   }
 

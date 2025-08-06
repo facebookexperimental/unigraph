@@ -171,8 +171,13 @@ export function TreeTable(props: {
   }, [pathSelector, ctx]);
 
   useEffect(() => {
+    ctx.columns = columns;
+    ctx.updateSortState(props.sortColumnID, props.sortOrder);
+
     // if the graph changed we nuke the whole table
-    // and start over from clean state.
+    // and start over from clean state. This could have been triggerred
+    // by switching to a different graph mode (e.g. reverse/dominator) or
+    // completely changing the graph, so we need to start over.
     if (props.treeTableGraph !== ctx.treeTableGraph) {
       startTransition(async () => {
         ctx.treeTableGraph = props.treeTableGraph;
@@ -180,9 +185,8 @@ export function TreeTable(props: {
         ctx.navigateToCurrentPathOrFallbackToShortestPath();
       });
     } else {
-      // When other dependencies change we just resort the rows
-      ctx.columns = columns;
-      ctx.updateSortState(props.sortColumnID, props.sortOrder);
+      // otherwise if the sorting changed we'd want to resort the rows
+      // and keep the graph the same.
       startTransition(async () => {
         await ctx.resortRowsAsync(setSortingProgress);
       });
@@ -674,7 +678,6 @@ class TreeTableCtx {
     nodeIDXs: NodeIDX[],
     setProgress: SetSortingProgressFn,
   ) {
-    console.log("YASSS");
     const startTime = Date.now();
     let elapsed = 0;
 
@@ -745,7 +748,6 @@ class TreeTableCtx {
         // If we already spent some time on this, we can report progress
         setProgress([done, total]);
       }
-      console.log({ elapsed, currentChunkSize, chunkTime, done });
     }
 
     // If we finished the warm up, we can set progress to null
