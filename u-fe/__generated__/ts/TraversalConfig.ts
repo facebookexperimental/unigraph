@@ -15,7 +15,12 @@ export interface TraversalConfig {
   force_nodes: { [key: string]: Decision };
   /** From Node Name -> To Node Name -> Decision */
   force_edges: { [key: string]: { [key: string]: Decision } };
-  /** This will force all nodes that are children of the given node. This is useful for cases where you want to exclude all imports of a specific node (like `MySharedInfraModules.js`) with a single config. */
+  /**
+   * This will force all nodes that are children of the given node.
+   * This is useful for cases where you want to exclude all imports
+   * of a specific node (like `MySharedInfraModules.js`) with a single
+   * config.
+   */
   force_children_of: { [key: string]: Decision };
   /** Only applied to tagged edges */
   force_tagged: { [key: string]: Decision };

@@ -1,5 +1,2 @@
-<?hh
-/**
- * Test unit struct
- */
+// Test unit struct
 type Unit = null;

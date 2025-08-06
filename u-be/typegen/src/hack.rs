@@ -12,26 +12,35 @@ use crate::types::TypeGenGeneratedType;
 use crate::types::TypeRef;
 
 /// Hack type code generator
-pub struct HackGenerator;
+pub struct HackGenerator<'a> {
+    pub config: &'a TypeGenConfig,
+    pub generated_type: &'a TypeGenGeneratedType,
+}
 
-impl HackGenerator {
+impl<'a> HackGenerator<'a> {
     /// Generate Hack code from a type declaration
-    pub fn generate_hack(config: &TypeGenConfig, generated_type: &TypeGenGeneratedType) -> String {
-        let type_name = config.get_type_name(&generated_type.original_type_name, Lang::Hack);
+    pub fn generate(config: &'a TypeGenConfig, generated_type: &'a TypeGenGeneratedType) -> String {
+        Self {
+            config,
+            generated_type,
+        }
+        .generate_impl()
+    }
 
-        let type_code = match &generated_type.declaration {
+    fn generate_impl(&self) -> String {
+        let type_name = self
+            .config
+            .get_type_name(&self.generated_type.original_type_name, Lang::Hack);
+
+        let type_code = match &self.generated_type.declaration {
             TypeGenDecl::StructDecl(struct_decl) => {
-                Self::generate_struct_hack(&type_name, &generated_type.docs, struct_decl)
+                self.generate_struct_hack(&type_name, struct_decl)
             }
-            TypeGenDecl::TupleStructDecl(tuple_struct_decl) => Self::generate_tuple_struct_hack(
-                &type_name,
-                &generated_type.docs,
-                tuple_struct_decl,
-            ),
-            TypeGenDecl::EnumDecl(enum_decl) => {
-                Self::generate_enum_hack(&type_name, &generated_type.docs, enum_decl)
+            TypeGenDecl::TupleStructDecl(tuple_struct_decl) => {
+                self.generate_tuple_struct_hack(&type_name, tuple_struct_decl)
             }
-            TypeGenDecl::Null => Self::generate_null_hack(&type_name, &generated_type.docs),
+            TypeGenDecl::EnumDecl(enum_decl) => self.generate_enum_hack(&type_name, enum_decl),
+            TypeGenDecl::Null => self.generate_null_hack(&type_name),
         };
 
         // Generate use statements
@@ -41,19 +50,19 @@ impl HackGenerator {
         result
     }
 
-    fn generate_struct_hack(
-        type_name: &str,
-        docs: &Option<String>,
-        struct_decl: &StructDecl,
-    ) -> String {
+    fn generate_struct_hack(&self, type_name: &str, struct_decl: &StructDecl) -> String {
         let mut result = String::new();
 
-        result.push_str(&render_docs(docs, DocFormat::TwoSlash, 0));
+        result.push_str(&render_docs(
+            &self.generated_type.docs,
+            DocFormat::TwoSlash,
+            0,
+        ));
 
         result.push_str(&format!("type {} = shape(\n", type_name));
 
         for field in &struct_decl.fields {
-            let field_type = Self::type_ref_to_hack(&field.type_ref);
+            let field_type = self.type_ref_to_hack(&field.type_ref);
 
             result.push_str(&render_docs(&field.docs, DocFormat::TwoSlash, 2));
 
@@ -65,18 +74,22 @@ impl HackGenerator {
     }
 
     fn generate_tuple_struct_hack(
+        &self,
         type_name: &str,
-        docs: &Option<String>,
         tuple_struct_decl: &TupleStructDecl,
     ) -> String {
         let mut result = String::new();
 
-        result.push_str(&render_docs(docs, DocFormat::TwoSlash, 0));
+        result.push_str(&render_docs(
+            &self.generated_type.docs,
+            DocFormat::TwoSlash,
+            0,
+        ));
 
         let field_types: Vec<String> = tuple_struct_decl
             .fields
             .iter()
-            .map(Self::type_ref_to_hack)
+            .map(|f| self.type_ref_to_hack(f))
             .collect();
 
         // For single-element tuples, just use the inner type directly
@@ -91,10 +104,14 @@ impl HackGenerator {
         result
     }
 
-    fn generate_enum_hack(type_name: &str, docs: &Option<String>, enum_decl: &EnumDecl) -> String {
+    fn generate_enum_hack(&self, type_name: &str, enum_decl: &EnumDecl) -> String {
         let mut result = String::new();
 
-        result.push_str(&render_docs(docs, DocFormat::TwoSlash, 0));
+        result.push_str(&render_docs(
+            &self.generated_type.docs,
+            DocFormat::TwoSlash,
+            0,
+        ));
 
         // Check if this is a simple enum (all unit variants)
         let is_simple_enum = enum_decl
@@ -131,7 +148,7 @@ impl HackGenerator {
                     } => {
                         result.push_str(&render_docs(docs, DocFormat::TwoSlash, 2));
                         // Newtype variants get the wrapped type
-                        let hack_type = Self::type_ref_to_hack(field_type);
+                        let hack_type = self.type_ref_to_hack(field_type);
                         result.push_str(&format!("  ?'{}' => ?{},\n", name, hack_type));
                     }
                     EnumVariant::Tuple { name, fields, docs } => {
@@ -139,7 +156,7 @@ impl HackGenerator {
 
                         // Tuple variants get a tuple type
                         let field_types: Vec<String> =
-                            fields.iter().map(Self::type_ref_to_hack).collect();
+                            fields.iter().map(|f| self.type_ref_to_hack(f)).collect();
 
                         if field_types.len() == 1 {
                             result.push_str(&format!("  ?'{}' => ?{},\n", name, field_types[0]));
@@ -159,7 +176,7 @@ impl HackGenerator {
                         } else {
                             result.push_str(&format!("  ?'{}' => ?shape(\n", name));
                             for field in fields {
-                                let field_type = Self::type_ref_to_hack(&field.type_ref);
+                                let field_type = self.type_ref_to_hack(&field.type_ref);
                                 result.push_str(&format!(
                                     "    '{}' => {},\n",
                                     field.field_name, field_type
@@ -176,39 +193,43 @@ impl HackGenerator {
         result
     }
 
-    fn generate_null_hack(type_name: &str, docs: &Option<String>) -> String {
+    fn generate_null_hack(&self, type_name: &str) -> String {
         let mut result = String::new();
 
-        result.push_str(&render_docs(docs, DocFormat::TwoSlash, 0));
+        result.push_str(&render_docs(
+            &self.generated_type.docs,
+            DocFormat::TwoSlash,
+            0,
+        ));
 
         result.push_str(&format!("type {} = null;\n", type_name));
         result
     }
 
-    fn type_ref_to_hack(type_ref: &TypeRef) -> String {
+    fn type_ref_to_hack(&self, type_ref: &TypeRef) -> String {
         match type_ref {
             TypeRef::Primitive(primitive) => Self::primitive_to_hack(primitive),
             TypeRef::Option(inner) => {
-                format!("?{}", Self::type_ref_to_hack(inner))
+                format!("?{}", self.type_ref_to_hack(inner))
             }
             TypeRef::Vec(inner) => {
-                format!("vec<{}>", Self::type_ref_to_hack(inner))
+                format!("vec<{}>", self.type_ref_to_hack(inner))
             }
             TypeRef::Array {
                 element_type,
                 size: _,
             } => {
                 // Hack doesn't have fixed-size arrays, so we'll use vec
-                format!("vec<{}>", Self::type_ref_to_hack(element_type))
+                format!("vec<{}>", self.type_ref_to_hack(element_type))
             }
             TypeRef::Map { key, value } => {
                 format!(
                     "dict<{}, {}>",
-                    Self::type_ref_to_hack(key),
-                    Self::type_ref_to_hack(value)
+                    self.type_ref_to_hack(key),
+                    self.type_ref_to_hack(value)
                 )
             }
-            TypeRef::TypeReference(type_name) => type_name.clone(),
+            TypeRef::TypeReference(type_name) => self.config.get_type_name(type_name, Lang::Hack),
         }
     }
 

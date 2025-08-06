@@ -39,7 +39,7 @@ type HackTypeAddress = shape(
 type HackTypePerson = shape(
   'name' => string,
   'age' => int,
-  'address' => Address,
+  'address' => HackTypeAddress,
 );
 
 ---------------- ./hack/HackPrefixUser.hhi

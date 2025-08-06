@@ -1,5 +1,2 @@
-<?hh
-/**
- * Test tuple struct
- */
+// Test tuple struct
 type Point = (float, float);

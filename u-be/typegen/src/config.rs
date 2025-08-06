@@ -128,7 +128,7 @@ impl TypeGenConfig {
     pub fn make_hack_file(&self, decl: TypeGenGeneratedType) -> Result<Option<TypeGenFile>> {
         if let Some(HackConfig { shared_config }) = &self.hack {
             if let Some(export_path) = &shared_config.export_path {
-                let type_content = HackGenerator::generate_hack(self, &decl);
+                let type_content = HackGenerator::generate(self, &decl);
                 let content = shared_config.prepend_header(type_content);
                 let mut path = self.resolve_path(export_path)?;
                 path.push(self.hack_file_name(&decl.original_type_name));

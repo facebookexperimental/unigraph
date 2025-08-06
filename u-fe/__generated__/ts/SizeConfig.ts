@@ -15,9 +15,18 @@ export type SizeConfig =
   { "ForceMB": {  } } |
   /** Forces the units to be in Gigabytes, not to be confused with Gibibytes */
   { "ForceGB": {  } } |
-  /** Forces the units to be in Kibibytes. Please consider using ForceKB instead https://fburl.com/workplace/2bl6qcmn */
+  /**
+   * Forces the units to be in Kibibytes. Please consider using ForceKB instead
+   * https://fburl.com/workplace/2bl6qcmn
+   */
   { "ForceKiB": {  } } |
-  /** Forces the units to be in Mebibytes. Please consider using ForceMB instead https://fburl.com/workplace/2bl6qcmn */
+  /**
+   * Forces the units to be in Mebibytes. Please consider using ForceMB instead
+   * https://fburl.com/workplace/2bl6qcmn
+   */
   { "ForceMiB": {  } } |
-  /** Forces the units to be in Gigibytes. Please consider using ForceGB instead https://fburl.com/workplace/2bl6qcmn */
+  /**
+   * Forces the units to be in Gigibytes. Please consider using ForceGB instead
+   * https://fburl.com/workplace/2bl6qcmn
+   */
   { "ForceGiB": {  } };

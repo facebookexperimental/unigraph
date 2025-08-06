@@ -1,7 +1,4 @@
-<?hh
-/**
- * Simple address struct for testing
- */
+// Simple address struct for testing
 type Address = shape(
   // Street address
   'street' => string,

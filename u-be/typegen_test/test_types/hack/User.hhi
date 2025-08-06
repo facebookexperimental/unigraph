@@ -1,7 +1,4 @@
-<?hh
-/**
- * Test struct with optional fields
- */
+// Test struct with optional fields
 type User = shape(
   'id' => int,
   'email' => string,

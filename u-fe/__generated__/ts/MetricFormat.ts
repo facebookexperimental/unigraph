@@ -20,5 +20,15 @@ export type MetricFormat =
   { "SizeBytes": { config: SizeConfig | undefined } } |
   /** Given a value of 0 or 1, format it as a boolean */
   { "NumericBoolean": {  } } |
-  /** 1       -> {min:    2, max: 4, delimiter: true}  -> "1.00" 1.1     -> {min:    2, max: 4, delimiter: true}  -> "1.10" 1.12    -> {min:    2, max: 4, delimiter: true}  -> "1.12" 1.123   -> {min:    2, max: 4, delimiter: true}  -> "1.123" 1.1234  -> {min:    2, max: 4, delimiter: true}  -> "1.1234" 1.12345 -> {min:    2, max: 4, delimiter: true}  -> "1.1235" 1000000 -> {min:    2, max: 4, delimiter: true}  -> "1,000,000.00" 1000000 -> {min:    2, max: 4, delimiter: false} -> "1000000.00" 1000000 -> {min:    0, max: 0, delimiter: true}  -> "1,000,000" */
+  /**
+   * 1       -> {min:    2, max: 4, delimiter: true}  -> "1.00"
+   * 1.1     -> {min:    2, max: 4, delimiter: true}  -> "1.10"
+   * 1.12    -> {min:    2, max: 4, delimiter: true}  -> "1.12"
+   * 1.123   -> {min:    2, max: 4, delimiter: true}  -> "1.123"
+   * 1.1234  -> {min:    2, max: 4, delimiter: true}  -> "1.1234"
+   * 1.12345 -> {min:    2, max: 4, delimiter: true}  -> "1.1235"
+   * 1000000 -> {min:    2, max: 4, delimiter: true}  -> "1,000,000.00"
+   * 1000000 -> {min:    2, max: 4, delimiter: false} -> "1000000.00"
+   * 1000000 -> {min:    0, max: 0, delimiter: true}  -> "1,000,000"
+   */
   { "NumberWithVariablePrecision": { min_precision: number | undefined, max_precision: number | undefined, use_delimiter: boolean | undefined } };
