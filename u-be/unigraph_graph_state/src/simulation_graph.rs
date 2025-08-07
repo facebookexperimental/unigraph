@@ -12,6 +12,7 @@ use crate::barnes_hut::BHGraphNode;
 use crate::barnes_hut::QuadTree;
 use crate::global_graph_state;
 use crate::graph_state::NodeAttributesFlags;
+use crate::lfsr::Lfsr32;
 use crate::types::Selection;
 use crate::types::SelectionType;
 
@@ -81,6 +82,7 @@ impl SimulationGraph {
         let mut edges = vec![];
         let mut original_positions = vec![];
         let mut mappings = vec![];
+        let mut lfsr = Lfsr32::new(84848484);
 
         for node_idx in array_graph.node_idx_iter() {
             if array_graph.node_flags[node_idx].is_node_unreachable() {
@@ -88,7 +90,7 @@ impl SimulationGraph {
             } else {
                 let (mut local, mut gpu) = (
                     SimulationNodeLocal::default(),
-                    SimulationNodeGPU::random(node_idx.0),
+                    SimulationNodeGPU::random(&mut lfsr),
                 );
 
                 if let Some(prev) = &previous_graph {
@@ -386,11 +388,11 @@ impl SimulationGraph {
 }
 
 impl SimulationNodeGPU {
-    pub fn random(n: u32) -> Self {
+    pub fn random(lfsr: &mut Lfsr32) -> Self {
         Self {
             position: Vec2 {
-                x: simple_random_f32(n),
-                y: simple_random_f32(n),
+                x: lfsr.next(),
+                y: lfsr.next(),
             }
             .clamp_length_max(0.9),
             adjusted_size: 1.0,
@@ -403,17 +405,9 @@ fn sort_vec_f32(vec: &mut [f32]) {
     vec.sort_by(|a, b| a.partial_cmp(b).unwrap());
 }
 
-/// Returns a simple random f32 between -1.0 and 1.0 based on a passed integer.
-fn simple_random_f32(seed: u32) -> f32 {
-    // Simple hash to generate a value between -1.0 and 1.0
-    let hash = seed.wrapping_mul(1664525).wrapping_add(1013904223);
-    (hash as f32 / u32::MAX as f32) * 2.0 - 1.0
-}
-
 #[cfg(test)]
 mod tests {
     use k9::assert_equal;
-    use k9::snapshot;
 
     use super::*;
 
@@ -432,43 +426,5 @@ mod tests {
         assert_equal!(diff.length(), 2.828427);
 
         Ok(())
-    }
-
-    #[test]
-    fn test_simple_random_f32() {
-        let rands = [
-            1,
-            22,
-            333,
-            4444,
-            55555,
-            242424,
-            119,
-            1999999113,
-            999999999,
-            u32::MAX,
-            u32::MIN,
-        ]
-        .into_iter()
-        .map(simple_random_f32)
-        .collect::<Vec<_>>();
-        snapshot!(
-            rands,
-            "
-[
-    -0.52708894,
-    -0.51081175,
-    -0.2697541,
-    0.9167019,
-    0.5330862,
-    -0.62384486,
-    -0.43562657,
-    0.49312973,
-    0.32561672,
-    -0.5286392,
-    -0.5278641,
-]
-"
-        );
     }
 }

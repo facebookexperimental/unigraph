@@ -2,6 +2,7 @@
 
 mod barnes_hut;
 pub mod graph_state;
+mod lfsr;
 pub mod simulation_graph;
 pub mod types;
 
