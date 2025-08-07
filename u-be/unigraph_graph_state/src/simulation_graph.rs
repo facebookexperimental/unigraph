@@ -4,18 +4,16 @@ use anyhow::Result;
 use bytemuck::Pod;
 use bytemuck::Zeroable;
 use glam::Vec2;
-use rand::Rng;
 use unigraph_core::ArrayGraph;
 use unigraph_core::NodeIDX;
 use unigraph_core::remap_utils::RemapContext;
 
-use crate::GlobalState;
 use crate::barnes_hut::BHGraphNode;
 use crate::barnes_hut::QuadTree;
-use crate::global_state;
+use crate::global_graph_state;
 use crate::graph_state::NodeAttributesFlags;
-use crate::ts_types::Selection;
-use crate::ts_types::SelectionType;
+use crate::types::Selection;
+use crate::types::SelectionType;
 
 /// Stripped version of the ArrayGraph that is used for running simulations.
 /// It contains all the needed node/edges attributes and logic for how to
@@ -27,7 +25,7 @@ use crate::ts_types::SelectionType;
 /// (e.g. 1M nodes graph, but only 10k are reachable) is that if we sync the entire
 /// graph to the GPU and only render the reachable nodes, we end up sending
 /// hundreds of MBs of data per second which can mess up the GPU pipeline.
-pub(crate) struct SimulationGraph {
+pub struct SimulationGraph {
     /// Local node data lives on the CPU and we only access it here
     nodes_local: Vec<SimulationNodeLocal>,
     /// GPU data gets serialized and sent to a GPU buffer, ideally we want to
@@ -88,8 +86,10 @@ impl SimulationGraph {
             if array_graph.node_flags[node_idx].is_node_unreachable() {
                 mappings.push(None);
             } else {
-                let (mut local, mut gpu) =
-                    (SimulationNodeLocal::default(), SimulationNodeGPU::random());
+                let (mut local, mut gpu) = (
+                    SimulationNodeLocal::default(),
+                    SimulationNodeGPU::random(node_idx.0),
+                );
 
                 if let Some(prev) = &previous_graph {
                     // If we have a previous graph, we can reuse the existing node data
@@ -169,7 +169,7 @@ impl SimulationGraph {
     // Process the next iteration of the simulation, which involves calculating all
     // forces and adjusting node velocities and positions accordingly.
     pub fn compute_next_frame(&mut self, compute_forces: bool) -> Result<()> {
-        let params = global_state().simulation_params.get();
+        let params = global_graph_state().simulation_params.get();
 
         if compute_forces {
             self.recompute_forces()?;
@@ -213,7 +213,7 @@ impl SimulationGraph {
         self.nodes_local.iter_mut().for_each(|node| {
             node.force = Vec2::ZERO;
         });
-        let params = global_state().simulation_params.get();
+        let params = global_graph_state().simulation_params.get();
 
         if !params.disable_gravity {
             self.compute_gravity_forces()?;
@@ -231,7 +231,7 @@ impl SimulationGraph {
     }
 
     fn compute_gravity_forces(&mut self) -> Result<()> {
-        let params = global_state().simulation_params.get();
+        let params = global_graph_state().simulation_params.get();
         let mut quad_tree = QuadTree::new(300);
         for idx in self.node_idx_iter() {
             let gpu = &self.nodes_gpu[idx];
@@ -250,7 +250,7 @@ impl SimulationGraph {
     }
 
     pub fn compute_edge_forces(&mut self) -> Result<()> {
-        let params = global_state().simulation_params.get();
+        let params = global_graph_state().simulation_params.get();
         const EPSILON: f32 = 0.0001;
 
         for edge in &self.edges {
@@ -273,7 +273,7 @@ impl SimulationGraph {
     fn forces_pull_towards_center(&mut self) -> Result<()> {
         const CENTER_PULL_STRENGTH_COEFFICIENT: f32 = 0.0007;
 
-        let params = global_state().simulation_params.get();
+        let params = global_graph_state().simulation_params.get();
 
         let multiplier = params.center_pull_force_multiplier * CENTER_PULL_STRENGTH_COEFFICIENT;
 
@@ -334,9 +334,11 @@ impl SimulationGraph {
     }
 
     /// Returns ORIGINAL node indexes from the ArrayGraph
-    pub fn mark_nodes_as_selected(&mut self, selection: &Selection) -> Result<Vec<NodeIDX>> {
-        let aspect_ratio = GlobalState::surface_size().aspect_ratio();
-
+    pub fn mark_nodes_as_selected(
+        &mut self,
+        selection: &Selection,
+        aspect_ratio: f32,
+    ) -> Result<Vec<NodeIDX>> {
         match selection.selection_type {
             SelectionType::None => {
                 for sim_node_idx in self.node_idx_iter() {
@@ -384,12 +386,11 @@ impl SimulationGraph {
 }
 
 impl SimulationNodeGPU {
-    pub fn random() -> Self {
-        let mut rng = rand::rng();
+    pub fn random(n: u32) -> Self {
         Self {
             position: Vec2 {
-                x: rng.random_range(-1.0..1.0),
-                y: rng.random_range(-1.0..1.0),
+                x: simple_random_f32(n),
+                y: simple_random_f32(n),
             }
             .clamp_length_max(0.9),
             adjusted_size: 1.0,
@@ -402,9 +403,17 @@ fn sort_vec_f32(vec: &mut [f32]) {
     vec.sort_by(|a, b| a.partial_cmp(b).unwrap());
 }
 
+/// Returns a simple random f32 between -1.0 and 1.0 based on a passed integer.
+fn simple_random_f32(seed: u32) -> f32 {
+    // Simple hash to generate a value between -1.0 and 1.0
+    let hash = seed.wrapping_mul(1664525).wrapping_add(1013904223);
+    (hash as f32 / u32::MAX as f32) * 2.0 - 1.0
+}
+
 #[cfg(test)]
 mod tests {
     use k9::assert_equal;
+    use k9::snapshot;
 
     use super::*;
 
@@ -423,5 +432,43 @@ mod tests {
         assert_equal!(diff.length(), 2.828427);
 
         Ok(())
+    }
+
+    #[test]
+    fn test_simple_random_f32() {
+        let rands = [
+            1,
+            22,
+            333,
+            4444,
+            55555,
+            242424,
+            119,
+            1999999113,
+            999999999,
+            u32::MAX,
+            u32::MIN,
+        ]
+        .into_iter()
+        .map(simple_random_f32)
+        .collect::<Vec<_>>();
+        snapshot!(
+            rands,
+            "
+[
+    -0.52708894,
+    -0.51081175,
+    -0.2697541,
+    0.9167019,
+    0.5330862,
+    -0.62384486,
+    -0.43562657,
+    0.49312973,
+    0.32561672,
+    -0.5286392,
+    -0.5278641,
+]
+"
+        );
     }
 }

@@ -3,9 +3,8 @@
 use bytemuck::Pod;
 use bytemuck::Zeroable;
 use glam::Vec2;
+use unigraph_graph_state::types::SelectionType;
 use wgpu::util::DeviceExt;
-
-use crate::ts_types::SelectionType;
 
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
 #[repr(C)]

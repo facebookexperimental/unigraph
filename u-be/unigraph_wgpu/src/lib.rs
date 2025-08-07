@@ -1,13 +1,10 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-mod barnes_hut;
 mod basic_uniforms;
 mod global_state;
-mod graph_state;
 mod shared;
-mod simulation_graph;
-pub mod ts_types;
 pub mod unigraph_error;
+mod wgpu_graph_state;
 use std::cmp;
 use std::sync::Arc;
 
@@ -17,13 +14,15 @@ use basic_uniforms::UniformsStruct;
 use glam::Vec2;
 pub use global_state::GlobalState;
 pub use global_state::global_state;
-use graph_state::WGPUGraphState;
 use shared::create_shader;
-use ts_types::SelectionType;
 use unigraph_core::ArrayGraph;
 use unigraph_core::NodeIDX;
 use unigraph_error::UnigraphError;
+use unigraph_graph_state::GlobalGraphState;
+use unigraph_graph_state::global_graph_state;
+use unigraph_graph_state::types::SelectionType;
 use wgpu::TextureFormat;
+use wgpu_graph_state::WGPUGraphState;
 use winit::application::ApplicationHandler;
 use winit::event::*;
 use winit::event_loop::ActiveEventLoop;
@@ -104,7 +103,7 @@ impl WGPUState {
             .set(size.width, size.height)
             .aspect_ratio();
 
-        let simulation_params = global_state().simulation_params.get();
+        let simulation_params = global_graph_state().simulation_params.get();
         let uniforms = UniformsStruct {
             aspect_ratio,
             node_size_scale: simulation_params.node_size_scale as f32,
@@ -150,7 +149,7 @@ impl WGPUState {
 
     fn write_nodes_buffer(&self) {
         if let Some(wgpu_graph_state) = &self.wgpu_graph_state {
-            let graph_state = global_state().graph_state.get();
+            let graph_state = global_graph_state().graph_state.get();
             self.queue.write_buffer(
                 &wgpu_graph_state.nodes_buffer,
                 0,
@@ -165,7 +164,7 @@ impl WGPUState {
     /// edges buffer as well.
     fn write_edges_buffer(&self) {
         if let Some(wgpu_graph_state) = &self.wgpu_graph_state {
-            let graph_state = global_state().graph_state.get();
+            let graph_state = global_graph_state().graph_state.get();
             self.queue.write_buffer(
                 &wgpu_graph_state.edges_buffer,
                 0,
@@ -194,7 +193,7 @@ impl WGPUState {
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
         {
-            let simulation_params = global_state().simulation_params.get();
+            let simulation_params = global_graph_state().simulation_params.get();
             let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: None,
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -218,13 +217,13 @@ impl WGPUState {
             rpass.set_bind_group(0, &self.basic_uniforms.uniforms_bind_group, &[]);
 
             let (node_ct, edge_ct) = {
-                let graph_state = global_state().graph_state.get();
+                let graph_state = global_graph_state().graph_state.get();
                 (
                     graph_state.simulation_graph.nodes_len() as u32,
                     graph_state.simulation_graph.edges_len() as u32,
                 )
             };
-            if global_state().simulation_params.get().render_edges {
+            if global_graph_state().simulation_params.get().render_edges {
                 rpass.set_pipeline(&wgpu_graph_state.edge_pipeline);
                 rpass.set_bind_group(1, &wgpu_graph_state.graph_bind_group, &[]);
                 rpass.draw(0..2, 0..edge_ct);
@@ -234,7 +233,7 @@ impl WGPUState {
             rpass.set_bind_group(1, &wgpu_graph_state.graph_bind_group, &[]);
             rpass.draw(0..6, 0..node_ct);
 
-            let selection = global_state().simulation_params.get().selection;
+            let selection = global_graph_state().simulation_params.get().selection;
             if selection.selection_type == SelectionType::Box {
                 rpass.set_pipeline(&wgpu_graph_state.box_selection_pipeline);
                 rpass.draw(0..6, 0..1);
@@ -264,7 +263,7 @@ impl WGPUState {
             new_aspect_ratio
         );
 
-        global_state()
+        global_graph_state()
             .graph_state
             .get_mut()
             .simulation_graph
@@ -279,7 +278,7 @@ impl WGPUState {
     }
 
     fn update_uniforms(&mut self) {
-        let simulation_params = global_state().simulation_params.get();
+        let simulation_params = global_graph_state().simulation_params.get();
 
         self.basic_uniforms.uniforms.node_size_scale = simulation_params.node_size_scale as f32;
 
@@ -401,13 +400,13 @@ impl ApplicationHandler<UserEvent> for WGPUApplication {
                 state.resize(new_size);
             }
             WindowEvent::RedrawRequested => {
-                let params = global_state().simulation_params.get();
+                let params = global_graph_state().simulation_params.get();
                 if params.active {
                     let update_forces = self.frame_counter
                         % cmp::max(params.compute_forces_every_n_frames as u64, 1)
                         == 0;
                     // NOTE: this requires a write lock on the graph state
-                    global_state()
+                    global_graph_state()
                         .graph_state
                         .compute_next_frame(update_forces)
                         .unwrap();
@@ -484,17 +483,18 @@ async fn run(event_loop: EventLoop<UserEvent>) {
 pub async fn start(array_graph: ArrayGraph) -> Result<(), UnigraphError> {
     GlobalState::init();
     let event_loop = EventLoop::<UserEvent>::with_user_event().build().unwrap();
-    GlobalState::graph_state().replace_graph(array_graph)?;
+    GlobalGraphState::graph_state().replace_graph(array_graph)?;
     GlobalState::set_event_loop_proxy(event_loop.create_proxy());
     run(event_loop).await;
     Ok(())
 }
 
 pub fn get_selected_node_idxs() -> Result<Vec<NodeIDX>> {
-    let selection = GlobalState::simulation_params().selection;
-    GlobalState::graph_state_mut()
+    let selection = global_graph_state().simulation_params.get().selection;
+    let aspect_ratio = GlobalState::surface_size().aspect_ratio();
+    GlobalGraphState::graph_state_mut()
         .simulation_graph
-        .mark_nodes_as_selected(&selection)
+        .mark_nodes_as_selected(&selection, aspect_ratio)
 }
 
 pub fn set_event_loop_active(active: bool) -> Result<()> {

@@ -15,11 +15,12 @@ use unigraph_core::TraversalConfig;
 use unigraph_core::graph_settings::GraphStructure;
 use unigraph_core::make_test_graph;
 use unigraph_core::types::NodeIDX;
+use unigraph_graph_state::GlobalGraphState;
+use unigraph_graph_state::global_graph_state;
+use unigraph_graph_state::types::SimulationParams;
 use unigraph_wgpu::GlobalState;
 use unigraph_wgpu::UserEvent;
 use unigraph_wgpu::WindowAttributesFactory;
-use unigraph_wgpu::global_state;
-use unigraph_wgpu::ts_types::SimulationParams;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::wasm_bindgen;
 #[allow(unused_imports)]
@@ -114,7 +115,7 @@ pub fn set_map_graph(graph_json: Option<String>) -> Result<(), WasmJSError> {
         log::info!("No graph provided, using test graph");
         make_test_graph().unwrap().to_array_graph().unwrap()
     };
-    GlobalState::graph_state().replace_graph(array_graph.append_super_root()?)?;
+    GlobalGraphState::graph_state().replace_graph(array_graph.append_super_root()?)?;
     Ok(())
 }
 
@@ -128,20 +129,20 @@ pub fn set_array_graph_json_zstd_base64(
     let array_graph_serializable = ArrayGraphSerializable::from_json_bytes(&json_bytes)
         .context("Failed to deserialize ArrayGraph JSON bytes")?;
     let array_graph: ArrayGraph = array_graph_serializable.into();
-    GlobalState::graph_state().replace_graph(array_graph.append_super_root()?)?;
+    GlobalGraphState::graph_state().replace_graph(array_graph.append_super_root()?)?;
     Ok(())
 }
 
 #[wasm_bindgen]
 pub fn set_simulation_params(simulation_params_json: String) -> Result<(), WasmJSError> {
     let params = SimulationParams::from_json(&simulation_params_json)?;
-    global_state().simulation_params.set(params);
+    global_graph_state().simulation_params.set(params);
     Ok(())
 }
 
 #[wasm_bindgen]
 pub fn get_simulation_params() -> Result<String, WasmJSError> {
-    Ok(GlobalState::simulation_params().to_json()?)
+    Ok(GlobalGraphState::simulation_params().to_json()?)
 }
 
 /// This function is mutating the state even though it's a getter.
@@ -158,7 +159,7 @@ pub fn get_selected_node_idxs() -> Result<Vec<u32>, WasmJSError> {
 
 #[wasm_bindgen]
 pub fn node_idx_to_name(idx: usize) -> Result<String, WasmJSError> {
-    Ok(global_state()
+    Ok(global_graph_state()
         .graph_state
         .get()
         .array_graph
@@ -168,7 +169,7 @@ pub fn node_idx_to_name(idx: usize) -> Result<String, WasmJSError> {
 
 #[wasm_bindgen]
 pub fn node_name_to_idx_log(name: &str) -> Result<Option<u32>, WasmJSError> {
-    Ok(global_state()
+    Ok(global_graph_state()
         .graph_state
         .get()
         .array_graph
@@ -179,7 +180,7 @@ pub fn node_name_to_idx_log(name: &str) -> Result<Option<u32>, WasmJSError> {
 
 #[wasm_bindgen]
 pub fn get_metric_names() -> Result<Vec<String>, WasmJSError> {
-    Ok(GlobalState::graph_state()
+    Ok(GlobalGraphState::graph_state()
         .get()
         .array_graph
         .metrics
@@ -190,7 +191,7 @@ pub fn get_metric_names() -> Result<Vec<String>, WasmJSError> {
 
 #[wasm_bindgen]
 pub fn get_node_metrics(node_idxs: Vec<u32>, metric_name: &str) -> Result<Vec<f32>, WasmJSError> {
-    let graph_state = GlobalState::graph_state().get();
+    let graph_state = GlobalGraphState::graph_state().get();
     let mut result = Vec::with_capacity(node_idxs.len());
     if let Some(metrics) = graph_state.array_graph.metrics.get(metric_name) {
         for node_idx in node_idxs {
@@ -208,7 +209,7 @@ pub fn get_transitive_metrics(
     metric_name: &str,
     dominated: bool,
 ) -> Result<Vec<f32>, WasmJSError> {
-    let graph_state = GlobalState::graph_state().get();
+    let graph_state = GlobalGraphState::graph_state().get();
     let mut result = Vec::with_capacity(node_idxs.len());
     for node_idx in node_idxs {
         let transitive_value = graph_state.array_graph.get_transitive_metric_value(
@@ -227,7 +228,7 @@ pub fn get_transitive_tiered_metrics(
     metric_name: &str,
     dominated: bool,
 ) -> Result<String, WasmJSError> {
-    let graph_state = GlobalState::graph_state().get();
+    let graph_state = GlobalGraphState::graph_state().get();
     let mut result = Vec::with_capacity(node_idxs.len());
     for node_idx in node_idxs {
         let transitive_value = graph_state
@@ -241,7 +242,7 @@ pub fn get_transitive_tiered_metrics(
 
 #[wasm_bindgen]
 pub fn get_combined_metrics_for_nodes(node_idxs: Vec<u32>) -> Result<String, WasmJSError> {
-    let graph_state = GlobalState::graph_state().get();
+    let graph_state = GlobalGraphState::graph_state().get();
     let result = graph_state.array_graph.get_combined_metrics_for_nodes(
         &node_idxs
             .iter()
@@ -267,7 +268,7 @@ pub fn get_combined_metrics_for_entrypoints_with_force_include(
         }
     };
 
-    let mut graph_state = GlobalState::graph_state().get_mut();
+    let mut graph_state = GlobalGraphState::graph_state().get_mut();
     let result = graph_state
         .array_graph
         .get_combined_metrics_for_entry_points(force_edge_include)?;
@@ -276,14 +277,14 @@ pub fn get_combined_metrics_for_entrypoints_with_force_include(
 
 #[wasm_bindgen]
 pub fn get_conjoint_cost() -> Result<String, WasmJSError> {
-    let graph_state = GlobalState::graph_state().get();
+    let graph_state = GlobalGraphState::graph_state().get();
     let conjoint_cost = graph_state.array_graph.conjoint_cost();
     Ok(serde_json::to_string(&conjoint_cost).context("Failed to serialize conjoint cost")?)
 }
 
 #[wasm_bindgen]
 pub fn get_available_tiers() -> Result<Vec<String>, WasmJSError> {
-    let graph_state = GlobalState::graph_state().get();
+    let graph_state = GlobalGraphState::graph_state().get();
     Ok(graph_state
         .array_graph
         .state
@@ -295,7 +296,7 @@ pub fn get_available_tiers() -> Result<Vec<String>, WasmJSError> {
 
 #[wasm_bindgen]
 pub fn get_arrows(node_idx: usize, graph_structure: u8) -> Result<String, WasmJSError> {
-    let graph_state = GlobalState::graph_state().get();
+    let graph_state = GlobalGraphState::graph_state().get();
     let ag = &graph_state.array_graph;
     let graph_structure = GraphStructure::from_u8(graph_structure)?;
     let node_idx = NodeIDX::from(node_idx);
@@ -315,7 +316,7 @@ pub fn get_shortest_path(
     to: u32,
     graph_structure: u8,
 ) -> Result<Option<Vec<u32>>, WasmJSError> {
-    let graph_state = GlobalState::graph_state().get();
+    let graph_state = GlobalGraphState::graph_state().get();
     let ag = &graph_state.array_graph;
     let graph_structure = GraphStructure::from_u8(graph_structure)?;
     let from = from
@@ -347,7 +348,7 @@ pub fn get_shortest_path(
 
 #[wasm_bindgen]
 pub fn get_reverse_edges_len(node_idxs: Vec<u32>) -> Result<Vec<usize>, WasmJSError> {
-    let graph_state = GlobalState::graph_state().get();
+    let graph_state = GlobalGraphState::graph_state().get();
 
     let result = node_idxs
         .into_iter()
@@ -363,7 +364,7 @@ pub fn get_reverse_edges_len(node_idxs: Vec<u32>) -> Result<Vec<usize>, WasmJSEr
 
 #[wasm_bindgen]
 pub fn get_transitive_count(node_idxs: Vec<u32>) -> Result<Vec<usize>, WasmJSError> {
-    let graph_state = GlobalState::graph_state().get();
+    let graph_state = GlobalGraphState::graph_state().get();
 
     let result = node_idxs
         .into_iter()
@@ -379,7 +380,7 @@ pub fn get_transitive_count(node_idxs: Vec<u32>) -> Result<Vec<usize>, WasmJSErr
 
 #[wasm_bindgen]
 pub fn get_transitive_count_dominated(node_idxs: Vec<u32>) -> Result<Vec<usize>, WasmJSError> {
-    let graph_state = GlobalState::graph_state().get();
+    let graph_state = GlobalGraphState::graph_state().get();
 
     let result = node_idxs
         .into_iter()
@@ -395,14 +396,14 @@ pub fn get_transitive_count_dominated(node_idxs: Vec<u32>) -> Result<Vec<usize>,
 
 #[wasm_bindgen]
 pub fn get_all_reachable_node_idxs() -> Result<Vec<u32>, WasmJSError> {
-    let graph_state = GlobalState::graph_state().get();
+    let graph_state = GlobalGraphState::graph_state().get();
     let reachable_nodes = graph_state.array_graph.all_reachable_node_idxs();
     Ok(reachable_nodes.iter().map(|idx| idx.0).collect())
 }
 
 #[wasm_bindgen]
 pub fn get_graph_traversal_config() -> Result<String, WasmJSError> {
-    let traversal_config = GlobalState::graph_state()
+    let traversal_config = GlobalGraphState::graph_state()
         .get()
         .array_graph
         .state
@@ -414,7 +415,7 @@ pub fn get_graph_traversal_config() -> Result<String, WasmJSError> {
 
 #[wasm_bindgen]
 pub fn get_graph_settings() -> Result<String, WasmJSError> {
-    let graph_settings = GlobalState::graph_state()
+    let graph_settings = GlobalGraphState::graph_state()
         .get()
         .array_graph
         .graph_settings
@@ -427,22 +428,26 @@ pub fn get_graph_settings() -> Result<String, WasmJSError> {
 pub fn apply_traversal_config(traversal_config_json: String) -> Result<(), WasmJSError> {
     let traversal_config: TraversalConfig =
         serde_json::from_str(&traversal_config_json).context("Failed to parse traversal config")?;
-    GlobalState::graph_state_mut()
+    GlobalGraphState::graph_state_mut()
         .array_graph
         .apply_traversal_config(traversal_config)
         .context("Failed to apply traversal config")?;
-    GlobalState::graph_state_mut().sync_node_attributes()?;
+    GlobalGraphState::graph_state_mut().sync_node_attributes()?;
+    GlobalState::send_event_loop_event(UserEvent::GraphUpdated)?;
     Ok(())
 }
 
 #[wasm_bindgen]
 pub fn get_graph_node_count() -> Result<usize, WasmJSError> {
-    Ok(GlobalState::graph_state().get().array_graph.nodes_len())
+    Ok(GlobalGraphState::graph_state()
+        .get()
+        .array_graph
+        .nodes_len())
 }
 
 #[wasm_bindgen]
 pub fn determine_entrypoints() -> Result<Vec<u32>, WasmJSError> {
-    let node_idxs = GlobalState::graph_state()
+    let node_idxs = GlobalGraphState::graph_state()
         .get()
         .array_graph
         .determine_entrypoints();
@@ -451,7 +456,7 @@ pub fn determine_entrypoints() -> Result<Vec<u32>, WasmJSError> {
 
 #[wasm_bindgen]
 pub fn get_array_graph_stats() -> Result<String, WasmJSError> {
-    let stats = &GlobalState::graph_state().get().array_graph.stats();
+    let stats = &GlobalGraphState::graph_state().get().array_graph.stats();
     Ok(serde_json::to_string(&stats).context("Failed to serialize graph stats")?)
 }
 

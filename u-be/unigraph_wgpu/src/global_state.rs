@@ -3,25 +3,17 @@
 use std::sync::Arc;
 use std::sync::OnceLock;
 use std::sync::RwLock;
-use std::sync::RwLockWriteGuard;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicU32;
 
 use anyhow::Context;
 use anyhow::Result;
-use unigraph_core::ArrayGraph;
 
 use crate::UserEvent;
-use crate::graph_state::GraphState;
-use crate::graph_state::SharedGraphState;
-use crate::ts_types::SharedSimulationParams;
-use crate::ts_types::SimulationParams;
 
 static GLOBAL_STATE: OnceLock<GlobalState> = OnceLock::new();
 
 pub struct GlobalState {
-    pub simulation_params: SharedSimulationParams,
-    pub graph_state: SharedGraphState,
     pub surface_size: Arc<AtomicPhysicalSize>,
     pub event_loop_proxy: Arc<RwLock<Option<winit::event_loop::EventLoopProxy<UserEvent>>>>,
     pub event_loop_active: AtomicBool,
@@ -32,20 +24,8 @@ impl GlobalState {
         GLOBAL_STATE.get().expect("global state not initialized")
     }
 
-    pub fn simulation_params() -> Arc<SimulationParams> {
-        Self::get().simulation_params.get()
-    }
-
     pub fn surface_size() -> Arc<AtomicPhysicalSize> {
         Self::get().surface_size.clone()
-    }
-
-    pub fn graph_state() -> &'static SharedGraphState {
-        &Self::get().graph_state
-    }
-
-    pub fn graph_state_mut<'a>() -> RwLockWriteGuard<'a, GraphState> {
-        Self::get().graph_state.get_mut()
     }
 
     pub fn set_event_loop_proxy(event_loop_proxy: winit::event_loop::EventLoopProxy<UserEvent>) {
@@ -70,8 +50,6 @@ impl GlobalState {
     pub fn init() {
         GLOBAL_STATE
             .set(GlobalState {
-                simulation_params: SharedSimulationParams::new(SimulationParams::default()),
-                graph_state: SharedGraphState::new(ArrayGraph::empty().unwrap()).unwrap(),
                 surface_size: Arc::new(AtomicPhysicalSize::new(0, 0)),
                 event_loop_proxy: Default::default(),
                 event_loop_active: AtomicBool::new(false),

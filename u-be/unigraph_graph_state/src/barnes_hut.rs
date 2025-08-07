@@ -9,7 +9,7 @@
 
 use glam::Vec2;
 
-use crate::ts_types::SimulationParams;
+use crate::types::SimulationParams;
 
 #[derive(Clone, Copy)]
 enum QuadIndex {
