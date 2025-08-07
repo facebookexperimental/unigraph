@@ -11,13 +11,14 @@ use bytemuck::Pod;
 use bytemuck::Zeroable;
 use glam::Vec2;
 use unigraph_core::ArrayGraph;
+use unigraph_core::TwinGraph;
 use unigraph_core::types::NodeIDX;
 
 use crate::simulation_graph::SimulationGraph;
 
 #[non_exhaustive]
 pub struct GraphState {
-    pub array_graph: ArrayGraph,
+    pub twin_graph: TwinGraph,
     pub selected_metric: Option<String>,
     pub simulation_graph: SimulationGraph,
 }
@@ -98,7 +99,7 @@ impl GraphState {
         let simulation_graph = SimulationGraph::new(&array_graph, &selected_metric, None)?;
 
         let result = Self {
-            array_graph,
+            twin_graph: TwinGraph::single(array_graph)?,
             selected_metric,
             simulation_graph,
         };
@@ -107,7 +108,7 @@ impl GraphState {
 
     pub fn get_selected_metrics_vec(&self) -> Option<&Vec<f32>> {
         if let Some(selected_metric) = &self.selected_metric {
-            self.array_graph.metrics.get(selected_metric)
+            self.twin_graph.l.metrics.get(selected_metric)
         } else {
             None
         }
@@ -115,7 +116,7 @@ impl GraphState {
 
     pub fn sync_node_attributes(&mut self) -> Result<()> {
         self.simulation_graph = SimulationGraph::new(
-            &self.array_graph,
+            &self.twin_graph.l,
             &self.selected_metric,
             Some(&self.simulation_graph),
         )?;

@@ -7,7 +7,7 @@ import {
 } from "../.build/wasm/unigraph_wasm";
 import ExplorerFooter from "./ExplorerFooter";
 import { useExplorerKeyboardShortcuts } from "./ExplorerKeyboardShortcutsWrapper";
-import NativeGraph from "./NativeGraph";
+import NativeGraph, { GRAPH_SIDE } from "./NativeGraph";
 import Sidebar from "./Sidebar";
 import Simulation from "./Simulation";
 import type { ArrayGraphUISettingsTreeTableEntryPoints } from "./__generated__/ts/ArrayGraphUISettingsTreeTableEntryPoints";
@@ -198,9 +198,10 @@ function initNativeGraph(graph: InputGraph): NativeGraph {
     case "array_graph_json_zstd_base64":
       return NativeGraph.fromArrayGraphJSONZstdBase64(
         graph.array_graph_json_zstd_base64,
+        GRAPH_SIDE.L,
       );
     case "MapGraphJSON":
-      return NativeGraph.fromMapGraphJSON(graph.mapGraphJSON);
+      return NativeGraph.fromMapGraphJSON(graph.mapGraphJSON, GRAPH_SIDE.L);
   }
 }
 

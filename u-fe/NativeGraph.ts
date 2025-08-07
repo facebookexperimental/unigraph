@@ -36,6 +36,12 @@ import type { GraphStructure } from "./__generated__/ts/GraphStructure";
 import type { TraversalConfig } from "./__generated__/ts/TraversalConfig";
 import type { NodeIDX } from "./types";
 
+export type GraphSide = 1 | 2;
+export const GRAPH_SIDE = {
+  L: 1 as const,
+  R: 2 as const,
+};
+
 type NodeIDXVecSet = Readonly<{
   vec: Readonly<NodeIDX[]>;
   set: Readonly<Set<NodeIDX>>;
@@ -59,6 +65,8 @@ const GraphStructureReverseU8 = 2;
 export default class NativeGraph {
   readonly nodeCount: number;
   readonly metricNames: string[] = [];
+  readonly side: GraphSide;
+
   private metricCaches: MetricCaches;
   private statsCache: ArrayGraphStats | null = null;
   private parentsCountCache: SingleMetricsCache;
@@ -72,47 +80,53 @@ export default class NativeGraph {
 
   private combinedMetricsCache: CombinedMetricsCache | null = null;
 
-  static fromMapGraphJSON(mapGraphJSON: string): NativeGraph {
+  static fromMapGraphJSON(mapGraphJSON: string, side: GraphSide): NativeGraph {
     set_map_graph(mapGraphJSON);
-    return new NativeGraph();
+    return new NativeGraph(side);
   }
 
   static fromArrayGraphJSONZstdBase64(
     arrayGraphJSONZstdBase64: string,
+    side: GraphSide,
   ): NativeGraph {
     set_array_graph_json_zstd_base64(arrayGraphJSONZstdBase64);
-    return new NativeGraph();
+    return new NativeGraph(side);
   }
 
   /// Initializes a new graph on the WASM side and makes a new
   /// instance of this class.
   /// This should also act as a cache breaker for any state that's
   /// tied to the previous graph.
-  constructor() {
-    this.nodeCount = get_graph_node_count();
-    this.metricNames = get_metric_names();
-    this.metricCaches = new MetricCaches(this.nodeCount);
+  constructor(side: GraphSide) {
+    this.side = side;
+    this.nodeCount = get_graph_node_count(this.side);
+    this.metricNames = get_metric_names(this.side);
+    this.metricCaches = new MetricCaches(this.nodeCount, side);
     this.parentsCountCache = new SingleMetricsCache(
       this.nodeCount,
       (nodeIDXs: NodeIDX[]) =>
-        new Float32Array(get_reverse_edges_len(new Uint32Array(nodeIDXs))),
+        new Float32Array(
+          get_reverse_edges_len(new Uint32Array(nodeIDXs), this.side),
+        ),
     );
     this.transitiveCountCache = new SingleMetricsCache(
       this.nodeCount,
       (nodeIDXs: NodeIDX[]) =>
-        new Float32Array(get_transitive_count(new Uint32Array(nodeIDXs))),
+        new Float32Array(
+          get_transitive_count(new Uint32Array(nodeIDXs), this.side),
+        ),
     );
     this.transitiveCountDominatedCache = new SingleMetricsCache(
       this.nodeCount,
       (nodeIDXs: NodeIDX[]) =>
         new Float32Array(
-          get_transitive_count_dominated(new Uint32Array(nodeIDXs)),
+          get_transitive_count_dominated(new Uint32Array(nodeIDXs), this.side),
         ),
     );
   }
 
   stats(): ArrayGraphStats {
-    this.statsCache ??= JSON.parse(get_array_graph_stats());
+    this.statsCache ??= JSON.parse(get_array_graph_stats(this.side));
     return this.statsCache as ArrayGraphStats;
   }
 
@@ -120,20 +134,20 @@ export default class NativeGraph {
   /// This will usually return the default traversal config encoded
   /// on the graph if nothing else was explicitly set.
   getTraversalConfig(): TraversalConfig {
-    const tvcJSON = get_graph_traversal_config();
+    const tvcJSON = get_graph_traversal_config(this.side);
     return JSON.parse(tvcJSON) as TraversalConfig;
   }
 
   getGraphSettings(): GraphSettings {
-    const graphSettingsJSON = get_graph_settings();
+    const graphSettingsJSON = get_graph_settings(this.side);
     return JSON.parse(graphSettingsJSON) as GraphSettings;
   }
 
   /// This function changes the traversal config and returns a new
   /// reference to the graph. All caches should be nuked.
   getApplyTraversalConfig(traversalConfig: TraversalConfig): NativeGraph {
-    apply_traversal_config(JSON.stringify(traversalConfig));
-    return new NativeGraph();
+    apply_traversal_config(JSON.stringify(traversalConfig), this.side);
+    return new NativeGraph(this.side);
   }
 
   getNodeName(nodeIDX: NodeIDX): string {
@@ -148,19 +162,23 @@ export default class NativeGraph {
   }
 
   getArrowsForward(nodeIDX: NodeIDX): Arrow[] {
-    const arrowsJSON = get_arrows(nodeIDX, GraphStructureForwardU8);
+    const arrowsJSON = get_arrows(nodeIDX, GraphStructureForwardU8, this.side);
     const parsed = JSON.parse(arrowsJSON);
     return parsed as Arrow[];
   }
 
   getArrowsDominator(nodeIDX: NodeIDX): Arrow[] {
-    const arrowsJSON = get_arrows(nodeIDX, GraphStructureDominatorU8);
+    const arrowsJSON = get_arrows(
+      nodeIDX,
+      GraphStructureDominatorU8,
+      this.side,
+    );
     const parsed = JSON.parse(arrowsJSON);
     return parsed as Arrow[];
   }
 
   getArrowsReverse(nodeIDX: NodeIDX): Arrow[] {
-    const arrowsJSON = get_arrows(nodeIDX, GraphStructureReverseU8);
+    const arrowsJSON = get_arrows(nodeIDX, GraphStructureReverseU8, this.side);
     const parsed = JSON.parse(arrowsJSON);
     return parsed as Arrow[];
   }
@@ -174,6 +192,7 @@ export default class NativeGraph {
       new Uint32Array(fromNodeIDX),
       toNodeIDX,
       graphStructureToU8(graphStructure),
+      this.side,
     );
 
     if (path == null || path.length === 0) {
@@ -185,7 +204,7 @@ export default class NativeGraph {
 
   determineEntrypoints(): NodeIDXVecSet {
     if (this.entrypointsCache == null) {
-      const result = determine_entrypoints();
+      const result = determine_entrypoints(this.side);
       this.entrypointsCache = { vec: Array.from(result), set: new Set(result) };
     }
     return this.entrypointsCache;
@@ -193,7 +212,7 @@ export default class NativeGraph {
 
   getAllReachableNodeIDXs(): NodeIDXVecSet {
     if (this.allReacahableNodeIDXsCache == null) {
-      const result = get_all_reachable_node_idxs();
+      const result = get_all_reachable_node_idxs(this.side);
       this.allReacahableNodeIDXsCache = {
         vec: Array.from(result),
         set: new Set(result),
@@ -283,14 +302,21 @@ export default class NativeGraph {
   }
 
   getCombinedMetrics(nodeIDXs: NodeIDX[]): CombinedMetricsForNodes {
-    const json = get_combined_metrics_for_nodes(new Uint32Array(nodeIDXs));
+    const json = get_combined_metrics_for_nodes(
+      new Uint32Array(nodeIDXs),
+      this.side,
+    );
     return JSON.parse(json) as CombinedMetricsForNodes;
   }
 
   private getOrInitCombinedMetricsCache(): CombinedMetricsCache {
     if (this.combinedMetricsCache == null) {
       const currentJSON =
-        get_combined_metrics_for_entrypoints_with_force_include(null, null);
+        get_combined_metrics_for_entrypoints_with_force_include(
+          null,
+          null,
+          this.side,
+        );
 
       const current: CombinedMetricsForNodes = JSON.parse(currentJSON);
       this.combinedMetricsCache = {
@@ -323,6 +349,7 @@ export default class NativeGraph {
     const metricsJSON = get_combined_metrics_for_entrypoints_with_force_include(
       forceInclude.from,
       forceInclude.to,
+      this.side,
     );
     result = JSON.parse(metricsJSON) as CombinedMetricsForNodes;
 
@@ -334,7 +361,7 @@ export default class NativeGraph {
 
   getConjointCost(): ConjointCost {
     if (this.conjointCostCache == null) {
-      const json = get_conjoint_cost();
+      const json = get_conjoint_cost(this.side);
       this.conjointCostCache = JSON.parse(json) as ConjointCost;
     }
     return this.conjointCostCache;
@@ -350,8 +377,13 @@ class MetricCaches {
   private transitive_dominated: Map<string, SingleMetricsCache>;
   private transitive_tiered: Map<string, KeyedMetricsCache>;
   private transitive_tiered_dominated: Map<string, KeyedMetricsCache>;
+  private side: GraphSide;
 
-  constructor(private nodeCount: number) {
+  constructor(
+    private nodeCount: number,
+    side: GraphSide,
+  ) {
+    this.side = side;
     this.node_metrics = new Map<string, SingleMetricsCache>();
     this.transitive = new Map<string, SingleMetricsCache>();
     this.transitive_dominated = new Map<string, SingleMetricsCache>();
@@ -364,7 +396,12 @@ class MetricCaches {
       return this.transitive.get(metricName) as SingleMetricsCache;
     }
     const getMetrics = (nodeIDXs: NodeIDX[]) =>
-      get_transitive_metrics(new Uint32Array(nodeIDXs), metricName, false);
+      get_transitive_metrics(
+        new Uint32Array(nodeIDXs),
+        metricName,
+        false,
+        this.side,
+      );
 
     const metricsCache = new SingleMetricsCache(this.nodeCount, getMetrics);
     this.transitive.set(metricName, metricsCache);
@@ -376,7 +413,12 @@ class MetricCaches {
       return this.transitive_dominated.get(metricName) as SingleMetricsCache;
     }
     const getMetrics = (nodeIDXs: NodeIDX[]) =>
-      get_transitive_metrics(new Uint32Array(nodeIDXs), metricName, true);
+      get_transitive_metrics(
+        new Uint32Array(nodeIDXs),
+        metricName,
+        true,
+        this.side,
+      );
 
     const metricsCache = new SingleMetricsCache(this.nodeCount, getMetrics);
     this.transitive_dominated.set(metricName, metricsCache);
@@ -388,7 +430,7 @@ class MetricCaches {
       return this.node_metrics.get(metricName) as SingleMetricsCache;
     }
     const getMetrics = (nodeIDXs: NodeIDX[]) =>
-      get_node_metrics(new Uint32Array(nodeIDXs), metricName);
+      get_node_metrics(new Uint32Array(nodeIDXs), metricName, this.side);
 
     const metricsCache = new SingleMetricsCache(this.nodeCount, getMetrics);
     this.node_metrics.set(metricName, metricsCache);
@@ -404,6 +446,7 @@ class MetricCaches {
         new Uint32Array(nodeIDXs),
         metricName,
         false,
+        this.side,
       );
       return JSON.parse(metricsJSON) as Array<KeyedMetrics>;
     };
@@ -423,6 +466,7 @@ class MetricCaches {
         new Uint32Array(nodeIDXs),
         metricName,
         true,
+        this.side,
       );
       return JSON.parse(metricsJSON) as Array<KeyedMetrics>;
     };

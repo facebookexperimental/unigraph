@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::sync::OnceLock;
 
 use anyhow::Result;
+use anyhow::bail;
 
 use crate::types::NodeIDX;
 use crate::types::NodeName;
@@ -21,10 +22,10 @@ pub struct ArrayGraphNodes {
     pub(super) node_names: String,
     offsets: Vec<usize>,
 }
-#[readonly::make]
 
+#[readonly::make]
 pub struct SharedArrayGraphNodes {
-    pub(super) node_names: Arc<ArrayGraphNodes>,
+    pub node_names: Arc<ArrayGraphNodes>,
     existence: Vec<NodeExistenceFlags>,
     side: GraphSide,
     // Precomputed. only nodes that exist in the side of the graph.
@@ -38,6 +39,16 @@ pub struct SharedArrayGraphNodes {
 pub enum GraphSide {
     Left = 0b0001,
     Right = 0b0010,
+}
+
+impl GraphSide {
+    pub fn from_u32(value: u32) -> Result<Self> {
+        match value {
+            0b0001 => Ok(GraphSide::Left),
+            0b0010 => Ok(GraphSide::Right),
+            _ => bail!("Invalid GraphSide value: {}", value),
+        }
+    }
 }
 
 bitflags::bitflags! {
@@ -95,7 +106,7 @@ impl ArrayGraphNodes {
     /// Which is enough for searching hundreds of nodes at a time
     /// but it can get pretty slow if we run it agains the entire big
     /// graph with 1M+ nodes.
-    fn name_to_idx_log(&self, name: &str) -> Option<NodeIDX> {
+    pub fn name_to_idx_log(&self, name: &str) -> Option<NodeIDX> {
         let mut low = 0;
         let mut high = self.combined_nodes_len();
         while low < high {

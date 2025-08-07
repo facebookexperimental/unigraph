@@ -2,6 +2,7 @@
 
 pub(crate) mod array_graph;
 pub mod map_graph;
+pub(crate) mod twin_graph;
 
 use std::fmt::Display;
 use std::ops::Add;
