@@ -38,7 +38,7 @@ pub(crate) fn get_reachable_subgraph_unconfigured(
             offsets.push(names.len());
 
             let new_node_idx = remap_ctx.original_positions.len();
-            remap_ctx.original_positions.push(node_idx.into());
+            remap_ctx.original_positions.push(Some(node_idx.into()));
             remap_ctx.mappings.push(Some(new_node_idx.into()));
         } else {
             remap_ctx.mappings.push(None);

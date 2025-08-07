@@ -24,7 +24,7 @@ pub fn sort_and_return_mapping<T: Ord>(vec: &mut Vec<T>) -> RemapContext {
 
     for (new_position, (original_position, value)) in vec_with_indices.into_iter().enumerate() {
         sorted_vec.push(value);
-        original_positions.push(original_position.into());
+        original_positions.push(Some(original_position.into()));
         mappings[original_position] = Some(new_position.into());
     }
 
@@ -36,6 +36,7 @@ pub fn sort_and_return_mapping<T: Ord>(vec: &mut Vec<T>) -> RemapContext {
     }
 }
 
+#[derive(Default)]
 pub struct RemapContext {
     /// Original positions of the nodes in the new vec.
     /// if we have a vec like this:
@@ -43,8 +44,12 @@ pub struct RemapContext {
     /// then we want to sort it and remap the indexes to make
     ///     vec!["A", "B", "C"];
     /// the original_positions vec will be:
-    ///    vec![1, 2, 0];
-    pub original_positions: Vec<NodeIDX>,
+    ///    vec![Some(1), Some(2), Some(0)];
+    ///
+    /// Some cases will not have the original postition. E.g. when we merge
+    /// two graphs, the resulting graph will have some nodes that were not present
+    /// in one of the original graphs.
+    pub original_positions: Vec<Option<NodeIDX>>,
     /// Mappings represent the new positions of the original nodes.
     /// if we have a vec like this:
     ///     vec!["C", "A", "B"];
@@ -62,6 +67,44 @@ pub struct RemapContext {
     pub mappings: Vec<Option<NodeIDX>>,
 }
 
+impl RemapContext {
+    #[cfg(test)]
+    pub fn debug(&self) -> String {
+        let mut result = String::new();
+        result.push_str(
+            format!(
+                "org: {}",
+                self.original_positions
+                    .iter()
+                    .map(|opt| opt.map_or("_".to_string(), |idx| idx.0.to_string()))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+            .trim(),
+        );
+        result.push('\n');
+        result.push_str(
+            format!(
+                "map: {}",
+                self.mappings
+                    .iter()
+                    .map(|opt| opt.map_or("_".to_string(), |idx| idx.0.to_string()))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+            .trim(),
+        );
+        result.push('\n');
+        result
+    }
+
+    pub fn get_original_position_assert(&self, node_idx: NodeIDX) -> Result<NodeIDX> {
+        self.original_positions[node_idx].context(format!(
+            "RemapContext: remapped Node index {node_idx} does not have an original position",
+        ))
+    }
+}
+
 pub fn remap_node_names_ordered(
     node_names_ordered: &ArrayGraphNodes,
     remap_context: &RemapContext,
@@ -70,9 +113,11 @@ pub fn remap_node_names_ordered(
     let mut offsets = vec![0];
 
     for &original_position in &remap_context.original_positions {
-        let name = node_names_ordered.idx_to_name(original_position);
-        names.push_str(name);
-        offsets.push(names.len());
+        if let Some(original_position) = original_position {
+            let name = node_names_ordered.idx_to_name(original_position);
+            names.push_str(name);
+            offsets.push(names.len());
+        }
     }
 
     ArrayGraphNodes::from_parts(names, offsets)
@@ -105,13 +150,15 @@ pub fn remap_directed_edges(
     remapped_offsets.push(0);
 
     for &original_position in &remap_context.original_positions {
-        let node_edges = &edges[offsets[original_position]..offsets[original_position + 1]];
-        for &old_points_to in node_edges {
-            if let Some(new_points_to) = remap_context.mappings[old_points_to] {
-                remapped_edges.push(new_points_to);
+        if let Some(original_position) = original_position {
+            let node_edges = &edges[offsets[original_position]..offsets[original_position + 1]];
+            for &old_points_to in node_edges {
+                if let Some(new_points_to) = remap_context.mappings[old_points_to] {
+                    remapped_edges.push(new_points_to);
+                }
             }
+            remapped_offsets.push(remapped_edges.len());
         }
-        remapped_offsets.push(remapped_edges.len());
     }
 
     (remapped_edges, remapped_offsets)
@@ -198,7 +245,9 @@ pub fn remap_node_metadata(
     for (metric_name, metrics) in &metadata.metrics {
         let mut new_vec = Vec::with_capacity(metrics.len());
         for &original_position in &ctx.original_positions {
-            new_vec.push(metrics[original_position])
+            if let Some(original_position) = original_position {
+                new_vec.push(metrics[original_position]);
+            }
         }
         new_metrics.insert(metric_name.clone(), new_vec);
     }
@@ -246,9 +295,9 @@ mod tests {
         assert_equal!(
             ctx.original_positions,
             vec![
-                NodeIDX::from(1u32),
-                NodeIDX::from(2u32),
-                NodeIDX::from(0u32)
+                Some(NodeIDX::from(1u32)),
+                Some(NodeIDX::from(2u32)),
+                Some(NodeIDX::from(0u32))
             ]
         );
     }

@@ -1,5 +1,6 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
+use anyhow::Context;
 use anyhow::Result;
 use bytemuck::Pod;
 use bytemuck::Zeroable;
@@ -102,7 +103,7 @@ impl SimulationGraph {
                 }
 
                 mappings.push(Some(nodes_gpu.len().into()));
-                original_positions.push(node_idx);
+                original_positions.push(Some(node_idx));
                 nodes_local.push(local);
                 nodes_gpu.push(gpu);
             }
@@ -142,7 +143,7 @@ impl SimulationGraph {
             .as_ref()
             .and_then(|m| array_graph.metrics.get(m))
         {
-            graph.recalculate_adjusted_sizes(selected_metrics);
+            graph.recalculate_adjusted_sizes(selected_metrics)?;
         }
 
         Ok(graph)
@@ -299,20 +300,23 @@ impl SimulationGraph {
         Ok(())
     }
 
-    pub fn recalculate_adjusted_sizes(&mut self, selected_metrics: &[f32]) {
+    pub fn recalculate_adjusted_sizes(&mut self, selected_metrics: &[f32]) -> Result<()> {
         let nodes_len = self.nodes_len();
         if nodes_len == 0 {
-            return;
+            return Ok(());
         }
         let mut all_sizes = Vec::with_capacity(nodes_len);
 
         for sim_node_idx in self.node_idx_iter() {
-            let original_node_idx = self.remap_ctx.original_positions[sim_node_idx];
+            let original_node_idx = self
+                .remap_ctx
+                .get_original_position_assert(sim_node_idx)
+                .context("calc sizes")?;
             all_sizes.push(selected_metrics[original_node_idx]);
         }
 
         if all_sizes.is_empty() {
-            return;
+            return Ok(());
         }
 
         let mut sorted = all_sizes.clone();
@@ -333,6 +337,7 @@ impl SimulationGraph {
             };
             self.nodes_gpu[sim_node_idx].adjusted_size = adjusted_size;
         }
+        Ok(())
     }
 
     /// Returns ORIGINAL node indexes from the ArrayGraph
@@ -359,7 +364,8 @@ impl SimulationGraph {
                         self.nodes_gpu[sim_node_idx]
                             .flags
                             .insert(NodeAttributesFlags::SELECTED);
-                        selected_nodes.push(self.remap_ctx.original_positions[sim_node_idx]);
+                        selected_nodes
+                            .push(self.remap_ctx.get_original_position_assert(sim_node_idx)?);
                     } else {
                         self.nodes_gpu[sim_node_idx]
                             .flags

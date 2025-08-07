@@ -8,6 +8,7 @@ use std::sync::OnceLock;
 use anyhow::Result;
 use anyhow::bail;
 
+use crate::remap_utils::RemapContext;
 use crate::types::NodeIDX;
 use crate::types::NodeName;
 
@@ -73,7 +74,7 @@ impl ArrayGraphNodes {
     }
 
     pub fn merge(&self, other: &Self) -> Self {
-        merge(self, other)
+        merge(self, other).0
     }
 
     pub fn combined_nodes_len(&self) -> usize {
@@ -288,7 +289,13 @@ impl NodeExistenceFlags {
 
 /// Merges two `ArrayGraphNodes` instances into one, ensuring that the node names are ordered
 /// and unique. If there are duplicate names, we only keep one.
-fn merge(a: &ArrayGraphNodes, b: &ArrayGraphNodes) -> ArrayGraphNodes {
+fn merge(
+    a: &ArrayGraphNodes,
+    b: &ArrayGraphNodes,
+) -> (ArrayGraphNodes, RemapContext, RemapContext) {
+    let mut ctx_a = RemapContext::default();
+    let mut ctx_b = RemapContext::default();
+
     let mut names = String::with_capacity(a.node_names.len().max(b.node_names.len()));
     let mut offsets = Vec::with_capacity(a.offsets.len().max(b.offsets.len()));
     offsets.push(0);
@@ -298,6 +305,7 @@ fn merge(a: &ArrayGraphNodes, b: &ArrayGraphNodes) -> ArrayGraphNodes {
 
     let mut next_a = a_iter.next();
     let mut next_b = b_iter.next();
+    let mut current_idx = NodeIDX::from(0u32);
 
     loop {
         match (next_a, next_b) {
@@ -311,16 +319,26 @@ fn merge(a: &ArrayGraphNodes, b: &ArrayGraphNodes) -> ArrayGraphNodes {
                         offsets.push(names.len());
                         next_a = a_iter.next();
                         next_b = b_iter.next();
+                        ctx_a.original_positions.push(Some(a_idx));
+                        ctx_b.original_positions.push(Some(b_idx));
+                        ctx_a.mappings.push(Some(current_idx));
+                        ctx_b.mappings.push(Some(current_idx));
                     }
                     Ordering::Less => {
                         names.push_str(a_str);
                         offsets.push(names.len());
                         next_a = a_iter.next();
+                        ctx_a.original_positions.push(Some(a_idx));
+                        ctx_b.original_positions.push(None);
+                        ctx_a.mappings.push(Some(current_idx));
                     }
                     Ordering::Greater => {
                         names.push_str(b_str);
                         offsets.push(names.len());
                         next_b = b_iter.next();
+                        ctx_b.original_positions.push(Some(b_idx));
+                        ctx_a.original_positions.push(None);
+                        ctx_b.mappings.push(Some(current_idx));
                     }
                 }
             }
@@ -329,20 +347,31 @@ fn merge(a: &ArrayGraphNodes, b: &ArrayGraphNodes) -> ArrayGraphNodes {
                 names.push_str(a_str);
                 offsets.push(names.len());
                 next_a = a_iter.next();
+                ctx_a.original_positions.push(Some(a_idx));
+                ctx_b.original_positions.push(None);
+                ctx_a.mappings.push(Some(current_idx));
             }
             (None, Some(b_idx)) => {
                 let b_str = b.idx_to_name(b_idx);
                 names.push_str(b_str);
                 offsets.push(names.len());
                 next_b = b_iter.next();
+                ctx_b.original_positions.push(Some(b_idx));
+                ctx_a.original_positions.push(None);
+                ctx_b.mappings.push(Some(current_idx));
             }
             (None, None) => {
-                return ArrayGraphNodes {
-                    node_names: names,
-                    offsets,
-                };
+                return (
+                    ArrayGraphNodes {
+                        node_names: names,
+                        offsets,
+                    },
+                    ctx_a,
+                    ctx_b,
+                );
             }
         }
+        current_idx.0 += 1;
     }
 }
 
@@ -404,23 +433,141 @@ Last name must be `<` the new name, which was not the case.
             node_names: names_b,
             offsets: offsets_b,
         };
-        let merged = merge(&a, &b);
-        merged
+        let (merged, ctx_a, ctx_b) = merge(&a, &b);
+        let names = merged
             .combined_node_names_iter()
             .collect::<Vec<_>>()
-            .join(", ")
+            .join(", ");
+
+        let mut result = String::new();
+        result.push_str(&names);
+        result.push_str(&format!("\n\nctx a:\n{}\n", ctx_a.debug()));
+        result.push_str(&format!("ctx b:\n{}", ctx_b.debug()));
+        result
     }
 
     #[test]
     fn test_merge() -> Result<()> {
-        snapshot!(merge_two(&["a", "b"], &["c", "d"]), "a, b, c, d");
-        snapshot!(merge_two(&["a", "b"], &["b", "c"]), "a, b, c");
-        snapshot!(merge_two(&["a", "b"], &[]), "a, b");
-        snapshot!(merge_two(&[], &["b", "c"]), "b, c");
-        snapshot!(merge_two(&["c", "d"], &["a", "f"]), "a, c, d, f");
-        snapshot!(merge_two(&["a"], &["a"]), "a");
-        snapshot!(merge_two(&[], &[]), "");
-        snapshot!(merge_two(&["a", "c", "e"], &["b", "d"]), "a, b, c, d, e");
+        snapshot!(
+            merge_two(&["a", "b"], &["c", "d"]),
+            "
+a, b, c, d
+
+ctx a:
+org: 0, 1, _, _
+map: 0, 1
+
+ctx b:
+org: _, _, 0, 1
+map: 2, 3
+
+"
+        );
+        snapshot!(
+            merge_two(&["a", "b"], &["b", "c"]),
+            "
+a, b, c
+
+ctx a:
+org: 0, 1, _
+map: 0, 1
+
+ctx b:
+org: _, 0, 1
+map: 1, 2
+
+"
+        );
+        snapshot!(
+            merge_two(&["a", "b"], &[]),
+            "
+a, b
+
+ctx a:
+org: 0, 1
+map: 0, 1
+
+ctx b:
+org: _, _
+map:
+
+"
+        );
+        snapshot!(
+            merge_two(&[], &["b", "c"]),
+            "
+b, c
+
+ctx a:
+org: _, _
+map:
+
+ctx b:
+org: 0, 1
+map: 0, 1
+
+"
+        );
+        snapshot!(
+            merge_two(&["c", "d"], &["a", "f"]),
+            "
+a, c, d, f
+
+ctx a:
+org: _, 0, 1, _
+map: 1, 2
+
+ctx b:
+org: 0, _, _, 1
+map: 0, 3
+
+"
+        );
+        snapshot!(
+            merge_two(&["a"], &["a"]),
+            "
+a
+
+ctx a:
+org: 0
+map: 0
+
+ctx b:
+org: 0
+map: 0
+
+"
+        );
+        snapshot!(
+            merge_two(&[], &[]),
+            "
+
+
+ctx a:
+org:
+map:
+
+ctx b:
+org:
+map:
+
+"
+        );
+        snapshot!(
+            merge_two(&["a", "c", "e"], &["b", "d"]),
+            "
+a, b, c, d, e
+
+ctx a:
+org: 0, _, 1, _, 2
+map: 0, 2, 4
+
+ctx b:
+org: _, 0, _, 1, _
+map: 1, 3
+
+"
+        );
         Ok(())
     }
 }
