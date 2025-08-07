@@ -1,5 +1,6 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
+use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::OnceLock;
@@ -69,6 +70,10 @@ impl ArrayGraphNodes {
             node_names,
             offsets,
         }
+    }
+
+    pub fn merge(&self, other: &Self) -> Self {
+        merge(self, other)
     }
 
     pub fn combined_nodes_len(&self) -> usize {
@@ -280,6 +285,67 @@ impl NodeExistenceFlags {
         }
     }
 }
+
+/// Merges two `ArrayGraphNodes` instances into one, ensuring that the node names are ordered
+/// and unique. If there are duplicate names, we only keep one.
+fn merge(a: &ArrayGraphNodes, b: &ArrayGraphNodes) -> ArrayGraphNodes {
+    let mut names = String::with_capacity(a.node_names.len().max(b.node_names.len()));
+    let mut offsets = Vec::with_capacity(a.offsets.len().max(b.offsets.len()));
+    offsets.push(0);
+
+    let mut a_iter = a.combined_node_idx_iter();
+    let mut b_iter = b.combined_node_idx_iter();
+
+    let mut next_a = a_iter.next();
+    let mut next_b = b_iter.next();
+
+    loop {
+        match (next_a, next_b) {
+            (Some(a_idx), Some(b_idx)) => {
+                let a_str = a.idx_to_name(a_idx);
+                let b_str = b.idx_to_name(b_idx);
+
+                match a_str.cmp(b_str) {
+                    Ordering::Equal => {
+                        names.push_str(a_str);
+                        offsets.push(names.len());
+                        next_a = a_iter.next();
+                        next_b = b_iter.next();
+                    }
+                    Ordering::Less => {
+                        names.push_str(a_str);
+                        offsets.push(names.len());
+                        next_a = a_iter.next();
+                    }
+                    Ordering::Greater => {
+                        names.push_str(b_str);
+                        offsets.push(names.len());
+                        next_b = b_iter.next();
+                    }
+                }
+            }
+            (Some(a_idx), None) => {
+                let a_str = a.idx_to_name(a_idx);
+                names.push_str(a_str);
+                offsets.push(names.len());
+                next_a = a_iter.next();
+            }
+            (None, Some(b_idx)) => {
+                let b_str = b.idx_to_name(b_idx);
+                names.push_str(b_str);
+                offsets.push(names.len());
+                next_b = b_iter.next();
+            }
+            (None, None) => {
+                return ArrayGraphNodes {
+                    node_names: names,
+                    offsets,
+                };
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use k9::assert_equal;
@@ -312,6 +378,49 @@ Last name must be `<` the new name, which was not the case.
 
 "#
         );
+        Ok(())
+    }
+
+    fn merge_two(a: &[&str], b: &[&str]) -> String {
+        let mut names_a = String::new();
+        let mut offsets_a = vec![0];
+        for name in a.iter() {
+            names_a.push_str(name);
+            offsets_a.push(names_a.len());
+        }
+
+        let mut names_b = String::new();
+        let mut offsets_b = vec![0];
+        for name in b.iter() {
+            names_b.push_str(name);
+            offsets_b.push(names_b.len());
+        }
+
+        let a = ArrayGraphNodes {
+            node_names: names_a,
+            offsets: offsets_a,
+        };
+        let b = ArrayGraphNodes {
+            node_names: names_b,
+            offsets: offsets_b,
+        };
+        let merged = merge(&a, &b);
+        merged
+            .combined_node_names_iter()
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+
+    #[test]
+    fn test_merge() -> Result<()> {
+        snapshot!(merge_two(&["a", "b"], &["c", "d"]), "a, b, c, d");
+        snapshot!(merge_two(&["a", "b"], &["b", "c"]), "a, b, c");
+        snapshot!(merge_two(&["a", "b"], &[]), "a, b");
+        snapshot!(merge_two(&[], &["b", "c"]), "b, c");
+        snapshot!(merge_two(&["c", "d"], &["a", "f"]), "a, c, d, f");
+        snapshot!(merge_two(&["a"], &["a"]), "a");
+        snapshot!(merge_two(&[], &[]), "");
+        snapshot!(merge_two(&["a", "c", "e"], &["b", "d"]), "a, b, c, d, e");
         Ok(())
     }
 }
