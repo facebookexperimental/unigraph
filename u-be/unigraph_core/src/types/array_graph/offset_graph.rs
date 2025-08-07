@@ -11,7 +11,6 @@ use anyhow::Result;
 use offset_graph_traversal::EdgesIterMut;
 use offset_graph_traversal::OffsetGraphDFSConfigured;
 
-use super::Arrow;
 use crate::AscendingTier;
 use crate::traversal::tiered_traversal::TieredTraversalIter;
 use crate::types::NodeIDX;
@@ -81,57 +80,6 @@ impl Edge {
     #[inline(always)]
     pub fn is_excluded(&self) -> bool {
         self.flags.contains(EdgeFlags::EXCLUDED)
-    }
-}
-
-pub struct OffsetGraphBuilder {
-    edges: Vec<Edge>,
-    edge_offsets: Vec<usize>,
-    non_directed_edges_metadata: Vec<NonDirectedEdgeMetadata>,
-}
-
-impl OffsetGraphBuilder {
-    pub fn new() -> Self {
-        OffsetGraphBuilder {
-            edges: Vec::new(),
-            edge_offsets: vec![0],
-            non_directed_edges_metadata: Vec::new(),
-        }
-    }
-
-    /// Push the next node to the graph. This node IDX will be the
-    /// next IDX of the offsets vector
-    pub fn push_node<I: IntoIterator<Item = Arrow>>(&mut self, arrows: I) {
-        for arrow in arrows {
-            if let Some(tag) = arrow.tag {
-                self.edges
-                    .push(Edge::new_with_flags(arrow.points_to, EdgeFlags::IS_TAGGED));
-                self.non_directed_edges_metadata
-                    .push(NonDirectedEdgeMetadata::Tagged { tag });
-            } else if let Some(branch) = arrow.branch {
-                self.edges
-                    .push(Edge::new_with_flags(arrow.points_to, EdgeFlags::IS_DYNAMIC));
-                self.non_directed_edges_metadata
-                    .push(NonDirectedEdgeMetadata::Dynamic {
-                        properties: arrow.properties.unwrap_or_default(),
-                        branch,
-                    });
-            } else {
-                self.edges.push(Edge::new(arrow.points_to));
-                self.non_directed_edges_metadata
-                    .push(NonDirectedEdgeMetadata::Directed);
-            }
-        }
-
-        self.edge_offsets.push(self.edges.len());
-    }
-
-    pub fn build(self) -> OffsetGraph {
-        OffsetGraph {
-            edge_offsets: self.edge_offsets,
-            edges: self.edges,
-            non_directed_edges_metadata: self.non_directed_edges_metadata,
-        }
     }
 }
 

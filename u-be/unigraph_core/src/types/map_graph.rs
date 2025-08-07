@@ -14,15 +14,10 @@ use super::Tag;
 use super::TagSetName;
 use super::array_graph::ArrayGraph;
 use super::array_graph::ArrayGraphDynamicEdge;
-use super::array_graph::Arrow;
-use super::array_graph::NodeFlags;
 use super::array_graph::array_graph_nodes::NodeNamesOrderedBuilder;
-use super::array_graph::offset_graph::OffsetGraphBuilder;
+use crate::ArrayGraphSerializable;
 use crate::TraversalConfig;
 use crate::graph_settings::GraphSettings;
-use crate::types::array_graph::array_graph_derived_state::ArrayGraphDerivedState;
-use crate::types::array_graph::array_graph_nodes::SharedArrayGraphNodes;
-use crate::types::array_graph::array_graph_state::ArrayGraphState;
 
 type NodeName = String;
 
@@ -86,6 +81,13 @@ pub struct DynamicEdge {
 
 impl MapGraph {
     pub fn to_array_graph(&self) -> Result<ArrayGraph> {
+        Ok(self
+            .to_array_graph_serializable()
+            .context("Failed to convert MapGraph to ArrayGraph")?
+            .into_array_graph())
+    }
+
+    pub fn to_array_graph_serializable(&self) -> Result<ArrayGraphSerializable> {
         let all_metric_names = self
             .nodes
             .values()
@@ -108,7 +110,8 @@ impl MapGraph {
         let (node_names_ordered, name_to_idx_map) =
             NodeNamesOrderedBuilder::from_names(all_node_names_set);
 
-        let mut offset_graph_builder = OffsetGraphBuilder::new();
+        let mut directed_edges = vec![];
+        let mut directed_offsets = vec![0];
 
         let mut all_tagged_edges: BTreeMap<NodeIDX, BTreeMap<Tag, BTreeSet<NodeIDX>>> =
             BTreeMap::new();
@@ -151,15 +154,18 @@ impl MapGraph {
                     all_dynamic_edges.entry(node_idx).or_default().push(result);
                 }
 
-                offset_graph_builder.push_node(node.arrow_iter().map(|a| Arrow {
-                    tag: a.tag,
-                    branch: a.branch,
-                    properties: a.properties,
-                    points_from: node_idx,
-                    points_to: name_to_idx_map.get(&a.points_to).copied().unwrap(),
-                    excluded: false,
-                    message: None,
-                }));
+                for directed_edge in node.edges.directed.iter().flatten() {
+                    let points_to = name_to_idx_map.get(directed_edge).copied().with_context(
+                        || {
+                            format!(
+                                "Directed edge points to a node not in the graph: {directed_edge}"
+                            )
+                        },
+                    )?;
+                    directed_edges.push(points_to);
+                }
+                directed_offsets.push(directed_edges.len());
+
                 for (metrc_name, metric_values) in metrics.iter_mut() {
                     if let Some(metric_value) =
                         node.metrics.as_ref().and_then(|m| m.get(metrc_name))
@@ -173,40 +179,27 @@ impl MapGraph {
                     all_tag_sets.insert(node_idx, tag_sets.clone());
                 }
             } else {
-                offset_graph_builder.push_node(vec![]);
+                directed_offsets.push(directed_edges.len());
                 for (_metric_name, metric_values) in metrics.iter_mut() {
                     metric_values.push(0.0);
                 }
             }
         }
 
-        let edges_forward = offset_graph_builder.build();
-
-        let tiers = self
-            .traversal_config
-            .as_ref()
-            .map(|config| config.get_tiers())
-            .unwrap_or_default();
-
-        let derived_state = ArrayGraphDerivedState::from_forward_edges(&edges_forward);
-
-        let nodes = SharedArrayGraphNodes::new_left_only(Arc::new(node_names_ordered));
-
-        Ok(ArrayGraph {
-            nodes,
-            node_flags: vec![NodeFlags::empty(); edges_forward.node_count()],
-            edges_forward,
-            derived_state,
-            metrics,
-            edges_tagged: all_tagged_edges,
-            edges_dynamic: all_dynamic_edges,
-            tag_sets: all_tag_sets,
-            state: ArrayGraphState {
-                traversal_config: self.traversal_config.clone(),
-                tiers,
-                indexed_messages: Default::default(),
+        Ok(ArrayGraphSerializable {
+            node_names_ordered: Arc::new(node_names_ordered),
+            edges: crate::ArrayGraphSerializableEdges {
+                directed: directed_edges,
+                directed_offsets,
+                tagged: all_tagged_edges,
+                dynamic: all_dynamic_edges,
+            },
+            node_metadata: crate::ArrayGraphSerializableNodeMetadata {
+                metrics,
+                tag_sets: all_tag_sets,
             },
             graph_settings: self.graph_settings.clone(),
+            traversal_config: self.traversal_config.clone(),
             entry_points: self.entry_points.clone(),
         })
     }
