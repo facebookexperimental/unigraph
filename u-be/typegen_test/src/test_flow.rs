@@ -101,16 +101,6 @@ export type FlowTypeShape =
 // Test struct with type overrides
 export type FlowTypeOverrideTest = () => void;
 
----------------- ./flow/FlowPrefixSkipTest.js.flow
-
-/* flow header */
-
-
----------------- ./flow/FlowPrefixSkipAndOverrideTest.js.flow
-
-/* flow header */
-
-
 "#
     );
 }

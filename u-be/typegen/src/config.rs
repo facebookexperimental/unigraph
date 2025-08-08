@@ -102,6 +102,16 @@ impl TypeGenConfig {
     pub fn make_file(&self, decl: TypeGenGeneratedType, lang: Lang) -> Result<Option<TypeGenFile>> {
         if let Some(shared_config) = self.get_shared_config(lang) {
             if let Some(export_path) = &shared_config.export_path {
+                // Check if this type should be skipped for this language
+                if let Some(ref skip) = decl.skip {
+                    match lang {
+                        Lang::Hack if skip.hack => return Ok(None),
+                        Lang::Flow if skip.flow => return Ok(None),
+                        Lang::TypeScript if skip.typescript => return Ok(None),
+                        _ => {}
+                    }
+                }
+
                 let content = match lang {
                     Lang::TypeScript => TypeScriptGenerator::generate_typescript(self, &decl),
                     Lang::Flow => FlowGenerator::generate_flow(self, &decl),

@@ -126,12 +126,6 @@ type HackTypeShape = shape(
 // Test struct with type overrides
 type HackTypeOverrideTest = null;
 
----------------- ./hack/HackPrefixSkipTest.hhi
-
-<?hh
-/* hack header */
-
-
 ---------------- ./hack/HackPrefixSkipAndOverrideTest.hhi
 
 <?hh
