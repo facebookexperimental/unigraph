@@ -11,6 +11,7 @@ import NativeGraph, { GRAPH_SIDE } from "./NativeGraph";
 import Sidebar from "./Sidebar";
 import Simulation from "./Simulation";
 import type { ArrayGraphUISettingsTreeTableEntryPoints } from "./__generated__/ts/ArrayGraphUISettingsTreeTableEntryPoints";
+import type { ExplorerComponentInputGraph } from "./__generated__/ts/ExplorerComponentInputGraph";
 import type { GraphSettings } from "./__generated__/ts/GraphSettings";
 import type { TraversalConfig } from "./__generated__/ts/TraversalConfig";
 import ErrorBoundary from "./components/ErrorBoundary";
@@ -35,16 +36,6 @@ import GraphInfoPanel from "./sidebar_panels/GraphInfoPanel";
 import GraphTreeTable from "./tree_table/GraphTreeTable";
 import type { NodeIDX } from "./types";
 
-export type InputGraph =
-  | {
-      t: "MapGraphJSON";
-      mapGraphJSON: string;
-    }
-  | {
-      t: "array_graph_json_zstd_base64";
-      array_graph_json_zstd_base64: string;
-    };
-
 export function Explorer({
   graph,
   traversalConfigZSTDBase64UrlSafeNoPadding,
@@ -52,7 +43,7 @@ export function Explorer({
   graphSettingsZSTDBase64UrlSafeNoPadding,
   onGraphSettingsZSTDBase64UrlSafeNoPaddingChange,
 }: {
-  graph: InputGraph;
+  graph: ExplorerComponentInputGraph;
   traversalConfigZSTDBase64UrlSafeNoPadding?: string | null;
   onTraversalConfigZSTDBase64UrlSafeNoPaddingChange?: (v: string) => void;
   graphSettingsZSTDBase64UrlSafeNoPadding?: string | null;
@@ -193,15 +184,22 @@ function Page(props: {
   );
 }
 
-function initNativeGraph(graph: InputGraph): NativeGraph {
-  switch (graph.t) {
-    case "array_graph_json_zstd_base64":
-      return NativeGraph.fromArrayGraphJSONZstdBase64(
-        graph.array_graph_json_zstd_base64,
-        GRAPH_SIDE.L,
-      );
-    case "MapGraphJSON":
-      return NativeGraph.fromMapGraphJSON(graph.mapGraphJSON, GRAPH_SIDE.L);
+function initNativeGraph(graph: ExplorerComponentInputGraph): NativeGraph {
+  if ("MapGraphSerialized" in graph) {
+    graph.MapGraphSerialized;
+    return NativeGraph.fromMapGraphJSON(
+      graph.MapGraphSerialized.value,
+      GRAPH_SIDE.L,
+    );
+  } else if ("ArrayGraphSerialized" in graph) {
+    return NativeGraph.fromArrayGraphJSONZstdBase64(
+      graph.ArrayGraphSerialized.value,
+      GRAPH_SIDE.L,
+    );
+  } else {
+    // Exhaustiveness check
+    const _check: never = graph;
+    throw new Error("Unhandled case");
   }
 }
 

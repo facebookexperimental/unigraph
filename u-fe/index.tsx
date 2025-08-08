@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 
-import { Explorer, type InputGraph } from "./Explorer";
+import { Explorer } from "./Explorer";
+import type { ExplorerComponentInputGraph } from "./__generated__/ts/ExplorerComponentInputGraph";
 
 const ARRAY_GRAPH_JSON_ZSTD_BASE64_LEFT_ELEMENT_ID =
   "array_graph_json_zstd_base64_left";
@@ -83,10 +84,12 @@ function Root() {
     [graphSettingsURLParam],
   );
 
-  const graph: InputGraph = useMemo(() => {
+  const graph: ExplorerComponentInputGraph = useMemo(() => {
     return {
-      t: "array_graph_json_zstd_base64",
-      array_graph_json_zstd_base64: array_graph_json_zstd_base64_left,
+      ArrayGraphSerialized: {
+        format: "JsonZstdBase64",
+        value: array_graph_json_zstd_base64_left,
+      },
     };
   }, [array_graph_json_zstd_base64_left]);
 

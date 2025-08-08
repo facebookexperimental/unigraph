@@ -126,15 +126,31 @@ pub fn set_map_graph(graph_json: Option<String>) -> Result<(), WasmJSError> {
 pub fn set_array_graph_json_zstd_base64(
     array_graph_json_zstd_base64: String,
 ) -> Result<(), WasmJSError> {
-    let json_bytes = serialization::from_zstd_base64(&array_graph_json_zstd_base64)
-        .context("Failed to decode array_graph_json_zstd_base64")?;
-
-    let array_graph_serializable = ArrayGraphSerializable::from_json_bytes(&json_bytes)
-        .context("Failed to deserialize ArrayGraph JSON bytes")?;
+    let array_graph_serializable = parse_graph(array_graph_json_zstd_base64)?;
     let array_graph: ArrayGraph = array_graph_serializable.into();
     let twin_graph = TwinGraph::from_one(array_graph.append_super_root()?)?;
     GlobalGraphState::graph_state().replace_graph(twin_graph)?;
     Ok(())
+}
+
+#[wasm_bindgen]
+pub fn set_two_array_graph_json_zstd_base64(
+    array_graph_json_zstd_base64_left: String,
+    array_graph_json_zstd_base64_right: String,
+) -> Result<(), WasmJSError> {
+    let l = parse_graph(array_graph_json_zstd_base64_left)?;
+    let r = parse_graph(array_graph_json_zstd_base64_right)?;
+    let twin_graph = TwinGraph::from_two(l, r)?;
+    GlobalGraphState::graph_state().replace_graph(twin_graph)?;
+    Ok(())
+}
+
+fn parse_graph(array_graph_json_zstd_base64: String) -> Result<ArrayGraphSerializable> {
+    let json_bytes = serialization::from_zstd_base64(&array_graph_json_zstd_base64)
+        .context("Failed to decode array_graph_json_zstd_base64_left")?;
+
+    ArrayGraphSerializable::from_json_bytes(&json_bytes)
+        .context("Failed to deserialize ArrayGraph JSON bytes")
 }
 
 #[wasm_bindgen]
