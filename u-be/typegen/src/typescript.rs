@@ -80,7 +80,7 @@ impl TypeScriptGenerator {
                     "import type {{ {} }} from './{}';\n",
                     config.get_type_name(&import_original_type_name, Lang::TypeScript),
                     config
-                        .typescript_file_name(&import_original_type_name)
+                        .make_file_name(&import_original_type_name, Lang::TypeScript)
                         .display()
                 ));
             }

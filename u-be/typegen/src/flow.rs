@@ -67,7 +67,9 @@ impl FlowGenerator {
                 result.push_str(&format!(
                     "import type {{ {} }} from './{}';\n",
                     config.get_type_name(&import_original_type_name, Lang::Flow),
-                    config.flow_file_name(&import_original_type_name).display()
+                    config
+                        .make_file_name(&import_original_type_name, Lang::Flow)
+                        .display()
                 ));
             }
             result.push('\n');

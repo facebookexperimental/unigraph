@@ -4,6 +4,8 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 
+use crate::Lang;
+
 /// Enum representing different type references
 #[derive(Debug, Clone)]
 pub enum TypeRef {
@@ -82,15 +84,15 @@ impl TypeGenGeneratedType {
         // Get the config for this file's directory
         let config = crate::config::get_config_for_file(&self.file_path)?;
 
-        if let Some(flow_file) = config.make_flow_file(self.clone())? {
+        if let Some(flow_file) = config.make_file(self.clone(), Lang::Flow)? {
             flow_file.write()?;
         }
 
-        if let Some(ts_file) = config.make_typescript_file(self.clone())? {
+        if let Some(ts_file) = config.make_file(self.clone(), Lang::TypeScript)? {
             ts_file.write()?;
         }
 
-        if let Some(hack_file) = config.make_hack_file(self.clone())? {
+        if let Some(hack_file) = config.make_file(self.clone(), Lang::Hack)? {
             hack_file.write()?;
         }
 

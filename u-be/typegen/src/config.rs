@@ -99,70 +99,35 @@ impl TypeGenConfig {
         }
     }
 
-    pub fn make_flow_file(&self, decl: TypeGenGeneratedType) -> Result<Option<TypeGenFile>> {
-        if let Some(FlowConfig { shared_config }) = &self.flow {
+    pub fn make_file(&self, decl: TypeGenGeneratedType, lang: Lang) -> Result<Option<TypeGenFile>> {
+        if let Some(shared_config) = self.get_shared_config(lang) {
             if let Some(export_path) = &shared_config.export_path {
-                let type_content = FlowGenerator::generate_flow(self, &decl);
-                let content = shared_config.prepend_header(type_content);
+                let content = match lang {
+                    Lang::TypeScript => TypeScriptGenerator::generate_typescript(self, &decl),
+                    Lang::Flow => FlowGenerator::generate_flow(self, &decl),
+                    Lang::Hack => HackGenerator::generate(self, &decl),
+                };
+                let content = shared_config.prepend_header(content);
                 let mut path = self.resolve_path(export_path)?;
-                path.push(self.flow_file_name(&decl.original_type_name));
+                path.push(self.make_file_name(&decl.original_type_name, lang));
                 return Ok(Some(TypeGenFile { path, content }));
             }
         }
         Ok(None)
     }
 
-    pub fn make_typescript_file(&self, decl: TypeGenGeneratedType) -> Result<Option<TypeGenFile>> {
-        if let Some(TypeScriptConfig { shared_config }) = &self.typescript {
-            if let Some(export_path) = &shared_config.export_path {
-                let type_content = TypeScriptGenerator::generate_typescript(self, &decl);
-                let content = shared_config.prepend_header(type_content);
-                let mut path = self.resolve_path(export_path)?;
-                path.push(self.typescript_file_name(&decl.original_type_name));
-                return Ok(Some(TypeGenFile { path, content }));
-            }
+    pub fn make_file_name(&self, type_name: &str, lang: Lang) -> PathBuf {
+        let name = match lang {
+            Lang::TypeScript => format!("{type_name}.ts"),
+            Lang::Flow => format!("{type_name}.js.flow"),
+            Lang::Hack => format!("{type_name}.hhi"),
+        };
+
+        if let Some(shared_config) = self.get_shared_config(lang) {
+            shared_config.add_file_prefix(&name).into()
+        } else {
+            name.into()
         }
-        Ok(None)
-    }
-
-    pub fn make_hack_file(&self, decl: TypeGenGeneratedType) -> Result<Option<TypeGenFile>> {
-        if let Some(HackConfig { shared_config }) = &self.hack {
-            if let Some(export_path) = &shared_config.export_path {
-                let type_content = HackGenerator::generate(self, &decl);
-                let content = shared_config.prepend_header(type_content);
-                let mut path = self.resolve_path(export_path)?;
-                path.push(self.hack_file_name(&decl.original_type_name));
-                return Ok(Some(TypeGenFile { path, content }));
-            }
-        }
-        Ok(None)
-    }
-
-    pub fn flow_file_name(&self, type_name: &str) -> PathBuf {
-        let name = if let Some(FlowConfig { shared_config }) = &self.flow {
-            shared_config.add_file_prefix(type_name)
-        } else {
-            type_name.to_string()
-        };
-        PathBuf::from(format!("{}.js.flow", name))
-    }
-
-    pub fn typescript_file_name(&self, type_name: &str) -> PathBuf {
-        let name = if let Some(TypeScriptConfig { shared_config }) = &self.typescript {
-            shared_config.add_file_prefix(type_name)
-        } else {
-            type_name.to_string()
-        };
-        PathBuf::from(format!("{}.ts", name))
-    }
-
-    pub fn hack_file_name(&self, type_name: &str) -> PathBuf {
-        let name = if let Some(HackConfig { shared_config }) = &self.hack {
-            shared_config.add_file_prefix(type_name)
-        } else {
-            type_name.to_string()
-        };
-        PathBuf::from(format!("{}.hhi", name))
     }
 
     /// Make a path relative to this config file's path

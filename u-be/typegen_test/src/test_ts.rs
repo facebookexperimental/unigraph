@@ -1,3 +1,5 @@
+use typegen::Lang;
+
 use crate::shared::format_types;
 use crate::shared::gen_config;
 use crate::shared::get_all_declarations;
@@ -7,7 +9,7 @@ fn test_typescript_generation() {
     let config = gen_config();
     let files = get_all_declarations()
         .iter()
-        .filter_map(|decl| config.make_typescript_file(decl.clone()).unwrap())
+        .filter_map(|decl| config.make_file(decl.clone(), Lang::TypeScript).unwrap())
         .collect::<Vec<_>>();
 
     k9::snapshot!(
