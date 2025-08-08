@@ -44,10 +44,13 @@ impl GlobalGraphState {
     }
 
     pub fn init() {
+        let empty_graph = ArrayGraph::empty().unwrap();
+        let twin_graph = unigraph_core::TwinGraph::from_one(empty_graph).unwrap();
+
         GLOBAL_GRAPH_STATE
             .set(GlobalGraphState {
                 simulation_params: SharedSimulationParams::new(SimulationParams::default()),
-                graph_state: SharedGraphState::new(ArrayGraph::empty().unwrap()).unwrap(),
+                graph_state: SharedGraphState::new(twin_graph).unwrap(),
             })
             .map_err(|_| "Global state already initialized")
             .unwrap();

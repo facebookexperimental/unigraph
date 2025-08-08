@@ -15,9 +15,7 @@ use glam::Vec2;
 pub use global_state::GlobalState;
 pub use global_state::global_state;
 use shared::create_shader;
-use unigraph_core::ArrayGraph;
 use unigraph_core::NodeIDX;
-use unigraph_error::UnigraphError;
 use unigraph_graph_state::GlobalGraphState;
 use unigraph_graph_state::global_graph_state;
 use unigraph_graph_state::types::SelectionType;
@@ -27,7 +25,6 @@ use winit::application::ApplicationHandler;
 use winit::event::*;
 use winit::event_loop::ActiveEventLoop;
 use winit::event_loop::ControlFlow;
-use winit::event_loop::EventLoop;
 use winit::window::Window;
 use winit::window::WindowAttributes;
 
@@ -302,12 +299,6 @@ pub trait WindowAttributesFactory {
     fn create_attributes(&self) -> Result<Option<WindowAttributes>>;
 }
 
-struct NativeWindowAttributesFactory;
-impl WindowAttributesFactory for NativeWindowAttributesFactory {
-    fn create_attributes(&self) -> Result<Option<WindowAttributes>> {
-        Ok(Some(Window::default_attributes()))
-    }
-}
 impl WGPUApplication {
     fn init_state(&mut self, event_loop: &ActiveEventLoop) {
         let attributes = match self.window_attributes_factory.create_attributes().unwrap() {
@@ -470,23 +461,6 @@ pub async fn create_application(
         window_attributes_factory,
         frame_counter: 0,
     })
-}
-
-async fn run(event_loop: EventLoop<UserEvent>) {
-    let mut app = create_application(Box::new(NativeWindowAttributesFactory))
-        .await
-        .expect("Failed to create application");
-
-    event_loop.run_app(&mut app).unwrap();
-}
-
-pub async fn start(array_graph: ArrayGraph) -> Result<(), UnigraphError> {
-    GlobalState::init();
-    let event_loop = EventLoop::<UserEvent>::with_user_event().build().unwrap();
-    GlobalGraphState::graph_state().replace_graph(array_graph)?;
-    GlobalState::set_event_loop_proxy(event_loop.create_proxy());
-    run(event_loop).await;
-    Ok(())
 }
 
 pub fn get_selected_node_idxs() -> Result<Vec<NodeIDX>> {

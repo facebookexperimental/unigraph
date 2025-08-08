@@ -23,6 +23,7 @@ const MISSING_RIGHT_ERROR: &str = "TwinGraph: You are trying to access the right
 #[readonly::make]
 pub struct TwinGraph {
     /// Left graph must always be present.
+    #[readonly]
     pub l: ArrayGraph,
     pub r: Option<ArrayGraph>,
     #[readonly]

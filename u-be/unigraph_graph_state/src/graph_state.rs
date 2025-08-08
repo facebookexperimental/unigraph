@@ -10,7 +10,6 @@ use anyhow::Result;
 use bytemuck::Pod;
 use bytemuck::Zeroable;
 use glam::Vec2;
-use unigraph_core::ArrayGraph;
 use unigraph_core::TwinGraph;
 use unigraph_core::types::NodeIDX;
 
@@ -28,9 +27,9 @@ pub struct SharedGraphState {
 }
 
 impl SharedGraphState {
-    pub fn new(array_graph: ArrayGraph) -> Result<Self> {
+    pub fn new(twin_graph: TwinGraph) -> Result<Self> {
         Ok(Self {
-            inner: Arc::new(RwLock::new(GraphState::new(array_graph)?)),
+            inner: Arc::new(RwLock::new(GraphState::new(twin_graph)?)),
         })
     }
 
@@ -42,8 +41,8 @@ impl SharedGraphState {
         self.inner.write().unwrap()
     }
 
-    pub fn replace_graph(&self, new_graph: ArrayGraph) -> Result<()> {
-        let new_state = GraphState::new(new_graph)?;
+    pub fn replace_graph(&self, twin_graph: TwinGraph) -> Result<()> {
+        let new_state = GraphState::new(twin_graph)?;
         let mut inner = self.get_mut();
         *inner = new_state;
         Ok(())
@@ -93,13 +92,14 @@ pub struct EdgeAttributes {
 }
 
 impl GraphState {
-    pub fn new(array_graph: ArrayGraph) -> Result<Self> {
+    pub fn new(twin_graph: TwinGraph) -> Result<Self> {
         // by default we'll grab whatever metric is first in the list
-        let selected_metric = array_graph.metrics.keys().next().cloned();
-        let simulation_graph = SimulationGraph::new(&array_graph, &selected_metric, None)?;
+
+        let selected_metric = twin_graph.l.metrics.keys().next().cloned();
+        let simulation_graph = SimulationGraph::new(&twin_graph.l, &selected_metric, None)?;
 
         let result = Self {
-            twin_graph: TwinGraph::from_one(array_graph)?,
+            twin_graph,
             selected_metric,
             simulation_graph,
         };

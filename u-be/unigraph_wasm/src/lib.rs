@@ -12,6 +12,7 @@ use unigraph_core::ArrayGraph;
 use unigraph_core::ArrayGraphSerializable;
 use unigraph_core::MapGraph;
 use unigraph_core::TraversalConfig;
+use unigraph_core::TwinGraph;
 use unigraph_core::graph_settings::GraphStructure;
 use unigraph_core::make_test_graph;
 use unigraph_core::types::NodeIDX;
@@ -116,7 +117,8 @@ pub fn set_map_graph(graph_json: Option<String>) -> Result<(), WasmJSError> {
         log::info!("No graph provided, using test graph");
         make_test_graph().unwrap().to_array_graph().unwrap()
     };
-    GlobalGraphState::graph_state().replace_graph(array_graph.append_super_root()?)?;
+    let twin_graph = TwinGraph::from_one(array_graph.append_super_root()?)?;
+    GlobalGraphState::graph_state().replace_graph(twin_graph)?;
     Ok(())
 }
 
@@ -130,7 +132,8 @@ pub fn set_array_graph_json_zstd_base64(
     let array_graph_serializable = ArrayGraphSerializable::from_json_bytes(&json_bytes)
         .context("Failed to deserialize ArrayGraph JSON bytes")?;
     let array_graph: ArrayGraph = array_graph_serializable.into();
-    GlobalGraphState::graph_state().replace_graph(array_graph.append_super_root()?)?;
+    let twin_graph = TwinGraph::from_one(array_graph.append_super_root()?)?;
+    GlobalGraphState::graph_state().replace_graph(twin_graph)?;
     Ok(())
 }
 
