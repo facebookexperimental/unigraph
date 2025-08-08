@@ -487,6 +487,7 @@ fn extract_language_override(tokens_str: &str, language: &str) -> Option<String>
 
 fn extract_skip_languages(tokens_str: &str) -> Vec<String> {
     let mut languages = Vec::new();
+    const VALID_LANGUAGES: &[&str] = &["Hack", "Flow", "TypeScript"];
 
     // Look for skip(...) pattern
     if let Some(start) = tokens_str.find("skip(") {
@@ -497,8 +498,16 @@ fn extract_skip_languages(tokens_str: &str) -> Vec<String> {
             // Split by comma and extract language names
             for part in content.split(',') {
                 let trimmed = part.trim();
-                if trimmed == "Hack" || trimmed == "Flow" || trimmed == "TypeScript" {
-                    languages.push(trimmed.to_string());
+                if !trimmed.is_empty() {
+                    if VALID_LANGUAGES.contains(&trimmed) {
+                        languages.push(trimmed.to_string());
+                    } else {
+                        panic!(
+                            "Invalid language '{}' in skip attribute. Only the following options are available: {}",
+                            trimmed,
+                            VALID_LANGUAGES.join(", ")
+                        );
+                    }
                 }
             }
         }
