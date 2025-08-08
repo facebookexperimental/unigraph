@@ -1,3 +1,5 @@
+// Copyright (c) Meta Platforms, Inc. and affiliates.
+
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 

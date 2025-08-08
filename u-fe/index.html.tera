@@ -5,7 +5,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>{{ css }}</style>
-    <script type="application/json" id="array_graph_json_zstd_base64">{{ array_graph_json_zstd_base64 }}</script>
+    <script type="application/json" id="array_graph_json_zstd_base64_left">{{ array_graph_json_zstd_base64_left }}</script>
+    <script type="application/json" id="array_graph_json_zstd_base64_right">{{ array_graph_json_zstd_base64_right }}</script>
     <script type="module" type="text/javascript">
         {{ js }}
     </script>

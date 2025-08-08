@@ -73,8 +73,8 @@ impl ArrayGraphNodes {
         }
     }
 
-    pub fn merge(&self, other: &Self) -> Self {
-        merge(self, other).0
+    pub fn merge(&self, other: &Self) -> (Self, RemapContext, RemapContext) {
+        merge(self, other)
     }
 
     pub fn combined_nodes_len(&self) -> usize {

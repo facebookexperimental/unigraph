@@ -1,3 +1,7 @@
+// Copyright (c) Meta Platforms, Inc. and affiliates.
+
+mod merge;
+
 use std::sync::Arc;
 
 use anyhow::Context;
@@ -5,6 +9,7 @@ use anyhow::Result;
 
 use crate::ArrayGraph;
 use crate::ArrayGraphNodes;
+use crate::ArrayGraphSerializable;
 use crate::types::array_graph::array_graph_nodes::GraphSide;
 
 const MISSING_RIGHT_ERROR: &str = "TwinGraph: You are trying to access the right graph, but it is not present. \
@@ -25,12 +30,16 @@ pub struct TwinGraph {
 }
 
 impl TwinGraph {
-    pub fn single(l: ArrayGraph) -> anyhow::Result<Self> {
+    pub fn from_one(l: ArrayGraph) -> Result<Self> {
         Ok(Self {
             node_names: Arc::clone(&l.nodes.node_names),
             l,
             r: None,
         })
+    }
+
+    pub fn from_two(l: ArrayGraphSerializable, r: ArrayGraphSerializable) -> Result<Self> {
+        merge::merge_into_twin(l, r)
     }
 
     pub fn graph(&self, side: GraphSide) -> Result<&ArrayGraph> {

@@ -5,6 +5,11 @@ import { createRoot } from "react-dom/client";
 
 import { Explorer, type InputGraph } from "./Explorer";
 
+const ARRAY_GRAPH_JSON_ZSTD_BASE64_LEFT_ELEMENT_ID =
+  "array_graph_json_zstd_base64_left";
+const ARRAY_GRAPH_JSON_ZSTD_BASE64_RIGHT_ELEMENT_ID =
+  "array_graph_json_zstd_base64_right";
+
 window.onload = () => {
   const rootDiv = document.getElementById("root");
   if (rootDiv == null) {
@@ -35,18 +40,21 @@ function Root() {
     };
   }, []);
 
-  const array_graph_json_zstd_base64 = useMemo(() => {
-    const array_graph_json_zstd_base64_Element = document.getElementById(
-      "array_graph_json_zstd_base64",
+  const [
+    array_graph_json_zstd_base64_left,
+    _array_graph_json_zstd_base64_right,
+  ] = useMemo(() => {
+    const left = getSerializedGraphFromHTMLElement(
+      ARRAY_GRAPH_JSON_ZSTD_BASE64_LEFT_ELEMENT_ID,
     );
-    if (array_graph_json_zstd_base64_Element == null) {
-      throw new Error("Array graph JSON element not found");
+    const right = getSerializedGraphFromHTMLElement(
+      ARRAY_GRAPH_JSON_ZSTD_BASE64_RIGHT_ELEMENT_ID,
+    );
+
+    if (left == null) {
+      throw new Error("Left graph must be present");
     }
-    const arrayGraphJSON = array_graph_json_zstd_base64_Element.textContent;
-    if (arrayGraphJSON == null) {
-      throw new Error("Array graph JSON is null");
-    }
-    return arrayGraphJSON;
+    return [left, right];
   }, []);
 
   const onTraversalConfigZSTDBase64UrlSafeNoPaddingChange = useCallback(
@@ -78,9 +86,9 @@ function Root() {
   const graph: InputGraph = useMemo(() => {
     return {
       t: "array_graph_json_zstd_base64",
-      array_graph_json_zstd_base64,
+      array_graph_json_zstd_base64: array_graph_json_zstd_base64_left,
     };
-  }, [array_graph_json_zstd_base64]);
+  }, [array_graph_json_zstd_base64_left]);
 
   return (
     <Explorer
@@ -101,4 +109,17 @@ function getQueryParam(name: string): string | null {
   const url = new URL(window.location.href);
   const value = url.searchParams.get(name);
   return value;
+}
+
+function getSerializedGraphFromHTMLElement(elementID: string): string | null {
+  const array_graph_json_zstd_base64_Element =
+    document.getElementById(elementID);
+
+  if (array_graph_json_zstd_base64_Element == null) {
+    throw new Error(
+      `Array graph JSON element not found. elementID: ${elementID}`,
+    );
+  }
+
+  return array_graph_json_zstd_base64_Element.textContent;
 }

@@ -99,7 +99,7 @@ impl GraphState {
         let simulation_graph = SimulationGraph::new(&array_graph, &selected_metric, None)?;
 
         let result = Self {
-            twin_graph: TwinGraph::single(array_graph)?,
+            twin_graph: TwinGraph::from_one(array_graph)?,
             selected_metric,
             simulation_graph,
         };
