@@ -17,6 +17,13 @@ pub struct FlowGenerator;
 impl FlowGenerator {
     /// Generate Flow.js code from a type declaration
     pub fn generate_flow(config: &TypeGenConfig, generated_type: &TypeGenGeneratedType) -> String {
+        // Check if this type should be skipped for Flow
+        if let Some(ref skip) = generated_type.skip {
+            if skip.flow {
+                return String::new(); // Return empty string to skip generation
+            }
+        }
+
         // Check if there's a Flow override for this type
         if let Some(ref overrides) = generated_type.overrides {
             if let Some(ref flow_override) = overrides.flow {

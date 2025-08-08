@@ -20,6 +20,13 @@ impl TypeScriptGenerator {
         config: &TypeGenConfig,
         generated_type: &TypeGenGeneratedType,
     ) -> String {
+        // Check if this type should be skipped for TypeScript
+        if let Some(ref skip) = generated_type.skip {
+            if skip.typescript {
+                return String::new(); // Return empty string to skip generation
+            }
+        }
+
         // Check if there's a TypeScript override for this type
         if let Some(ref overrides) = generated_type.overrides {
             if let Some(ref typescript_override) = overrides.typescript {

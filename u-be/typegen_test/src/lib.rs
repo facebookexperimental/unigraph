@@ -69,6 +69,20 @@ pub struct Unit;
 #[typegen(Hack("null"), TypeScript("() => void"), Flow("() => void"))]
 pub struct OverrideTest;
 
+/// Test struct that skips generation for Hack and Flow
+#[derive(TypeGen)]
+#[typegen(skip(Hack, Flow))]
+pub struct SkipTest {
+    pub value: u32,
+}
+
+/// Test struct that combines skips and overrides
+#[derive(TypeGen)]
+#[typegen(skip(Flow), TypeScript("string"))]
+pub struct SkipAndOverrideTest {
+    pub data: u32,
+}
+
 /// Simple enum with unit variants
 #[derive(TypeGen)]
 pub enum Animal {
@@ -194,6 +208,7 @@ TypeGenGeneratedType {
         },
     ),
     overrides: None,
+    skip: None,
 }
 
 TypeGenGeneratedType {
@@ -230,6 +245,7 @@ TypeGenGeneratedType {
         },
     ),
     overrides: None,
+    skip: None,
 }
 
 TypeGenGeneratedType {
@@ -299,6 +315,7 @@ TypeGenGeneratedType {
         },
     ),
     overrides: None,
+    skip: None,
 }
 
 TypeGenGeneratedType {
@@ -320,6 +337,7 @@ TypeGenGeneratedType {
         },
     ),
     overrides: None,
+    skip: None,
 }
 
 TypeGenGeneratedType {
@@ -330,6 +348,7 @@ TypeGenGeneratedType {
     file_path: <SANITIZED>
     declaration: Null,
     overrides: None,
+    skip: None,
 }
 
 TypeGenGeneratedType {
@@ -349,6 +368,7 @@ should be transparent in the generated code and point directly to the string typ
         },
     ),
     overrides: None,
+    skip: None,
 }
 
 TypeGenGeneratedType {
@@ -382,6 +402,7 @@ TypeGenGeneratedType {
         },
     ),
     overrides: None,
+    skip: None,
 }
 
 TypeGenGeneratedType {
@@ -449,6 +470,7 @@ TypeGenGeneratedType {
         },
     ),
     overrides: None,
+    skip: None,
 }
 
 TypeGenGeneratedType {
@@ -469,6 +491,73 @@ TypeGenGeneratedType {
             typescript: Some(
                 "() => void",
             ),
+        },
+    ),
+    skip: None,
+}
+
+TypeGenGeneratedType {
+    original_type_name: "SkipTest",
+    docs: Some(
+        "Test struct that skips generation for Hack and Flow",
+    ),
+    file_path: <SANITIZED>
+    declaration: StructDecl(
+        StructDecl {
+            fields: [
+                FieldDeclaration {
+                    field_name: "value",
+                    type_ref: Primitive(
+                        U32,
+                    ),
+                    docs: None,
+                },
+            ],
+        },
+    ),
+    overrides: None,
+    skip: Some(
+        TypeGenSkip {
+            hack: true,
+            flow: true,
+            typescript: false,
+        },
+    ),
+}
+
+TypeGenGeneratedType {
+    original_type_name: "SkipAndOverrideTest",
+    docs: Some(
+        "Test struct that combines skips and overrides",
+    ),
+    file_path: <SANITIZED>
+    declaration: StructDecl(
+        StructDecl {
+            fields: [
+                FieldDeclaration {
+                    field_name: "data",
+                    type_ref: Primitive(
+                        U32,
+                    ),
+                    docs: None,
+                },
+            ],
+        },
+    ),
+    overrides: Some(
+        TypeGenOverrides {
+            hack: None,
+            flow: None,
+            typescript: Some(
+                "string",
+            ),
+        },
+    ),
+    skip: Some(
+        TypeGenSkip {
+            hack: false,
+            flow: true,
+            typescript: false,
         },
     ),
 }

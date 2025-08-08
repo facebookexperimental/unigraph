@@ -15,6 +15,8 @@ use crate::OverrideTest;
 use crate::Person;
 use crate::Point;
 use crate::Shape;
+use crate::SkipAndOverrideTest;
+use crate::SkipTest;
 use crate::Unit;
 use crate::User;
 use crate::WrappedString;
@@ -30,6 +32,8 @@ pub fn get_all_declarations() -> Vec<TypeGenGeneratedType> {
         Animal::to_type_decl(),
         Shape::to_type_decl(),
         OverrideTest::to_type_decl(),
+        SkipTest::to_type_decl(),
+        SkipAndOverrideTest::to_type_decl(),
     ]
 }
 

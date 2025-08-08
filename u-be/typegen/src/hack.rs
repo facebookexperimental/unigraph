@@ -28,6 +28,13 @@ impl<'a> HackGenerator<'a> {
     }
 
     fn generate_impl(&self) -> String {
+        // Check if this type should be skipped for Hack
+        if let Some(ref skip) = self.generated_type.skip {
+            if skip.hack {
+                return String::new(); // Return empty string to skip generation
+            }
+        }
+
         // Check if there's a Hack override for this type
         if let Some(ref overrides) = self.generated_type.overrides {
             if let Some(ref hack_override) = overrides.hack {

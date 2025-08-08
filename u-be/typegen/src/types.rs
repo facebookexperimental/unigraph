@@ -43,6 +43,13 @@ pub enum PrimitiveTypeRef {
 }
 
 #[derive(Clone, Debug)]
+pub struct TypeGenSkip {
+    pub hack: bool,
+    pub flow: bool,
+    pub typescript: bool,
+}
+
+#[derive(Clone, Debug)]
 pub struct TypeGenOverrides {
     pub hack: Option<&'static str>,
     pub flow: Option<&'static str>,
@@ -57,6 +64,7 @@ pub struct TypeGenGeneratedType {
     pub file_path: PathBuf,
     pub declaration: TypeGenDecl,
     pub overrides: Option<TypeGenOverrides>,
+    pub skip: Option<TypeGenSkip>,
 }
 
 impl TypeGenGeneratedType {

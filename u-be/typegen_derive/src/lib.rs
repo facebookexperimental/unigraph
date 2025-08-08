@@ -54,6 +54,7 @@ pub fn type_gen(input: TokenStream) -> TokenStream {
                     };
 
                     let overrides_token = extract_type_overrides(&input.attrs);
+                    let skip_token = extract_type_skip(&input.attrs);
 
                     let expanded = quote! {
                         impl ::typegen::TypeGenDeclTrait for #name {
@@ -66,6 +67,7 @@ pub fn type_gen(input: TokenStream) -> TokenStream {
                                         fields: vec![#(#fields),*],
                                     }),
                                     overrides: #overrides_token,
+                                    skip: #skip_token,
                                 }
                             }
                         }
@@ -103,6 +105,7 @@ pub fn type_gen(input: TokenStream) -> TokenStream {
                     };
 
                     let overrides_token = extract_type_overrides(&input.attrs);
+                    let skip_token = extract_type_skip(&input.attrs);
 
                     let expanded = quote! {
                         impl ::typegen::TypeGenDeclTrait for #name {
@@ -115,6 +118,7 @@ pub fn type_gen(input: TokenStream) -> TokenStream {
                                         fields: vec![#(#field_types),*],
                                     }),
                                     overrides: #overrides_token,
+                                    skip: #skip_token,
                                 }
                             }
                         }
@@ -140,6 +144,7 @@ pub fn type_gen(input: TokenStream) -> TokenStream {
                     };
 
                     let overrides_token = extract_type_overrides(&input.attrs);
+                    let skip_token = extract_type_skip(&input.attrs);
 
                     let expanded = quote! {
                         impl ::typegen::TypeGenDeclTrait for #name {
@@ -150,6 +155,7 @@ pub fn type_gen(input: TokenStream) -> TokenStream {
                                     file_path: std::path::PathBuf::from(file!()),
                                     declaration: ::typegen::TypeGenDecl::Null,
                                     overrides: #overrides_token,
+                                    skip: #skip_token,
                                 }
                             }
                         }
@@ -174,6 +180,7 @@ pub fn type_gen(input: TokenStream) -> TokenStream {
             };
 
             let overrides_token = extract_type_overrides(&input.attrs);
+            let skip_token = extract_type_skip(&input.attrs);
 
             // Process enum variants
             let variants = data_enum
@@ -279,6 +286,7 @@ pub fn type_gen(input: TokenStream) -> TokenStream {
                                 variants: vec![#(#variants),*],
                             }),
                             overrides: #overrides_token,
+                            skip: #skip_token,
                         }
                     }
                 }
@@ -432,6 +440,39 @@ fn extract_type_overrides(attrs: &[syn::Attribute]) -> proc_macro2::TokenStream 
     }
 }
 
+fn extract_type_skip(attrs: &[syn::Attribute]) -> proc_macro2::TokenStream {
+    let mut skip_hack = false;
+    let mut skip_flow = false;
+    let mut skip_typescript = false;
+
+    for attr in attrs {
+        if attr.path().is_ident("typegen") {
+            if let syn::Meta::List(meta_list) = &attr.meta {
+                let tokens_str = meta_list.tokens.to_string();
+
+                // Look for skip(...) pattern
+                let skip_languages = extract_skip_languages(&tokens_str);
+                skip_hack = skip_languages.contains(&"Hack".to_string());
+                skip_flow = skip_languages.contains(&"Flow".to_string());
+                skip_typescript = skip_languages.contains(&"TypeScript".to_string());
+            }
+        }
+    }
+
+    // If no skip flags were found, return None
+    if !skip_hack && !skip_flow && !skip_typescript {
+        return quote! { None };
+    }
+
+    quote! {
+        Some(::typegen::TypeGenSkip {
+            hack: #skip_hack,
+            flow: #skip_flow,
+            typescript: #skip_typescript,
+        })
+    }
+}
+
 fn extract_language_override(tokens_str: &str, language: &str) -> Option<String> {
     let pattern = format!("{language}(\"");
     if let Some(start) = tokens_str.find(&pattern) {
@@ -442,6 +483,28 @@ fn extract_language_override(tokens_str: &str, language: &str) -> Option<String>
         }
     }
     None
+}
+
+fn extract_skip_languages(tokens_str: &str) -> Vec<String> {
+    let mut languages = Vec::new();
+
+    // Look for skip(...) pattern
+    if let Some(start) = tokens_str.find("skip(") {
+        let value_start = start + 5; // "skip(".len()
+        if let Some(end) = tokens_str[value_start..].find(")") {
+            let content = &tokens_str[value_start..value_start + end];
+
+            // Split by comma and extract language names
+            for part in content.split(',') {
+                let trimmed = part.trim();
+                if trimmed == "Hack" || trimmed == "Flow" || trimmed == "TypeScript" {
+                    languages.push(trimmed.to_string());
+                }
+            }
+        }
+    }
+
+    languages
 }
 
 fn generate_type_ref_token(

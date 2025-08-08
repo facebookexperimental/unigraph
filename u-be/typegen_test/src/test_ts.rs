@@ -99,6 +99,21 @@ export type TSTypeShape =
 // Test struct with type overrides
 export type TSTypeOverrideTest = () => void;
 
+---------------- ./ts/TSPrefixSkipTest.ts
+
+/* ts header */
+
+/** Test struct that skips generation for Hack and Flow */
+export interface TSTypeSkipTest {
+  value: number;
+}
+---------------- ./ts/TSPrefixSkipAndOverrideTest.ts
+
+/* ts header */
+
+// Test struct that combines skips and overrides
+export type TSTypeSkipAndOverrideTest = string;
+
 "#
     );
 }
