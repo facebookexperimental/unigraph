@@ -2,9 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
-
 import { Explorer } from "./Explorer";
-import type { ExplorerComponentInputGraph } from "./__generated__/ts/ExplorerComponentInputGraph";
+import type { ExplorerParams } from "./__generated__/ts/ExplorerParams";
 
 const ARRAY_GRAPH_JSON_ZSTD_BASE64_LEFT_ELEMENT_ID =
   "array_graph_json_zstd_base64_left";
@@ -43,7 +42,7 @@ function Root() {
 
   const [
     array_graph_json_zstd_base64_left,
-    _array_graph_json_zstd_base64_right,
+    array_graph_json_zstd_base64_right,
   ] = useMemo(() => {
     const left = getSerializedGraphFromHTMLElement(
       ARRAY_GRAPH_JSON_ZSTD_BASE64_LEFT_ELEMENT_ID,
@@ -84,28 +83,40 @@ function Root() {
     [graphSettingsURLParam],
   );
 
-  const graph: ExplorerComponentInputGraph = useMemo(() => {
+  const params: ExplorerParams = useMemo(() => {
     return {
-      ArrayGraphSerialized: {
-        format: "JsonZstdBase64",
-        value: array_graph_json_zstd_base64_left,
+      graph_left: {
+        ArrayGraphSerialized: {
+          format: "JsonZstdBase64",
+          value: array_graph_json_zstd_base64_left,
+        },
       },
-    };
-  }, [array_graph_json_zstd_base64_left]);
+      graph_right:
+        array_graph_json_zstd_base64_right != null
+          ? {
+              ArrayGraphSerialized: {
+                format: "JsonZstdBase64",
+                value: array_graph_json_zstd_base64_right,
+              },
+            }
+          : undefined,
 
-  return (
-    <Explorer
-      traversalConfigZSTDBase64UrlSafeNoPadding={tvcUrlParam}
-      onTraversalConfigZSTDBase64UrlSafeNoPaddingChange={
-        onTraversalConfigZSTDBase64UrlSafeNoPaddingChange
-      }
-      graphSettingsZSTDBase64UrlSafeNoPadding={graphSettingsURLParam}
-      onGraphSettingsZSTDBase64UrlSafeNoPaddingChange={
-        onGraphSettingsZSTDBase64UrlSafeNoPaddingChange
-      }
-      graph={graph}
-    />
-  );
+      traversal_config: tvcUrlParam ?? undefined,
+      on_traversal_config_change:
+        onTraversalConfigZSTDBase64UrlSafeNoPaddingChange,
+      graph_settings: graphSettingsURLParam ?? undefined,
+      on_graph_settings_change: onGraphSettingsZSTDBase64UrlSafeNoPaddingChange,
+    };
+  }, [
+    array_graph_json_zstd_base64_left,
+    array_graph_json_zstd_base64_right,
+    graphSettingsURLParam,
+    onGraphSettingsZSTDBase64UrlSafeNoPaddingChange,
+    onTraversalConfigZSTDBase64UrlSafeNoPaddingChange,
+    tvcUrlParam,
+  ]);
+
+  return <Explorer params={params} />;
 }
 
 function getQueryParam(name: string): string | null {

@@ -7,11 +7,12 @@ import {
 } from "../.build/wasm/unigraph_wasm";
 import ExplorerFooter from "./ExplorerFooter";
 import { useExplorerKeyboardShortcuts } from "./ExplorerKeyboardShortcutsWrapper";
-import NativeGraph, { GRAPH_SIDE } from "./NativeGraph";
+import NativeGraph, { GRAPH_SIDE, type GraphSide } from "./NativeGraph";
 import Sidebar from "./Sidebar";
 import Simulation from "./Simulation";
 import type { ArrayGraphUISettingsTreeTableEntryPoints } from "./__generated__/ts/ArrayGraphUISettingsTreeTableEntryPoints";
 import type { ExplorerComponentInputGraph } from "./__generated__/ts/ExplorerComponentInputGraph";
+import type { ExplorerParams } from "./__generated__/ts/ExplorerParams";
 import type { GraphSettings } from "./__generated__/ts/GraphSettings";
 import type { TraversalConfig } from "./__generated__/ts/TraversalConfig";
 import ErrorBoundary from "./components/ErrorBoundary";
@@ -37,68 +38,64 @@ import GraphTreeTable from "./tree_table/GraphTreeTable";
 import type { NodeIDX } from "./types";
 
 export function Explorer({
-  graph,
-  traversalConfigZSTDBase64UrlSafeNoPadding,
-  onTraversalConfigZSTDBase64UrlSafeNoPaddingChange,
-  graphSettingsZSTDBase64UrlSafeNoPadding,
-  onGraphSettingsZSTDBase64UrlSafeNoPaddingChange,
+  params,
 }: {
-  graph: ExplorerComponentInputGraph;
-  traversalConfigZSTDBase64UrlSafeNoPadding?: string | null;
-  onTraversalConfigZSTDBase64UrlSafeNoPaddingChange?: (v: string) => void;
-  graphSettingsZSTDBase64UrlSafeNoPadding?: string | null;
-  onGraphSettingsZSTDBase64UrlSafeNoPaddingChange?: (v: string) => void;
+  params: ExplorerParams;
 }) {
   initWasm();
+
+  const {
+    graph_left,
+    graph_right: _graph_right,
+    traversal_config,
+    on_traversal_config_change,
+    graph_settings,
+    on_graph_settings_change,
+  } = params;
 
   const containerRef = useRef<HTMLDivElement>(null);
 
   /// This graph initializes a new native graph every time the raw data changes.
-  const nativeGraphNoTVC = useMemo(() => initNativeGraph(graph), [graph]);
+  const nativeGraphNoTVC = useMemo(
+    () => initNativeGraph(graph_left, GRAPH_SIDE.L),
+    [graph_left],
+  );
 
   /// This hook will NOT re-initialize the native graph if the traversal config changes.
   /// We modify it in place and return a new nativeGraph reference with all caches busted.
   const [tvc, nativeGraph] = useMemo(() => {
     const tvc: TraversalConfig =
-      traversalConfigZSTDBase64UrlSafeNoPadding == null
+      traversal_config == null
         ? nativeGraphNoTVC.getTraversalConfig()
-        : JSON.parse(
-            from_zstd_base64_url_safe_no_pad(
-              traversalConfigZSTDBase64UrlSafeNoPadding,
-            ),
-          );
+        : JSON.parse(from_zstd_base64_url_safe_no_pad(traversal_config));
 
     return [tvc, nativeGraphNoTVC.getApplyTraversalConfig(tvc)];
-  }, [traversalConfigZSTDBase64UrlSafeNoPadding, nativeGraphNoTVC]);
+  }, [traversal_config, nativeGraphNoTVC]);
 
   const settings = useMemo(() => {
-    return graphSettingsZSTDBase64UrlSafeNoPadding == null
+    return graph_settings == null
       ? nativeGraphNoTVC.getGraphSettings() // default settings come from the native graph
-      : JSON.parse(
-          from_zstd_base64_url_safe_no_pad(
-            graphSettingsZSTDBase64UrlSafeNoPadding,
-          ),
-        );
-  }, [graphSettingsZSTDBase64UrlSafeNoPadding, nativeGraphNoTVC]);
+      : JSON.parse(from_zstd_base64_url_safe_no_pad(graph_settings));
+  }, [graph_settings, nativeGraphNoTVC]);
 
   const setTvcCb = useCallback(
     (tvc: TraversalConfig) => {
       const traversal_config_zstd_base64_url_safe_no_padding =
         to_zstd_base64_url_safe_no_pad(JSON.stringify(tvc));
 
-      onTraversalConfigZSTDBase64UrlSafeNoPaddingChange?.(
+      on_traversal_config_change?.(
         traversal_config_zstd_base64_url_safe_no_padding,
       );
     },
-    [onTraversalConfigZSTDBase64UrlSafeNoPaddingChange],
+    [on_traversal_config_change],
   );
 
   const setSettingsCb = useCallback(
     (settings: GraphSettings) => {
       const base64 = to_zstd_base64_url_safe_no_pad(JSON.stringify(settings));
-      onGraphSettingsZSTDBase64UrlSafeNoPaddingChange?.(base64);
+      on_graph_settings_change?.(base64);
     },
-    [onGraphSettingsZSTDBase64UrlSafeNoPaddingChange],
+    [on_graph_settings_change],
   );
 
   return (
@@ -184,21 +181,21 @@ function Page(props: {
   );
 }
 
-function initNativeGraph(graph: ExplorerComponentInputGraph): NativeGraph {
+function initNativeGraph(
+  graph: ExplorerComponentInputGraph,
+  side: GraphSide,
+): NativeGraph {
   if ("MapGraphSerialized" in graph) {
     graph.MapGraphSerialized;
-    return NativeGraph.fromMapGraphJSON(
-      graph.MapGraphSerialized.value,
-      GRAPH_SIDE.L,
-    );
+    return NativeGraph.fromMapGraphJSON(graph.MapGraphSerialized.value, side);
   } else if ("ArrayGraphSerialized" in graph) {
     return NativeGraph.fromArrayGraphJSONZstdBase64(
       graph.ArrayGraphSerialized.value,
-      GRAPH_SIDE.L,
+      side,
     );
   } else {
-    // Exhaustiveness check
-    const _check: never = graph;
+    const _: never = graph;
+    _;
     throw new Error("Unhandled case");
   }
 }
