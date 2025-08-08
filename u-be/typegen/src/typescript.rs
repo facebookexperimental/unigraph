@@ -20,6 +20,22 @@ impl TypeScriptGenerator {
         config: &TypeGenConfig,
         generated_type: &TypeGenGeneratedType,
     ) -> String {
+        // Check if there's a TypeScript override for this type
+        if let Some(ref overrides) = generated_type.overrides {
+            if let Some(ref typescript_override) = overrides.typescript {
+                let type_name =
+                    config.get_type_name(&generated_type.original_type_name, Lang::TypeScript);
+
+                // Add docs if available
+                let docs = render_docs(&generated_type.docs, DocFormat::TwoSlash, 0);
+
+                return format!(
+                    "{}export type {} = {};\n",
+                    docs, type_name, typescript_override
+                );
+            }
+        }
+
         let mut imports = std::collections::HashSet::new();
         let type_name = config.get_type_name(&generated_type.original_type_name, Lang::TypeScript);
 

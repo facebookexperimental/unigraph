@@ -64,6 +64,11 @@ pub struct Point(pub f64, pub f64);
 #[derive(TypeGen)]
 pub struct Unit;
 
+/// Test struct with type overrides
+#[derive(TypeGen)]
+#[typegen(Hack("null"), TypeScript("() => void"), Flow("() => void"))]
+pub struct OverrideTest;
+
 /// Simple enum with unit variants
 #[derive(TypeGen)]
 pub enum Animal {
@@ -188,6 +193,7 @@ TypeGenGeneratedType {
             ],
         },
     ),
+    overrides: None,
 }
 
 TypeGenGeneratedType {
@@ -223,6 +229,7 @@ TypeGenGeneratedType {
             ],
         },
     ),
+    overrides: None,
 }
 
 TypeGenGeneratedType {
@@ -291,6 +298,7 @@ TypeGenGeneratedType {
             ],
         },
     ),
+    overrides: None,
 }
 
 TypeGenGeneratedType {
@@ -311,6 +319,7 @@ TypeGenGeneratedType {
             ],
         },
     ),
+    overrides: None,
 }
 
 TypeGenGeneratedType {
@@ -320,6 +329,7 @@ TypeGenGeneratedType {
     ),
     file_path: <SANITIZED>
     declaration: Null,
+    overrides: None,
 }
 
 TypeGenGeneratedType {
@@ -338,6 +348,7 @@ should be transparent in the generated code and point directly to the string typ
             ],
         },
     ),
+    overrides: None,
 }
 
 TypeGenGeneratedType {
@@ -370,6 +381,7 @@ TypeGenGeneratedType {
             ],
         },
     ),
+    overrides: None,
 }
 
 TypeGenGeneratedType {
@@ -434,6 +446,29 @@ TypeGenGeneratedType {
                     ],
                 },
             ],
+        },
+    ),
+    overrides: None,
+}
+
+TypeGenGeneratedType {
+    original_type_name: "OverrideTest",
+    docs: Some(
+        "Test struct with type overrides",
+    ),
+    file_path: <SANITIZED>
+    declaration: Null,
+    overrides: Some(
+        TypeGenOverrides {
+            hack: Some(
+                "null",
+            ),
+            flow: Some(
+                "() => void",
+            ),
+            typescript: Some(
+                "() => void",
+            ),
         },
     ),
 }

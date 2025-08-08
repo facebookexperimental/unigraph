@@ -92,6 +92,13 @@ export type FlowTypeShape =
   { "Rectangle": [number, number] } |
   /** Point with coordinates */
   { "Point": { x: number, y: number, z: number } };
+---------------- ./flow/FlowPrefixOverrideTest.js.flow
+
+/* flow header */
+
+// Test struct with type overrides
+export type FlowTypeOverrideTest = () => void;
+
 "#
     );
 }

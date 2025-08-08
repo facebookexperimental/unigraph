@@ -17,6 +17,18 @@ pub struct FlowGenerator;
 impl FlowGenerator {
     /// Generate Flow.js code from a type declaration
     pub fn generate_flow(config: &TypeGenConfig, generated_type: &TypeGenGeneratedType) -> String {
+        // Check if there's a Flow override for this type
+        if let Some(ref overrides) = generated_type.overrides {
+            if let Some(ref flow_override) = overrides.flow {
+                let type_name =
+                    config.get_type_name(&generated_type.original_type_name, Lang::Flow);
+
+                // Add docs if available
+                let docs = render_docs(&generated_type.docs, DocFormat::TwoSlash, 0);
+
+                return format!("{}export type {} = {};\n", docs, type_name, flow_override);
+            }
+        }
         let type_name = config.get_type_name(&generated_type.original_type_name, Lang::Flow);
 
         let mut imports = std::collections::HashSet::new();

@@ -53,6 +53,8 @@ pub fn type_gen(input: TokenStream) -> TokenStream {
                         None => quote! { None },
                     };
 
+                    let overrides_token = extract_type_overrides(&input.attrs);
+
                     let expanded = quote! {
                         impl ::typegen::TypeGenDeclTrait for #name {
                             fn to_type_decl() -> ::typegen::TypeGenGeneratedType {
@@ -62,7 +64,8 @@ pub fn type_gen(input: TokenStream) -> TokenStream {
                                     file_path: std::path::PathBuf::from(file!()),
                                     declaration: ::typegen::TypeGenDecl::StructDecl(::typegen::StructDecl {
                                         fields: vec![#(#fields),*],
-                                    })
+                                    }),
+                                    overrides: #overrides_token,
                                 }
                             }
                         }
@@ -99,6 +102,8 @@ pub fn type_gen(input: TokenStream) -> TokenStream {
                         None => quote! { None },
                     };
 
+                    let overrides_token = extract_type_overrides(&input.attrs);
+
                     let expanded = quote! {
                         impl ::typegen::TypeGenDeclTrait for #name {
                             fn to_type_decl() -> ::typegen::TypeGenGeneratedType {
@@ -108,7 +113,8 @@ pub fn type_gen(input: TokenStream) -> TokenStream {
                                     file_path: std::path::PathBuf::from(file!()),
                                     declaration: ::typegen::TypeGenDecl::TupleStructDecl(::typegen::TupleStructDecl {
                                         fields: vec![#(#field_types),*],
-                                    })
+                                    }),
+                                    overrides: #overrides_token,
                                 }
                             }
                         }
@@ -133,6 +139,8 @@ pub fn type_gen(input: TokenStream) -> TokenStream {
                         None => quote! { None },
                     };
 
+                    let overrides_token = extract_type_overrides(&input.attrs);
+
                     let expanded = quote! {
                         impl ::typegen::TypeGenDeclTrait for #name {
                             fn to_type_decl() -> ::typegen::TypeGenGeneratedType {
@@ -140,7 +148,8 @@ pub fn type_gen(input: TokenStream) -> TokenStream {
                                     original_type_name: stringify!(#name).to_string(),
                                     docs: #docs_token,
                                     file_path: std::path::PathBuf::from(file!()),
-                                    declaration: ::typegen::TypeGenDecl::Null
+                                    declaration: ::typegen::TypeGenDecl::Null,
+                                    overrides: #overrides_token,
                                 }
                             }
                         }
@@ -163,6 +172,8 @@ pub fn type_gen(input: TokenStream) -> TokenStream {
                 Some(docs) => quote! { Some(#docs.to_string()) },
                 None => quote! { None },
             };
+
+            let overrides_token = extract_type_overrides(&input.attrs);
 
             // Process enum variants
             let variants = data_enum
@@ -266,7 +277,8 @@ pub fn type_gen(input: TokenStream) -> TokenStream {
                             file_path: std::path::PathBuf::from(file!()),
                             declaration: ::typegen::TypeGenDecl::EnumDecl(::typegen::EnumDecl {
                                 variants: vec![#(#variants),*],
-                            })
+                            }),
+                            overrides: #overrides_token,
                         }
                     }
                 }
@@ -359,6 +371,74 @@ fn extract_typegen_as(attrs: &[syn::Attribute]) -> Option<String> {
                     }
                 }
             }
+        }
+    }
+    None
+}
+
+fn extract_type_overrides(attrs: &[syn::Attribute]) -> proc_macro2::TokenStream {
+    let mut hack_override = None;
+    let mut flow_override = None;
+    let mut typescript_override = None;
+
+    for attr in attrs {
+        if attr.path().is_ident("typegen") {
+            if let syn::Meta::List(meta_list) = &attr.meta {
+                // Parse the meta list as function calls like Hack("null"), TypeScript("() -> {}")
+                let tokens_str = meta_list.tokens.to_string();
+
+                // Look for Hack("...") pattern
+                if let Some(hack_match) = extract_language_override(&tokens_str, "Hack") {
+                    hack_override = Some(hack_match);
+                }
+
+                // Look for Flow("...") pattern
+                if let Some(flow_match) = extract_language_override(&tokens_str, "Flow") {
+                    flow_override = Some(flow_match);
+                }
+
+                // Look for TypeScript("...") pattern
+                if let Some(ts_match) = extract_language_override(&tokens_str, "TypeScript") {
+                    typescript_override = Some(ts_match);
+                }
+            }
+        }
+    }
+
+    // If no overrides were found, return None
+    if hack_override.is_none() && flow_override.is_none() && typescript_override.is_none() {
+        return quote! { None };
+    }
+
+    let hack_token = match hack_override {
+        Some(value) => quote! { Some(#value) },
+        None => quote! { None },
+    };
+    let flow_token = match flow_override {
+        Some(value) => quote! { Some(#value) },
+        None => quote! { None },
+    };
+    let typescript_token = match typescript_override {
+        Some(value) => quote! { Some(#value) },
+        None => quote! { None },
+    };
+
+    quote! {
+        Some(::typegen::TypeGenOverrides {
+            hack: #hack_token,
+            flow: #flow_token,
+            typescript: #typescript_token,
+        })
+    }
+}
+
+fn extract_language_override(tokens_str: &str, language: &str) -> Option<String> {
+    let pattern = format!("{language}(\"");
+    if let Some(start) = tokens_str.find(&pattern) {
+        let value_start = start + pattern.len();
+        if let Some(end) = tokens_str[value_start..].find("\")") {
+            let value = &tokens_str[value_start..value_start + end];
+            return Some(value.to_string());
         }
     }
     None

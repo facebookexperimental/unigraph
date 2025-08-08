@@ -28,6 +28,20 @@ impl<'a> HackGenerator<'a> {
     }
 
     fn generate_impl(&self) -> String {
+        // Check if there's a Hack override for this type
+        if let Some(ref overrides) = self.generated_type.overrides {
+            if let Some(ref hack_override) = overrides.hack {
+                let type_name = self
+                    .config
+                    .get_type_name(&self.generated_type.original_type_name, Lang::Hack);
+
+                // Add docs if available
+                let docs = render_docs(&self.generated_type.docs, DocFormat::TwoSlash, 0);
+
+                return format!("{}type {} = {};\n", docs, type_name, hack_override);
+            }
+        }
+
         let type_name = self
             .config
             .get_type_name(&self.generated_type.original_type_name, Lang::Hack);
@@ -41,9 +55,7 @@ impl<'a> HackGenerator<'a> {
             }
             TypeGenDecl::EnumDecl(enum_decl) => self.generate_enum_hack(&type_name, enum_decl),
             TypeGenDecl::Null => self.generate_null_hack(&type_name),
-        };
-
-        // Generate use statements
+        }; // Generate use statements
         let mut result = String::new();
 
         result.push_str(&type_code);

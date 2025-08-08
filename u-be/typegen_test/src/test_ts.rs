@@ -92,6 +92,13 @@ export type TSTypeShape =
   { "Rectangle": [number, number] } |
   /** Point with coordinates */
   { "Point": { x: number, y: number, z: number } };
+---------------- ./ts/TSPrefixOverrideTest.ts
+
+/* ts header */
+
+// Test struct with type overrides
+export type TSTypeOverrideTest = () => void;
+
 "#
     );
 }

@@ -15,7 +15,7 @@ use crate::HackGenerator;
 use crate::TypeGenGeneratedType;
 use crate::TypeScriptGenerator;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Lang {
     TypeScript,
     Flow,

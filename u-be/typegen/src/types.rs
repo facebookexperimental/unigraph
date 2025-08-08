@@ -42,6 +42,13 @@ pub enum PrimitiveTypeRef {
     F64,
 }
 
+#[derive(Clone, Debug)]
+pub struct TypeGenOverrides {
+    pub hack: Option<&'static str>,
+    pub flow: Option<&'static str>,
+    pub typescript: Option<&'static str>,
+}
+
 /// Top-level struct representing a generated type with shared metadata
 #[derive(Debug, Clone)]
 pub struct TypeGenGeneratedType {
@@ -49,6 +56,7 @@ pub struct TypeGenGeneratedType {
     pub docs: Option<String>,
     pub file_path: PathBuf,
     pub declaration: TypeGenDecl,
+    pub overrides: Option<TypeGenOverrides>,
 }
 
 impl TypeGenGeneratedType {
