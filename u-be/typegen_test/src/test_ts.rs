@@ -29,6 +29,7 @@ export interface TSTypeAddress {
   typegen_as: number;
   string_list: string[];
   maybe_flag?: boolean | undefined;
+  tags: string[];
 }
 ---------------- ./ts/TSPrefixPerson.ts
 

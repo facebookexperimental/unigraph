@@ -268,7 +268,7 @@ impl FlowGenerator {
             TypeRef::Option(inner) => {
                 format!("?{}", Self::resolve_flow_type(inner, imports))
             }
-            TypeRef::Vec(inner) => {
+            TypeRef::Vec(inner) | TypeRef::Set(inner) => {
                 format!("Array<{}>", Self::resolve_flow_type(inner, imports))
             }
             TypeRef::Array { element_type, size } => {

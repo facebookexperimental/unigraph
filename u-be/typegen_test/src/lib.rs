@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -31,6 +32,8 @@ pub struct Address {
     pub string_list: NotTypeGennable,
     #[typegen(as = "Option<bool>")]
     pub maybe_flag: NotTypeGennable,
+
+    pub tags: BTreeSet<String>,
 }
 
 /// Person struct that references Address
@@ -201,6 +204,15 @@ TypeGenGeneratedType {
                     type_ref: Option(
                         Primitive(
                             Bool,
+                        ),
+                    ),
+                    docs: None,
+                },
+                FieldDeclaration {
+                    field_name: "tags",
+                    type_ref: Set(
+                        Primitive(
+                            String,
                         ),
                     ),
                     docs: None,

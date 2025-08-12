@@ -30,6 +30,7 @@ type HackTypeAddress = shape(
   'typegen_as' => int,
   'string_list' => vec<string>,
   'maybe_flag' => ?bool,
+  'tags' => keyset<string>,
 );
 
 ---------------- ./hack/HackPrefixPerson.hhi

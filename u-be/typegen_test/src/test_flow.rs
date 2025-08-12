@@ -29,6 +29,7 @@ export type FlowTypeAddress = {
   typegen_as: number,
   string_list: Array<string>,
   maybe_flag?: ?boolean,
+  tags: Array<string>,
 };
 ---------------- ./flow/FlowPrefixPerson.js.flow
 

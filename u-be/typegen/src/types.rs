@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -14,6 +15,7 @@ pub enum TypeRef {
     Primitive(PrimitiveTypeRef),
     Option(Box<TypeRef>),
     Vec(Box<TypeRef>),
+    Set(Box<TypeRef>),
     Array {
         element_type: Box<TypeRef>,
         size: usize,
@@ -286,6 +288,12 @@ impl TypeGenTypeRefTrait for char {
 impl<T: TypeGenTypeRefTrait> TypeGenTypeRefTrait for Vec<T> {
     fn type_ref() -> TypeRef {
         TypeRef::Vec(Box::new(T::type_ref()))
+    }
+}
+
+impl<T: TypeGenTypeRefTrait> TypeGenTypeRefTrait for BTreeSet<T> {
+    fn type_ref() -> TypeRef {
+        TypeRef::Set(Box::new(T::type_ref()))
     }
 }
 

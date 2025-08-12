@@ -227,6 +227,9 @@ impl<'a> HackGenerator<'a> {
             TypeRef::Vec(inner) => {
                 format!("vec<{}>", self.type_ref_to_hack(inner))
             }
+            TypeRef::Set(inner) => {
+                format!("keyset<{}>", self.type_ref_to_hack(inner))
+            }
             TypeRef::Array {
                 element_type,
                 size: _,
