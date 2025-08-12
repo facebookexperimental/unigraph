@@ -11,9 +11,6 @@ use crate::types::TierName;
 #[derive(serde::Serialize, serde::Deserialize, typegen::TypeGen, Clone, Default)]
 pub struct GraphSettings {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub metric_settings: Option<BTreeMap<String, MetricSettings>>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub ui_settings: Option<ArrayGraphUISettings>,
 }
 
@@ -123,8 +120,6 @@ pub enum SidebarPanel {
 pub struct ArrayGraphUISettings {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub selected_sidebar_panel: Option<SidebarPanel>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub graph_table_sort: Option<GraphTableSort>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub columns: Option<ColumnSettings>,
@@ -132,6 +127,8 @@ pub struct ArrayGraphUISettings {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub graph_structure: Option<GraphStructure>,
 
+    /// What nodes should we use as the "start" of the graph
+    /// when we render the table.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub entry_points: Option<ArrayGraphUISettingsTreeTableEntryPoints>,
 
@@ -188,12 +185,18 @@ pub enum ArrayGraphUISettingsTreeTableEntryPoints {
 
 #[derive(serde::Serialize, serde::Deserialize, typegen::TypeGen, Clone, Default)]
 pub struct ColumnSettings {
+    /// Graph table in UI will be sorted using provided column ID
+    /// and order if any
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub graph_table_sort: Option<GraphTableSort>,
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub show_parents_count: Option<bool>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub show_transitive_count: Option<IndividualOptionEnabled>,
 
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub show_conjoint_count: Option<IndividualOptionEnabled>,
 
     /// Global setting for showing metric values
@@ -219,6 +222,9 @@ pub struct ColumnSettings {
     /// their individual settings.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub show_conjoint: Option<bool>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metric_settings: Option<BTreeMap<String, MetricSettings>>,
 }
 
 /// Enum that defines whether an individual option is enabled or not.

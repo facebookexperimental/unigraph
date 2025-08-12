@@ -23,7 +23,10 @@ export default function GraphTreeTable(props: {
         ...settings,
         ui_settings: {
           ...settings.ui_settings,
-          graph_table_sort: sort == null ? undefined : sort,
+          columns: {
+            ...settings?.ui_settings?.columns,
+            graph_table_sort: sort == null ? undefined : sort,
+          },
         },
       });
     },
@@ -88,9 +91,11 @@ export default function GraphTreeTable(props: {
         focusOnMount={props.focusOnMount}
         onSortChange={onSortChange}
         sortColumnID={
-          settings?.ui_settings?.graph_table_sort?.column_id ?? null
+          settings?.ui_settings?.columns?.graph_table_sort?.column_id ?? null
         }
-        sortOrder={settings?.ui_settings?.graph_table_sort?.order ?? null}
+        sortOrder={
+          settings?.ui_settings?.columns?.graph_table_sort?.order ?? null
+        }
       />
     </ErrorBoundary>
   );

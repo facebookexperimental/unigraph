@@ -5,9 +5,16 @@
  */
 
 
+import type { GraphTableSort } from './GraphTableSort.ts';
 import type { IndividualOptionEnabled } from './IndividualOptionEnabled.ts';
+import type { MetricSettings } from './MetricSettings.ts';
 
 export interface ColumnSettings {
+  /**
+   * Graph table in UI will be sorted using provided column ID
+   * and order if any
+   */
+  graph_table_sort?: GraphTableSort | undefined;
   show_parents_count?: boolean | undefined;
   show_transitive_count?: IndividualOptionEnabled | undefined;
   show_conjoint_count?: IndividualOptionEnabled | undefined;
@@ -35,4 +42,5 @@ export interface ColumnSettings {
    * their individual settings.
    */
   show_conjoint?: boolean | undefined;
+  metric_settings?: { [key: string]: MetricSettings } | undefined;
 }

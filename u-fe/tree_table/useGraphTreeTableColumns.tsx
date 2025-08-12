@@ -55,7 +55,8 @@ function defaultColumnDefinitions(
 
   const columnDefinitions: { [name: string]: NonTreeColumnDefinition } = {};
   for (const metricName of nativeGraph.metricNames) {
-    const metricSettings = graphSettings.metric_settings?.[metricName] ?? null;
+    const metricSettings =
+      graphSettings.ui_settings?.columns?.metric_settings?.[metricName] ?? null;
 
     if (metricSettings?.column_hide_self !== true && showMetrics) {
       const [metricColumnID, metricColumnDefinition] = createMetricColumn(

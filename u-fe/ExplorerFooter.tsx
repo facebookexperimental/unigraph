@@ -65,7 +65,9 @@ function SelectedNodesMetrics() {
 
   const metrics = Object.entries(combinedMetrics.metrics).map(
     ([metricName, value]) => {
-      const format = graphSettings.metric_settings?.[metricName]?.format;
+      const format =
+        graphSettings?.ui_settings?.columns?.metric_settings?.[metricName]
+          ?.format;
       const formatted = formatMetric(value ?? 0, format);
       return (
         <Metric
@@ -80,7 +82,9 @@ function SelectedNodesMetrics() {
 
   const tieredMetrics = Object.entries(combinedMetrics.tiered_metrics).flatMap(
     ([metricName, tiered]) => {
-      const format = graphSettings.metric_settings?.[metricName]?.format;
+      const format =
+        graphSettings?.ui_settings?.columns?.metric_settings?.[metricName]
+          ?.format;
 
       if (tiered == null) {
         return [];
@@ -300,84 +304,84 @@ function ConjointCostHoverCardContent() {
   const [graphSettings, setGraphSettings] = useGraphSettings();
   const nativeGraph = useNativeGraph();
 
-  const metricCards = Object.entries(graphSettings.metric_settings ?? {}).map(
-    ([metricName, metricSettings]) => {
-      const tiers = nativeGraph.stats().tier_names.map((tierName) => {
-        return (
-          <UToggleButton
-            key={`conjoint-tiered-${metricName}-${tierName}`}
-            size="sm"
-            tooltip={`Conjoint cost of transitive values of '${metricName}' metric for ${tierName} tier`}
-            selected={
-              metricSettings?.show_conjoint_tiered?.[tierName] !== "Never"
-            }
-            onSelectedChange={(selected) => {
-              setGraphSettings({
-                ...graphSettings,
-                ui_settings: {
-                  ...graphSettings.ui_settings,
-                  columns: {
-                    ...graphSettings.ui_settings?.columns,
-                    show_conjoint: true,
-                  },
-                },
-                metric_settings: {
-                  ...graphSettings.metric_settings,
-                  [metricName]: {
-                    ...metricSettings,
-                    show_conjoint_tiered: {
-                      ...metricSettings?.show_conjoint_tiered,
-                      [tierName]: selected ? "WhenEnabledGlobally" : "Never",
+  const metricCards = Object.entries(
+    graphSettings?.ui_settings?.columns?.metric_settings ?? {},
+  ).map(([metricName, metricSettings]) => {
+    const tiers = nativeGraph.stats().tier_names.map((tierName) => {
+      return (
+        <UToggleButton
+          key={`conjoint-tiered-${metricName}-${tierName}`}
+          size="sm"
+          tooltip={`Conjoint cost of transitive values of '${metricName}' metric for ${tierName} tier`}
+          selected={
+            metricSettings?.show_conjoint_tiered?.[tierName] !== "Never"
+          }
+          onSelectedChange={(selected) => {
+            setGraphSettings({
+              ...graphSettings,
+              ui_settings: {
+                ...graphSettings.ui_settings,
+                columns: {
+                  ...graphSettings.ui_settings?.columns,
+                  show_conjoint: true,
+                  metric_settings: {
+                    ...graphSettings?.ui_settings?.columns?.metric_settings,
+                    [metricName]: {
+                      ...metricSettings,
+                      show_conjoint_tiered: {
+                        ...metricSettings?.show_conjoint_tiered,
+                        [tierName]: selected ? "WhenEnabledGlobally" : "Never",
+                      },
                     },
                   },
                 },
-              });
-            }}
-          >
-            <span className="text-sm">{`${metricName}: ${tierName}`}</span>
-          </UToggleButton>
-        );
-      });
-
-      return (
-        <div
-          key={`conjoint-metric-${metricName}`}
-          className="flex gap-2 flex-wrap"
+              },
+            });
+          }}
         >
-          <UToggleButton
-            key={`conjoint-self-${metricName}`}
-            size="sm"
-            tooltip={`Conjoint cost of transitive values of '${metricName}' metric`}
-            selected={metricSettings?.show_conjoint_self !== "Never"}
-            onSelectedChange={(selected) => {
-              setGraphSettings({
-                ...graphSettings,
-                ui_settings: {
-                  ...graphSettings.ui_settings,
-                  columns: {
-                    ...graphSettings.ui_settings?.columns,
-                    show_conjoint: true,
-                  },
-                },
-                metric_settings: {
-                  ...graphSettings.metric_settings,
-                  [metricName]: {
-                    ...metricSettings,
-                    show_conjoint_self: selected
-                      ? "WhenEnabledGlobally"
-                      : "Never",
-                  },
-                },
-              });
-            }}
-          >
-            <span className="text-sm">{metricName}</span>
-          </UToggleButton>
-          {tiers}
-        </div>
+          <span className="text-sm">{`${metricName}: ${tierName}`}</span>
+        </UToggleButton>
       );
-    },
-  );
+    });
+
+    return (
+      <div
+        key={`conjoint-metric-${metricName}`}
+        className="flex gap-2 flex-wrap"
+      >
+        <UToggleButton
+          key={`conjoint-self-${metricName}`}
+          size="sm"
+          tooltip={`Conjoint cost of transitive values of '${metricName}' metric`}
+          selected={metricSettings?.show_conjoint_self !== "Never"}
+          onSelectedChange={(selected) => {
+            setGraphSettings({
+              ...graphSettings,
+              ui_settings: {
+                ...graphSettings.ui_settings,
+                columns: {
+                  ...graphSettings.ui_settings?.columns,
+                  show_conjoint: true,
+                  metric_settings: {
+                    ...graphSettings?.ui_settings?.columns?.metric_settings,
+                    [metricName]: {
+                      ...metricSettings,
+                      show_conjoint_self: selected
+                        ? "WhenEnabledGlobally"
+                        : "Never",
+                    },
+                  },
+                },
+              },
+            });
+          }}
+        >
+          <span className="text-sm">{metricName}</span>
+        </UToggleButton>
+        {tiers}
+      </div>
+    );
+  });
 
   return (
     <div className="flex flex-col gap-2">
@@ -391,7 +395,7 @@ function ConjointCostHoverCardContent() {
       </p>
       <pre className="text-wrap break-words bg-secondary rounded-md p-2">
         {`conj(A) = (
-    1_for_self + 
+    1_for_self +
     A.children.map(
       child -> conj(child)
     ).sum()
@@ -444,7 +448,8 @@ function TransitiveHovercardContent() {
   const nativeGraph = useNativeGraph();
 
   const metricCards = nativeGraph.metricNames.map((metricName) => {
-    const metricSettings = graphSettings.metric_settings?.[metricName] ?? {};
+    const metricSettings =
+      graphSettings?.ui_settings?.columns?.metric_settings?.[metricName] ?? {};
     return (
       <UToggleButton
         key={`${metricName}`}
@@ -464,15 +469,15 @@ function TransitiveHovercardContent() {
                 // we probably want to show these automatically to avoid
                 // "why is it not doing anything??" confusion
                 show_transitive: true,
-              },
-            },
-            metric_settings: {
-              ...graphSettings.metric_settings,
-              [metricName]: {
-                ...metricSettings,
-                column_show_transitive: selected
-                  ? "WhenEnabledGlobally"
-                  : "Never",
+                metric_settings: {
+                  ...graphSettings?.ui_settings?.columns?.metric_settings,
+                  [metricName]: {
+                    ...metricSettings,
+                    column_show_transitive: selected
+                      ? "WhenEnabledGlobally"
+                      : "Never",
+                  },
+                },
               },
             },
           });
@@ -523,7 +528,8 @@ function MetricsHovercardContent() {
   const nativeGraph = useNativeGraph();
 
   const metricCards = nativeGraph.metricNames.map((metricName) => {
-    const metricSettings = graphSettings.metric_settings?.[metricName] ?? {};
+    const metricSettings =
+      graphSettings?.ui_settings?.columns?.metric_settings?.[metricName] ?? {};
     return (
       <UToggleButton
         key={`${metricName}`}
@@ -541,13 +547,13 @@ function MetricsHovercardContent() {
                 // we probably want to show these automatically to avoid
                 // "why is it not doing anything??" confusion
                 hide_metrics: false,
-              },
-            },
-            metric_settings: {
-              ...graphSettings.metric_settings,
-              [metricName]: {
-                ...metricSettings,
-                column_hide_self: !selected,
+                metric_settings: {
+                  ...graphSettings?.ui_settings?.columns?.metric_settings,
+                  [metricName]: {
+                    ...metricSettings,
+                    column_hide_self: !selected,
+                  },
+                },
               },
             },
           });
@@ -573,7 +579,8 @@ function TiersHoverCardContent() {
   const { tvc, setTvc } = useTVC();
 
   const tieredmetricCards = nativeGraph.metricNames.map((metricName) => {
-    const metricSettings = graphSettings.metric_settings?.[metricName] ?? {};
+    const metricSettings =
+      graphSettings?.ui_settings?.columns?.metric_settings?.[metricName] ?? {};
     const tiers = allTiers.map((tierName) => {
       return (
         <UToggleButton
@@ -584,13 +591,19 @@ function TiersHoverCardContent() {
           onSelectedChange={(selected) => {
             setGraphSettings({
               ...graphSettings,
-              metric_settings: {
-                ...graphSettings.metric_settings,
-                [metricName]: {
-                  ...metricSettings,
-                  column_show_tiered: {
-                    ...metricSettings?.column_show_tiered,
-                    [tierName]: selected ? "WhenEnabledGlobally" : "Never",
+              ui_settings: {
+                ...graphSettings.ui_settings,
+                columns: {
+                  ...graphSettings.ui_settings?.columns,
+                  metric_settings: {
+                    ...graphSettings?.ui_settings?.columns?.metric_settings,
+                    [metricName]: {
+                      ...metricSettings,
+                      column_show_tiered: {
+                        ...metricSettings?.column_show_tiered,
+                        [tierName]: selected ? "WhenEnabledGlobally" : "Never",
+                      },
+                    },
                   },
                 },
               },
@@ -624,7 +637,7 @@ function TiersHoverCardContent() {
           let newGraphSettings = { ...graphSettings };
 
           for (const metricName of Object.keys(
-            newGraphSettings.metric_settings ?? {},
+            newGraphSettings?.ui_settings?.columns?.metric_settings ?? {},
           )) {
             /// When max tier is selected we want to hide columns for all tiers above it, because
             /// their value will be 0 anyway and showing it will clutter the UI and make it confusing.
@@ -633,14 +646,22 @@ function TiersHoverCardContent() {
               const value = idx > tierIDX ? "Never" : "WhenEnabledGlobally";
               newGraphSettings = {
                 ...newGraphSettings,
-                metric_settings: {
-                  ...newGraphSettings.metric_settings,
-                  [metricName]: {
-                    ...newGraphSettings.metric_settings?.[metricName],
-                    column_show_tiered: {
-                      ...newGraphSettings.metric_settings?.[metricName]
-                        ?.column_show_tiered,
-                      [tierName]: value,
+                ui_settings: {
+                  ...newGraphSettings.ui_settings,
+                  columns: {
+                    ...newGraphSettings?.ui_settings?.columns,
+                    metric_settings: {
+                      ...newGraphSettings?.ui_settings?.columns
+                        ?.metric_settings,
+                      [metricName]: {
+                        ...newGraphSettings?.ui_settings?.columns
+                          ?.metric_settings?.[metricName],
+                        column_show_tiered: {
+                          ...newGraphSettings?.ui_settings?.columns
+                            ?.metric_settings?.[metricName]?.column_show_tiered,
+                          [tierName]: value,
+                        },
+                      },
                     },
                   },
                 },
