@@ -251,6 +251,7 @@ mod tests {
     use unigraph_core::MapGraph;
 
     use super::*;
+    use crate::prepare_for_storage;
 
     const TEST_GRAPH_2: &str =
         include_str!("../../unigraph_core/src/tests/test_graphs/test_graph_2.json");
@@ -357,6 +358,31 @@ mod tests {
         let reconstructed_json = serde_json::to_string_pretty(&reconstructed_graph)?;
 
         assert_eq!(original_json, reconstructed_json);
+        Ok(())
+    }
+
+    #[test]
+    fn array_graph_serialization_perf_test() -> Result<()> {
+        const TEST_GRAPH_PATH: &str = "/Users/dabramov/tmp/full_www_graph.json";
+
+        // Only run the actual test if the graph is there. This is ment to run manually.
+        if let Ok(graph_json) = std::fs::read_to_string(TEST_GRAPH_PATH) {
+            let graph = MapGraph::from_json(&graph_json)?
+                .to_array_graph_serializable()
+                .context("Failed to convert to ArrayGraphSerializable")?;
+
+            let time_now = std::time::Instant::now();
+            let _result = to_blobs(
+                &graph,
+                &StorageConfig {
+                    compression_level: Some(18),
+                    ..Default::default()
+                },
+            );
+            let duration = time_now.elapsed();
+            eprintln!("Preparation for storage took: {duration:?}");
+        }
+
         Ok(())
     }
 }
