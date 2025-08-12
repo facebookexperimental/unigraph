@@ -8,4 +8,5 @@ export interface Address {
   typegen_as: number;
   string_list: string[];
   maybe_flag?: boolean | undefined;
+  tags: string[];
 }

@@ -19,7 +19,7 @@ use crate::types::NodeName;
 /// whole thing in one chunk. Searching though a single string is
 /// also faster because we can optimize for CPU cache hits and
 /// SIMD instructions.
-#[derive(serde::Deserialize, serde::Serialize, Clone)]
+#[derive(serde::Deserialize, serde::Serialize, Clone, typegen::TypeGen)]
 pub struct ArrayGraphNodes {
     pub(super) node_names: String,
     offsets: Vec<usize>,

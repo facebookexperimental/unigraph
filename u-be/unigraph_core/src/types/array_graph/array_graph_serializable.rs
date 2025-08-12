@@ -31,7 +31,7 @@ use crate::types::array_graph::array_graph_state::ArrayGraphState;
 
 /// A serializable representation of an array graph, which can be used for
 /// storing or transmitting the graph structure.
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize, typegen::TypeGen)]
 pub struct ArrayGraphSerializable {
     pub node_names_ordered: Arc<ArrayGraphNodes>,
     pub edges: ArrayGraphSerializableEdges,
@@ -45,7 +45,7 @@ pub struct ArrayGraphSerializable {
     pub entry_points: Option<BTreeSet<NodeName>>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize, typegen::TypeGen)]
 pub struct ArrayGraphSerializableEdges {
     pub directed: Vec<NodeIDX>,
     pub directed_offsets: Vec<usize>,
@@ -59,7 +59,7 @@ impl ArrayGraphSerializableEdges {
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize, typegen::TypeGen)]
 pub struct ArrayGraphSerializableNodeMetadata {
     pub metrics: BTreeMap<MetricName, Vec<f32>>,
     pub tag_sets: BTreeMap<NodeIDX, BTreeMap<TagSetName, BTreeSet<Tag>>>,
