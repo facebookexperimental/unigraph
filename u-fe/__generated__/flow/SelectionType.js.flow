@@ -1,9 +1,0 @@
-/** 
- * Copyright (c) Meta Platforms, Inc. and affiliates.
- *
- * @flow
- * @generated
- */
-
-
-export type SelectionType = "None" | "Box" | "Line";

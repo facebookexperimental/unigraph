@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Explorer } from "./Explorer";
-import type { ExplorerParams } from "./__generated__/ts/ExplorerParams";
+import type { ExplorerComponentInputGraphs } from "./__generated__/ts/ExplorerComponentInputGraphs";
 
 const ARRAY_GRAPH_JSON_ZSTD_BASE64_LEFT_ELEMENT_ID =
   "array_graph_json_zstd_base64_left";
@@ -40,10 +40,7 @@ function Root() {
     };
   }, []);
 
-  const [
-    array_graph_json_zstd_base64_left,
-    array_graph_json_zstd_base64_right,
-  ] = useMemo(() => {
+  const graphs: ExplorerComponentInputGraphs = useMemo(() => {
     const left = getSerializedGraphFromHTMLElement(
       ARRAY_GRAPH_JSON_ZSTD_BASE64_LEFT_ELEMENT_ID,
     );
@@ -54,7 +51,23 @@ function Root() {
     if (left == null) {
       throw new Error("Left graph must be present");
     }
-    return [left, right];
+    return {
+      left: {
+        ArrayGraphSerialized: {
+          format: "JsonZstdBase64",
+          value: left,
+        },
+      },
+      right:
+        right != null
+          ? {
+              ArrayGraphSerialized: {
+                format: "JsonZstdBase64",
+                value: right,
+              },
+            }
+          : undefined,
+    };
   }, []);
 
   const onTraversalConfigZSTDBase64UrlSafeNoPaddingChange = useCallback(
@@ -83,40 +96,17 @@ function Root() {
     [graphSettingsURLParam],
   );
 
-  const params: ExplorerParams = useMemo(() => {
-    return {
-      graph_left: {
-        ArrayGraphSerialized: {
-          format: "JsonZstdBase64",
-          value: array_graph_json_zstd_base64_left,
-        },
-      },
-      graph_right:
-        array_graph_json_zstd_base64_right != null
-          ? {
-              ArrayGraphSerialized: {
-                format: "JsonZstdBase64",
-                value: array_graph_json_zstd_base64_right,
-              },
-            }
-          : undefined,
-
-      traversal_config: tvcUrlParam ?? undefined,
-      on_traversal_config_change:
-        onTraversalConfigZSTDBase64UrlSafeNoPaddingChange,
-      graph_settings: graphSettingsURLParam ?? undefined,
-      on_graph_settings_change: onGraphSettingsZSTDBase64UrlSafeNoPaddingChange,
-    };
-  }, [
-    array_graph_json_zstd_base64_left,
-    array_graph_json_zstd_base64_right,
-    graphSettingsURLParam,
-    onGraphSettingsZSTDBase64UrlSafeNoPaddingChange,
-    onTraversalConfigZSTDBase64UrlSafeNoPaddingChange,
-    tvcUrlParam,
-  ]);
-
-  return <Explorer params={params} />;
+  return (
+    <Explorer
+      graphs={graphs}
+      traversal_config={tvcUrlParam ?? undefined}
+      on_traversal_config_change={
+        onTraversalConfigZSTDBase64UrlSafeNoPaddingChange
+      }
+      graph_settings={graphSettingsURLParam ?? undefined}
+      on_graph_settings_change={onGraphSettingsZSTDBase64UrlSafeNoPaddingChange}
+    />
+  );
 }
 
 function getQueryParam(name: string): string | null {

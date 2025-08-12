@@ -12,7 +12,7 @@ import Sidebar from "./Sidebar";
 import Simulation from "./Simulation";
 import type { ArrayGraphUISettingsTreeTableEntryPoints } from "./__generated__/ts/ArrayGraphUISettingsTreeTableEntryPoints";
 import type { ExplorerComponentInputGraph } from "./__generated__/ts/ExplorerComponentInputGraph";
-import type { ExplorerParams } from "./__generated__/ts/ExplorerParams";
+import type { ExplorerProps } from "./__generated__/ts/ExplorerProps";
 import type { GraphSettings } from "./__generated__/ts/GraphSettings";
 import type { TraversalConfig } from "./__generated__/ts/TraversalConfig";
 import ErrorBoundary from "./components/ErrorBoundary";
@@ -37,21 +37,18 @@ import GraphInfoPanel from "./sidebar_panels/GraphInfoPanel";
 import GraphTreeTable from "./tree_table/GraphTreeTable";
 import type { NodeIDX } from "./types";
 
-export function Explorer({
-  params,
-}: {
-  params: ExplorerParams;
-}) {
+export function Explorer(props: ExplorerProps) {
   initWasm();
 
   const {
-    graph_left,
-    graph_right: _graph_right,
+    graphs,
     traversal_config,
     on_traversal_config_change,
     graph_settings,
     on_graph_settings_change,
-  } = params;
+  } = props;
+
+  const { left: graph_left, right: _graph_right } = graphs;
 
   const containerRef = useRef<HTMLDivElement>(null);
 

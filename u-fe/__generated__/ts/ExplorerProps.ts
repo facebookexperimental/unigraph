@@ -6,11 +6,16 @@
 
 
 import type { CallbackFn } from './CallbackFn.ts';
-import type { ExplorerComponentInputGraph } from './ExplorerComponentInputGraph.ts';
+import type { ExplorerComponentInputGraphs } from './ExplorerComponentInputGraphs.ts';
 
-export interface ExplorerParams {
-  graph_left: ExplorerComponentInputGraph;
-  graph_right?: ExplorerComponentInputGraph | undefined;
+export interface ExplorerProps {
+  /**
+   * NODE: DO NOT FORGET TO MEMOIZE IF YOU CONSTRUCT THIS OBJECT.
+   * 
+   * Provide a graph to visualize/explore. Can be a single graph
+   * or two graphs that will be compared to each other.
+   */
+  graphs: ExplorerComponentInputGraphs;
   /**
    * serialized traversal config. Serialization format
    * 1. JSON
