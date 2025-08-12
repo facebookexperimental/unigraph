@@ -15,6 +15,54 @@ use crate::manifest::ArrayGraphSerializableManifest;
 use crate::manifest::BlobID;
 use crate::manifest::ManifestBlobs;
 
+/// Macro to serialize multiple fields to blobs in parallel using Rayon.
+///
+/// Usage: `into_blobs_parallelized!(field1, field2, field3; all_blobs, config)`
+/// Returns a tuple of Vec<BlobID> in the same order.
+macro_rules! into_blobs_parallelized {
+    ($($field:ident),* ; $all_blobs:expr, $config:expr) => {
+        {
+            use rayon::scope;
+            use std::sync::Mutex;
+            use paste::paste;
+
+            // Wrap the all_blobs map in a mutex
+            let all_blobs_mutex = Mutex::new($all_blobs);
+
+            paste! {
+                // Create individual result variables for each field
+                $(
+                    let mut [<result_ $field>] = None;
+                )*
+            }
+
+            scope(|s| {
+                $(
+                    s.spawn(|_| {
+                        let mut temp_blobs = std::collections::BTreeMap::new();
+                        let result = into_blobs(&$field, stringify!($field), &mut temp_blobs, $config)
+                            .with_context(|| format!("Failed to serialize field {}", stringify!($field)));
+
+                        paste! {
+                            [<result_ $field>] = Some(result);
+                        }
+                        // Merge temp_blobs into the shared all_blobs map
+                        let mut all_blobs_guard = all_blobs_mutex.lock().unwrap();
+                        all_blobs_guard.extend(temp_blobs);
+                    });
+                )*
+            });
+
+            // Return tuple with all results in order
+            paste! {
+                ($(
+                    [<result_ $field>].context("Empty value")??,
+                )*)
+            }
+        }
+    };
+}
+
 const DEFAULT_BYTES_PER_BLOB_CHUNK: usize = 2_000_000; // 2 MB
 const DEFAULT_COMPRESSION_LEVEL: i32 = 8; // ZSTD compression level
 
@@ -83,16 +131,31 @@ pub fn to_blobs(
     let ArrayGraphSerializableNodeMetadata { metrics, tag_sets } = &node_metadata;
 
     let (node_names, node_names_offsets) = node_names_ordered.as_parts();
-    let node_names = into_blobs(node_names, "node_names", &mut b, c)?;
-    let node_names_offsets = into_blobs(node_names_offsets, "node_names_offsets", &mut b, c)?;
-    let directed = into_blobs(directed, "directed", &mut b, c)?;
-    let directed_offsets = into_blobs(directed_offsets, "directed_offsets", &mut b, c)?;
-    let tagged = into_blobs(tagged, "tagged", &mut b, c)?;
-    let dynamic = into_blobs(dynamic, "dynamic", &mut b, c)?;
-    let metrics = into_blobs(metrics, "metrics", &mut b, c)?;
-    let tag_sets = into_blobs(tag_sets, "tag_sets", &mut b, c)?;
-    let traversal_config = into_blobs(traversal_config, "traversal_config", &mut b, c)?;
-    let entry_points = into_blobs(entry_points, "entry_points", &mut b, c)?;
+
+    let (
+        node_names,
+        node_names_offsets,
+        directed,
+        directed_offsets,
+        tagged,
+        dynamic,
+        metrics,
+        tag_sets,
+        traversal_config,
+        entry_points,
+    ) = into_blobs_parallelized!(
+        node_names,
+        node_names_offsets,
+        directed,
+        directed_offsets,
+        tagged,
+        dynamic,
+        metrics,
+        tag_sets,
+        traversal_config,
+        entry_points;
+        &mut b, c
+    );
 
     let manifest_blobs = ManifestBlobs {
         node_names,
@@ -251,7 +314,6 @@ mod tests {
     use unigraph_core::MapGraph;
 
     use super::*;
-    use crate::prepare_for_storage;
 
     const TEST_GRAPH_2: &str =
         include_str!("../../unigraph_core/src/tests/test_graphs/test_graph_2.json");
@@ -372,15 +434,17 @@ mod tests {
                 .context("Failed to convert to ArrayGraphSerializable")?;
 
             let time_now = std::time::Instant::now();
-            let _result = to_blobs(
+            let result = to_blobs(
                 &graph,
                 &StorageConfig {
                     compression_level: Some(18),
                     ..Default::default()
                 },
-            );
+            )?;
             let duration = time_now.elapsed();
             eprintln!("Preparation for storage took: {duration:?}");
+            drop(result);
+            drop(graph);
         }
 
         Ok(())
