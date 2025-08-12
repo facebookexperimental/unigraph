@@ -2,7 +2,6 @@
 
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
-use std::sync::Arc;
 
 use anyhow::Result;
 
@@ -41,7 +40,6 @@ pub fn apply_traversal_config_to_array_graph(
     let TraversalConfigIDX {
         force_nodes,
         force_edges,
-        force_children_of,
         force_tagged,
         tag_sets,
         force_dynamic,
@@ -49,7 +47,6 @@ pub fn apply_traversal_config_to_array_graph(
         messages: _,
     } = &indexed_config;
 
-    let forced_children = get_forced_children(force_children_of, ag)?;
     let exclude_tags = exclude_tags_for_tier_above_the_max(tiered_traversal);
 
     for (parent_idx, edge, md) in ag.edges_forward.iter_edges_mut() {
@@ -62,7 +59,6 @@ pub fn apply_traversal_config_to_array_graph(
         if let Some(tag_sets_for_node) = ag.tag_sets.get(&edge.points_to) {
             match_tag_sets(tag_sets, edge, tag_sets_for_node, &m)?;
         }
-        match_forced_children(&forced_children, edge, &m)?;
         match_force_edges(force_edges, parent_idx, edge, &m)?;
         match_force_nodes(force_nodes, edge, &m)?;
     }
@@ -107,22 +103,6 @@ fn exclude_tags_for_tier_above_the_max(
     }
 
     None
-}
-
-fn get_forced_children(
-    force_children_of: &BTreeMap<NodeIDX, Decision>,
-    ag: &mut ArrayGraph,
-) -> Result<BTreeMap<NodeIDX, Arc<Decision>>> {
-    let mut forced_children = BTreeMap::new();
-
-    for (parent, decision) in force_children_of {
-        let decision = Arc::new(decision.clone());
-        for child in ag.edges_forward.edges(*parent) {
-            forced_children.insert(child.points_to, Arc::clone(&decision));
-        }
-    }
-
-    Ok(forced_children)
 }
 
 fn apply_node_reachability(ag: &mut ArrayGraph, entry_points: Vec<NodeIDX>) {
@@ -310,26 +290,6 @@ fn match_tagged(
             if let Some(tier_idx) = tag_to_tier.get(tag).copied() {
                 edge.flags.set_transitions_to_tier_idx(tier_idx)?;
             }
-        }
-    }
-    Ok(())
-}
-
-fn match_forced_children(
-    forced_children: &BTreeMap<NodeIDX, Arc<Decision>>,
-    edge: &mut Edge,
-    m: &IndexedMessages,
-) -> Result<()> {
-    if let Some(decision) = forced_children.get(&edge.points_to) {
-        match decision.include {
-            true => edge.flags.include_with_message(m.get_or_default(
-                &decision.message_id,
-                BuiltInMessages::FORCED_CHILDREN_OF_INCLUDED_ID,
-            ))?,
-            false => edge.flags.exclude_with_message(m.get_or_default(
-                &decision.message_id,
-                BuiltInMessages::FORCED_CHILDREN_OF_EXCLUDED_ID,
-            ))?,
         }
     }
     Ok(())

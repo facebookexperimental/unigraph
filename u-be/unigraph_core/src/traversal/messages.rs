@@ -245,7 +245,9 @@ mod tests {
         let mut g = make_test_array_graph_2()?;
 
         g.apply_traversal_config(TraversalConfig {
-            force_nodes: btreemap! { "I".into() => Decision { include: false, message_id: None } },
+            force_nodes: Some(
+                btreemap! { "I".into() => Decision { include: false, message_id: None } },
+            ),
             ..Default::default()
         })?;
         snapshot!(

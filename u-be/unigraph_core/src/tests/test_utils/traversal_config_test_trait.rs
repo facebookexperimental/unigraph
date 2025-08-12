@@ -7,7 +7,6 @@ use crate::TieredTraversalConfig;
 use crate::TraversalConfig;
 
 pub trait TraversalConfigTestTrait {
-    fn set_force_children_of(&mut self, node_name: &str, decision: bool) -> &mut Self;
     fn set_force_node(&mut self, node_name: &str, decision: bool) -> &mut Self;
     fn get_tier_config(&self) -> AscendingTiersConfig;
     fn with_tier_config(&mut self) -> &mut Self;
@@ -15,23 +14,14 @@ pub trait TraversalConfigTestTrait {
 }
 
 impl TraversalConfigTestTrait for TraversalConfig {
-    fn set_force_children_of(&mut self, node_name: &str, decision: bool) -> &mut Self {
-        let decision = if decision {
-            Decision::include()
-        } else {
-            Decision::exclude()
-        };
-        self.force_children_of.insert(node_name.into(), decision);
-        self
-    }
-
     fn set_force_node(&mut self, node_name: &str, decision: bool) -> &mut Self {
         let decision = if decision {
             Decision::include()
         } else {
             Decision::exclude()
         };
-        self.force_nodes.insert(node_name.into(), decision);
+        let force_nodes = self.force_nodes.get_or_insert_default();
+        force_nodes.insert(node_name.into(), decision);
         self
     }
 

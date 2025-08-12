@@ -14,7 +14,7 @@ fn test_force_children_of() -> Result<()> {
     let mut ag = make_test_array_graph_2()?;
     let mut tvc = TraversalConfig::default();
 
-    tvc.set_force_children_of("O", false).with_tier_config();
+    tvc.with_tier_config();
     ag.apply_traversal_config(tvc.clone())?;
 
     snapshot!(
@@ -30,10 +30,14 @@ D
   Tier: T1
 E
   Tier: T2
-F [UNREACHABLE]
-G [UNREACHABLE]
-H [UNREACHABLE]
-I [UNREACHABLE]
+F
+  Tier: T1
+G
+  Tier: T1
+H
+  Tier: T1
+I
+  Tier: T1
 J
   Tier: T3
 K
@@ -42,10 +46,12 @@ L
   Tier: T1
 M
   Tier: T1
-N [UNREACHABLE]
+N
+  Tier: T1
 O
   Tier: T1
-P [UNREACHABLE]
+P
+  Tier: T1
 
 "
     );
@@ -60,7 +66,6 @@ B -> C
 B -> J
    tag: RD
 D -> F
-   message: This edge was EXCLUDED because the node `D` is a child of a node whose children were excluded from the traversal using `force_children_of` config.
 D -> E
    tag: RDFD
 E -> K
@@ -79,16 +84,13 @@ L -> M
 M -> O
 N -> M
 O -> N
-   message: This edge was EXCLUDED because the node `O` is a child of a node whose children were excluded from the traversal using `force_children_of` config.
 O -> P
-   message: This edge was EXCLUDED because the node `O` is a child of a node whose children were excluded from the traversal using `force_children_of` config.
 O -> F
    tag: BL
-   message: This edge was EXCLUDED because the node `O` is a child of a node whose children were excluded from the traversal using `force_children_of` config.
 "#
     );
 
-    tvc.with_max_tier_idx(1 /* idx 1 = TIER 2 */);
+    tvc.with_max_tier_idx(0 /* idx 0 = TIER 1 */);
     ag.apply_traversal_config(tvc.clone())?;
     snapshot!(
         ag.print_nodes(),
@@ -100,23 +102,27 @@ B
 C [UNREACHABLE]
 D
   Tier: T1
-E
-  Tier: T2
-F [UNREACHABLE]
-G [UNREACHABLE]
-H [UNREACHABLE]
-I [UNREACHABLE]
+E [UNREACHABLE]
+F
+  Tier: T1
+G
+  Tier: T1
+H
+  Tier: T1
+I
+  Tier: T1
 J [UNREACHABLE]
-K
-  Tier: T2
+K [UNREACHABLE]
 L
   Tier: T1
 M
   Tier: T1
-N [UNREACHABLE]
+N
+  Tier: T1
 O
   Tier: T1
-P [UNREACHABLE]
+P
+  Tier: T1
 
 "
     );

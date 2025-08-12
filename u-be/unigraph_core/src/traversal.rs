@@ -45,26 +45,27 @@ impl Decision {
 
 #[derive(serde::Serialize, serde::Deserialize, Default, Clone, typegen::TypeGen)]
 pub struct TraversalConfig {
-    pub force_nodes: BTreeMap<NodeName, Decision>,
-    /// From Node Name -> To Node Name -> Decision
-    pub force_edges: BTreeMap<NodeName, BTreeMap<NodeName, Decision>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub force_nodes: Option<BTreeMap<NodeName, Decision>>,
 
-    /// This will force all nodes that are children of the given node.
-    /// This is useful for cases where you want to exclude all imports
-    /// of a specific node (like `MySharedInfraModules.js`) with a single
-    /// config.
-    #[serde(default)]
-    pub force_children_of: BTreeMap<NodeName, Decision>,
+    /// From Node Name -> To Node Name -> Decision
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub force_edges: Option<BTreeMap<NodeName, BTreeMap<NodeName, Decision>>>,
 
     /// Only applied to tagged edges
-    pub force_tagged: BTreeMap<Tag, Decision>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub force_tagged: Option<BTreeMap<Tag, Decision>>,
     /// These rules are ordered. The first one that matches will be used.
-    pub tag_sets: Vec<NodeTagSetsPredicate>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tag_sets: Option<Vec<NodeTagSetsPredicate>>,
     /// These rules are ordered. The first one that matches will be used.
-    pub force_dynamic: Vec<ForceDynamic>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub force_dynamic: Option<Vec<ForceDynamic>>,
 
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub tiered_traversal: Option<TieredTraversalConfig>,
 
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub messages: Option<BTreeMap<MessageID, Message>>,
 }
 
@@ -73,7 +74,6 @@ pub struct TraversalConfig {
 pub struct TraversalConfigIDX {
     pub force_nodes: BTreeMap<NodeIDX, Decision>,
     pub force_edges: BTreeMap<NodeIDX, BTreeMap<NodeIDX, Decision>>,
-    pub force_children_of: BTreeMap<NodeIDX, Decision>,
     pub force_tagged: BTreeMap<Tag, Decision>,
     /// These rules are ordered. The first one that matches will be used.
     pub tag_sets: Vec<NodeTagSetsPredicate>,
@@ -132,13 +132,13 @@ impl TraversalConfig {
     pub fn index(&self, array_graph: &ArrayGraph) -> TraversalConfigIDX {
         let mut force_nodes = BTreeMap::new();
 
-        for (name, decision) in &self.force_nodes {
+        for (name, decision) in self.force_nodes.iter().flatten() {
             if let Some(idx) = array_graph.nodes.name_to_idx_log(name) {
                 force_nodes.insert(idx, decision.clone());
             }
         }
         let mut force_edges = BTreeMap::new();
-        for (from_node_name, decisions) in &self.force_edges {
+        for (from_node_name, decisions) in self.force_edges.iter().flatten() {
             if let Some(from_idx) = array_graph.nodes.name_to_idx_log(from_node_name) {
                 let inner_map = force_edges.entry(from_idx).or_insert(BTreeMap::new());
                 for (to_node_name, decision) in decisions {
@@ -152,6 +152,7 @@ impl TraversalConfig {
         let force_dynamic = self
             .force_dynamic
             .iter()
+            .flatten()
             .map(|dynamic| ForceDynamicIDX {
                 from_node: dynamic
                     .from_node
@@ -163,24 +164,12 @@ impl TraversalConfig {
             })
             .collect();
 
-        let force_children_of = self
-            .force_children_of
-            .iter()
-            .filter_map(|(name, decision)| {
-                array_graph
-                    .nodes
-                    .name_to_idx_log(name)
-                    .map(|idx| (idx, decision.clone()))
-            })
-            .collect();
-
         TraversalConfigIDX {
             force_nodes,
             force_edges,
-            force_children_of,
-            force_tagged: self.force_tagged.clone(),
+            force_tagged: self.force_tagged.clone().unwrap_or_default(),
             force_dynamic,
-            tag_sets: self.tag_sets.clone(),
+            tag_sets: self.tag_sets.clone().unwrap_or_default(),
             tiered_traversal: self.tiered_traversal.clone(),
             messages: self.messages.clone().unwrap_or_default(),
         }

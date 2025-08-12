@@ -203,7 +203,9 @@ F -> I: 0000_0000_0000_0010 (Dynamic { properties: {"type": "DDD"}, branch: "b2"
     );
 
     g.apply_traversal_config(TraversalConfig {
-        force_nodes: btreemap! { "I".into() => Decision { include: false, message_id: None } },
+        force_nodes: Some(
+            btreemap! { "I".into() => Decision { include: false, message_id: None } },
+        ),
         ..Default::default()
     })?;
 
@@ -223,7 +225,9 @@ F -> I: 0000_1100_0000_0110 (Dynamic { properties: {"type": "DDD"}, branch: "b2"
     );
 
     g.apply_traversal_config(TraversalConfig {
-        force_tagged: btreemap! { "BL".into() => Decision { include: false, message_id: None } },
+        force_tagged: Some(
+            btreemap! { "BL".into() => Decision { include: false, message_id: None } },
+        ),
         ..Default::default()
     })?;
 
@@ -248,8 +252,12 @@ F -> I: 0000_1100_0000_0010 (Dynamic { properties: {"type": "DDD"}, branch: "b2"
 fn test_dfs_with_traversal_config() -> Result<()> {
     let mut g = make_test_array_graph_1()?;
     let traversal_config = TraversalConfig {
-        force_nodes: btreemap! { "D".into() => Decision { include: false, message_id: None } },
-        force_edges: btreemap! { "B".into() => btreemap! { "C".into() => Decision { include: false, message_id: None } } },
+        force_nodes: Some(
+            btreemap! { "D".into() => Decision { include: false, message_id: None } },
+        ),
+        force_edges: Some(
+            btreemap! { "B".into() => btreemap! { "C".into() => Decision { include: false, message_id: None } } },
+        ),
         ..Default::default()
     };
 
@@ -285,7 +293,7 @@ fn test_dfs_with_traversal_config_on_dynamic_edges() -> Result<()> {
     g.apply_traversal_config(traversal_config.clone())?;
     snapshot!(dfs_configured(&g), "A B C D E F G H I J");
 
-    traversal_config.force_dynamic = vec![ForceDynamic {
+    traversal_config.force_dynamic = Some(vec![ForceDynamic {
         from_node: Some("F".into()),
         match_properties: btreemap! { "type".into() => "DDD".into() },
         branch: Some("b1".into()),
@@ -293,12 +301,12 @@ fn test_dfs_with_traversal_config_on_dynamic_edges() -> Result<()> {
             include: false,
             message_id: None,
         },
-    }];
+    }]);
 
     g.apply_traversal_config(traversal_config.clone())?;
     snapshot!(dfs_configured(&g), "A B C D E F I J");
 
-    traversal_config.force_dynamic = vec![ForceDynamic {
+    traversal_config.force_dynamic = Some(vec![ForceDynamic {
         from_node: None,
         match_properties: btreemap! { "type".into() => "DDD".into() },
         branch: Some("b2".into()),
@@ -306,13 +314,13 @@ fn test_dfs_with_traversal_config_on_dynamic_edges() -> Result<()> {
             include: false,
             message_id: None,
         },
-    }];
+    }]);
 
     g.apply_traversal_config(traversal_config.clone())?;
     snapshot!(dfs_configured(&g), "A B C D E F G H J");
 
     // Set a default branch to follow for DDD
-    traversal_config.force_dynamic = vec![
+    traversal_config.force_dynamic = Some(vec![
         ForceDynamic {
             from_node: None,
             match_properties: btreemap! { "type".into() => "DDD".into() },
@@ -331,13 +339,13 @@ fn test_dfs_with_traversal_config_on_dynamic_edges() -> Result<()> {
                 message_id: None,
             },
         },
-    ];
+    ]);
 
     g.apply_traversal_config(traversal_config.clone())?;
     snapshot!(dfs_configured(&g), "A B C D E F I J");
 
     // follow nothing
-    traversal_config.force_dynamic = vec![ForceDynamic {
+    traversal_config.force_dynamic = Some(vec![ForceDynamic {
         from_node: None,
         match_properties: btreemap! {},
         branch: None,
@@ -345,7 +353,7 @@ fn test_dfs_with_traversal_config_on_dynamic_edges() -> Result<()> {
             include: false,
             message_id: None,
         },
-    }];
+    }]);
 
     g.apply_traversal_config(traversal_config)?;
     snapshot!(dfs_configured(&g), "A B C D E F J");
@@ -359,7 +367,7 @@ fn test_dfs_with_traversal_config_tag_sets() -> Result<()> {
     let mut traversal_config = TraversalConfig::default();
 
     let set_global_value = |tc: &mut TraversalConfig, value: &str| {
-        tc.tag_sets = vec![
+        tc.tag_sets = Some(vec![
             NodeTagSetsPredicate {
                 tag_set_name: "assert_tags".into(),
                 tag_name: value.into(),
@@ -384,7 +392,7 @@ fn test_dfs_with_traversal_config_tag_sets() -> Result<()> {
                 contains: false,
                 decision: Decision::include(),
             },
-        ];
+        ]);
     };
 
     set_global_value(&mut traversal_config, "a");
@@ -567,17 +575,19 @@ fn test_edges_len() -> Result<()> {
     assert_equal!(g.parents_len_configured(node_k), 2);
 
     g.apply_traversal_config(TraversalConfig {
-        force_nodes: btreemap! { "D".into() => Decision { include: false, message_id: None } },
+        force_nodes: Some(
+            btreemap! { "D".into() => Decision { include: false, message_id: None } },
+        ),
         ..Default::default()
     })?;
 
     assert_equal!(g.parents_len_configured(node_k), 1);
 
     g.apply_traversal_config(TraversalConfig {
-        force_nodes: btreemap! {
+        force_nodes: Some(btreemap! {
           "J".into() => Decision { include: false, message_id: None },
           "D".into() => Decision { include: false, message_id: None }
-        },
+        }),
         ..Default::default()
     })?;
 

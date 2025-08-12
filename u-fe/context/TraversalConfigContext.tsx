@@ -67,7 +67,7 @@ export function useFlipForceEdge(arrow: Arrow | null): {
   // true/false if forced. null if there is no force edge/not set
   const isForcedTo =
     fromName != null && toName != null
-      ? (tvc.force_edges[fromName]?.[toName]?.include ?? null)
+      ? (tvc.force_edges?.[fromName]?.[toName]?.include ?? null)
       : null;
 
   const action: "Include" | "Exclude" = (() => {
@@ -87,7 +87,7 @@ export function useFlipForceEdge(arrow: Arrow | null): {
       force_edges: {
         ...tvc.force_edges,
         [fromName]: {
-          ...tvc.force_edges[fromName],
+          ...tvc.force_edges?.[fromName],
           [toName]: { include: action === "Include", message_id: undefined },
         },
       },
@@ -113,7 +113,7 @@ export function useFlipForceExcludeNode(arrow: Arrow | null): {
 
   const action =
     nodeName != null
-      ? tvc.force_nodes[nodeName]?.include === false
+      ? tvc.force_nodes?.[nodeName]?.include === false
         ? "Include"
         : "Exclude"
       : "Include";
@@ -132,7 +132,7 @@ export function useFlipForceExcludeNode(arrow: Arrow | null): {
         },
       });
     } else {
-      const { [nodeName]: _, ...rest } = tvc.force_nodes;
+      const { [nodeName]: _, ...rest } = tvc.force_nodes ?? {};
       setTvc({
         ...tvc,
         force_nodes: rest,

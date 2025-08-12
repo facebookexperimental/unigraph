@@ -78,7 +78,7 @@ export function useCanNodeBeForceExcluded(arrow: Arrow | null): boolean {
     return false;
   }
 
-  const nodeForce = tvc.force_nodes[nodeName] ?? null;
+  const nodeForce = tvc.force_nodes?.[nodeName] ?? null;
   const reachable = nativeGraph.isNodeReachable(arrow.points_to);
 
   if (nodeForce == null && !reachable) {

@@ -14,6 +14,10 @@ export interface ArrayGraphUISettings {
   selected_sidebar_panel?: SidebarPanel | undefined;
   columns?: ColumnSettings | undefined;
   graph_structure?: GraphStructure | undefined;
+  /**
+   * What nodes should we use as the "start" of the graph
+   * when we render the table.
+   */
   entry_points?: ArrayGraphUISettingsTreeTableEntryPoints | undefined;
   /**
    * Used in combination with `entry_points` settings.`
