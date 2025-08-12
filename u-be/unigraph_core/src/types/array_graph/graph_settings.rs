@@ -8,13 +8,20 @@ use anyhow::bail;
 use crate::types::NodeName;
 use crate::types::TierName;
 
-#[derive(serde::Serialize, serde::Deserialize, typegen::TypeGen, Clone, Default)]
+#[derive(
+    Debug,
+    serde::Serialize,
+    serde::Deserialize,
+    typegen::TypeGen,
+    Clone,
+    Default
+)]
 pub struct GraphSettings {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ui_settings: Option<ArrayGraphUISettings>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, typegen::TypeGen, Clone)]
+#[derive(Debug, serde::Serialize, serde::Deserialize, typegen::TypeGen, Clone)]
 pub struct MetricSettings {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
@@ -40,7 +47,7 @@ pub struct MetricSettings {
     pub show_conjoint_tiered: Option<BTreeMap<TierName, IndividualOptionEnabled>>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, typegen::TypeGen, Clone)]
+#[derive(Debug, serde::Serialize, serde::Deserialize, typegen::TypeGen, Clone)]
 /// Value that defines how to format metric values (in the UI or CLI output)
 /// This value is cross platform enum type which is represented as an object/shape
 /// with all keys/properties optional and expected to have exactly ONE key/property
@@ -75,7 +82,14 @@ pub enum MetricFormat {
     },
 }
 
-#[derive(serde::Serialize, serde::Deserialize, typegen::TypeGen, Clone, Copy)]
+#[derive(
+    Debug,
+    serde::Serialize,
+    serde::Deserialize,
+    typegen::TypeGen,
+    Clone,
+    Copy
+)]
 /// Configuration for size formatting
 pub enum SizeConfig {
     /// Flexible units to display readable sizes, but will units will be inconsistent across sizes with variation
@@ -97,26 +111,47 @@ pub enum SizeConfig {
     ForceGiB {},
 }
 
-#[derive(serde::Serialize, serde::Deserialize, typegen::TypeGen, Clone, Copy)]
+#[derive(
+    Debug,
+    serde::Serialize,
+    serde::Deserialize,
+    typegen::TypeGen,
+    Clone,
+    Copy
+)]
 pub enum SortOrder {
     Asc,
     Desc,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, typegen::TypeGen, Clone)]
+#[derive(Debug, serde::Serialize, serde::Deserialize, typegen::TypeGen, Clone)]
 pub struct GraphTableSort {
     pub column_id: String,
     pub order: SortOrder,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, typegen::TypeGen, Clone, Copy)]
+#[derive(
+    Debug,
+    serde::Serialize,
+    serde::Deserialize,
+    typegen::TypeGen,
+    Clone,
+    Copy
+)]
 pub enum SidebarPanel {
     None,
     Simulation,
     GraphInfo,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, typegen::TypeGen, Clone, Default)]
+#[derive(
+    Debug,
+    serde::Serialize,
+    serde::Deserialize,
+    typegen::TypeGen,
+    Clone,
+    Default
+)]
 pub struct ArrayGraphUISettings {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub selected_sidebar_panel: Option<SidebarPanel>,
@@ -148,7 +183,14 @@ pub struct ArrayGraphUISettings {
 /// Enum that defines how the graph structure is displayed in the UI.
 /// e.g. which edges we will be following when visualizing the
 /// graph in the tree table.
-#[derive(serde::Serialize, serde::Deserialize, typegen::TypeGen, Clone, Default)]
+#[derive(
+    Debug,
+    serde::Serialize,
+    serde::Deserialize,
+    typegen::TypeGen,
+    Clone,
+    Default
+)]
 #[repr(u8)]
 pub enum GraphStructure {
     // default, follow the forward edges
@@ -175,7 +217,14 @@ impl GraphStructure {
 /// Otherwise we will use the determined entry points.
 /// This is needed for things like: show as flat list, show selected nodes,
 /// show reverse from a specific node, etc.
-#[derive(serde::Serialize, serde::Deserialize, typegen::TypeGen, Clone, Default)]
+#[derive(
+    Debug,
+    serde::Serialize,
+    serde::Deserialize,
+    typegen::TypeGen,
+    Clone,
+    Default
+)]
 pub enum ArrayGraphUISettingsTreeTableEntryPoints {
     #[default]
     Determine,
@@ -183,7 +232,14 @@ pub enum ArrayGraphUISettingsTreeTableEntryPoints {
     Specified,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, typegen::TypeGen, Clone, Default)]
+#[derive(
+    Debug,
+    serde::Serialize,
+    serde::Deserialize,
+    typegen::TypeGen,
+    Clone,
+    Default
+)]
 pub struct ColumnSettings {
     /// Graph table in UI will be sorted using provided column ID
     /// and order if any
@@ -238,6 +294,7 @@ pub struct ColumnSettings {
 /// For that reason we can add these settings to individual columns that can make them
 /// be disabled even when the global setting is enabled.
 #[derive(
+    Debug,
     serde::Serialize,
     serde::Deserialize,
     typegen::TypeGen,

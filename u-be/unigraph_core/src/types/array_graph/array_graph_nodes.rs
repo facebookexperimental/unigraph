@@ -73,6 +73,10 @@ impl ArrayGraphNodes {
         }
     }
 
+    pub fn as_parts(&self) -> (&String, &Vec<usize>) {
+        (&self.node_names, &self.offsets)
+    }
+
     pub fn merge(&self, other: &Self) -> (Self, RemapContext, RemapContext) {
         merge(self, other)
     }
