@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use anyhow::Result;
 
@@ -291,6 +292,12 @@ impl<T: TypeGenTypeRefTrait> TypeGenTypeRefTrait for Vec<T> {
 impl<T: TypeGenTypeRefTrait> TypeGenTypeRefTrait for Option<T> {
     fn type_ref() -> TypeRef {
         TypeRef::Option(Box::new(T::type_ref()))
+    }
+}
+
+impl<T: TypeGenTypeRefTrait> TypeGenTypeRefTrait for Arc<T> {
+    fn type_ref() -> TypeRef {
+        T::type_ref()
     }
 }
 

@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 #[cfg(test)]
 mod shared;
@@ -45,7 +46,7 @@ pub struct Person {
 pub struct User {
     pub id: u64,
     pub email: String,
-    pub profile: Option<String>,
+    pub profile: Arc<Option<String>>,
     pub verified: bool,
     pub tags: HashMap<StringAlias, String>,
     pub metadata: BTreeMap<String, bool>,
