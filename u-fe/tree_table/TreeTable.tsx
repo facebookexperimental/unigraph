@@ -395,7 +395,7 @@ export function TreeTable(props: {
           style={{ height: `${headerHeight}px` }}
           className={clsx(
             "sticky top-0 border-b px-4 flex items-center whitespace-nowrap",
-            sortOrder != null ? "bg-primary" : "bg-accent",
+            sortOrder != null ? "bg-primary text-background" : "bg-accent",
           )}
         >
           {column.c.isLabelHidden === true ? "" : column.c.label}

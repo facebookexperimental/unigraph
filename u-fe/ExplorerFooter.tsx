@@ -38,7 +38,7 @@ import formatNumber from "./lib/formatNumber";
 
 export default function ExplorerFooter() {
   return (
-    <div className="flex h-16 bg-card border-tw-full justify-between">
+    <div className="flex h-16 bg-card border-t justify-between">
       <Toggles />
       <SelectedNodesMetrics />
     </div>

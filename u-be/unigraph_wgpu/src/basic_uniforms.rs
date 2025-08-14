@@ -18,12 +18,10 @@ pub struct UniformsStruct {
 
     pub _padding1: [u32; 1],
 
-    pub background_color: [f32; 3],
-    pub _padding2: [u32; 1],
-    pub node_main_color: [f32; 3],
-    pub _padding3: [u32; 1],
-    pub node_selected_color: [f32; 3],
-    pub _padding4: [u32; 1],
+    pub background_color: [f32; 4],
+    pub node_main_color: [f32; 4],
+    pub node_selected_color: [f32; 4],
+    pub edge_color: [f32; 4],
 }
 
 #[derive(Clone)]
@@ -51,7 +49,7 @@ impl BasicUniforms {
                 label: Some("Basic Uniforms Bind Group Layout"),
                 entries: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX,
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,

@@ -8,9 +8,10 @@ struct BasicUniforms {
     selection_from_point: vec2<f32>,
     selection_to_point: vec2<f32>,
     selection_type: u32,
-    background_color: vec3<f32>,
-    node_main_color: vec3<f32>,
-    node_selected_color: vec3<f32>,
+    background_color: vec4<f32>,
+    node_main_color: vec4<f32>,
+    node_selected_color: vec4<f32>,
+    edge_color: vec4<f32>,
 }
 
 @group(0) @binding(0) var<uniform> basic_uniforms: BasicUniforms;
@@ -22,12 +23,12 @@ struct NodeAttributes {
     flags: u32,
 }
 
-const NODE_UNREACHABLE:  u32 = 256;     // in binary 0001_0000_0000
-const NODE_SELECTED:     u32 = 512;     // in binary 0010_0000_0000
-const NODE_FOCUSED:      u32 = 1024;    // in binary 0100_0000_0000
+const NODE_UNREACHABLE:  u32 = 256u;     // in binary 0001_0000_0000
+const NODE_SELECTED:     u32 = 512u;     // in binary 0010_0000_0000
+const NODE_FOCUSED:      u32 = 1024u;    // in binary 0100_0000_0000
 
 fn is_flag_set(flags: u32, flag: u32) -> bool {
-    return (flags & flag) != 0;
+    return (flags & flag) != 0u;
 }
 
 @group(1) @binding(0) var<storage, read> nodeAttributes: array<NodeAttributes>;
@@ -43,7 +44,7 @@ struct EdgeAttributes {
 struct NodeVertexOutput {
     @builtin(position) position: vec4<f32>,
     @location(0) node_radius: f32,
-    @location(1) node_color: vec3<f32>,
+    @location(1) node_color: vec4<f32>,
     @location(2) frag_pos: vec2<f32>,
     @location(3) node_pos: vec2<f32>,
     @location(4) @interpolate(flat) node_attributes_flags: u32,
@@ -119,7 +120,7 @@ fn fs_node(in: NodeVertexOutput) -> @location(0) vec4<f32> {
         discard;
     }
 
-    return vec4<f32>(in.node_color, 0.025);
+    return in.node_color;
 }
 
 struct EdgeVertexOutput {
@@ -167,9 +168,8 @@ fn fs_edge(in: EdgeVertexOutput) -> @location(0) vec4<f32> {
     if is_flag_set(in.points_from_node_attributes_flags, NODE_UNREACHABLE) {
         discard;
     }
-    
-    // Using a fixed width white line with slightly increased opacity
-    return vec4<f32>(1.0, 1.0, 1.0, 0.08);
+
+    return basic_uniforms.edge_color;
 }
 
 struct SelectionVertexOutput {

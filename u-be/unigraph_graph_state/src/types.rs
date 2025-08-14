@@ -53,9 +53,10 @@ pub(crate) mod ts_vec2_serde {
 #[derive(typegen::TypeGen)]
 #[derive(Deserialize, Serialize, Debug)]
 pub struct SimulationColors {
-    pub background: [f32; 3],
-    pub node_main: [f32; 3],
-    pub node_selected: [f32; 3],
+    pub background: [f32; 4],
+    pub node_main: [f32; 4],
+    pub node_selected: [f32; 4],
+    pub edge: [f32; 4],
 }
 
 #[derive(typegen::TypeGen)]
@@ -154,9 +155,10 @@ impl Default for SimulationParams {
             node_size_scale: 15,
             selection: Selection::default(),
             colors: SimulationColors {
-                background: [0.033, 0.030, 0.027],
-                node_main: [0.4654, 0.0091, 0.0480],
-                node_selected: [0.0480, 0.0091, 0.4654],
+                background: [0.033, 0.030, 0.027, 1.0],
+                node_main: [0.4654, 0.0091, 0.0480, 0.25],
+                node_selected: [0.0480, 0.0091, 0.4654, 1.0],
+                edge: [0.0, 0.0, 0.0, 1.0],
             },
             gravity_force_multiplier: 50.0,
             gravity_force_a: 30.0,

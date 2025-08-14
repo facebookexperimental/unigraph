@@ -98,7 +98,7 @@ function SimulationImpl({
   const [simulationParams, setSimulationParams] = useSimulationParams();
 
   useEffect(() => {
-    set_simulation_params(JSON.stringify(simulationParams));
+    set_simulation_params(JSON.stringify(simulationParams, null, 4));
   }, [simulationParams]);
 
   useEffect(() => {

@@ -56,9 +56,10 @@ function useDefaultSimulationParams(): SimulationParams {
     const simulationParams: SimulationParams = {
       ...defaultSimulationParams,
       colors: {
-        node_main: [1.0, 0.1254902, 0.3372549],
-        node_selected: [0.048, 0.0091, 0.4654],
-        background: [0.04529412, 0.04137255, 0.04137255],
+        node_main: [1.0, 0.1254902, 0.3372549, 0.9],
+        node_selected: [0.048, 0.0091, 0.4654, 1.0],
+        background: [1.0, 1.0, 1.0, 1.0],
+        edge: [0.0, 0.0, 0.0, 0.1],
       },
     };
     return simulationParams;

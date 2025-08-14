@@ -112,10 +112,8 @@ impl WGPUState {
             background_color: simulation_params.colors.background,
             node_main_color: simulation_params.colors.node_main,
             node_selected_color: simulation_params.colors.node_selected,
+            edge_color: simulation_params.colors.edge,
             _padding1: Default::default(),
-            _padding2: Default::default(),
-            _padding3: Default::default(),
-            _padding4: Default::default(),
         };
         let basic_uniforms = BasicUniforms::new(uniforms, &device);
 
