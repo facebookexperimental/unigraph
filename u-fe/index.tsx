@@ -147,5 +147,10 @@ function getSerializedGraphFromHTMLElement(elementID: string): string | null {
     );
   }
 
-  return array_graph_json_zstd_base64_Element.textContent;
+  const content = array_graph_json_zstd_base64_Element.textContent;
+
+  if (content === "") {
+    return null;
+  }
+  return content;
 }

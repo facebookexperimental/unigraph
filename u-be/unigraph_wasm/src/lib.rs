@@ -120,15 +120,15 @@ pub fn set_graphs(explorer_component_input_graphs_json: String) -> Result<(), Wa
 
     let (left, right) = match graphs {
         ExplorerComponentInputGraphs { left, right: None } => {
-            let left = parse_input_graph(left)?;
+            let left = parse_input_graph(left).context("left")?;
             (left, None)
         }
         ExplorerComponentInputGraphs {
             left,
             right: Some(right),
         } => {
-            let left = parse_input_graph(left)?;
-            let right = parse_input_graph(right)?;
+            let left = parse_input_graph(left).context("left")?;
+            let right = parse_input_graph(right).context("right")?;
             (left, Some(right))
         }
     };
@@ -546,6 +546,7 @@ fn parse_input_graph(g: ExplorerComponentInputGraph) -> Result<ArrayGraphSeriali
             map_graph.to_array_graph_serializable()
         }
     }
+    .context("Failed to parse input graph")
 }
 
 fn deser<T: serde::de::DeserializeOwned>(value: &str, format: SerializationFormat) -> Result<T> {

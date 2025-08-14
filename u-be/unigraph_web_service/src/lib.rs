@@ -75,7 +75,7 @@ fn html(left: &MapGraph, right: &Option<MapGraph>) -> Result<String> {
     let right_json = if let Some(right_graph) = right {
         to_array_graph_json_zstd_base64(right_graph)?
     } else {
-        "null".to_string()
+        "".to_string()
     };
 
     let mut context = tera::Context::new();
