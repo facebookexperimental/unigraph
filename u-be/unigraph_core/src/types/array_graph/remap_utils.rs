@@ -108,19 +108,21 @@ impl RemapContext {
 pub fn remap_node_names_ordered(
     node_names_ordered: &ArrayGraphNodes,
     remap_context: &RemapContext,
-) -> ArrayGraphNodes {
+) -> Result<ArrayGraphNodes> {
     let mut names = String::new();
     let mut offsets = vec![0];
 
     for &original_position in &remap_context.original_positions {
-        if let Some(original_position) = original_position {
-            let name = node_names_ordered.idx_to_name(original_position);
-            names.push_str(name);
-            offsets.push(names.len());
-        }
+        let original_position = original_position.context(
+            "When remapping node names ordered, we must have an original position of the string,
+            since node names have to be ordered, unique and have no gaps",
+        )?;
+        let name = node_names_ordered.idx_to_name(original_position);
+        names.push_str(name);
+        offsets.push(names.len());
     }
 
-    ArrayGraphNodes::from_parts(names, offsets)
+    Ok(ArrayGraphNodes::from_parts(names, offsets))
 }
 
 pub fn remap_edges(

@@ -96,7 +96,7 @@ impl ArrayGraphSerializable {
 
     pub fn remap(self, ctx: &RemapContext) -> Result<Self> {
         Ok(ArrayGraphSerializable {
-            node_names_ordered: Arc::new(remap_node_names_ordered(&self.node_names_ordered, ctx)),
+            node_names_ordered: Arc::new(remap_node_names_ordered(&self.node_names_ordered, ctx)?),
             edges: self.edges.remap(ctx)?,
             node_metadata: self.node_metadata.remap(ctx)?,
             graph_settings: self.graph_settings,
