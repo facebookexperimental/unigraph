@@ -333,19 +333,15 @@ pub fn get_available_tiers(side: u32) -> Result<Vec<String>, WasmJSError> {
 
 // TODO: we will need to build combined arrows and dedup
 #[wasm_bindgen]
-pub fn get_arrows(node_idx: usize, graph_structure: u8, side: u32) -> Result<String, WasmJSError> {
+pub fn get_arrow_pairs(node_idx: usize, graph_structure: u8) -> Result<String, WasmJSError> {
     let graph_state = GlobalGraphState::graph_state().get();
-    let ag = graph_state.twin_graph.graph_u32(side)?;
     let graph_structure = GraphStructure::from_u8(graph_structure)?;
     let node_idx = NodeIDX::from(node_idx);
+    let arrow_pairs = graph_state
+        .twin_graph
+        .get_arrow_pairs(node_idx, graph_structure)?;
 
-    let arrows = match graph_structure {
-        GraphStructure::Forward => ag.get_arrows_forward(node_idx),
-        GraphStructure::Dominator => ag.get_arrows_dominator(node_idx),
-        GraphStructure::Reverse => ag.get_arrows_reverse(node_idx),
-    }?;
-
-    Ok(serde_json::to_string(&arrows).context("Failed to serialize arrows")?)
+    Ok(serde_json::to_string(&arrow_pairs).context("Failed to serialize arrows")?)
 }
 
 // TODO: we need to check both sides and pick the shortest

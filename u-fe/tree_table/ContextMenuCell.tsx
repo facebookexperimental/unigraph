@@ -19,17 +19,22 @@ import {
 import { type Row, pathToRow } from "./TreeTableRows";
 
 export default function ContextMenuCell(props: {
-  arrow: Arrow;
   row: Row;
 }) {
   return (
-    <UDropdownMenu content={<Content arrow={props.arrow} row={props.row} />}>
+    <UDropdownMenu content={<Content row={props.row} />}>
       <Ellipsis className="cursor-pointer hover:bg-primary rounded transition-all p-1" />
     </UDropdownMenu>
   );
 }
 
-function Content({ arrow, row }: { arrow: Arrow; row: Readonly<Row> }) {
+function Content({ row }: { row: Readonly<Row> }) {
+  const arrowL = row.arrow_pair.l;
+
+  if (arrowL == null) {
+    // exclusion gets messy with two graphs. need to figure this one out later
+    return null;
+  }
   return (
     <DropdownMenuContent
       className="w-56"
@@ -40,8 +45,8 @@ function Content({ arrow, row }: { arrow: Arrow; row: Readonly<Row> }) {
         e.preventDefault();
       }}
     >
-      <ForceEdgeItem arrow={arrow} row={row} />
-      <ExcludeNodeItem arrow={arrow} row={row} />
+      <ForceEdgeItem arrow={arrowL} row={row} />
+      <ExcludeNodeItem arrow={arrowL} row={row} />
     </DropdownMenuContent>
   );
 }

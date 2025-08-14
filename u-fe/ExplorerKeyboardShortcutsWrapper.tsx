@@ -24,10 +24,12 @@ export function useExplorerKeyboardShortcuts(): (
   e: React.KeyboardEvent<HTMLDivElement>,
 ) => void {
   const { selectedRow } = useSelectedPath();
-  const arrow = selectedRow?.arrow || null;
+  const arrow = selectedRow?.arrow_pair || null;
 
-  const flipForceEdge = useFlipForceEdgeL(arrow);
-  const flipForceExcludeNode = useFlipForceExcludeNodeL(arrow);
+  const arrowL = arrow?.l ?? null;
+
+  const flipForceEdge = useFlipForceEdgeL(arrowL);
+  const flipForceExcludeNode = useFlipForceExcludeNodeL(arrowL);
   const [_f, toggleFlatList] = useToggleFlatListView();
   const [_r, toggleReverseView] = useToggleReverseView();
   const [_d, toggleDominatorTreeView] = useToggleDominatorTreeView();

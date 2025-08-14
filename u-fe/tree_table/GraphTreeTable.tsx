@@ -5,9 +5,10 @@ import { TreeTable } from "./TreeTable";
 
 import type { GraphTableSort } from "@/__generated__/ts/GraphTableSort";
 import { useCallback, useMemo } from "react";
+import { GRAPH_STRUCTURE } from "../NativeGraph";
 import ErrorBoundary from "../components/ErrorBoundary";
 import { useGraphSettings } from "../context/GraphSettingsContext";
-import { useNativeGraphL } from "../context/NativeGraphContext";
+import { useNativeGraphL, useTwinGraph } from "../context/NativeGraphContext";
 import useGraphTreeTableColumns from "./useGraphTreeTableColumns";
 
 export default function GraphTreeTable(props: {
@@ -15,6 +16,7 @@ export default function GraphTreeTable(props: {
   focusOnMount?: boolean;
 }) {
   const nativeGraphL = useNativeGraphL();
+  const twinGraph = useTwinGraph();
   const [settings, setSettings] = useGraphSettings();
 
   const onSortChange = useCallback(
@@ -38,22 +40,22 @@ export default function GraphTreeTable(props: {
   const treeTableEntryPoints =
     settings.ui_settings?.entry_points ?? "Determine";
 
-  const getArrows = useCallback(
+  const getArrowPairs = useCallback(
     (nodeIDX: NodeIDX) => {
       switch (graphStructure) {
         case "Forward":
-          return nativeGraphL.getArrowsForward(nodeIDX);
+          return twinGraph.getArrowPairs(nodeIDX, GRAPH_STRUCTURE.FORWARD);
         case "Dominator":
-          return nativeGraphL.getArrowsDominator(nodeIDX);
+          return twinGraph.getArrowPairs(nodeIDX, GRAPH_STRUCTURE.DOMINATOR);
         case "Reverse":
-          return nativeGraphL.getArrowsReverse(nodeIDX);
+          return twinGraph.getArrowPairs(nodeIDX, GRAPH_STRUCTURE.REVERSE);
         default: {
           const _exhaustiveCheck: never = graphStructure;
           throw new Error(`Unknown column type: ${_exhaustiveCheck}`);
         }
       }
     },
-    [nativeGraphL, graphStructure],
+    [twinGraph, graphStructure],
   );
 
   const getShortestPath = useCallback(
@@ -69,15 +71,17 @@ export default function GraphTreeTable(props: {
 
   const treeTableGraph = useMemo(() => {
     return {
-      getArrows: getArrows,
+      getArrowPairs,
       roots: props.roots,
       getShortestPath,
       graphStructure,
       treeTableEntryPoints,
+      isDeltaGraph: twinGraph.isDeltaGraph(),
     };
   }, [
+    twinGraph,
     props.roots,
-    getArrows,
+    getArrowPairs,
     graphStructure,
     getShortestPath,
     treeTableEntryPoints,

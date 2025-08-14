@@ -7,7 +7,6 @@ import {
   determine_entrypoints,
   get_all_reachable_node_idxs,
   get_array_graph_stats,
-  get_arrows,
   get_combined_metrics_for_entrypoints_with_force_include,
   get_combined_metrics_for_nodes,
   get_conjoint_cost,
@@ -27,7 +26,6 @@ import {
   set_graphs,
 } from "../.build/wasm/unigraph_wasm";
 import type { ArrayGraphStats } from "./__generated__/ts/ArrayGraphStats";
-import type { Arrow } from "./__generated__/ts/Arrow";
 import type { CombinedMetricsForNodes } from "./__generated__/ts/CombinedMetricsForNodes";
 import type { ConjointCost } from "./__generated__/ts/ConjointCost";
 import type { ExplorerComponentInputGraphs } from "./__generated__/ts/ExplorerComponentInputGraphs";
@@ -57,9 +55,13 @@ type CombinedMetricsCache = {
   for_overrides: Map<NodeIDX, Map<NodeIDX, CombinedMetricsForNodes>>;
 };
 
-const GraphStructureForwardU8 = 0;
-const GraphStructureDominatorU8 = 1;
-const GraphStructureReverseU8 = 2;
+export type GraphStructureU8 = 0 | 1 | 2;
+
+export const GRAPH_STRUCTURE = {
+  FORWARD: 0 as const,
+  DOMINATOR: 1 as const,
+  REVERSE: 2 as const,
+};
 
 // It serves as a bridge/cache layer between JS and WASM.
 export default class NativeGraph {
@@ -157,28 +159,6 @@ export default class NativeGraph {
   // pretty slow for very large lookups
   getNodeIDXByNameLog(name: string): NodeIDX | null {
     return node_name_to_idx_log(name) ?? null;
-  }
-
-  getArrowsForward(nodeIDX: NodeIDX): Arrow[] {
-    const arrowsJSON = get_arrows(nodeIDX, GraphStructureForwardU8, this.side);
-    const parsed = JSON.parse(arrowsJSON);
-    return parsed as Arrow[];
-  }
-
-  getArrowsDominator(nodeIDX: NodeIDX): Arrow[] {
-    const arrowsJSON = get_arrows(
-      nodeIDX,
-      GraphStructureDominatorU8,
-      this.side,
-    );
-    const parsed = JSON.parse(arrowsJSON);
-    return parsed as Arrow[];
-  }
-
-  getArrowsReverse(nodeIDX: NodeIDX): Arrow[] {
-    const arrowsJSON = get_arrows(nodeIDX, GraphStructureReverseU8, this.side);
-    const parsed = JSON.parse(arrowsJSON);
-    return parsed as Arrow[];
   }
 
   getShortestPath(
@@ -568,11 +548,11 @@ class KeyedMetricsCache {
 function graphStructureToU8(graphStructure: GraphStructure): number {
   switch (graphStructure) {
     case "Forward":
-      return GraphStructureForwardU8;
+      return GRAPH_STRUCTURE.FORWARD;
     case "Dominator":
-      return GraphStructureDominatorU8;
+      return GRAPH_STRUCTURE.DOMINATOR;
     case "Reverse":
-      return GraphStructureReverseU8;
+      return GRAPH_STRUCTURE.REVERSE;
     default: {
       const _exhaustiveCheck: never = graphStructure;
       throw new Error(`Unknown graph structure: ${_exhaustiveCheck}`);

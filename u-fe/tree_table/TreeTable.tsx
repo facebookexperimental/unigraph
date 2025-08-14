@@ -1,10 +1,5 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-import type { ArrayGraphUISettingsTreeTableEntryPoints } from "@/__generated__/ts/ArrayGraphUISettingsTreeTableEntryPoints";
-import type { Arrow } from "@/__generated__/ts/Arrow";
-import type { GraphStructure } from "@/__generated__/ts/GraphStructure";
-import type { GraphTableSort } from "@/__generated__/ts/GraphTableSort";
-import type { SortOrder } from "@/__generated__/ts/SortOrder";
 import { type VirtualItem, useVirtualizer } from "@tanstack/react-virtual";
 import clsx from "clsx";
 import {
@@ -26,10 +21,15 @@ import {
   useTransition,
 } from "react";
 import { ARROW_POINTS_FROM_NON_EXISTENT } from "../ArrowUtils";
+import type { ArrowPair } from "../TwinGraph";
+import type { ArrayGraphUISettingsTreeTableEntryPoints } from "../__generated__/ts/ArrayGraphUISettingsTreeTableEntryPoints";
+import type { GraphStructure } from "../__generated__/ts/GraphStructure";
+import type { GraphTableSort } from "../__generated__/ts/GraphTableSort";
+import type { SortOrder } from "../__generated__/ts/SortOrder";
 import { Progress } from "../components/ui/progress";
 import { useSelectedPath } from "../context/SelectedPathContext";
 import type { NodeIDX } from "../types";
-import TreeCell from "./TreeCellSingle";
+import { TreeCellDelta, TreeCellSingle } from "./TreeCell";
 import {
   type Row,
   type SortFn,
@@ -55,7 +55,7 @@ export type ColumnDefinitions = {
 export type CommonNonTreeColumnDefinitionFields = {
   flexGrow?: number;
   label: string;
-  renderer: (arrow: Arrow, row: Readonly<Row>) => React.ReactNode;
+  renderer: (row: Readonly<Row>) => React.ReactNode;
   isHidden: boolean;
   isLabelHidden?: boolean;
 };
@@ -216,6 +216,10 @@ export function TreeTable(props: {
 
   const ITEM_SIZE = 35;
 
+  const TreeCellComponent = props.treeTableGraph.isDeltaGraph
+    ? TreeCellDelta
+    : TreeCellSingle;
+
   const rowVirtualizer = useVirtualizer({
     count: ctx.rows.length,
     getScrollElement: () => parentRef.current,
@@ -283,7 +287,7 @@ export function TreeTable(props: {
         switch (t) {
           case "tree": {
             return (
-              <TreeCell
+              <TreeCellComponent
                 row={row}
                 minDepth={minDepth}
                 paddingComponent={paddingComponent}
@@ -297,17 +301,18 @@ export function TreeTable(props: {
                   }
                 }}
                 canExpand={
-                  props.treeTableGraph.getArrows(row.arrow.points_to).length > 0
+                  props.treeTableGraph.getArrowPairs(row.arrow_pair.points_to)
+                    .length > 0
                 }
-                nodeName={column.c.getNodeName(row.arrow.points_to)}
+                nodeName={column.c.getNodeName(row.arrow_pair.points_to)}
               />
             );
           }
           case "numeric_value_column": {
-            return column.c.renderer(row.arrow, row);
+            return column.c.renderer(row);
           }
           case "non_sortable_column": {
-            return column.c.renderer(row.arrow, row);
+            return column.c.renderer(row);
           }
           default: {
             const _exhaustiveCheck: never = column;
@@ -541,8 +546,8 @@ class TreeTableCtx {
       sortColumnID: columnID,
       sortColumn: column ?? null,
       sortFn: (a: Row, b: Row) => {
-        const aValue = getSortValue(a.arrow.points_to);
-        const bValue = getSortValue(b.arrow.points_to);
+        const aValue = getSortValue(a.arrow_pair.points_to);
+        const bValue = getSortValue(b.arrow_pair.points_to);
         if (aValue < bValue) {
           return order === "Desc" ? 1 : -1;
         }
@@ -556,26 +561,33 @@ class TreeTableCtx {
 
   async resetTableAsync(setSortingProgress: SetSortingProgressFn) {
     this.rows = this.treeTableGraph.roots.map((nodeIDX) => {
+      // Roots arrows are not "real" arrows, because arrows represent
+      // edges and roots don't have edges leading to them. We create
+      // default empty arrows for them to make the code simpler.
+      const rootArrow = {
+        tag: undefined,
+        branch: undefined,
+        properties: undefined,
+        points_from: ARROW_POINTS_FROM_NON_EXISTENT,
+        points_to: nodeIDX,
+        points_to_unreachable: false,
+        excluded: false,
+        message: undefined,
+      };
+
       return {
         depth: 0,
         expanded: false,
         isCycle: false,
-        // Roots arrows are not "real" arrows, because arrows represent
-        // edges and roots don't have edges leading to them. We create
-        // default empty arrows for them to make the code simpler.
-        arrow: {
-          tag: undefined,
-          branch: undefined,
-          properties: undefined,
-          points_from: ARROW_POINTS_FROM_NON_EXISTENT,
-          points_to: nodeIDX,
-          points_to_unreachable: false,
-          excluded: false,
-          message: undefined,
-        },
         parentRowRef: null,
         childrenRefs: [],
         transitiveChildrenCount: 0,
+        arrow_pair: {
+          points_to: rootArrow.points_to,
+          points_from: rootArrow.points_from,
+          l: rootArrow,
+          r: rootArrow,
+        },
       };
     });
     await this.resortRowsAsync(setSortingProgress);
@@ -588,7 +600,7 @@ class TreeTableCtx {
       return;
     }
 
-    const arrows = this.treeTableGraph.getArrows(row.arrow.points_to);
+    const arrows = this.treeTableGraph.getArrowPairs(row.arrow_pair.points_to);
 
     const childrenIDXs = arrows.map((a) => a.points_to);
 
@@ -641,7 +653,7 @@ class TreeTableCtx {
     const selectedRow =
       this.selectedRowIDX != null ? this.rows[this.selectedRowIDX] : null;
 
-    const allRowIDXsChuncked = this.rows.map((row) => row.arrow.points_to);
+    const allRowIDXsChuncked = this.rows.map((row) => row.arrow_pair.points_to);
     const column = this.sortState.sortColumn;
     await this.warmUpNumericValuesCache(
       column,
@@ -759,7 +771,7 @@ class TreeTableCtx {
     const newSelectedPath: NodeIDX[] = [];
     let current: Row | null = this.rows[rowIDX] ?? null;
     while (current != null) {
-      newSelectedPath.push(current.arrow.points_to);
+      newSelectedPath.push(current.arrow_pair.points_to);
       current = current.parentRowRef;
     }
     newSelectedPath.reverse();
@@ -824,8 +836,8 @@ class TreeTableCtx {
         // pretty heavy and we can optimize this to a simple
         // direct memory access check on a cached datastructure
         // or something.
-        this.treeTableGraph.getArrows(selectedRow.arrow.points_to).length ===
-          0 ||
+        this.treeTableGraph.getArrowPairs(selectedRow.arrow_pair.points_to)
+          .length === 0 ||
         selectedRow.isCycle
       ) {
         this.navigateDown(1);
@@ -839,7 +851,7 @@ class TreeTableCtx {
     const selectedRowIDX = expandToPath(
       this.rows,
       path,
-      this.treeTableGraph.getArrows,
+      this.treeTableGraph.getArrowPairs,
       this.sortState,
     );
 
@@ -883,7 +895,7 @@ class TreeTableCtx {
       for (let i = 0; i < currentPath.length - 1; i++) {
         const currentNodeIDX = currentPath[i] as NodeIDX;
         const nextNodeIDX = currentPath[i + 1] as NodeIDX;
-        const arrows = this.treeTableGraph.getArrows(currentNodeIDX);
+        const arrows = this.treeTableGraph.getArrowPairs(currentNodeIDX);
 
         if (arrows.find((a) => a.points_to === nextNodeIDX) == null) {
           // our next node is not a child of the current node, which means the path is invalid
@@ -994,18 +1006,21 @@ export class TreeTablePathSelector {
 /// in the tree table and how to havigate it
 type TreeTableGraph = {
   roots: Readonly<NodeIDX[]>;
-  getArrows: (idx: NodeIDX) => Arrow[];
+  getArrowPairs: (idx: NodeIDX) => ArrowPair[];
   getShortestPath: (from: readonly NodeIDX[], to: NodeIDX) => NodeIDX[] | null;
   graphStructure: GraphStructure;
   treeTableEntryPoints: ArrayGraphUISettingsTreeTableEntryPoints;
+  // whether we're rendering a single graph or comparing two graphs
+  isDeltaGraph: boolean;
 };
 
 const EMPTY_TREE_TABLE_GRAPH: TreeTableGraph = {
   roots: [],
-  getArrows: () => [],
+  getArrowPairs: () => [],
   getShortestPath: () => null,
   graphStructure: "Forward",
   treeTableEntryPoints: "Determine",
+  isDeltaGraph: false,
 };
 
 function SortingProgress({

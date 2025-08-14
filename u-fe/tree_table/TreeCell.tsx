@@ -6,10 +6,13 @@ import { BadgeInfo, ChevronDown, ChevronRight, RefreshCw } from "lucide-react";
 import { H2 } from "../Typography";
 import UHoverCard from "../components/UHoverCard";
 import { Badge } from "../components/ui/badge";
-import { useNativeGraphL } from "../context/NativeGraphContext";
+import {
+  useIsDeltaGraph,
+  useNativeGraphL,
+} from "../context/NativeGraphContext";
 import type { Row } from "./TreeTableRows";
 
-export default function TreeCellSingle(props: {
+type Props = {
   row: Row;
   canExpand: boolean;
   onToggleExpand: (expanded: boolean) => void;
@@ -20,11 +23,32 @@ export default function TreeCellSingle(props: {
     className: string;
     color?: string;
   }>;
-}) {
+};
+
+export default function TreeCell(props: Props) {
+  const isDelta = useIsDeltaGraph();
+
+  switch (isDelta) {
+    case true:
+      return <TreeCellDelta {...props} />;
+    case false:
+      return <TreeCellSingle {...props} />;
+  }
+}
+
+export function TreeCellDelta(_props: Props) {
+  return null;
+}
+
+export function TreeCellSingle(props: Props) {
   const nativeGraph = useNativeGraphL();
   const isNodeReachable = nativeGraph.isNodeReachable(
-    props.row.arrow.points_to,
+    props.row.arrow_pair.points_to,
   );
+  const arrow = props.row.arrow_pair.l;
+  if (arrow == null) {
+    throw new Error("Left Arrow must not be null in TreeCellSingle");
+  }
 
   const chevron = (() => {
     if (props.canExpand) {
@@ -61,14 +85,14 @@ export default function TreeCellSingle(props: {
   }
 
   const badge = (() => {
-    const tag = props.row.arrow.tag;
-    const branch = props.row.arrow.branch;
+    const tag = arrow.tag;
+    const branch = arrow.branch;
     if (tag != null) {
       return (
         <Badge className="me-2 bg-green-800 text-xs py-0 px-0.5">{tag}</Badge>
       );
     } else if (branch != null) {
-      const label = props.row.arrow.properties?.type ?? branch;
+      const label = arrow.properties?.type ?? branch;
       return (
         <Badge className="me-2 bg-orange-800 text-xs py-0 px-0.5">
           {label}
@@ -87,13 +111,13 @@ export default function TreeCellSingle(props: {
       <p
         className={clsx(
           "pe-4",
-          props.row.arrow.excluded && "text-foreground/50",
+          arrow.excluded && "text-foreground/50",
           !isNodeReachable && "text-foreground/50 line-through",
         )}
       >
         {props.nodeName}
       </p>
-      <InfoIcon arrow={props.row.arrow} isNodeReachable={isNodeReachable} />
+      <InfoIcon arrow={arrow} isNodeReachable={isNodeReachable} />
     </div>
   );
 }

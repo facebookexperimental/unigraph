@@ -1,4 +1,3 @@
-import type { Arrow } from "@/__generated__/ts/Arrow";
 import type { GraphSettings } from "@/__generated__/ts/GraphSettings";
 import type { MetricFormat } from "@/__generated__/ts/MetricFormat";
 import type { MetricSettings } from "@/__generated__/ts/MetricSettings";
@@ -143,9 +142,7 @@ function defaultColumnDefinitions(
   columnDefinitions.context_menu = {
     t: "non_sortable_column",
     label: "More Menu",
-    renderer: (arrow: Arrow, row: Readonly<Row>) => (
-      <ContextMenuCell arrow={arrow} row={row} />
-    ),
+    renderer: (row: Readonly<Row>) => <ContextMenuCell row={row} />,
     isHidden: false,
     isLabelHidden: true,
   };
@@ -165,11 +162,14 @@ function createMetricColumn(
   const definition: NumericValueColumnDefinition = {
     t: "numeric_value_column",
     label: metricName,
-    renderer: (arrow: Arrow) => {
-      if (nativeGraph.isNodeReachable(arrow.points_to)) {
+    renderer: (row: Readonly<Row>) => {
+      if (nativeGraph.isNodeReachable(row.arrow_pair.points_to)) {
         return (
           <MetricCell
-            value={nativeGraph.getNodeMetric(arrow.points_to, metricName)}
+            value={nativeGraph.getNodeMetric(
+              row.arrow_pair.points_to,
+              metricName,
+            )}
             format={metricSettings?.format}
           />
         );
@@ -213,11 +213,11 @@ function createTransitiveMetricColumn(
   const definition: NumericValueColumnDefinition = {
     t: "numeric_value_column",
     label,
-    renderer: (arrow: Arrow) => {
-      if (nativeGraph.isNodeReachable(arrow.points_to)) {
+    renderer: (row: Readonly<Row>) => {
+      if (nativeGraph.isNodeReachable(row.arrow_pair.points_to)) {
         return (
           <MetricCell
-            value={getValues([arrow.points_to])[0] as number}
+            value={getValues([row.arrow_pair.points_to])[0] as number}
             format={metricSettings?.format}
           />
         );
@@ -283,15 +283,17 @@ function createTieredTransitiveMetricColumn(
     const definition: NumericValueColumnDefinition = {
       t: "numeric_value_column",
       label,
-      renderer: (arrow: Arrow) => {
-        if (nativeGraph.isNodeReachable(arrow.points_to)) {
+      renderer: (row: Readonly<Row>) => {
+        if (nativeGraph.isNodeReachable(row.arrow_pair.points_to)) {
           return (
             <MetricCell
-              value={getValue([arrow.points_to])[0] as number}
+              value={getValue([row.arrow_pair.points_to])[0] as number}
               format={metricSettings?.format}
             />
           );
-        } else if (arrow.points_from === ARROW_POINTS_FROM_NON_EXISTENT) {
+        } else if (
+          row.arrow_pair.points_from === ARROW_POINTS_FROM_NON_EXISTENT
+        ) {
           // If the arrow is coming from a non-existent point, we don't know
           // what to override
           return <MissingMetric />;
@@ -302,8 +304,8 @@ function createTieredTransitiveMetricColumn(
             ]?.[tierName] ?? 0;
           const wouldBeValue =
             nativeGraph.getCombinedMetricsForEntryPointsWithOverrides({
-              from: arrow.points_from,
-              to: arrow.points_to,
+              from: row.arrow_pair.points_from,
+              to: row.arrow_pair.points_to,
             }).tiered_metrics?.[metricName]?.[tierName] ?? 0;
           return (
             <WouldBeDeltaMetricCell
@@ -350,11 +352,11 @@ function createMetricsConjointMetricColumn(
     const definition: NumericValueColumnDefinition = {
       t: "numeric_value_column",
       label,
-      renderer: (arrow: Arrow) => {
-        if (nativeGraph.isNodeReachable(arrow.points_to)) {
+      renderer: (row: Readonly<Row>) => {
+        if (nativeGraph.isNodeReachable(row.arrow_pair.points_to)) {
           return (
             <MetricCell
-              value={getValues([arrow.points_to])[0] as number}
+              value={getValues([row.arrow_pair.points_to])[0] as number}
               format={metricSettings?.format}
             />
           );
@@ -392,11 +394,11 @@ function createMetricsConjointMetricColumn(
     const definition: NumericValueColumnDefinition = {
       t: "numeric_value_column",
       label,
-      renderer: (arrow: Arrow) => {
-        if (nativeGraph.isNodeReachable(arrow.points_to)) {
+      renderer: (row: Readonly<Row>) => {
+        if (nativeGraph.isNodeReachable(row.arrow_pair.points_to)) {
           return (
             <MetricCell
-              value={getValues([arrow.points_to])[0] as number}
+              value={getValues([row.arrow_pair.points_to])[0] as number}
               format={metricSettings?.format}
             />
           );
@@ -429,11 +431,13 @@ function createParentsCountColumn(
   const definition: NumericValueColumnDefinition = {
     t: "numeric_value_column",
     label: columnID,
-    renderer: (arrow: Arrow) => {
-      if (nativeGraph.isNodeReachable(arrow.points_to)) {
+    renderer: (row: Readonly<Row>) => {
+      if (nativeGraph.isNodeReachable(row.arrow_pair.points_to)) {
         return (
           <MetricCell
-            value={nativeGraph.getParentsCount([arrow.points_to])[0] ?? 0}
+            value={
+              nativeGraph.getParentsCount([row.arrow_pair.points_to])[0] ?? 0
+            }
             format={NO_PRECISION_FORMAT}
           />
         );
@@ -473,15 +477,17 @@ function createTransitiveCountColumn(
   const definition: NumericValueColumnDefinition = {
     t: "numeric_value_column",
     label: label,
-    renderer: (arrow: Arrow) => {
-      if (nativeGraph.isNodeReachable(arrow.points_to)) {
+    renderer: (row: Readonly<Row>) => {
+      if (nativeGraph.isNodeReachable(row.arrow_pair.points_to)) {
         return (
           <MetricCell
-            value={getValues([arrow.points_to])[0] ?? 0}
+            value={getValues([row.arrow_pair.points_to])[0] ?? 0}
             format={NO_PRECISION_FORMAT}
           />
         );
-      } else if (arrow.points_from === ARROW_POINTS_FROM_NON_EXISTENT) {
+      } else if (
+        row.arrow_pair.points_from === ARROW_POINTS_FROM_NON_EXISTENT
+      ) {
         // If the arrow is coming from a non-existent point, we don't know
         // what to override
         return <MissingMetric />;
@@ -490,8 +496,8 @@ function createTransitiveCountColumn(
           nativeGraph.getCombinedMetricsForEntryPoints().node_count ?? 0;
         const wouldBeValue =
           nativeGraph.getCombinedMetricsForEntryPointsWithOverrides({
-            from: arrow.points_from,
-            to: arrow.points_to,
+            from: row.arrow_pair.points_from,
+            to: row.arrow_pair.points_to,
           }).node_count ?? 0;
         return (
           <WouldBeDeltaMetricCell
@@ -515,11 +521,13 @@ function createConjointCountColumn(
   const definition: NumericValueColumnDefinition = {
     t: "numeric_value_column",
     label: columnID,
-    renderer: (arrow: Arrow) => {
-      if (nativeGraph.isNodeReachable(arrow.points_to)) {
+    renderer: (row: Readonly<Row>) => {
+      if (nativeGraph.isNodeReachable(row.arrow_pair.points_to)) {
         return (
           <MetricCell
-            value={nativeGraph.getConjointCost().count[arrow.points_to] ?? 0}
+            value={
+              nativeGraph.getConjointCost().count[row.arrow_pair.points_to] ?? 0
+            }
             format={NO_PRECISION_FORMAT}
           />
         );
