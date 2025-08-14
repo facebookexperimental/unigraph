@@ -1,16 +1,37 @@
+import type NativeGraph from "../NativeGraph";
 import Metric from "../components/Metric";
 import { Card } from "../components/ui/card";
 import { Separator } from "../components/ui/separator";
-import { useNativeGraphL } from "../context/NativeGraphContext";
+import { useNativeGraphs } from "../context/NativeGraphContext";
 import formatNumber from "../lib/formatNumber";
 import { SidebarPanel, SidebarPanelHeader } from "./SidebarPanel";
 
 export default function GraphInfoPanel() {
-  const stats = useNativeGraphL().stats();
+  const [nativeGraphL, nativeGraphR] = useNativeGraphs();
+
+  const labelL = nativeGraphR == null ? "" : " (Left)";
+  const labelR = " (Right)";
 
   return (
     <SidebarPanel>
-      <SidebarPanelHeader text="Graph Info" />
+      <div className="flex flex-col gap-8">
+        <StatsForNativeGraph nativeGraph={nativeGraphL} label={labelL} />
+        {nativeGraphR != null && (
+          <StatsForNativeGraph nativeGraph={nativeGraphR} label={labelR} />
+        )}
+      </div>
+    </SidebarPanel>
+  );
+}
+
+function StatsForNativeGraph({
+  nativeGraph,
+  label,
+}: { nativeGraph: NativeGraph; label: string }) {
+  const stats = nativeGraph.stats();
+  return (
+    <div>
+      <SidebarPanelHeader text={`Graph Info${label}`} />
       <div className="flex flex-col gap-4 pt-4">
         <Card className="p-4">
           <div className="text-xl">Nodes</div>
@@ -43,7 +64,7 @@ export default function GraphInfoPanel() {
           </div>
         </Card>
       </div>
-    </SidebarPanel>
+    </div>
   );
 }
 
