@@ -13,12 +13,18 @@ pub struct ExplorerProps {
     /// or two graphs that will be compared to each other.
     pub graphs: ExplorerComponentInputGraphs,
 
-    /// serialized traversal config. Serialization format
+    /// serialized traversal config (for the Left graph).
+    /// Serialization format:
     /// 1. JSON
     /// 2. ZSTD compression
     /// 3. Base64 (UrlSafe, NoPadding)
-    pub traversal_config: Option<String>,
-    pub on_traversal_config_change: CallbackFn,
+    pub traversal_config_l: Option<String>,
+    pub on_traversal_config_change_l: Option<CallbackFn>,
+
+    /// Same as traversal config, but for the Right graph
+    /// (in delta/comparison view)
+    pub traversal_config_r: Option<String>,
+    pub on_traversal_config_change_r: Option<CallbackFn>,
 
     /// serialized traversal config. Serialization format
     /// 1. JSON

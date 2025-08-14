@@ -41,8 +41,10 @@ export function Explorer(props: ExplorerProps) {
 
   const {
     graphs,
-    traversal_config,
-    on_traversal_config_change,
+    traversal_config_l,
+    on_traversal_config_change_l,
+    traversal_config_r,
+    on_traversal_config_change_r,
     graph_settings,
     on_graph_settings_change,
   } = props;
@@ -59,12 +61,12 @@ export function Explorer(props: ExplorerProps) {
   /// We modify it in place and return a new nativeGraph reference with all caches busted.
   const [tvc, nativeGraph] = useMemo(() => {
     const tvc: TraversalConfig =
-      traversal_config == null
+      traversal_config_l == null
         ? nativeGraphNoTVCLeft.getTraversalConfig()
-        : JSON.parse(from_zstd_base64_url_safe_no_pad(traversal_config));
+        : JSON.parse(from_zstd_base64_url_safe_no_pad(traversal_config_l));
 
     return [tvc, nativeGraphNoTVCLeft.getApplyTraversalConfig(tvc)];
-  }, [traversal_config, nativeGraphNoTVCLeft]);
+  }, [traversal_config_l, nativeGraphNoTVCLeft]);
 
   const settings = useMemo(() => {
     return graph_settings == null
@@ -77,11 +79,11 @@ export function Explorer(props: ExplorerProps) {
       const traversal_config_zstd_base64_url_safe_no_padding =
         to_zstd_base64_url_safe_no_pad(JSON.stringify(tvc));
 
-      on_traversal_config_change?.(
+      on_traversal_config_change_l?.(
         traversal_config_zstd_base64_url_safe_no_padding,
       );
     },
-    [on_traversal_config_change],
+    [on_traversal_config_change_l],
   );
 
   const setSettingsCb = useCallback(

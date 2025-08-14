@@ -17,13 +17,20 @@ export interface ExplorerProps {
    */
   graphs: ExplorerComponentInputGraphs;
   /**
-   * serialized traversal config. Serialization format
+   * serialized traversal config (for the Left graph).
+   * Serialization format:
    * 1. JSON
    * 2. ZSTD compression
    * 3. Base64 (UrlSafe, NoPadding)
    */
-  traversal_config?: string | undefined;
-  on_traversal_config_change: CallbackFn;
+  traversal_config_l?: string | undefined;
+  on_traversal_config_change_l?: CallbackFn | undefined;
+  /**
+   * Same as traversal config, but for the Right graph
+   * (in delta/comparison view)
+   */
+  traversal_config_r?: string | undefined;
+  on_traversal_config_change_r?: CallbackFn | undefined;
   /**
    * serialized traversal config. Serialization format
    * 1. JSON

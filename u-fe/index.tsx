@@ -10,6 +10,10 @@ const ARRAY_GRAPH_JSON_ZSTD_BASE64_LEFT_ELEMENT_ID =
 const ARRAY_GRAPH_JSON_ZSTD_BASE64_RIGHT_ELEMENT_ID =
   "array_graph_json_zstd_base64_right";
 
+const QUERY_PARAM_GRAPH_SETTINGS = "graph_settings";
+const QUERY_PARAM_TVC_L = "tvc";
+const QUERY_PARAM_TVC_R = "tvc_r";
+
 window.onload = () => {
   const rootDiv = document.getElementById("root");
   if (rootDiv == null) {
@@ -21,17 +25,22 @@ window.onload = () => {
 };
 
 function Root() {
-  const [tvcUrlParam, setTvcUrlParam] = useState<string | null>(() =>
-    getQueryParam("tvc"),
+  const [tvcUrlParamL, setTvcUrlParamL] = useState<string | null>(() =>
+    getQueryParam(QUERY_PARAM_TVC_L),
+  );
+  const [tvcUrlParamR, setTvcUrlParamR] = useState<string | null>(() =>
+    getQueryParam(QUERY_PARAM_TVC_R),
   );
   const [graphSettingsURLParam, setGraphSettingsURLParam] = useState<
     string | null
-  >(() => getQueryParam("graph_settings"));
+  >(() => getQueryParam(QUERY_PARAM_GRAPH_SETTINGS));
 
   useEffect(() => {
     const urlHandler = () => {
-      const newTvcUrlParam = getQueryParam("tvc");
-      setTvcUrlParam(newTvcUrlParam);
+      const newTvcUrlParamL = getQueryParam(QUERY_PARAM_TVC_L);
+      const newTvcUrlParamR = getQueryParam(QUERY_PARAM_TVC_R);
+      setTvcUrlParamL(newTvcUrlParamL);
+      setTvcUrlParamR(newTvcUrlParamR);
     };
 
     window.addEventListener("popstate", urlHandler);
@@ -70,17 +79,30 @@ function Root() {
     };
   }, []);
 
-  const onTraversalConfigZSTDBase64UrlSafeNoPaddingChange = useCallback(
-    (newTvcUrlParam: string) => {
-      if (newTvcUrlParam === tvcUrlParam) {
+  const on_traversal_config_change_l = useCallback(
+    (newTvcUrlParamL: string) => {
+      if (newTvcUrlParamL === tvcUrlParamL) {
         return; // No change, do nothing
       }
-      setTvcUrlParam(newTvcUrlParam);
+      setTvcUrlParamL(newTvcUrlParamL);
       const url = new URL(window.location.href);
-      url.searchParams.set("tvc", newTvcUrlParam);
+      url.searchParams.set(QUERY_PARAM_TVC_L, newTvcUrlParamL);
       window.history.pushState({}, "", url.toString());
     },
-    [tvcUrlParam],
+    [tvcUrlParamL],
+  );
+
+  const on_traversal_config_change_r = useCallback(
+    (newTvcUrlParamR: string) => {
+      if (newTvcUrlParamR === tvcUrlParamR) {
+        return; // No change, do nothing
+      }
+      setTvcUrlParamR(newTvcUrlParamR);
+      const url = new URL(window.location.href);
+      url.searchParams.set(QUERY_PARAM_TVC_R, newTvcUrlParamR);
+      window.history.pushState({}, "", url.toString());
+    },
+    [tvcUrlParamR],
   );
 
   const onGraphSettingsZSTDBase64UrlSafeNoPaddingChange = useCallback(
@@ -99,10 +121,10 @@ function Root() {
   return (
     <Explorer
       graphs={graphs}
-      traversal_config={tvcUrlParam ?? undefined}
-      on_traversal_config_change={
-        onTraversalConfigZSTDBase64UrlSafeNoPaddingChange
-      }
+      traversal_config_l={tvcUrlParamL ?? undefined}
+      on_traversal_config_change_l={on_traversal_config_change_l}
+      traversal_config_r={tvcUrlParamR ?? undefined}
+      on_traversal_config_change_r={on_traversal_config_change_r}
       graph_settings={graphSettingsURLParam ?? undefined}
       on_graph_settings_change={onGraphSettingsZSTDBase64UrlSafeNoPaddingChange}
     />
