@@ -281,7 +281,7 @@ export function TreeTable(props: {
       if (row == null) {
         return null;
       }
-      const selected = ctx.selectedRowIDX === rowIDX && " bg-primary";
+      const selected = ctx.selectedRowIDX === rowIDX;
       const cell = (() => {
         const t = column.t;
         switch (t) {
@@ -324,7 +324,8 @@ export function TreeTable(props: {
         <div
           className={clsx(
             "border-b box-border-gray-200 flex items-center cursor-pointer",
-            selected,
+            selected &&
+              "box-border border-t border-b border-primary/50 bg-primary/4",
           )}
           onMouseDown={(_e) => {
             ctx.setSelectedRowIDX(rowIDX);
