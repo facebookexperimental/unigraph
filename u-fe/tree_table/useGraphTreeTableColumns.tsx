@@ -7,9 +7,11 @@ import clsx from "clsx";
 import { useMemo } from "react";
 import { ARROW_POINTS_FROM_NON_EXISTENT } from "../ArrowUtils";
 import type NativeGraph from "../NativeGraph";
+import { GRAPH_SIDE, type GraphSide } from "../NativeGraph";
+import type TwinGraph from "../TwinGraph";
 import UTooltip from "../components/UTooltip";
 import { useGraphSettings } from "../context/GraphSettingsContext";
-import { useNativeGraphs } from "../context/NativeGraphContext";
+import { useTwinGraph } from "../context/NativeGraphContext";
 import { useTVC } from "../context/TraversalConfigContext";
 import formatMetric from "../lib/formatMetric";
 import ContextMenuCell from "./ContextMenuCell";
@@ -30,18 +32,18 @@ const NO_PRECISION_FORMAT: MetricFormat = {
 };
 
 export default function useGraphTreeTableColumns(): ColumnDefinitions {
-  const [nativeGraphL, _nativeGraphR] = useNativeGraphs();
+  const twinGraph = useTwinGraph();
   const [graphSettings] = useGraphSettings();
   const { tvc } = useTVC();
 
   return useMemo(() => {
     // TODO: make it work with the right graph
-    return defaultColumnDefinitions(nativeGraphL, graphSettings, tvc);
-  }, [nativeGraphL, graphSettings, tvc]);
+    return defaultColumnDefinitions(twinGraph, graphSettings, tvc);
+  }, [twinGraph, graphSettings, tvc]);
 }
 
 function defaultColumnDefinitions(
-  nativeGraph: NativeGraph,
+  twinGraph: TwinGraph,
   graphSettings: GraphSettings,
   tvc: TraversalConfig,
 ): ColumnDefinitions {
@@ -52,6 +54,9 @@ function defaultColumnDefinitions(
   const showMetrics = graphSettings.ui_settings?.columns?.hide_metrics !== true;
   const showTiered = graphSettings.ui_settings?.columns?.show_tiered === true;
   const dominated = graphSettings.ui_settings?.graph_structure === "Dominator";
+
+  const nativeGraph = twinGraph.l;
+  const nativeGraphR = twinGraph.r;
 
   const columnDefinitions: { [name: string]: NonTreeColumnDefinition } = {};
   for (const metricName of nativeGraph.metricNames) {
@@ -107,10 +112,29 @@ function defaultColumnDefinitions(
       showTransitive &&
       graphSettings.ui_settings?.columns?.show_transitive_count !== "Never"
     ) {
-      const [transitiveCountColumnID, transitiveCountColumnDefinition] =
-        createTransitiveCountColumn(nativeGraph, dominated);
-      columnDefinitions[transitiveCountColumnID] =
-        transitiveCountColumnDefinition;
+      const [transitiveCountColumnIDL, transitiveCountColumnDefinitionL] =
+        createTransitiveCountColumn(twinGraph.l, dominated, GRAPH_SIDE.L);
+
+      columnDefinitions[transitiveCountColumnIDL] =
+        transitiveCountColumnDefinitionL;
+
+      if (nativeGraphR != null) {
+        const [transitiveCountColumnIDR, transitiveCountColumnDefinitionR] =
+          createTransitiveCountColumn(nativeGraphR, dominated, GRAPH_SIDE.R);
+        columnDefinitions[transitiveCountColumnIDR] =
+          transitiveCountColumnDefinitionR;
+
+        const [
+          transitiveCountDeltaColumnIDLR,
+          transitiveCountDeltaColumnDefinitionLR,
+        ] = createTransitiveCountDeltaColumn(
+          nativeGraph,
+          nativeGraphR,
+          dominated,
+        );
+        columnDefinitions[transitiveCountDeltaColumnIDLR] =
+          transitiveCountDeltaColumnDefinitionLR;
+      }
     }
 
     if (showConjoint) {
@@ -457,8 +481,9 @@ function createParentsCountColumn(
 function createTransitiveCountColumn(
   nativeGraph: NativeGraph,
   dominated: boolean,
+  side: GraphSide,
 ): [string, NumericValueColumnDefinition] {
-  const columnID = "transitive_count";
+  const columnID = `transitive_count_${side}`;
   const { getValues, label } = (() => {
     if (dominated) {
       return {
@@ -505,6 +530,62 @@ function createTransitiveCountColumn(
             format={NO_PRECISION_FORMAT}
           />
         );
+      }
+    },
+    getNumericValues: getValues,
+    sortable: true,
+    isHidden: false,
+  };
+  return [columnID, definition];
+}
+
+function createTransitiveCountDeltaColumn(
+  nativeGraphL: NativeGraph,
+  nativeGraphR: NativeGraph,
+  dominated: boolean,
+): [string, NumericValueColumnDefinition] {
+  const columnID = "transitive_count_delta";
+  const { getValues, label } = (() => {
+    if (dominated) {
+      return {
+        getValues: (idxs: NodeIDX[]) => {
+          return diffMetricArrays(
+            nativeGraphL.getTransitiveCountDominated(idxs),
+            nativeGraphR.getTransitiveCountDominated(idxs),
+          );
+        },
+        label: "D(count) ∆",
+      };
+    } else {
+      return {
+        getValues: (idxs: NodeIDX[]) =>
+          diffMetricArrays(
+            nativeGraphL.getTransitiveCount(idxs),
+            nativeGraphR.getTransitiveCount(idxs),
+          ),
+        label: "T(count) ∆",
+      };
+    }
+  })();
+
+  const definition: NumericValueColumnDefinition = {
+    t: "numeric_value_column",
+    label: label,
+    renderer: (row: Readonly<Row>) => {
+      if (
+        nativeGraphL.isNodeReachable(row.arrow_pair.points_to) ||
+        nativeGraphR.isNodeReachable(row.arrow_pair.points_to)
+      ) {
+        return (
+          <MetricCell
+            value={getValues([row.arrow_pair.points_to])[0] ?? 0}
+            format={NO_PRECISION_FORMAT}
+          />
+        );
+      } else {
+        // If the arrow is coming from a non-existent point, we don't know
+        // what to override
+        return <MissingMetric />;
       }
     },
     getNumericValues: getValues,
@@ -593,4 +674,20 @@ function MissingMetric() {
   return (
     <p className="px-4 text-right tabular-nums w-full whitespace-nowrap">-</p>
   );
+}
+
+/// Diff two arrays of the same length.
+/// used for computing delta column values across multiple rows.
+///
+/// e.g. [1, 10, 0]
+/// and. [0, 15, 2]
+/// will make:
+///      [-1, 5, 2]
+function diffMetricArrays(a: Float32Array, b: Float32Array): Float32Array {
+  const maxLen = Math.max(a.length, b.length);
+  const result = new Float32Array(maxLen);
+  for (let i = 0; i < maxLen; i++) {
+    result[i] = (b[i] ?? 0) - (a[i] ?? 0);
+  }
+  return result;
 }
