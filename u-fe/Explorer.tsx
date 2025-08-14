@@ -145,7 +145,7 @@ function Page(props: {
   const keyboardEventHandler = useExplorerKeyboardShortcuts();
 
   const selectedSidebarPanel =
-    settings.ui_settings?.selected_sidebar_panel ?? "Simulation";
+    settings.ui_settings?.selected_sidebar_panel ?? "None";
 
   const panelTab: React.ReactNode = (() => {
     switch (selectedSidebarPanel) {
