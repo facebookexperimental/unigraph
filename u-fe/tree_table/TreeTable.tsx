@@ -29,7 +29,7 @@ import type { SortOrder } from "../__generated__/ts/SortOrder";
 import { Progress } from "../components/ui/progress";
 import { useSelectedPath } from "../context/SelectedPathContext";
 import type { NodeIDX } from "../types";
-import { TreeCellDelta, TreeCellSingle } from "./TreeCell";
+import TreeCell from "./TreeCell";
 import {
   type Row,
   type SortFn,
@@ -216,10 +216,6 @@ export function TreeTable(props: {
 
   const ITEM_SIZE = 35;
 
-  const TreeCellComponent = props.treeTableGraph.isDeltaGraph
-    ? TreeCellDelta
-    : TreeCellSingle;
-
   const rowVirtualizer = useVirtualizer({
     count: ctx.rows.length,
     getScrollElement: () => parentRef.current,
@@ -287,7 +283,7 @@ export function TreeTable(props: {
         switch (t) {
           case "tree": {
             return (
-              <TreeCellComponent
+              <TreeCell
                 row={row}
                 minDepth={minDepth}
                 paddingComponent={paddingComponent}

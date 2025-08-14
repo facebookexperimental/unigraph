@@ -54,6 +54,7 @@ function defaultColumnDefinitions(
   const showMetrics = graphSettings.ui_settings?.columns?.hide_metrics !== true;
   const showTiered = graphSettings.ui_settings?.columns?.show_tiered === true;
   const dominated = graphSettings.ui_settings?.graph_structure === "Dominator";
+  const showWouldBeMetric = !twinGraph.isDeltaGraph();
 
   const nativeGraph = twinGraph.l;
   const nativeGraphR = twinGraph.r;
@@ -113,14 +114,24 @@ function defaultColumnDefinitions(
       graphSettings.ui_settings?.columns?.show_transitive_count !== "Never"
     ) {
       const [transitiveCountColumnIDL, transitiveCountColumnDefinitionL] =
-        createTransitiveCountColumn(twinGraph.l, dominated, GRAPH_SIDE.L);
+        createTransitiveCountColumn(
+          twinGraph.l,
+          dominated,
+          GRAPH_SIDE.L,
+          showWouldBeMetric,
+        );
 
       columnDefinitions[transitiveCountColumnIDL] =
         transitiveCountColumnDefinitionL;
 
       if (nativeGraphR != null) {
         const [transitiveCountColumnIDR, transitiveCountColumnDefinitionR] =
-          createTransitiveCountColumn(nativeGraphR, dominated, GRAPH_SIDE.R);
+          createTransitiveCountColumn(
+            nativeGraphR,
+            dominated,
+            GRAPH_SIDE.R,
+            showWouldBeMetric,
+          );
         columnDefinitions[transitiveCountColumnIDR] =
           transitiveCountColumnDefinitionR;
 
@@ -482,6 +493,7 @@ function createTransitiveCountColumn(
   nativeGraph: NativeGraph,
   dominated: boolean,
   side: GraphSide,
+  showWouldBe: boolean,
 ): [string, NumericValueColumnDefinition] {
   const columnID = `transitive_count_${side}`;
   const { getValues, label } = (() => {
@@ -524,11 +536,13 @@ function createTransitiveCountColumn(
             from: row.arrow_pair.points_from,
             to: row.arrow_pair.points_to,
           }).node_count ?? 0;
-        return (
+        return showWouldBe ? (
           <WouldBeDeltaMetricCell
             value={wouldBeValue - currentValue}
             format={NO_PRECISION_FORMAT}
           />
+        ) : (
+          <MissingMetric />
         );
       }
     },
