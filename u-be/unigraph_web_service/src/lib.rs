@@ -25,9 +25,12 @@ pub async fn start(
         &graphite_graph_json_file_path_left,
         &graphite_graph_json_file_path_right,
     ) {
-        (Some(l), Some(r)) => (parse_graph(l)?, Some(parse_graph(r)?)),
-        (Some(l), None) => (parse_graph(l)?, None),
-        (None, None) => (unigraph_core::make_test_graph()?, None),
+        (Some(l), Some(r)) => (into_array_graph_json(l)?, Some(into_array_graph_json(r)?)),
+        (Some(l), None) => (into_array_graph_json(l)?, None),
+        (None, None) => (
+            to_array_graph_json_zstd_base64(&unigraph_core::make_test_graph()?)?,
+            None,
+        ),
         (None, Some(_)) => {
             bail!("Left graph must be present if right graph is passed");
         }
@@ -61,7 +64,7 @@ pub async fn start(
     Ok(())
 }
 
-fn html(left: &MapGraph, right: &Option<MapGraph>) -> Result<String> {
+fn html(left_json: &str, right_json: &Option<String>) -> Result<String> {
     let html_path = format!("{THIS_FILES_DIR}/{HTML_TEMLPATE_PATH}");
 
     let js_path = format!("{}/{}", THIS_FILES_DIR, "../../.build/index.js");
@@ -71,12 +74,8 @@ fn html(left: &MapGraph, right: &Option<MapGraph>) -> Result<String> {
     let html_template = read_str(&html_path)?;
     let js = read_str(&js_path)?;
 
-    let left_json = to_array_graph_json_zstd_base64(left)?;
-    let right_json = if let Some(right_graph) = right {
-        to_array_graph_json_zstd_base64(right_graph)?
-    } else {
-        "".to_string()
-    };
+    let empty_json = "".to_string();
+    let right_json = right_json.as_ref().unwrap_or(&empty_json);
 
     let mut context = tera::Context::new();
     context.insert("css", &css);
@@ -92,12 +91,14 @@ fn read_str(path: &str) -> Result<String> {
 
 fn to_array_graph_json_zstd_base64(map_graph: &MapGraph) -> Result<String> {
     let json = map_graph.to_array_graph()?.into_serializable().to_json()?;
-    let compressed = zstd::encode_all(json.as_bytes(), 18)?;
+    let compressed = zstd::encode_all(json.as_bytes(), 14)?;
     let b64 = base64::engine::general_purpose::STANDARD.encode(compressed);
     Ok(b64)
 }
 
-fn parse_graph(p: &Path) -> Result<MapGraph> {
+fn into_array_graph_json(p: &Path) -> Result<String> {
     let file_string_content = std::fs::read_to_string(p).context("Failed to read file")?;
-    unigraph_core::MapGraph::from_json(&file_string_content).context("Failed to parse JSON")
+    let map_graph =
+        unigraph_core::MapGraph::from_json(&file_string_content).context("Failed to parse JSON")?;
+    to_array_graph_json_zstd_base64(&map_graph)
 }
