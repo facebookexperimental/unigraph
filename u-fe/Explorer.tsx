@@ -7,11 +7,10 @@ import {
 } from "../.build/wasm/unigraph_wasm";
 import ExplorerFooter from "./ExplorerFooter";
 import { useExplorerKeyboardShortcuts } from "./ExplorerKeyboardShortcutsWrapper";
-import NativeGraph, { GRAPH_SIDE, type GraphSide } from "./NativeGraph";
+import NativeGraph from "./NativeGraph";
 import Sidebar from "./Sidebar";
 import Simulation from "./Simulation";
 import type { ArrayGraphUISettingsTreeTableEntryPoints } from "./__generated__/ts/ArrayGraphUISettingsTreeTableEntryPoints";
-import type { ExplorerComponentInputGraph } from "./__generated__/ts/ExplorerComponentInputGraph";
 import type { ExplorerProps } from "./__generated__/ts/ExplorerProps";
 import type { GraphSettings } from "./__generated__/ts/GraphSettings";
 import type { TraversalConfig } from "./__generated__/ts/TraversalConfig";
@@ -48,14 +47,12 @@ export function Explorer(props: ExplorerProps) {
     on_graph_settings_change,
   } = props;
 
-  const { left: graph_left, right: _graph_right } = graphs;
-
   const containerRef = useRef<HTMLDivElement>(null);
 
   /// This graph initializes a new native graph every time the raw data changes.
-  const nativeGraphNoTVC = useMemo(
-    () => initNativeGraph(graph_left, GRAPH_SIDE.L),
-    [graph_left],
+  const [nativeGraphNoTVCLeft, _nativeGraphNoTVCRight] = useMemo(
+    () => NativeGraph.fromSerialized(graphs),
+    [graphs],
   );
 
   /// This hook will NOT re-initialize the native graph if the traversal config changes.
@@ -63,17 +60,17 @@ export function Explorer(props: ExplorerProps) {
   const [tvc, nativeGraph] = useMemo(() => {
     const tvc: TraversalConfig =
       traversal_config == null
-        ? nativeGraphNoTVC.getTraversalConfig()
+        ? nativeGraphNoTVCLeft.getTraversalConfig()
         : JSON.parse(from_zstd_base64_url_safe_no_pad(traversal_config));
 
-    return [tvc, nativeGraphNoTVC.getApplyTraversalConfig(tvc)];
-  }, [traversal_config, nativeGraphNoTVC]);
+    return [tvc, nativeGraphNoTVCLeft.getApplyTraversalConfig(tvc)];
+  }, [traversal_config, nativeGraphNoTVCLeft]);
 
   const settings = useMemo(() => {
     return graph_settings == null
-      ? nativeGraphNoTVC.getGraphSettings() // default settings come from the native graph
+      ? nativeGraphNoTVCLeft.getGraphSettings() // default settings come from the native graph
       : JSON.parse(from_zstd_base64_url_safe_no_pad(graph_settings));
-  }, [graph_settings, nativeGraphNoTVC]);
+  }, [graph_settings, nativeGraphNoTVCLeft]);
 
   const setTvcCb = useCallback(
     (tvc: TraversalConfig) => {
@@ -176,25 +173,6 @@ function Page(props: {
       </div>
     </div>
   );
-}
-
-function initNativeGraph(
-  graph: ExplorerComponentInputGraph,
-  side: GraphSide,
-): NativeGraph {
-  if ("MapGraphSerialized" in graph) {
-    graph.MapGraphSerialized;
-    return NativeGraph.fromMapGraphJSON(graph.MapGraphSerialized.value, side);
-  } else if ("ArrayGraphSerialized" in graph) {
-    return NativeGraph.fromArrayGraphJSONZstdBase64(
-      graph.ArrayGraphSerialized.value,
-      side,
-    );
-  } else {
-    const _: never = graph;
-    _;
-    throw new Error("Unhandled case");
-  }
 }
 
 function getRoots(

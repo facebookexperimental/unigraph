@@ -24,13 +24,13 @@ import {
   get_transitive_tiered_metrics,
   node_idx_to_name,
   node_name_to_idx_log,
-  set_array_graph_json_zstd_base64,
-  set_map_graph,
+  set_graphs,
 } from "../.build/wasm/unigraph_wasm";
 import type { ArrayGraphStats } from "./__generated__/ts/ArrayGraphStats";
 import type { Arrow } from "./__generated__/ts/Arrow";
 import type { CombinedMetricsForNodes } from "./__generated__/ts/CombinedMetricsForNodes";
 import type { ConjointCost } from "./__generated__/ts/ConjointCost";
+import type { ExplorerComponentInputGraphs } from "./__generated__/ts/ExplorerComponentInputGraphs";
 import type { GraphSettings } from "./__generated__/ts/GraphSettings";
 import type { GraphStructure } from "./__generated__/ts/GraphStructure";
 import type { TraversalConfig } from "./__generated__/ts/TraversalConfig";
@@ -80,17 +80,15 @@ export default class NativeGraph {
 
   private combinedMetricsCache: CombinedMetricsCache | null = null;
 
-  static fromMapGraphJSON(mapGraphJSON: string, side: GraphSide): NativeGraph {
-    set_map_graph(mapGraphJSON);
-    return new NativeGraph(side);
-  }
-
-  static fromArrayGraphJSONZstdBase64(
-    arrayGraphJSONZstdBase64: string,
-    side: GraphSide,
-  ): NativeGraph {
-    set_array_graph_json_zstd_base64(arrayGraphJSONZstdBase64);
-    return new NativeGraph(side);
+  static fromSerialized(
+    serialized: ExplorerComponentInputGraphs,
+  ): [NativeGraph, NativeGraph | null] {
+    set_graphs(JSON.stringify(serialized));
+    if (serialized.right == null) {
+      return [new NativeGraph(GRAPH_SIDE.L), null];
+    } else {
+      return [new NativeGraph(GRAPH_SIDE.L), new NativeGraph(GRAPH_SIDE.R)];
+    }
   }
 
   /// Initializes a new graph on the WASM side and makes a new

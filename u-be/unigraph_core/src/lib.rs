@@ -29,6 +29,7 @@ pub use types::array_graph::graph_settings;
 pub use types::array_graph::remap_utils;
 pub use types::map_graph::MapGraph;
 pub use types::twin_graph::TwinGraph;
+pub use types::ui_types;
 
 #[cfg(test)]
 mod tests;

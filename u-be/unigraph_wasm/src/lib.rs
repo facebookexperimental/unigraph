@@ -14,8 +14,12 @@ use unigraph_core::MapGraph;
 use unigraph_core::TraversalConfig;
 use unigraph_core::TwinGraph;
 use unigraph_core::graph_settings::GraphStructure;
-use unigraph_core::make_test_graph;
 use unigraph_core::types::NodeIDX;
+use unigraph_core::ui_types::ArrayGraphSerialized;
+use unigraph_core::ui_types::ExplorerComponentInputGraph;
+use unigraph_core::ui_types::ExplorerComponentInputGraphs;
+use unigraph_core::ui_types::MapGraphSerialized;
+use unigraph_core::ui_types::SerializationFormat;
 use unigraph_graph_state::GlobalGraphState;
 use unigraph_graph_state::global_graph_state;
 use unigraph_graph_state::types::SimulationParams;
@@ -30,6 +34,8 @@ use wasm_error::WasmJSError;
 use winit::event_loop::EventLoop;
 use winit::window::Window;
 use winit::window::WindowAttributes;
+
+use crate::serialization::from_zstd_base64;
 
 #[allow(dead_code)]
 fn get_canvas() -> Result<Option<web_sys::HtmlCanvasElement>> {
@@ -107,50 +113,39 @@ pub fn set_event_loop_active(active: bool) -> Result<(), WasmJSError> {
 }
 
 #[wasm_bindgen]
-pub fn set_map_graph(graph_json: Option<String>) -> Result<(), WasmJSError> {
-    let array_graph = if let Some(graph_json) = graph_json {
-        MapGraph::from_json(&graph_json)
-            .unwrap()
-            .to_array_graph()
-            .unwrap()
-    } else {
-        log::info!("No graph provided, using test graph");
-        make_test_graph().unwrap().to_array_graph().unwrap()
+pub fn set_graphs(explorer_component_input_graphs_json: String) -> Result<(), WasmJSError> {
+    let graphs: ExplorerComponentInputGraphs =
+        serde_json::from_str(&explorer_component_input_graphs_json)
+            .context("Failed to deserialize ExplorerComponentInputGraphs")?;
+
+    let (left, right) = match graphs {
+        ExplorerComponentInputGraphs { left, right: None } => {
+            let left = parse_input_graph(left)?;
+            (left, None)
+        }
+        ExplorerComponentInputGraphs {
+            left,
+            right: Some(right),
+        } => {
+            let left = parse_input_graph(left)?;
+            let right = parse_input_graph(right)?;
+            (left, Some(right))
+        }
     };
-    let twin_graph = TwinGraph::from_one(array_graph.append_super_root()?)?;
-    GlobalGraphState::graph_state().replace_graph(twin_graph)?;
+
+    match right {
+        Some(right) => {
+            let twin_graph = TwinGraph::from_two(left, right)?;
+            GlobalGraphState::graph_state().replace_graph(twin_graph)?;
+        }
+        None => {
+            let array_graph: ArrayGraph = left.into();
+            let twin_graph = TwinGraph::from_one(array_graph.append_super_root()?)?;
+            GlobalGraphState::graph_state().replace_graph(twin_graph)?;
+        }
+    }
+
     Ok(())
-}
-
-#[wasm_bindgen]
-pub fn set_array_graph_json_zstd_base64(
-    array_graph_json_zstd_base64: String,
-) -> Result<(), WasmJSError> {
-    let array_graph_serializable = parse_graph(array_graph_json_zstd_base64)?;
-    let array_graph: ArrayGraph = array_graph_serializable.into();
-    let twin_graph = TwinGraph::from_one(array_graph.append_super_root()?)?;
-    GlobalGraphState::graph_state().replace_graph(twin_graph)?;
-    Ok(())
-}
-
-#[wasm_bindgen]
-pub fn set_two_array_graph_json_zstd_base64(
-    array_graph_json_zstd_base64_left: String,
-    array_graph_json_zstd_base64_right: String,
-) -> Result<(), WasmJSError> {
-    let l = parse_graph(array_graph_json_zstd_base64_left)?;
-    let r = parse_graph(array_graph_json_zstd_base64_right)?;
-    let twin_graph = TwinGraph::from_two(l, r)?;
-    GlobalGraphState::graph_state().replace_graph(twin_graph)?;
-    Ok(())
-}
-
-fn parse_graph(array_graph_json_zstd_base64: String) -> Result<ArrayGraphSerializable> {
-    let json_bytes = serialization::from_zstd_base64(&array_graph_json_zstd_base64)
-        .context("Failed to decode array_graph_json_zstd_base64_left")?;
-
-    ArrayGraphSerializable::from_json_bytes(&json_bytes)
-        .context("Failed to deserialize ArrayGraph JSON bytes")
 }
 
 #[wasm_bindgen]
@@ -542,4 +537,29 @@ pub fn to_zstd_base64_url_safe_no_pad(s: &str) -> Result<String, WasmJSError> {
     let r = serialization::to_zstd_base64_url_safe_no_pad(s.as_bytes(), 10)
         .context("Failed to compress string to zstd base64 URL-safe no pad")?;
     Ok(r)
+}
+
+fn parse_input_graph(g: ExplorerComponentInputGraph) -> Result<ArrayGraphSerializable> {
+    match g {
+        ExplorerComponentInputGraph::ArrayGraphSerialized(ArrayGraphSerialized {
+            format,
+            value,
+        }) => deser(&value, format),
+        ExplorerComponentInputGraph::MapGraphSerialized(MapGraphSerialized { format, value }) => {
+            let map_graph: MapGraph = deser(&value, format)?;
+            map_graph.to_array_graph_serializable()
+        }
+    }
+}
+
+fn deser<T: serde::de::DeserializeOwned>(value: &str, format: SerializationFormat) -> Result<T> {
+    match format {
+        SerializationFormat::Json => {
+            serde_json::from_str(value).context("Failed to deserialize JSON")
+        }
+        SerializationFormat::JsonZstdBase64 => {
+            let decoded = from_zstd_base64(value)?;
+            serde_json::from_slice(&decoded).context("Failed to deserialize JSON")
+        }
+    }
 }

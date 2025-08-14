@@ -157,8 +157,8 @@ pub fn remap_directed_edges(
                     remapped_edges.push(new_points_to);
                 }
             }
-            remapped_offsets.push(remapped_edges.len());
         }
+        remapped_offsets.push(remapped_edges.len());
     }
 
     (remapped_edges, remapped_offsets)
@@ -247,6 +247,9 @@ pub fn remap_node_metadata(
         for &original_position in &ctx.original_positions {
             if let Some(original_position) = original_position {
                 new_vec.push(metrics[original_position]);
+            } else {
+                // for nodes that don't exist we will use 0.0 as the default
+                new_vec.push(0.0);
             }
         }
         new_metrics.insert(metric_name.clone(), new_vec);

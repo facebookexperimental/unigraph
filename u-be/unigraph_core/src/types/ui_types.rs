@@ -1,14 +1,12 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-#![allow(dead_code)]
-
 #[derive(typegen::TypeGen)]
 #[typegen(TypeScript("(tvc: string) => void"), Flow("(string) => void"))]
-struct CallbackFn();
+pub struct CallbackFn();
 
 #[derive(typegen::TypeGen)]
 #[typegen(skip(Hack))]
-struct ExplorerProps {
+pub struct ExplorerProps {
     /// NODE: DO NOT FORGET TO MEMOIZE IF YOU CONSTRUCT THIS OBJECT.
     ///
     /// Provide a graph to visualize/explore. Can be a single graph
@@ -30,37 +28,37 @@ struct ExplorerProps {
     pub on_graph_settings_change: CallbackFn,
 }
 
-#[derive(typegen::TypeGen)]
+#[derive(typegen::TypeGen, serde::Deserialize)]
 #[typegen(skip(Hack))]
-struct ExplorerComponentInputGraphs {
-    left: ExplorerComponentInputGraph,
-    right: Option<ExplorerComponentInputGraph>,
+pub struct ExplorerComponentInputGraphs {
+    pub left: ExplorerComponentInputGraph,
+    pub right: Option<ExplorerComponentInputGraph>,
 }
 
-#[derive(typegen::TypeGen)]
+#[derive(typegen::TypeGen, serde::Deserialize)]
 #[typegen(skip(Hack))]
-enum ExplorerComponentInputGraph {
+pub enum ExplorerComponentInputGraph {
     MapGraphSerialized(MapGraphSerialized),
     ArrayGraphSerialized(ArrayGraphSerialized),
 }
 
-#[derive(typegen::TypeGen)]
+#[derive(typegen::TypeGen, serde::Deserialize)]
 #[typegen(skip(Hack))]
-enum SerializationFormat {
+pub enum SerializationFormat {
     Json,
     JsonZstdBase64,
 }
 
-#[derive(typegen::TypeGen)]
+#[derive(typegen::TypeGen, serde::Deserialize)]
 #[typegen(skip(Hack))]
-struct MapGraphSerialized {
-    format: SerializationFormat,
-    value: String,
+pub struct MapGraphSerialized {
+    pub format: SerializationFormat,
+    pub value: String,
 }
 
-#[derive(typegen::TypeGen)]
+#[derive(typegen::TypeGen, serde::Deserialize)]
 #[typegen(skip(Hack))]
-struct ArrayGraphSerialized {
-    format: SerializationFormat,
-    value: String,
+pub struct ArrayGraphSerialized {
+    pub format: SerializationFormat,
+    pub value: String,
 }

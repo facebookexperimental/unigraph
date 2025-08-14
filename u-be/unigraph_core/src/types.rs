@@ -3,7 +3,7 @@
 pub(crate) mod array_graph;
 pub mod map_graph;
 pub(crate) mod twin_graph;
-mod ui_types;
+pub mod ui_types;
 
 use std::fmt::Display;
 use std::ops::Add;
