@@ -35,14 +35,13 @@ use crate::ArrayGraphSerializable;
 use crate::GraphBuilder;
 use crate::MapGraph;
 use crate::graph_settings::GraphSettings;
+use crate::graph_settings::GraphStructure;
 use crate::traversal::TraversalConfig;
 use crate::traversal::apply_to_array_graph::apply_traversal_config_to_array_graph;
 use crate::traversal::reachable_subgraph::get_reachable_subgraph_unconfigured;
 use crate::types::NodeName;
 use crate::types::TierName;
-use crate::types::array_graph::array_graph_arrows::get_arrows_dominator;
-use crate::types::array_graph::array_graph_arrows::get_arrows_forward;
-use crate::types::array_graph::array_graph_arrows::get_arrows_reverse;
+use crate::types::array_graph::array_graph_arrows::get_arrows;
 use crate::types::array_graph::array_graph_derived_state::ArrayGraphDerivedState;
 use crate::types::array_graph::array_graph_determine_entrypoints::determine_entrypoints;
 use crate::types::array_graph::array_graph_metrics::CombinedMetricsForNodes;
@@ -319,15 +318,15 @@ impl ArrayGraph {
     }
 
     pub fn get_arrows_forward(&self, node_idx: NodeIDX) -> Result<Vec<Arrow>> {
-        get_arrows_forward(self, node_idx).context("arrows forward")
+        get_arrows(self, node_idx, GraphStructure::Forward).context("arrows forward")
     }
 
     pub fn get_arrows_dominator(&self, node_idx: NodeIDX) -> Result<Vec<Arrow>> {
-        get_arrows_dominator(self, node_idx).context("arrows dominator")
+        get_arrows(self, node_idx, GraphStructure::Dominator).context("arrows dominator")
     }
 
     pub fn get_arrows_reverse(&self, node_idx: NodeIDX) -> Result<Vec<Arrow>> {
-        get_arrows_reverse(self, node_idx).context("arrows reverse")
+        get_arrows(self, node_idx, GraphStructure::Reverse).context("arrows reverse")
     }
 }
 
