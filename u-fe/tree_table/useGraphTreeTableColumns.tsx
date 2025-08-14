@@ -10,7 +10,7 @@ import { ARROW_POINTS_FROM_NON_EXISTENT } from "../ArrowUtils";
 import type NativeGraph from "../NativeGraph";
 import UTooltip from "../components/UTooltip";
 import { useGraphSettings } from "../context/GraphSettingsContext";
-import { useNativeGraph } from "../context/NativeGraphContext";
+import { useNativeGraphs } from "../context/NativeGraphContext";
 import { useTVC } from "../context/TraversalConfigContext";
 import formatMetric from "../lib/formatMetric";
 import ContextMenuCell from "./ContextMenuCell";
@@ -31,13 +31,14 @@ const NO_PRECISION_FORMAT: MetricFormat = {
 };
 
 export default function useGraphTreeTableColumns(): ColumnDefinitions {
-  const nativeGraph = useNativeGraph();
+  const [nativeGraphL, _nativeGraphR] = useNativeGraphs();
   const [graphSettings] = useGraphSettings();
   const { tvc } = useTVC();
 
   return useMemo(() => {
-    return defaultColumnDefinitions(nativeGraph, graphSettings, tvc);
-  }, [nativeGraph, graphSettings, tvc]);
+    // TODO: make it work with the right graph
+    return defaultColumnDefinitions(nativeGraphL, graphSettings, tvc);
+  }, [nativeGraphL, graphSettings, tvc]);
 }
 
 function defaultColumnDefinitions(

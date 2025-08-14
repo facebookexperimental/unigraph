@@ -4,7 +4,7 @@ import { useCallback } from "react";
 import type { ArrayGraphUISettingsTreeTableEntryPoints } from "./__generated__/ts/ArrayGraphUISettingsTreeTableEntryPoints";
 import type { GraphStructure } from "./__generated__/ts/GraphStructure";
 import { useGraphSettings } from "./context/GraphSettingsContext";
-import { useNativeGraph } from "./context/NativeGraphContext";
+import { useNativeGraphL } from "./context/NativeGraphContext";
 import { useSelectedNodeIDX } from "./context/SelectedPathContext";
 
 export function useToggleFlatListView(): [boolean, () => void] {
@@ -30,7 +30,7 @@ export function useToggleReverseView(): [boolean, () => void] {
   const structure = useGraphStructure();
   const entryPoints = useGraphEntryPoints();
   const selectedNodeIDX = useSelectedNodeIDX();
-  const nativeGraph = useNativeGraph();
+  const nativeGraphL = useNativeGraphL();
   const checked = structure === "Reverse";
 
   const toggle = useCallback(() => {
@@ -52,7 +52,7 @@ export function useToggleReverseView(): [boolean, () => void] {
           // table.
           return [
             "Specified" as const,
-            [nativeGraph.getNodeName(selectedNodeIDX)],
+            [nativeGraphL.getNodeName(selectedNodeIDX)],
           ];
         }
       } else {
@@ -82,7 +82,7 @@ export function useToggleReverseView(): [boolean, () => void] {
     checked,
     entryPoints,
     selectedNodeIDX,
-    nativeGraph,
+    nativeGraphL,
   ]);
 
   return [checked, toggle];

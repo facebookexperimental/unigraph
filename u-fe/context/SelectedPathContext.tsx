@@ -10,8 +10,8 @@ import {
   useRef,
   useState,
 } from "react";
-import type NativeGraph from "..//NativeGraph";
-import { useNativeGraph } from "./NativeGraphContext";
+import type TwinGraph from "../TwinGraph";
+import { useTwinGraph } from "./NativeGraphContext";
 
 export type SelectedPathContextType = {
   selectedPath: NodeIDX[] | null;
@@ -37,20 +37,20 @@ export function SelectedPathContextProvider({
   children: React.ReactNode;
   syncToURL: boolean;
 }) {
-  const nativeGraph = useNativeGraph();
+  const twinGraph = useTwinGraph();
   const pathSelector = useRef(new TreeTablePathSelector());
 
   const [selectedPath, setSelectedPath] = useState<NodeIDX[] | null>(() => {
-    return syncToURL ? parseSelectedPathFromURLHash(nativeGraph) : null;
+    return syncToURL ? parseSelectedPathFromURLHash(twinGraph) : null;
   });
 
   const [selectedRow, setSelectedRow] = useState<Row | null>(null);
 
   useEffect(() => {
     if (syncToURL) {
-      syncSelectedPathToURLHash(nativeGraph, selectedPath);
+      syncSelectedPathToURLHash(twinGraph, selectedPath);
     }
-  }, [nativeGraph, selectedPath, syncToURL]);
+  }, [twinGraph, selectedPath, syncToURL]);
 
   const value: SelectedPathContextType = useMemo(() => {
     return {
@@ -99,7 +99,7 @@ export function useSelectedNodeIDX(): NodeIDX | null {
 }
 
 function syncSelectedPathToURLHash(
-  nativeGraph: NativeGraph,
+  twinGraph: TwinGraph,
   selectedPath: NodeIDX[] | null,
 ) {
   if (selectedPath == null || selectedPath.length === 0) {
@@ -108,7 +108,7 @@ function syncSelectedPathToURLHash(
     return;
   }
 
-  const nodeNamePath = selectedPath.map((idx) => nativeGraph.getNodeName(idx));
+  const nodeNamePath = selectedPath.map((idx) => twinGraph.getNodeName(idx));
   const serialized = JSON.stringify(nodeNamePath);
   const encoded = encodeURIComponent(serialized);
   // update the hash of the URL only with the new encoded value
@@ -116,9 +116,7 @@ function syncSelectedPathToURLHash(
   window.history.replaceState(null, "", newHash);
 }
 
-function parseSelectedPathFromURLHash(
-  nativeGraph: NativeGraph,
-): NodeIDX[] | null {
+function parseSelectedPathFromURLHash(twinGraph: TwinGraph): NodeIDX[] | null {
   const hash = window.location.hash;
   if (hash.length === 0) {
     return null;
@@ -131,7 +129,7 @@ function parseSelectedPathFromURLHash(
   const nodeNamePath: string[] = parsed;
   const nodeIDXPath: NodeIDX[] = [];
   for (const nodeName of nodeNamePath) {
-    const nodeIDX = nativeGraph.getNodeIDXByNameLog(nodeName);
+    const nodeIDX = twinGraph.getNodeIDXByNameLog(nodeName);
     if (nodeIDX == null) {
       // We'll try to parse as far as possible. If something
       // is missing in the middle we'll return whatever we have.

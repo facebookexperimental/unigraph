@@ -1,25 +1,57 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-import { createContext, useContext } from "react";
+import { createContext, useContext, useMemo } from "react";
 import type NativeGraph from "../NativeGraph";
+import TwinGraph from "../TwinGraph";
 
-const NativeGraphContext = createContext<NativeGraph | null>(null);
+export type TNativeGraphContext = TwinGraph;
+const NativeGraphContext = createContext<TNativeGraphContext | null>(null);
 
 export function NativeGraphContextProvider({
-  nativeGraph,
+  nativeGraphL,
+  nativeGraphR,
   children,
 }: {
-  nativeGraph: NativeGraph;
+  nativeGraphL: NativeGraph;
+  nativeGraphR: NativeGraph | null;
   children: React.ReactNode;
 }) {
+  const value = useMemo(() => {
+    return new TwinGraph(nativeGraphL, nativeGraphR);
+  }, [nativeGraphL, nativeGraphR]);
+
   return (
-    <NativeGraphContext.Provider value={nativeGraph}>
+    <NativeGraphContext.Provider value={value}>
       {children}
     </NativeGraphContext.Provider>
   );
 }
 
-export function useNativeGraph(): NativeGraph {
+export function useIsDeltaGraph(): boolean {
+  const context = getCTX();
+  return context.r != null;
+}
+
+export function useNativeGraphL(): NativeGraph {
+  const context = getCTX();
+  return context.l;
+}
+
+export function useNativeGraphR(): NativeGraph | null {
+  const context = getCTX();
+  return context.l;
+}
+
+export function useNativeGraphs(): [NativeGraph, NativeGraph | null] {
+  const context = getCTX();
+  return [context.l, context.r];
+}
+
+export function useTwinGraph(): TwinGraph {
+  return getCTX();
+}
+
+function getCTX() {
   const context = useContext(NativeGraphContext);
 
   if (context == null) {

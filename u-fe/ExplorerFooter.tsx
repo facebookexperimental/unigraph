@@ -30,7 +30,7 @@ import { H3 } from "./Typography";
 import UTooltip from "./components/UTooltip";
 import { Button } from "./components/ui/button";
 import { useGraphSettings } from "./context/GraphSettingsContext";
-import { useNativeGraph } from "./context/NativeGraphContext";
+import { useNativeGraphL } from "./context/NativeGraphContext";
 import { useSelectedNodes } from "./context/SelectedNodesContext";
 import { useTVC } from "./context/TraversalConfigContext";
 import formatMetric from "./lib/formatMetric";
@@ -49,7 +49,7 @@ function SelectedNodesMetrics() {
   const [graphSettings] = useGraphSettings();
   const [selectedNodes, _setSelectedNodes, resetSelectedNodes] =
     useSelectedNodes();
-  const nativeGraph = useNativeGraph();
+  const nativeGraph = useNativeGraphL();
 
   const combinedMetrics = useMemo(() => {
     return nativeGraph.getCombinedMetrics(selectedNodes);
@@ -129,7 +129,7 @@ function SelectedNodesMetrics() {
 
 function Toggles() {
   const [graphSettings, setGraphSettings] = useGraphSettings();
-  const nativeGraph = useNativeGraph();
+  const nativeGraph = useNativeGraphL();
   const hasTiers = nativeGraph.stats().tier_names.length > 0;
 
   const [flatViewEnabled, toggleFlatListView] = useToggleFlatListView();
@@ -302,7 +302,7 @@ function Toggles() {
 
 function ConjointCostHoverCardContent() {
   const [graphSettings, setGraphSettings] = useGraphSettings();
-  const nativeGraph = useNativeGraph();
+  const nativeGraph = useNativeGraphL();
 
   const metricCards = Object.entries(
     graphSettings?.ui_settings?.columns?.metric_settings ?? {},
@@ -445,7 +445,7 @@ function ConjointCostHoverCardContent() {
 
 function TransitiveHovercardContent() {
   const [graphSettings, setGraphSettings] = useGraphSettings();
-  const nativeGraph = useNativeGraph();
+  const nativeGraph = useNativeGraphL();
 
   const metricCards = nativeGraph.metricNames.map((metricName) => {
     const metricSettings =
@@ -525,7 +525,7 @@ function TransitiveHovercardContent() {
 
 function MetricsHovercardContent() {
   const [graphSettings, setGraphSettings] = useGraphSettings();
-  const nativeGraph = useNativeGraph();
+  const nativeGraph = useNativeGraphL();
 
   const metricCards = nativeGraph.metricNames.map((metricName) => {
     const metricSettings =
@@ -574,7 +574,7 @@ function MetricsHovercardContent() {
 
 function TiersHoverCardContent() {
   const [graphSettings, setGraphSettings] = useGraphSettings();
-  const nativeGraph = useNativeGraph();
+  const nativeGraph = useNativeGraphL();
   const allTiers = nativeGraph.stats().tier_names;
   const { tvc, setTvc } = useTVC();
 

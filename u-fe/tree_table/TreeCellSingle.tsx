@@ -6,10 +6,10 @@ import { BadgeInfo, ChevronDown, ChevronRight, RefreshCw } from "lucide-react";
 import { H2 } from "../Typography";
 import UHoverCard from "../components/UHoverCard";
 import { Badge } from "../components/ui/badge";
-import { useNativeGraph } from "../context/NativeGraphContext";
+import { useNativeGraphL } from "../context/NativeGraphContext";
 import type { Row } from "./TreeTableRows";
 
-export default function TreeCell(props: {
+export default function TreeCellSingle(props: {
   row: Row;
   canExpand: boolean;
   onToggleExpand: (expanded: boolean) => void;
@@ -21,7 +21,7 @@ export default function TreeCell(props: {
     color?: string;
   }>;
 }) {
-  const nativeGraph = useNativeGraph();
+  const nativeGraph = useNativeGraphL();
   const isNodeReachable = nativeGraph.isNodeReachable(
     props.row.arrow.points_to,
   );

@@ -29,7 +29,7 @@ import { ARROW_POINTS_FROM_NON_EXISTENT } from "../ArrowUtils";
 import { Progress } from "../components/ui/progress";
 import { useSelectedPath } from "../context/SelectedPathContext";
 import type { NodeIDX } from "../types";
-import TreeCell from "./TreeCell";
+import TreeCell from "./TreeCellSingle";
 import {
   type Row,
   type SortFn,

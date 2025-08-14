@@ -8,8 +8,8 @@ import {
 } from "./GraphStructureHooks";
 import { useSelectedPath } from "./context/SelectedPathContext";
 import {
-  useFlipForceEdge,
-  useFlipForceExcludeNode,
+  useFlipForceEdgeL,
+  useFlipForceExcludeNodeL,
 } from "./context/TraversalConfigContext";
 
 export const KEYBOARD_SHORTCUTS = {
@@ -26,8 +26,8 @@ export function useExplorerKeyboardShortcuts(): (
   const { selectedRow } = useSelectedPath();
   const arrow = selectedRow?.arrow || null;
 
-  const flipForceEdge = useFlipForceEdge(arrow);
-  const flipForceExcludeNode = useFlipForceExcludeNode(arrow);
+  const flipForceEdge = useFlipForceEdgeL(arrow);
+  const flipForceExcludeNode = useFlipForceExcludeNodeL(arrow);
   const [_f, toggleFlatList] = useToggleFlatListView();
   const [_r, toggleReverseView] = useToggleReverseView();
   const [_d, toggleDominatorTreeView] = useToggleDominatorTreeView();

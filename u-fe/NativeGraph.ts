@@ -42,7 +42,7 @@ export const GRAPH_SIDE = {
   R: 2 as const,
 };
 
-type NodeIDXVecSet = Readonly<{
+export type NodeIDXVecSet = Readonly<{
   vec: Readonly<NodeIDX[]>;
   set: Readonly<Set<NodeIDX>>;
 }>;

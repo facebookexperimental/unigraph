@@ -13,8 +13,8 @@ import {
 } from "../components/ui/dropdown-menu";
 import { useSelectedPath } from "../context/SelectedPathContext";
 import {
-  useFlipForceEdge,
-  useFlipForceExcludeNode,
+  useFlipForceEdgeL,
+  useFlipForceExcludeNodeL,
 } from "../context/TraversalConfigContext";
 import { type Row, pathToRow } from "./TreeTableRows";
 
@@ -47,7 +47,7 @@ function Content({ arrow, row }: { arrow: Arrow; row: Readonly<Row> }) {
 }
 
 function ExcludeNodeItem({ arrow, row }: { arrow: Arrow; row: Readonly<Row> }) {
-  const { action, enabled, forceExcludeNode } = useFlipForceExcludeNode(arrow);
+  const { action, enabled, forceExcludeNode } = useFlipForceExcludeNodeL(arrow);
   const { setSelectedPath } = useSelectedPath();
 
   return (
@@ -75,7 +75,7 @@ function ForceEdgeItem({
   row: Readonly<Row>;
 }) {
   const { setSelectedPath } = useSelectedPath();
-  const { enabled, forceEdge, action } = useFlipForceEdge(arrow);
+  const { enabled, forceEdge, action } = useFlipForceEdgeL(arrow);
 
   return (
     <DropdownMenuItem

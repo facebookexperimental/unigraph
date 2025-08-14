@@ -7,14 +7,14 @@ import type { GraphTableSort } from "@/__generated__/ts/GraphTableSort";
 import { useCallback, useMemo } from "react";
 import ErrorBoundary from "../components/ErrorBoundary";
 import { useGraphSettings } from "../context/GraphSettingsContext";
-import { useNativeGraph } from "../context/NativeGraphContext";
+import { useNativeGraphL } from "../context/NativeGraphContext";
 import useGraphTreeTableColumns from "./useGraphTreeTableColumns";
 
 export default function GraphTreeTable(props: {
   roots: readonly NodeIDX[];
   focusOnMount?: boolean;
 }) {
-  const nativeGraph = useNativeGraph();
+  const nativeGraphL = useNativeGraphL();
   const [settings, setSettings] = useGraphSettings();
 
   const onSortChange = useCallback(
@@ -42,29 +42,29 @@ export default function GraphTreeTable(props: {
     (nodeIDX: NodeIDX) => {
       switch (graphStructure) {
         case "Forward":
-          return nativeGraph.getArrowsForward(nodeIDX);
+          return nativeGraphL.getArrowsForward(nodeIDX);
         case "Dominator":
-          return nativeGraph.getArrowsDominator(nodeIDX);
+          return nativeGraphL.getArrowsDominator(nodeIDX);
         case "Reverse":
-          return nativeGraph.getArrowsReverse(nodeIDX);
+          return nativeGraphL.getArrowsReverse(nodeIDX);
         default: {
           const _exhaustiveCheck: never = graphStructure;
           throw new Error(`Unknown column type: ${_exhaustiveCheck}`);
         }
       }
     },
-    [nativeGraph, graphStructure],
+    [nativeGraphL, graphStructure],
   );
 
   const getShortestPath = useCallback(
     (fromNodeIDX: readonly NodeIDX[], toNodeIDX: NodeIDX) => {
-      return nativeGraph.getShortestPath(
+      return nativeGraphL.getShortestPath(
         fromNodeIDX,
         toNodeIDX,
         graphStructure,
       );
     },
-    [nativeGraph, graphStructure],
+    [nativeGraphL, graphStructure],
   );
 
   const treeTableGraph = useMemo(() => {

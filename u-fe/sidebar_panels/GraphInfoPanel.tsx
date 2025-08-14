@@ -1,12 +1,12 @@
 import Metric from "../components/Metric";
 import { Card } from "../components/ui/card";
 import { Separator } from "../components/ui/separator";
-import { useNativeGraph } from "../context/NativeGraphContext";
+import { useNativeGraphL } from "../context/NativeGraphContext";
 import formatNumber from "../lib/formatNumber";
 import { SidebarPanel, SidebarPanelHeader } from "./SidebarPanel";
 
 export default function GraphInfoPanel() {
-  const stats = useNativeGraph().stats();
+  const stats = useNativeGraphL().stats();
 
   return (
     <SidebarPanel>

@@ -19,7 +19,7 @@ import { Label } from "./components/ui/label";
 import { Separator } from "./components/ui/separator.js";
 import { Slider } from "./components/ui/slider";
 import { Toggle } from "./components/ui/toggle";
-import { useNativeGraph } from "./context/NativeGraphContext.js";
+import { useNativeGraphL } from "./context/NativeGraphContext.js";
 import { useSelectedNodes } from "./context/SelectedNodesContext.js";
 import { useSimulationParams } from "./context/SimulationParamsContext.js";
 import formatNumber from "./lib/formatNumber.js";
@@ -27,7 +27,7 @@ import formatNumber from "./lib/formatNumber.js";
 const HIDE_IF_TOO_MANY_NODES_THRESHOLD = 50000;
 
 export default function Simulation() {
-  const nativeGraph = useNativeGraph();
+  const nativeGraph = useNativeGraphL();
   const [paramsVisible, setParamsVisible] = useState(false);
 
   const reachableCount =

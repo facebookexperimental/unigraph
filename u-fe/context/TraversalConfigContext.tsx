@@ -5,10 +5,10 @@ import type { TraversalConfig } from "@/__generated__/ts/TraversalConfig";
 import { createContext, useCallback, useContext, useMemo } from "react";
 import {
   ARROW_POINTS_FROM_NON_EXISTENT,
-  useCanEdgeBeForced,
-  useCanNodeBeForceExcluded,
+  useCanEdgeBeForcedL,
+  useCanNodeBeForceExcludedL,
 } from "../ArrowUtils";
-import { useNativeGraph } from "./NativeGraphContext";
+import { useNativeGraphL } from "./NativeGraphContext";
 
 export type TraversalConfigContextType = {
   tvc: TraversalConfig;
@@ -45,13 +45,13 @@ export function useTVC(): TraversalConfigContextType {
   return context;
 }
 
-export function useFlipForceEdge(arrow: Arrow | null): {
+export function useFlipForceEdgeL(arrow: Arrow | null): {
   enabled: boolean;
   forceEdge: () => void;
   action: "Include" | "Exclude";
 } {
   const { tvc, setTvc } = useTVC();
-  const nativeGraph = useNativeGraph();
+  const nativeGraph = useNativeGraphL();
 
   const pointsTo = arrow?.points_to ?? null;
   const pointsFrom = arrow?.points_from ?? null;
@@ -62,7 +62,7 @@ export function useFlipForceEdge(arrow: Arrow | null): {
       : null;
   const toName = pointsTo != null ? nativeGraph.getNodeName(pointsTo) : null;
 
-  const enabled = useCanEdgeBeForced(arrow);
+  const enabled = useCanEdgeBeForcedL(arrow);
 
   // true/false if forced. null if there is no force edge/not set
   const isForcedTo =
@@ -99,14 +99,14 @@ export function useFlipForceEdge(arrow: Arrow | null): {
   }, [action, enabled, forceEdge]);
 }
 
-export function useFlipForceExcludeNode(arrow: Arrow | null): {
+export function useFlipForceExcludeNodeL(arrow: Arrow | null): {
   enabled: boolean;
   action: "Include" | "Exclude";
   forceExcludeNode: () => void;
 } {
   const { tvc, setTvc } = useTVC();
-  const nativeGraph = useNativeGraph();
-  const enabled = useCanNodeBeForceExcluded(arrow);
+  const nativeGraph = useNativeGraphL();
+  const enabled = useCanNodeBeForceExcludedL(arrow);
 
   const pointsTo = arrow?.points_to ?? null;
   const nodeName = pointsTo != null ? nativeGraph.getNodeName(pointsTo) : null;

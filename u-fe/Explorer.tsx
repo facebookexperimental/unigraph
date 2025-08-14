@@ -22,7 +22,7 @@ import {
 } from "./context/GraphSettingsContext";
 import {
   NativeGraphContextProvider,
-  useNativeGraph,
+  useNativeGraphs,
 } from "./context/NativeGraphContext";
 import {
   SelectedNodesContextProvider,
@@ -44,7 +44,7 @@ export function Explorer(props: ExplorerProps) {
     traversal_config_l,
     on_traversal_config_change_l,
     traversal_config_r,
-    on_traversal_config_change_r,
+    on_traversal_config_change_r: _onTraversalConfigChangeR,
     graph_settings,
     on_graph_settings_change,
   } = props;
@@ -52,27 +52,39 @@ export function Explorer(props: ExplorerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   /// This graph initializes a new native graph every time the raw data changes.
-  const [nativeGraphNoTVCLeft, _nativeGraphNoTVCRight] = useMemo(
+  const [nativeGraphNoTVCL, nativeGraphNoTVCR] = useMemo(
     () => NativeGraph.fromSerialized(graphs),
     [graphs],
   );
 
   /// This hook will NOT re-initialize the native graph if the traversal config changes.
   /// We modify it in place and return a new nativeGraph reference with all caches busted.
-  const [tvc, nativeGraph] = useMemo(() => {
+  const [tvcL, nativeGraphL] = useMemo(() => {
     const tvc: TraversalConfig =
       traversal_config_l == null
-        ? nativeGraphNoTVCLeft.getTraversalConfig()
+        ? nativeGraphNoTVCL.getTraversalConfig()
         : JSON.parse(from_zstd_base64_url_safe_no_pad(traversal_config_l));
 
-    return [tvc, nativeGraphNoTVCLeft.getApplyTraversalConfig(tvc)];
-  }, [traversal_config_l, nativeGraphNoTVCLeft]);
+    return [tvc, nativeGraphNoTVCL.getApplyTraversalConfig(tvc)];
+  }, [traversal_config_l, nativeGraphNoTVCL]);
+
+  const [_tvcR, nativeGraphR] = useMemo(() => {
+    if (nativeGraphNoTVCR == null) {
+      return [null, null];
+    }
+    const tvc: TraversalConfig =
+      traversal_config_r == null
+        ? nativeGraphNoTVCR.getTraversalConfig()
+        : JSON.parse(from_zstd_base64_url_safe_no_pad(traversal_config_r));
+
+    return [tvc, nativeGraphNoTVCR.getApplyTraversalConfig(tvc)];
+  }, [traversal_config_r, nativeGraphNoTVCR]);
 
   const settings = useMemo(() => {
     return graph_settings == null
-      ? nativeGraphNoTVCLeft.getGraphSettings() // default settings come from the native graph
+      ? nativeGraphNoTVCL.getGraphSettings() // default settings come from the native graph
       : JSON.parse(from_zstd_base64_url_safe_no_pad(graph_settings));
-  }, [graph_settings, nativeGraphNoTVCLeft]);
+  }, [graph_settings, nativeGraphNoTVCL]);
 
   const setTvcCb = useCallback(
     (tvc: TraversalConfig) => {
@@ -98,8 +110,11 @@ export function Explorer(props: ExplorerProps) {
     <div className="h-screen flex flex-col unigraph-explorer bg-background">
       <PortalContextProvider containerRef={containerRef}>
         <ErrorBoundary>
-          <NativeGraphContextProvider nativeGraph={nativeGraph}>
-            <TraversalConfigContextProvider tvc={tvc} setTvc={setTvcCb}>
+          <NativeGraphContextProvider
+            nativeGraphL={nativeGraphL}
+            nativeGraphR={nativeGraphR}
+          >
+            <TraversalConfigContextProvider tvc={tvcL} setTvc={setTvcCb}>
               <SimulationParamsContextProvider>
                 <SelectedNodesContextProvider>
                   <GraphSettingsContextProvider
@@ -123,7 +138,7 @@ export function Explorer(props: ExplorerProps) {
 function Page(props: {
   containerRef?: React.RefObject<HTMLDivElement | null>;
 }) {
-  const nativeGraph = useNativeGraph();
+  const [nativeGraphL, nativeGraphR] = useNativeGraphs();
   const [graphSettings] = useGraphSettings();
   const [settings] = useGraphSettings();
   const [selectedNodes] = useSelectedNodes();
@@ -148,14 +163,27 @@ function Page(props: {
   })();
 
   const roots = useMemo(() => {
-    return getRoots(
-      nativeGraph,
+    const rootsL = getRoots(
+      nativeGraphL,
       selectedNodes,
       graphSettings.ui_settings?.entry_points_specified ?? null,
       graphSettings.ui_settings?.entry_points,
     );
+
+    if (nativeGraphR == null) {
+      return rootsL;
+    } else {
+      const rootsR = getRoots(
+        nativeGraphR,
+        selectedNodes,
+        graphSettings.ui_settings?.entry_points_specified ?? null,
+        graphSettings.ui_settings?.entry_points,
+      );
+      return Array.from(new Set([...rootsL, ...rootsR]));
+    }
   }, [
-    nativeGraph,
+    nativeGraphL,
+    nativeGraphR,
     selectedNodes,
     graphSettings.ui_settings?.entry_points,
     graphSettings.ui_settings?.entry_points_specified,
