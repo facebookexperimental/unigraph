@@ -316,7 +316,7 @@ mod tests {
     use super::*;
 
     const TEST_GRAPH_2: &str =
-        include_str!("../../unigraph_core/src/tests/test_graphs/test_graph_2.json");
+        include_str!("../../unigraph_core/src/tests/test_graphs/test_graph_2_left.json");
 
     fn make_graph() -> ArrayGraphSerializable {
         MapGraph::from_json(TEST_GRAPH_2)

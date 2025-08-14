@@ -5,13 +5,16 @@ use k9::snapshot;
 
 use crate::ArrayGraph;
 use crate::MapGraph;
+use crate::TwinGraph;
 
 // https://fburl.com/excalidraw/vgjzlq2q
 const TEST_GRAPH_1: &str = include_str!("./test_graphs/test_graph_1.json");
 
 // Larger graph with more complex cases. Cycles, multiple parents, etc
 // https://fburl.com/excalidraw/23gavkrb
-const TEST_GRAPH_2: &str = include_str!("./test_graphs/test_graph_2.json");
+const TEST_GRAPH_2: &str = include_str!("./test_graphs/test_graph_2_left.json");
+
+const TEST_GRAPH_2_RIGHT: &str = include_str!("./test_graphs/test_graph_2_right.json");
 
 pub(crate) fn make_test_graph_1() -> MapGraph {
     MapGraph::from_json(TEST_GRAPH_1).unwrap()
@@ -24,6 +27,12 @@ pub(crate) fn make_test_array_graph_1() -> Result<ArrayGraph> {
 
 pub(crate) fn make_test_array_graph_2() -> Result<ArrayGraph> {
     MapGraph::from_json(TEST_GRAPH_2)?.to_array_graph()
+}
+
+pub fn make_twin_graph() -> Result<TwinGraph> {
+    let left = MapGraph::from_json(TEST_GRAPH_2)?.to_array_graph_serializable()?;
+    let right = MapGraph::from_json(TEST_GRAPH_2_RIGHT)?.to_array_graph_serializable()?;
+    TwinGraph::from_two(left, right)
 }
 
 #[test]

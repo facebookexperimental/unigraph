@@ -189,6 +189,7 @@ pub struct ArrayGraphUISettings {
     serde::Deserialize,
     typegen::TypeGen,
     Clone,
+    Copy,
     Default
 )]
 #[repr(u8)]

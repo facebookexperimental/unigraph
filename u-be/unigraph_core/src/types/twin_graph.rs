@@ -1,5 +1,6 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
+mod get_arrows;
 mod merge;
 
 use std::sync::Arc;
@@ -10,6 +11,9 @@ use anyhow::Result;
 use crate::ArrayGraph;
 use crate::ArrayGraphNodes;
 use crate::ArrayGraphSerializable;
+use crate::NodeIDX;
+use crate::graph_settings::GraphStructure;
+use crate::types::array_graph::Arrow;
 use crate::types::array_graph::array_graph_nodes::GraphSide;
 
 const MISSING_RIGHT_ERROR: &str = "TwinGraph: You are trying to access the right graph, but it is not present. \
@@ -67,5 +71,13 @@ impl TwinGraph {
         GraphSide::from_u32(side)
             .and_then(|s| self.graph_mut(s))
             .context("graph_u32: Invalid GraphSide value")
+    }
+
+    pub fn get_arrow_pairs(
+        &self,
+        node_idx: NodeIDX,
+        graph_structure: GraphStructure,
+    ) -> Result<Vec<(Option<Arrow>, Option<Arrow>)>> {
+        get_arrows::get_arrows_pairs(self, node_idx, graph_structure)
     }
 }

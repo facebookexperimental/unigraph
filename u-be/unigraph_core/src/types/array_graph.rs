@@ -317,16 +317,24 @@ impl ArrayGraph {
         })
     }
 
+    pub fn get_arrows(
+        &self,
+        node_idx: NodeIDX,
+        graph_structure: GraphStructure,
+    ) -> Result<Vec<Arrow>> {
+        get_arrows(self, node_idx, graph_structure)
+    }
+
     pub fn get_arrows_forward(&self, node_idx: NodeIDX) -> Result<Vec<Arrow>> {
-        get_arrows(self, node_idx, GraphStructure::Forward).context("arrows forward")
+        get_arrows(self, node_idx, GraphStructure::Forward)
     }
 
     pub fn get_arrows_dominator(&self, node_idx: NodeIDX) -> Result<Vec<Arrow>> {
-        get_arrows(self, node_idx, GraphStructure::Dominator).context("arrows dominator")
+        get_arrows(self, node_idx, GraphStructure::Dominator)
     }
 
     pub fn get_arrows_reverse(&self, node_idx: NodeIDX) -> Result<Vec<Arrow>> {
-        get_arrows(self, node_idx, GraphStructure::Reverse).context("arrows reverse")
+        get_arrows(self, node_idx, GraphStructure::Reverse)
     }
 }
 

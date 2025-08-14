@@ -5,6 +5,7 @@ pub mod traversal_config_test_trait;
 
 use crate::ArrayGraph;
 use crate::types::NodeIDX;
+use crate::types::array_graph::Arrow;
 use crate::types::array_graph::offset_graph::Edge;
 use crate::types::array_graph::offset_graph::edge_flags::EdgeType;
 
@@ -61,26 +62,32 @@ pub fn print_arrows(array_graph: &ArrayGraph) -> String {
     for node_idx in array_graph.edges_forward.node_idx_iter() {
         let arrows = array_graph.get_arrows_forward(node_idx).unwrap();
         for arrow in arrows {
-            let from_name = array_graph.idx_to_name(arrow.points_from);
-            let to_name = array_graph.idx_to_name(arrow.points_to);
-            result.push_str(&format!("{from_name} -> {to_name}"));
-
-            if let Some(tag) = &arrow.tag {
-                result.push_str(&format!("\n   tag: {tag}"));
-            }
-            if let Some(branch) = &arrow.branch {
-                result.push_str(&format!("\n   branch: {branch}"));
-            }
-
-            if let Some(properties) = &arrow.properties {
-                result.push_str(&format!("\n   properties: {properties:?}"));
-            }
-
-            if let Some(message) = &arrow.message {
-                result.push_str(&format!("\n   message: {message}"));
-            }
+            result.push_str(&print_arrow(array_graph, &arrow));
             result.push('\n');
         }
     }
     result.trim().to_string()
+}
+
+pub fn print_arrow(array_graph: &ArrayGraph, arrow: &Arrow) -> String {
+    let mut result = String::new();
+    let from_name = array_graph.idx_to_name(arrow.points_from);
+    let to_name = array_graph.idx_to_name(arrow.points_to);
+    result.push_str(&format!("{from_name} -> {to_name}"));
+
+    if let Some(tag) = &arrow.tag {
+        result.push_str(&format!("\n   tag: {tag}"));
+    }
+    if let Some(branch) = &arrow.branch {
+        result.push_str(&format!("\n   branch: {branch}"));
+    }
+
+    if let Some(properties) = &arrow.properties {
+        result.push_str(&format!("\n   properties: {properties:?}"));
+    }
+
+    if let Some(message) = &arrow.message {
+        result.push_str(&format!("\n   message: {message}"));
+    }
+    result
 }
