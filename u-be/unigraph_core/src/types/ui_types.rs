@@ -1,5 +1,7 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
+use crate::types::SerializationFormat;
+
 #[derive(typegen::TypeGen)]
 #[typegen(TypeScript("(tvc: string) => void"), Flow("(string) => void"))]
 pub struct CallbackFn();
@@ -46,13 +48,6 @@ pub struct ExplorerComponentInputGraphs {
 pub enum ExplorerComponentInputGraph {
     MapGraphSerialized(MapGraphSerialized),
     ArrayGraphSerialized(ArrayGraphSerialized),
-}
-
-#[derive(typegen::TypeGen, serde::Deserialize)]
-#[typegen(skip(Hack))]
-pub enum SerializationFormat {
-    Json,
-    JsonZstdBase64,
 }
 
 #[derive(typegen::TypeGen, serde::Deserialize)]

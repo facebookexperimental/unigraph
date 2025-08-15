@@ -17,6 +17,7 @@ pub use traversal::tiered_traversal::AscendingTier;
 pub use traversal::tiered_traversal::AscendingTiersConfig;
 pub use traversal::tiered_traversal::TieredTraversalConfig;
 pub use types::NodeIDX;
+pub use types::SerializationFormat;
 pub use types::array_graph::ArrayGraph;
 pub use types::array_graph::ArrayGraphDynamicEdge;
 pub use types::array_graph::array_graph_debug_utils::ArrayGraphDebugUtils;

@@ -116,3 +116,10 @@ impl From<NodeIDX> for usize {
         val.0 as usize
     }
 }
+
+#[derive(typegen::TypeGen, serde::Deserialize)]
+#[typegen(skip(Hack))]
+pub enum SerializationFormat {
+    Json,
+    JsonZstdBase64,
+}
