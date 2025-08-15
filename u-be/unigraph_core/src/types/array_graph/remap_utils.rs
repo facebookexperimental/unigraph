@@ -282,7 +282,6 @@ mod tests {
     use super::*;
     use crate::ArrayGraphSerializable;
     use crate::tests::test_graphs::make_test_array_graph_1;
-    use crate::types::array_graph::array_graph_debug_utils::ArrayGraphDebugUtils;
 
     #[test]
     fn test_sort_and_return_mapping() {
@@ -311,7 +310,7 @@ mod tests {
     fn test_graph_remapping() -> Result<()> {
         let g = make_test_array_graph_1()?;
         snapshot!(
-            g.to_forward_edges_string()?,
+            g.debug().to_forward_edges_string()?,
             "
 A:
   - B
@@ -368,7 +367,7 @@ J (tag sets: assert_tags: [a, b]):
 
         let new_g = new_sg.into_array_graph();
         snapshot!(
-            new_g.to_forward_edges_string()?,
+            new_g.debug().to_forward_edges_string()?,
             "
 0_J (tag sets: assert_tags: [a, b]):
 1_I:

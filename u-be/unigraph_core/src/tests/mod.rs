@@ -15,7 +15,6 @@ use test_utils::print_all_node_names;
 use test_utils::print_forward_edges;
 
 use crate::ArrayGraph;
-use crate::ArrayGraphDebugUtils;
 use crate::ArrayGraphSerializable;
 use crate::NodeIDX;
 use crate::tests::test_graphs::make_test_array_graph_1;
@@ -409,7 +408,7 @@ fn test_dfs_with_traversal_config_tag_sets() -> Result<()> {
     snapshot!(dfs_unconfigured(&g), "A B C D E F G H I J");
 
     snapshot!(
-        g.to_forward_edges_string()?,
+        g.debug().to_forward_edges_string()?,
         "
 A:
   - B
@@ -603,7 +602,7 @@ fn test_reacable_subgraph_unconfigured() -> Result<()> {
     let sg = g.get_reachable_subgraph_unconfigured(&[d])?;
     let reachable = sg.into_array_graph();
     snapshot!(
-        reachable.to_forward_edges_string()?,
+        reachable.debug().to_forward_edges_string()?,
         "
 D:
   - F

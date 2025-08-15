@@ -31,6 +31,7 @@ use super::MetricName;
 use super::NodeIDX;
 use super::Tag;
 use super::TagSetName;
+use crate::ArrayGraphDebugUtils;
 use crate::ArrayGraphSerializable;
 use crate::GraphBuilder;
 use crate::MapGraph;
@@ -335,6 +336,10 @@ impl ArrayGraph {
 
     pub fn get_arrows_reverse(&self, node_idx: NodeIDX) -> Result<Vec<Arrow>> {
         get_arrows(self, node_idx, GraphStructure::Reverse)
+    }
+
+    pub fn debug(&self) -> ArrayGraphDebugUtils {
+        ArrayGraphDebugUtils(self)
     }
 }
 

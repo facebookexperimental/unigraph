@@ -178,7 +178,6 @@ mod tests {
     use anyhow::Result;
     use k9::snapshot;
 
-    use crate::ArrayGraphDebugUtils;
     use crate::tests::test_graphs::make_test_array_graph_2;
 
     #[test]
@@ -186,7 +185,7 @@ mod tests {
         let ag = make_test_array_graph_2()?.append_super_root()?;
 
         snapshot!(
-            ag.to_dom_edges_string()?,
+            ag.debug().to_dom_edges_string()?,
             r#"
 A:
   - B
