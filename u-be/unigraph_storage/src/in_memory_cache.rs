@@ -42,12 +42,12 @@ impl<K: Eq + Hash + Clone + Send + 'static, V: Send + Sync + 'static> InMemoryCa
     /// # Arguments
     ///
     /// * `capacity` - Maximum number of entries to cache before LRU eviction occurs
-    /// * `make_entry` - Async function that creates a new value when cache miss occurs
     /// * `ttl` - Time-to-live for cached entries. Use `Duration::ZERO` to disable expiration
+    /// * `make_entry` - Async function that creates a new value when cache miss occurs
     pub fn new<F, Fut>(
         capacity: std::num::NonZero<usize>,
-        make_entry: F,
         ttl: std::time::Duration,
+        make_entry: F,
     ) -> Self
     where
         F: Fn(K) -> Fut + Send + Sync + 'static,
@@ -131,6 +131,7 @@ mod tests {
         // Create a cache that doubles the input number after a small delay
         let cache = InMemoryCache::new(
             std::num::NonZero::new(2).unwrap(),
+            Duration::from_secs(60),
             |key: &i32| {
                 let key = *key; // Copy the value to avoid lifetime issues
                 async move {
@@ -139,7 +140,6 @@ mod tests {
                     Ok(key * 2)
                 }
             },
-            Duration::from_secs(60),
         );
 
         // First call should compute the value
@@ -163,6 +163,7 @@ mod tests {
     async fn test_cache_error_handling() -> anyhow::Result<()> {
         let cache = InMemoryCache::new(
             std::num::NonZero::new(1).unwrap(),
+            Duration::from_secs(60),
             |key: &i32| {
                 let key = *key; // Copy the value
                 async move {
@@ -172,7 +173,6 @@ mod tests {
                     Ok(key)
                 }
             },
-            Duration::from_secs(60),
         );
 
         // Valid key should work
@@ -191,8 +191,8 @@ mod tests {
     async fn test_cache_capacity_limit() -> anyhow::Result<()> {
         let cache = InMemoryCache::new(
             std::num::NonZero::new(2).unwrap(), // Only 2 items
-            |key: String| async move { Ok(key.len()) },
             Duration::from_secs(60),
+            |key: String| async move { Ok(key.len()) },
         );
 
         // Fill the cache
@@ -223,6 +223,7 @@ mod tests {
 
         let cache = InMemoryCache::new(
             std::num::NonZero::new(10).unwrap(),
+            Duration::from_secs(60),
             {
                 let counter = StdArc::clone(&computation_counter);
                 move |key: i32| {
@@ -238,7 +239,6 @@ mod tests {
                     }
                 }
             },
-            Duration::from_secs(60),
         );
 
         // Spawn multiple concurrent requests for the same key
@@ -284,6 +284,7 @@ mod tests {
 
         let cache = InMemoryCache::new(
             std::num::NonZero::new(10).unwrap(),
+            Duration::from_millis(200), // Short TTL for testing
             {
                 let counter = StdArc::clone(&computation_counter);
                 move |key: i32| {
@@ -295,7 +296,6 @@ mod tests {
                     }
                 }
             },
-            Duration::from_millis(200), // Short TTL for testing
         );
 
         let key = 42;
@@ -333,6 +333,7 @@ mod tests {
 
         let cache = InMemoryCache::new(
             std::num::NonZero::new(10).unwrap(),
+            Duration::ZERO, // Zero TTL should disable expiration
             {
                 let counter = StdArc::clone(&computation_counter);
                 move |key: i32| {
@@ -344,7 +345,6 @@ mod tests {
                     }
                 }
             },
-            Duration::ZERO, // Zero TTL should disable expiration
         );
 
         let key = 123;
