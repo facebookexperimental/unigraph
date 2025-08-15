@@ -130,7 +130,7 @@ impl TypeGenConfig {
         let name = match lang {
             Lang::TypeScript => format!("{type_name}.ts"),
             Lang::Flow => format!("{type_name}.js.flow"),
-            Lang::Hack => format!("{type_name}.hhi"),
+            Lang::Hack => format!("{type_name}.php"),
         };
 
         if let Some(shared_config) = self.get_shared_config(lang) {

@@ -15,7 +15,7 @@ fn test_flow_generation() {
     k9::snapshot!(
         format_types(&files),
         r#"
----------------- ./hack/HackPrefixAddress.hhi
+---------------- ./hack/HackPrefixAddress.php
 
 <?hh
 /* hack header */
@@ -33,7 +33,7 @@ type HackTypeAddress = shape(
   'tags' => keyset<string>,
 );
 
----------------- ./hack/HackPrefixPerson.hhi
+---------------- ./hack/HackPrefixPerson.php
 
 <?hh
 /* hack header */
@@ -45,7 +45,7 @@ type HackTypePerson = shape(
   'address' => HackTypeAddress,
 );
 
----------------- ./hack/HackPrefixUser.hhi
+---------------- ./hack/HackPrefixUser.php
 
 <?hh
 /* hack header */
@@ -60,7 +60,7 @@ type HackTypeUser = shape(
   'metadata' => dict<string, bool>,
 );
 
----------------- ./hack/HackPrefixPoint.hhi
+---------------- ./hack/HackPrefixPoint.php
 
 <?hh
 /* hack header */
@@ -68,7 +68,7 @@ type HackTypeUser = shape(
 // Test tuple struct
 type HackTypePoint = (float, float);
 
----------------- ./hack/HackPrefixUnit.hhi
+---------------- ./hack/HackPrefixUnit.php
 
 <?hh
 /* hack header */
@@ -76,7 +76,7 @@ type HackTypePoint = (float, float);
 // Test unit struct
 type HackTypeUnit = null;
 
----------------- ./hack/HackPrefixWrappedString.hhi
+---------------- ./hack/HackPrefixWrappedString.php
 
 <?hh
 /* hack header */
@@ -85,7 +85,7 @@ type HackTypeUnit = null;
 // should be transparent in the generated code and point directly to the string type.
 type HackTypeWrappedString = string;
 
----------------- ./hack/HackPrefixAnimal.hhi
+---------------- ./hack/HackPrefixAnimal.php
 
 <?hh
 /* hack header */
@@ -100,7 +100,7 @@ enum HackTypeAnimal: string as string {
   FISH = "Fish";
 }
 
----------------- ./hack/HackPrefixShape.hhi
+---------------- ./hack/HackPrefixShape.php
 
 <?hh
 /* hack header */
@@ -125,7 +125,7 @@ enum HackTypeShapeVariant: string as string {
   POINT = "Point";
 }
 
----------------- ./hack/HackPrefixOverrideTest.hhi
+---------------- ./hack/HackPrefixOverrideTest.php
 
 <?hh
 /* hack header */
@@ -133,7 +133,7 @@ enum HackTypeShapeVariant: string as string {
 // Test struct with type overrides
 type HackTypeOverrideTest = null;
 
----------------- ./hack/HackPrefixSkipAndOverrideTest.hhi
+---------------- ./hack/HackPrefixSkipAndOverrideTest.php
 
 <?hh
 /* hack header */
