@@ -11,3 +11,9 @@ type Shape = shape(
     'z' => float,
   ),
 );
+
+enum ShapeVariant: string as string {
+  CIRCLE = "Circle";
+  RECTANGLE = "Rectangle";
+  POINT = "Point";
+}

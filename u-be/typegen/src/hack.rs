@@ -200,7 +200,21 @@ impl<'a> HackGenerator<'a> {
                 }
             }
 
-            result.push_str(");\n");
+            result.push_str(");\n\n");
+
+            // For complex enums, also generate an enum with all variant names
+            result.push_str(&format!("enum {}Variant: string as string {{\n", type_name));
+            for variant in &enum_decl.variants {
+                let variant_name = match variant {
+                    EnumVariant::Unit { name, .. } => name,
+                    EnumVariant::Newtype { name, .. } => name,
+                    EnumVariant::Tuple { name, .. } => name,
+                    EnumVariant::Struct { name, .. } => name,
+                };
+                let constant_name = variant_name.to_uppercase();
+                result.push_str(&format!("  {} = \"{}\";\n", constant_name, variant_name));
+            }
+            result.push_str("}\n");
         }
         result
     }

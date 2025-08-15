@@ -119,6 +119,12 @@ type HackTypeShape = shape(
   ),
 );
 
+enum HackTypeShapeVariant: string as string {
+  CIRCLE = "Circle";
+  RECTANGLE = "Rectangle";
+  POINT = "Point";
+}
+
 ---------------- ./hack/HackPrefixOverrideTest.hhi
 
 <?hh
