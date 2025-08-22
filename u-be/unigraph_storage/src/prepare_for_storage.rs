@@ -14,6 +14,7 @@ use xxhash_rust::xxh3::xxh3_64;
 use crate::manifest::ArrayGraphSerializableManifest;
 use crate::manifest::BlobID;
 use crate::manifest::ManifestBlobs;
+use crate::manifest::ManifestStats;
 
 /// Macro to serialize multiple fields to blobs in parallel using Rayon.
 ///
@@ -170,13 +171,27 @@ pub fn to_blobs(
         entry_points,
     };
 
-    Ok((
-        ArrayGraphSerializableManifest {
-            blobs: manifest_blobs,
-            graph_settings: graph_settings.clone(),
-        },
-        b,
-    ))
+    let mut manifest_blob_id = BlobID::from("_manifest.json");
+
+    if let Some(f) = c.modify_blob_id.as_ref() {
+        manifest_blob_id = f(&manifest_blob_id.0);
+    }
+
+    let stats = ManifestStats::from_blobs(&b, graph);
+
+    let manifest = ArrayGraphSerializableManifest {
+        self_reference: manifest_blob_id.clone(),
+        stats,
+        blobs: manifest_blobs,
+        graph_settings: graph_settings.clone(),
+    };
+
+    b.insert(
+        manifest_blob_id,
+        serde_json::to_string_pretty(&manifest)?.into_bytes(),
+    );
+
+    Ok((manifest, b))
 }
 
 /// Restores an `ArrayGraphSerializable` from a manifest and blob data.
@@ -191,6 +206,8 @@ pub fn from_blobs(
     b: &BTreeMap<BlobID, Vec<u8>>,
 ) -> Result<ArrayGraphSerializable> {
     let &ArrayGraphSerializableManifest {
+        self_reference: _,
+        stats: _,
         blobs,
         graph_settings,
     } = &manifest;
@@ -345,6 +362,28 @@ mod tests {
             serde_json::to_string_pretty(&manifest)?,
             r#"
 {
+  "self_reference": "_manifest.json",
+  "stats": {
+    "total_blobs": 13,
+    "total_size_bytes": 397,
+    "blob_sizes_bytes": {
+      "directed_3098825159700367953": 35,
+      "directed_offsets_17048802696332253084": 40,
+      "dynamic_17709666951863227118": 50,
+      "dynamic_3675328647461951329": 23,
+      "entry_points_12265251058727778867": 13,
+      "metrics_17201045065729657183": 30,
+      "node_names_6281809031306549709": 27,
+      "node_names_offsets_6491002063904830174": 43,
+      "tag_sets_121953578755559923": 14,
+      "tag_sets_16961032930212497945": 50,
+      "tagged_10664201214824955125": 50,
+      "tagged_8048188434168318281": 9,
+      "traversal_config_12265251058727778867": 13
+    },
+    "node_count": 16,
+    "directed_edge_count": 11
+  },
   "blobs": {
     "node_names": [
       "node_names_6281809031306549709"
@@ -389,6 +428,7 @@ mod tests {
             blobs.keys().cloned().map(|id| id.0).collect::<Vec<_>>(),
             r#"
 [
+    "_manifest.json",
     "directed_3098825159700367953",
     "directed_offsets_17048802696332253084",
     "dynamic_17709666951863227118",
