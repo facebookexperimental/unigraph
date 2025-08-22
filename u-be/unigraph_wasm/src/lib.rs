@@ -518,12 +518,12 @@ pub fn get_array_graph_stats(side: u32) -> Result<String, WasmJSError> {
 /// Takes a base64-encoded (url safe no pad) zstd compressed string and returns it.
 /// MUST be a valid string (likely JSON) that can be converted to a UTF-8 string.
 pub fn from_zstd_base64_url_safe_no_pad(zstd_base64: &str) -> Result<String, WasmJSError> {
-    Ok(SerializationFormat::JsonZstdBase64URLSafeNoPad.from_string(zstd_base64)?)
+    Ok(SerializationFormat::JsonZstdBestBase64URLSafeNoPad.parse_string(zstd_base64)?)
 }
 
 #[wasm_bindgen]
 pub fn to_zstd_base64_url_safe_no_pad(s: String) -> Result<String, WasmJSError> {
-    Ok(SerializationFormat::JsonZstdBase64URLSafeNoPad.to_string(&s)?)
+    Ok(SerializationFormat::JsonZstdBestBase64URLSafeNoPad.to_string(&s)?)
 }
 
 fn parse_input_graph(g: ExplorerComponentInputGraph) -> Result<ArrayGraphSerializable> {
@@ -532,11 +532,11 @@ fn parse_input_graph(g: ExplorerComponentInputGraph) -> Result<ArrayGraphSeriali
             format,
             value,
         }) => format
-            .from_string(&value)
+            .parse_string(&value)
             .context("Failed to deserialize array graph"),
         ExplorerComponentInputGraph::MapGraphSerialized(MapGraphSerialized { format, value }) => {
             let map_graph: MapGraph = format
-                .from_string(&value)
+                .parse_string(&value)
                 .context("Failed to deserialize map graph")?;
             map_graph.to_array_graph_serializable()
         }
