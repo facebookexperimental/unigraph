@@ -1,11 +1,13 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-pub fn truncate_str_in_the_middle(s: &str, max_bytes: usize) -> String {
+use std::borrow::Cow;
+
+pub fn truncate_str_in_the_middle(s: &str, max_bytes: usize) -> Cow<str> {
     let len = s.len();
     if len > max_bytes {
         let start = &s[..max_bytes / 2];
         let end = &s[(len - max_bytes / 2)..];
-        format!(
+        Cow::Owned(format!(
             "{start}
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -13,9 +15,9 @@ pub fn truncate_str_in_the_middle(s: &str, max_bytes: usize) -> String {
 
 vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
 {end}"
-        )
+        ))
     } else {
-        s.to_string()
+        Cow::Borrowed(s)
     }
 }
 
