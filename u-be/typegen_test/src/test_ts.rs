@@ -95,6 +95,8 @@ export type TSTypeShape =
   { "Rectangle": [number, number] } |
   /** Point with coordinates */
   { "Point": { x: number, y: number, z: number } };
+
+export type TSTypeShapeVariants = "Circle" | "Rectangle" | "Point";
 ---------------- ./ts/TSPrefixOverrideTest.ts
 
 /* ts header */

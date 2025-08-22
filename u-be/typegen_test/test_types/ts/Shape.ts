@@ -6,3 +6,5 @@ export type Shape =
   { "Rectangle": [number, number] } |
   /** Point with coordinates */
   { "Point": { x: number, y: number, z: number } };
+
+export type ShapeVariants = "Circle" | "Rectangle" | "Point";

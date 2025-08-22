@@ -247,6 +247,28 @@ impl TypeScriptGenerator {
                 type_name,
                 variants.join(" |\n")
             ));
+
+            // For complex enums, also generate a union type with all variant names
+            result.push_str("\n\n");
+            let variant_names: Vec<String> = enum_decl
+                .variants
+                .iter()
+                .map(|variant| {
+                    let name = match variant {
+                        EnumVariant::Unit { name, .. } => name,
+                        EnumVariant::Newtype { name, .. } => name,
+                        EnumVariant::Tuple { name, .. } => name,
+                        EnumVariant::Struct { name, .. } => name,
+                    };
+                    format!("\"{}\"", name)
+                })
+                .collect();
+
+            result.push_str(&format!(
+                "export type {}Variants = {};",
+                type_name,
+                variant_names.join(" | ")
+            ));
         }
 
         result
