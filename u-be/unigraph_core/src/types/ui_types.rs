@@ -1,6 +1,6 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-use crate::types::SerializationFormat;
+use unigraph_serialization::SerializationFormat;
 
 #[derive(typegen::TypeGen)]
 #[typegen(TypeScript("(tvc: string) => void"), Flow("(string) => void"))]

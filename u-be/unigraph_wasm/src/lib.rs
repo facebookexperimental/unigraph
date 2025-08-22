@@ -1,6 +1,5 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-mod serialization;
 mod wasm_error;
 
 use std::vec;
@@ -11,7 +10,6 @@ use log::trace;
 use unigraph_core::ArrayGraph;
 use unigraph_core::ArrayGraphSerializable;
 use unigraph_core::MapGraph;
-use unigraph_core::SerializationFormat;
 use unigraph_core::TraversalConfig;
 use unigraph_core::TwinGraph;
 use unigraph_core::graph_settings::GraphStructure;
@@ -23,6 +21,7 @@ use unigraph_core::ui_types::MapGraphSerialized;
 use unigraph_graph_state::GlobalGraphState;
 use unigraph_graph_state::global_graph_state;
 use unigraph_graph_state::types::SimulationParams;
+use unigraph_serialization::SerializationFormat;
 use unigraph_wgpu::GlobalState;
 use unigraph_wgpu::UserEvent;
 use unigraph_wgpu::WindowAttributesFactory;
@@ -34,8 +33,6 @@ use wasm_error::WasmJSError;
 use winit::event_loop::EventLoop;
 use winit::window::Window;
 use winit::window::WindowAttributes;
-
-use crate::serialization::from_zstd_base64;
 
 #[allow(dead_code)]
 fn get_canvas() -> Result<Option<web_sys::HtmlCanvasElement>> {
@@ -521,18 +518,12 @@ pub fn get_array_graph_stats(side: u32) -> Result<String, WasmJSError> {
 /// Takes a base64-encoded (url safe no pad) zstd compressed string and returns it.
 /// MUST be a valid string (likely JSON) that can be converted to a UTF-8 string.
 pub fn from_zstd_base64_url_safe_no_pad(zstd_base64: &str) -> Result<String, WasmJSError> {
-    let bytes = serialization::from_zstd_base64_url_safe_no_pad(zstd_base64)
-        .context("Failed to decode zstd base64 string (url safe, no pad)")?;
-
-    let str = String::from_utf8(bytes).context("Failed to convert bytes to UTF-8 string")?;
-    Ok(str)
+    Ok(SerializationFormat::JsonZstdBase64URLSafeNoPad.from_string(zstd_base64)?)
 }
 
 #[wasm_bindgen]
-pub fn to_zstd_base64_url_safe_no_pad(s: &str) -> Result<String, WasmJSError> {
-    let r = serialization::to_zstd_base64_url_safe_no_pad(s.as_bytes(), 10)
-        .context("Failed to compress string to zstd base64 URL-safe no pad")?;
-    Ok(r)
+pub fn to_zstd_base64_url_safe_no_pad(s: String) -> Result<String, WasmJSError> {
+    Ok(SerializationFormat::JsonZstdBase64URLSafeNoPad.to_string(&s)?)
 }
 
 fn parse_input_graph(g: ExplorerComponentInputGraph) -> Result<ArrayGraphSerializable> {
@@ -540,23 +531,15 @@ fn parse_input_graph(g: ExplorerComponentInputGraph) -> Result<ArrayGraphSeriali
         ExplorerComponentInputGraph::ArrayGraphSerialized(ArrayGraphSerialized {
             format,
             value,
-        }) => deser(&value, format),
+        }) => format
+            .from_string(&value)
+            .context("Failed to deserialize array graph"),
         ExplorerComponentInputGraph::MapGraphSerialized(MapGraphSerialized { format, value }) => {
-            let map_graph: MapGraph = deser(&value, format)?;
+            let map_graph: MapGraph = format
+                .from_string(&value)
+                .context("Failed to deserialize map graph")?;
             map_graph.to_array_graph_serializable()
         }
     }
     .context("Failed to parse input graph")
-}
-
-fn deser<T: serde::de::DeserializeOwned>(value: &str, format: SerializationFormat) -> Result<T> {
-    match format {
-        SerializationFormat::Json => {
-            serde_json::from_str(value).context("Failed to deserialize JSON")
-        }
-        SerializationFormat::JsonZstdBase64 => {
-            let decoded = from_zstd_base64(value)?;
-            serde_json::from_slice(&decoded).context("Failed to deserialize JSON")
-        }
-    }
 }

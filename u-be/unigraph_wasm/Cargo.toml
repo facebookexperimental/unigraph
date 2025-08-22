@@ -17,6 +17,7 @@ serde = { version = "1.0.219", features = ["derive", "rc"] }
 serde_json = { version = "1.0.140", features = ["alloc", "float_roundtrip", "raw_value", "unbounded_depth"] }
 unigraph_core = { path = "../unigraph_core" }
 unigraph_wgpu = { path = "../unigraph_wgpu" }
+unigraph_serialization = { path = "../unigraph_serialization" }
 unigraph_graph_state = { path = "../unigraph_graph_state" }
 wasm-bindgen = "*"
 wasm-bindgen-futures = "0.4.45"
