@@ -284,7 +284,10 @@ fn into_blobs<T: serde::Serialize>(
         .into_iter()
         .map(|chunk| {
             let xx = xxh3_64(&chunk);
-            let blob_id = BlobID(format!("{name}_{xx}"));
+            let mut blob_id = BlobID(format!("{name}_{xx}"));
+            if let Some(f) = cfg.modify_blob_id.as_ref() {
+                blob_id = f(&blob_id.0);
+            }
             (blob_id, chunk)
         })
         .collect();

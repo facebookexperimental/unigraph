@@ -3,6 +3,9 @@
 #![allow(clippy::collapsible_if)]
 
 pub use crate::in_memory_cache::InMemoryCache;
+pub use crate::manifest::ArrayGraphSerializableManifest;
+pub use crate::manifest::BlobID;
+pub use crate::manifest::ManifestBlobs;
 pub use crate::prepare_for_storage::StorageConfig;
 pub use crate::prepare_for_storage::from_blobs;
 pub use crate::prepare_for_storage::to_blobs;

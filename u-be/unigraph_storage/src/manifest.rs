@@ -40,3 +40,15 @@ pub struct ManifestBlobs {
     pub traversal_config: Vec<BlobID>,
     pub entry_points: Vec<BlobID>,
 }
+
+impl From<String> for BlobID {
+    fn from(s: String) -> Self {
+        BlobID(s)
+    }
+}
+
+impl From<BlobID> for String {
+    fn from(blob_id: BlobID) -> Self {
+        blob_id.0
+    }
+}
