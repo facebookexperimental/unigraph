@@ -4,10 +4,11 @@
  * @generated
  */
 
-import type { BlobID } from "./BlobID.ts";
-import type { GraphSettings } from "./GraphSettings.ts";
-import type { ManifestBlobs } from "./ManifestBlobs.ts";
-import type { ManifestStats } from "./ManifestStats.ts";
+
+import type { BlobID } from './BlobID.ts';
+import type { GraphSettings } from './GraphSettings.ts';
+import type { ManifestBlobs } from './ManifestBlobs.ts';
+import type { ManifestStats } from './ManifestStats.ts';
 
 /**
  * ArrayGraphSerializable can be serialized and chunked into multiple compressed blobs

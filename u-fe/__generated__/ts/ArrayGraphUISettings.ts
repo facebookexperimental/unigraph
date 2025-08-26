@@ -4,10 +4,11 @@
  * @generated
  */
 
-import type { ArrayGraphUISettingsTreeTableEntryPoints } from "./ArrayGraphUISettingsTreeTableEntryPoints.ts";
-import type { ColumnSettings } from "./ColumnSettings.ts";
-import type { GraphStructure } from "./GraphStructure.ts";
-import type { SidebarPanel } from "./SidebarPanel.ts";
+
+import type { ArrayGraphUISettingsTreeTableEntryPoints } from './ArrayGraphUISettingsTreeTableEntryPoints.ts';
+import type { ColumnSettings } from './ColumnSettings.ts';
+import type { GraphStructure } from './GraphStructure.ts';
+import type { SidebarPanel } from './SidebarPanel.ts';
 
 export interface ArrayGraphUISettings {
   selected_sidebar_panel?: SidebarPanel | undefined;

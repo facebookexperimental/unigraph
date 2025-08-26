@@ -4,7 +4,8 @@
  * @generated
  */
 
-import type { BlobID } from "./BlobID.ts";
+
+import type { BlobID } from './BlobID.ts';
 
 export interface ManifestStats {
   total_blobs: number;

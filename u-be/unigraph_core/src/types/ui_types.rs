@@ -48,5 +48,5 @@ pub struct ExplorerComponentInputGraphs {
 pub enum ExplorerComponentInputGraph {
     MapGraphSerialized(SerializedStr),
     ArrayGraphSerialized(SerializedStr),
-    ArrayGraphSerializedPackage(SerializedStr),
+    ArrayGraphSerializedPackageBase64(SerializedStr),
 }

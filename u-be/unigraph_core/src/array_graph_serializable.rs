@@ -1,6 +1,5 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-pub(crate) mod manifest;
 pub(crate) mod package;
 
 use std::collections::BTreeMap;

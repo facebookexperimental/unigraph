@@ -4,7 +4,8 @@
  * @generated
  */
 
-import type { AscendingTier } from "./AscendingTier.ts";
+
+import type { AscendingTier } from './AscendingTier.ts';
 
 export interface AscendingTiersConfig {
   tiers: AscendingTier[];

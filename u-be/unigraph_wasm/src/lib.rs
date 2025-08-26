@@ -10,6 +10,7 @@ use log::trace;
 use unigraph_core::ArrayGraph;
 use unigraph_core::ArrayGraphSerializable;
 use unigraph_core::ArrayGraphSerializablePackage;
+use unigraph_core::ArrayGraphSerializablePackageBase64;
 use unigraph_core::MapGraph;
 use unigraph_core::TraversalConfig;
 use unigraph_core::TwinGraph;
@@ -534,10 +535,11 @@ fn parse_input_graph(g: ExplorerComponentInputGraph) -> Result<ArrayGraphSeriali
                 .context("Failed to parse map graph")?;
             map_graph.to_array_graph_serializable()
         }
-        ExplorerComponentInputGraph::ArrayGraphSerializedPackage(serialized_str) => {
-            let package = serialized_str
-                .parse::<ArrayGraphSerializablePackage>()
+        ExplorerComponentInputGraph::ArrayGraphSerializedPackageBase64(serialized_str) => {
+            let package_base64 = serialized_str
+                .parse::<ArrayGraphSerializablePackageBase64>()
                 .context("Failed to parse array graph serialized package")?;
+            let package = ArrayGraphSerializablePackage::from_base64(package_base64)?;
             ArrayGraphSerializable::unpack(&package)
         }
     }

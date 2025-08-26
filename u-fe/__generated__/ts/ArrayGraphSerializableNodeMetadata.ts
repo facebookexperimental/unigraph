@@ -4,7 +4,8 @@
  * @generated
  */
 
-import type { NodeIDX } from "./NodeIDX.ts";
+
+import type { NodeIDX } from './NodeIDX.ts';
 
 export interface ArrayGraphSerializableNodeMetadata {
   metrics: { [key: string]: number[] };

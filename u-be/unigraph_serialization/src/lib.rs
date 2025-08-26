@@ -272,9 +272,7 @@ impl SerializationFormatInternal {
 }
 
 fn from_zstd_base64(zstd_base64: &str) -> Result<Vec<u8>> {
-    let compressed = base64::engine::general_purpose::STANDARD
-        .decode(zstd_base64)
-        .context("Failed to decode base64 string")?;
+    let compressed = from_base64(zstd_base64)?;
     from_zstd(&compressed[..])
 }
 
@@ -289,6 +287,16 @@ pub fn to_zstd(bytes: &[u8], level: ZSTDCompressionLevel) -> Result<Vec<u8>> {
     Ok(compressed)
 }
 
+pub fn to_base_64(bytes: &[u8]) -> String {
+    base64::engine::general_purpose::STANDARD.encode(bytes)
+}
+
+pub fn from_base64(s: &str) -> Result<Vec<u8>> {
+    base64::engine::general_purpose::STANDARD
+        .decode(s)
+        .context("Failed to decode base64 string")
+}
+
 fn to_zstd_base64_url_safe_no_pad(data: &[u8], level: ZSTDCompressionLevel) -> Result<String> {
     let compressed = to_zstd(data, level)?;
     let encoded = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(compressed);
@@ -297,7 +305,7 @@ fn to_zstd_base64_url_safe_no_pad(data: &[u8], level: ZSTDCompressionLevel) -> R
 
 fn to_zstd_base64(data: &[u8], level: ZSTDCompressionLevel) -> Result<String> {
     let compressed = to_zstd(data, level)?;
-    let encoded = base64::engine::general_purpose::STANDARD.encode(compressed);
+    let encoded = to_base_64(&compressed);
     Ok(encoded)
 }
 

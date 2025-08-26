@@ -4,7 +4,8 @@
  * @generated
  */
 
-import type { ArrayGraphUISettings } from "./ArrayGraphUISettings.ts";
+
+import type { ArrayGraphUISettings } from './ArrayGraphUISettings.ts';
 
 export interface GraphSettings {
   ui_settings?: ArrayGraphUISettings | undefined;

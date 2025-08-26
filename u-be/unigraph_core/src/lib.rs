@@ -33,12 +33,13 @@ pub use types::ui_types;
 pub use crate::array_graph_serializable::ArrayGraphSerializable;
 pub use crate::array_graph_serializable::ArrayGraphSerializableEdges;
 pub use crate::array_graph_serializable::ArrayGraphSerializableNodeMetadata;
-pub use crate::array_graph_serializable::manifest::ArrayGraphSerializableManifest;
-pub use crate::array_graph_serializable::manifest::ArrayGraphSerializablePackage;
-pub use crate::array_graph_serializable::manifest::BlobID;
-pub use crate::array_graph_serializable::manifest::ManifestBlobs;
-pub use crate::array_graph_serializable::manifest::ManifestStats;
+pub use crate::array_graph_serializable::package::ArrayGraphSerializableManifest;
+pub use crate::array_graph_serializable::package::ArrayGraphSerializablePackage;
+pub use crate::array_graph_serializable::package::ArrayGraphSerializablePackageBase64;
 pub use crate::array_graph_serializable::package::ArrayGraphSerializablePackageConfig;
+pub use crate::array_graph_serializable::package::BlobID;
+pub use crate::array_graph_serializable::package::ManifestBlobs;
+pub use crate::array_graph_serializable::package::ManifestStats;
 pub use crate::array_graph_serializable::package::into_blobs;
 
 #[cfg(test)]

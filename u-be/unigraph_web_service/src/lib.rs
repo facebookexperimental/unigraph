@@ -95,15 +95,16 @@ fn read_str(path: &str) -> Result<String> {
 
 fn to_serialized_str_json(map_graph: &MapGraph) -> Result<String> {
     let ag = map_graph.to_array_graph()?.into_serializable();
-    let package = ag.pack(&ArrayGraphSerializablePackageConfig::default())?;
+    let package_base64 = ag
+        .pack(&ArrayGraphSerializablePackageConfig::default())?
+        .into_base_64();
     let serialized_str = SerializationFormat::Json.to_serialized_str(
-        &package,
+        &package_base64,
         Some(type_name::<ArrayGraphSerializablePackage>().into()),
     )?;
 
-    SerializationFormat::Json.to_string(&ExplorerComponentInputGraph::ArrayGraphSerializedPackage(
-        serialized_str,
-    ))
+    SerializationFormat::Json
+        .to_string(&ExplorerComponentInputGraph::ArrayGraphSerializedPackageBase64(serialized_str))
 }
 
 fn into_array_graph_json(p: &Path) -> Result<String> {

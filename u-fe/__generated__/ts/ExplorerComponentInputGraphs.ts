@@ -4,7 +4,8 @@
  * @generated
  */
 
-import type { ExplorerComponentInputGraph } from "./ExplorerComponentInputGraph.ts";
+
+import type { ExplorerComponentInputGraph } from './ExplorerComponentInputGraph.ts';
 
 export interface ExplorerComponentInputGraphs {
   left: ExplorerComponentInputGraph;

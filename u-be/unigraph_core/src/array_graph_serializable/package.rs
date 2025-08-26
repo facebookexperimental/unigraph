@@ -6,22 +6,164 @@ use std::sync::Arc;
 use anyhow::Context;
 use anyhow::Result;
 use unigraph_serialization::ZSTDCompressionLevel;
+use unigraph_serialization::from_base64;
 use unigraph_serialization::from_zstd;
+use unigraph_serialization::to_base_64;
 use unigraph_serialization::to_zstd;
 use xxhash_rust::xxh3::xxh3_64;
 
-use super::manifest::ArrayGraphSerializableManifest;
-use super::manifest::ArrayGraphSerializablePackage;
-use super::manifest::BlobID;
-use super::manifest::ManifestBlobs;
-use super::manifest::ManifestStats;
 use crate::ArrayGraphNodes;
 use crate::ArrayGraphSerializable;
 use crate::ArrayGraphSerializableEdges;
 use crate::ArrayGraphSerializableNodeMetadata;
+use crate::graph_settings::GraphSettings;
 
 const DEFAULT_BYTES_PER_BLOB_CHUNK: usize = 2_000_000; // 2 MB
 const DEFAULT_COMPRESSION_LEVEL: ZSTDCompressionLevel = ZSTDCompressionLevel::Normal;
+
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    Hash,
+    typegen::TypeGen,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize
+)]
+pub struct BlobID(pub String);
+
+/// ArrayGraphSerializable can be serialized and chunked into multiple compressed blobs
+/// This manifest provides all the necessary metadata to locate and deserialize these blobs
+/// back into the initial graph.
+#[derive(Debug, typegen::TypeGen, serde::Serialize, serde::Deserialize)]
+pub struct ArrayGraphSerializableManifest {
+    /// Blob ID for the manifest itself serialized as JSON
+    pub self_reference: BlobID,
+    pub stats: ManifestStats,
+    pub blobs: ManifestBlobs,
+
+    pub graph_settings: Option<GraphSettings>,
+}
+
+/// Contains references to all individual blobs
+#[derive(Debug, typegen::TypeGen, serde::Serialize, serde::Deserialize)]
+pub struct ManifestBlobs {
+    pub node_names: Vec<BlobID>,
+    pub node_names_offsets: Vec<BlobID>,
+
+    /* EDGES */
+    pub directed: Vec<BlobID>,
+    pub directed_offsets: Vec<BlobID>,
+    pub tagged: Vec<BlobID>,
+    pub dynamic: Vec<BlobID>,
+
+    /* METADATA */
+    pub metrics: Vec<BlobID>,
+    pub tag_sets: Vec<BlobID>,
+
+    pub traversal_config: Vec<BlobID>,
+    pub entry_points: Vec<BlobID>,
+}
+
+#[derive(Debug, typegen::TypeGen, serde::Serialize, serde::Deserialize)]
+pub struct ManifestStats {
+    pub total_blobs: u32,
+    pub total_size_bytes: u32,
+    pub blob_sizes_bytes: BTreeMap<BlobID, u32>,
+    pub node_count: u32,
+    pub directed_edge_count: u32,
+}
+
+#[derive(Debug, typegen::TypeGen, serde::Serialize, serde::Deserialize)]
+pub struct ArrayGraphSerializablePackage {
+    pub manifest: ArrayGraphSerializableManifest,
+    pub blobs: BTreeMap<BlobID, Vec<u8>>,
+}
+
+/// Base64 Version of the package, where the blobs are Base64 encoded.
+/// This is intended for browser use or JSON encoding of the package itself
+/// for passing between servers/clients.
+/// If Vec<u8> is double serialized into JSON it will be represented as
+///     [1, 19, 113, 48, ...]
+/// which is very inefficient
+#[derive(Debug, typegen::TypeGen, serde::Serialize, serde::Deserialize)]
+pub struct ArrayGraphSerializablePackageBase64 {
+    pub manifest: ArrayGraphSerializableManifest,
+    pub blobs_base_64: BTreeMap<BlobID, String>,
+}
+
+impl ManifestBlobs {
+    pub fn get_all_blob_ids(&self) -> Vec<BlobID> {
+        let Self {
+            node_names,
+            node_names_offsets,
+            directed,
+            directed_offsets,
+            tagged,
+            dynamic,
+            metrics,
+            tag_sets,
+            traversal_config,
+            entry_points,
+        } = self;
+
+        [
+            node_names,
+            node_names_offsets,
+            directed,
+            directed_offsets,
+            tagged,
+            dynamic,
+            metrics,
+            tag_sets,
+            traversal_config,
+            entry_points,
+        ]
+        .into_iter()
+        .flatten()
+        .cloned()
+        .collect()
+    }
+}
+
+impl From<String> for BlobID {
+    fn from(s: String) -> Self {
+        BlobID(s)
+    }
+}
+
+impl From<&str> for BlobID {
+    fn from(s: &str) -> Self {
+        BlobID(s.to_string())
+    }
+}
+
+impl From<BlobID> for String {
+    fn from(blob_id: BlobID) -> Self {
+        blob_id.0
+    }
+}
+
+impl ManifestStats {
+    pub fn from_blobs(blobs: &BTreeMap<BlobID, Vec<u8>>, graph: &ArrayGraphSerializable) -> Self {
+        let total_blobs = blobs.len() as u32;
+        let total_size_bytes = blobs.values().map(|b| b.len()).sum::<usize>() as u32;
+        let blob_sizes_bytes = blobs
+            .iter()
+            .map(|(k, v)| (k.clone(), v.len() as u32))
+            .collect();
+        Self {
+            total_blobs,
+            total_size_bytes,
+            blob_sizes_bytes,
+            node_count: graph.node_names_ordered.combined_nodes_len() as u32,
+            directed_edge_count: graph.edges.directed.len() as u32,
+        }
+    }
+}
 
 type ModifyBlobID = Option<Arc<dyn Fn(&str) -> BlobID + Send + Sync>>;
 
@@ -267,6 +409,35 @@ fn into_chunks(blob: Vec<u8>, chunk_size_bytes: usize) -> Vec<Vec<u8>> {
 
     chunks.push(remaining);
     chunks
+}
+
+impl ArrayGraphSerializablePackage {
+    pub fn into_base_64(self) -> ArrayGraphSerializablePackageBase64 {
+        let ArrayGraphSerializablePackage { manifest, blobs } = self;
+        let blobs_base_64 = blobs
+            .into_iter()
+            .map(|(k, v)| (k, to_base_64(&v)))
+            .collect();
+
+        ArrayGraphSerializablePackageBase64 {
+            manifest,
+            blobs_base_64,
+        }
+    }
+
+    pub fn from_base64(package_base_64: ArrayGraphSerializablePackageBase64) -> Result<Self> {
+        let ArrayGraphSerializablePackageBase64 {
+            manifest,
+            blobs_base_64,
+        } = package_base_64;
+        Ok(ArrayGraphSerializablePackage {
+            manifest,
+            blobs: blobs_base_64
+                .iter()
+                .map(|(k, v)| Ok((k.clone(), from_base64(v)?)))
+                .collect::<Result<_>>()?,
+        })
+    }
 }
 
 #[cfg(test)]

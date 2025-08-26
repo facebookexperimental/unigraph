@@ -4,7 +4,8 @@
  * @generated
  */
 
-import type { SerializationFormat } from "./SerializationFormat.ts";
+
+import type { SerializationFormat } from './SerializationFormat.ts';
 
 /**
  * Struct that represents a value that has been serialized using provided
