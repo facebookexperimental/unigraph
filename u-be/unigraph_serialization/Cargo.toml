@@ -10,7 +10,6 @@ license = "MIT"
 [dependencies]
 anyhow = "1.0.98"
 base64 = { version = "0.22.1", features = ["alloc"] }
-rayon = "1.9.0"
 serde = { version = "1.0.219", features = ["derive", "rc"] }
 serde_json = { version = "1.0.140", features = ["alloc", "float_roundtrip", "raw_value", "unbounded_depth"] }
 serde_path_to_error = "0.1.13"
