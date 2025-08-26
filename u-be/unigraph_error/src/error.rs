@@ -30,10 +30,10 @@ impl UnigraphError {
     pub fn append_debug_info(&mut self, s: &str) {
         let mut result = String::new();
         if let Some(existing) = self.debug.take() {
-            writeln!(result, "{}", existing).unwrap();
+            writeln!(result, "{existing}").unwrap();
             writeln!(result, "{}", crate::SEPARATOR).unwrap();
         }
-        writeln!(result, "{}", s).unwrap();
+        writeln!(result, "{s}").unwrap();
         self.debug = Some(result);
     }
 }

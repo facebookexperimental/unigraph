@@ -286,57 +286,69 @@ pub fn pack(
 /// * `blobs` - Map from BlobID to the actual blob data. This would be fetched from
 ///   the underlying storage where the graph was stored (db/filesystem/etc)
 pub fn unpack(package: &ArrayGraphSerializablePackage) -> Result<ArrayGraphSerializable> {
-    let ArrayGraphSerializableManifest {
-        self_reference: _,
-        stats: _,
-        blobs,
-        graph_settings,
-    } = &package.manifest;
+    (|| {
+        let ArrayGraphSerializableManifest {
+            self_reference: _,
+            stats: _,
+            blobs,
+            graph_settings,
+        } = &package.manifest;
 
-    let ManifestBlobs {
-        node_names,
-        node_names_offsets, // This is the same data as node_names, so we ignore it
-        directed,
-        directed_offsets,
-        tagged,
-        dynamic,
-        metrics,
-        tag_sets,
-        traversal_config,
-        entry_points,
-    } = &blobs;
+        let ManifestBlobs {
+            node_names,
+            node_names_offsets, // This is the same data as node_names, so we ignore it
+            directed,
+            directed_offsets,
+            tagged,
+            dynamic,
+            metrics,
+            tag_sets,
+            traversal_config,
+            entry_points,
+        } = &blobs;
 
-    let b = &package.blobs;
+        let b = &package.blobs;
 
-    // Reconstruct each field by combining chunks and deserializing
-    let node_names = from_blobs_field(node_names, b)?;
-    let node_name_offsets = from_blobs_field(node_names_offsets, b)?;
+        // Reconstruct each field by combining chunks and deserializing
+        let node_names = from_blobs_field(node_names, b)?;
+        let node_name_offsets = from_blobs_field(node_names_offsets, b)?;
 
-    let directed = from_blobs_field(directed, b)?;
-    let directed_offsets = from_blobs_field(directed_offsets, b)?;
-    let tagged = from_blobs_field(tagged, b)?;
-    let dynamic = from_blobs_field(dynamic, b)?;
-    let metrics = from_blobs_field(metrics, b)?;
-    let tag_sets = from_blobs_field(tag_sets, b)?;
-    let traversal_config = from_blobs_field(traversal_config, b)?;
-    let entry_points = from_blobs_field(entry_points, b)?;
+        let directed = from_blobs_field(directed, b)?;
+        let directed_offsets = from_blobs_field(directed_offsets, b)?;
+        let tagged = from_blobs_field(tagged, b)?;
+        let dynamic = from_blobs_field(dynamic, b)?;
+        let metrics = from_blobs_field(metrics, b)?;
+        let tag_sets = from_blobs_field(tag_sets, b)?;
+        let traversal_config = from_blobs_field(traversal_config, b)?;
+        let entry_points = from_blobs_field(entry_points, b)?;
 
-    let edges = ArrayGraphSerializableEdges {
-        directed,
-        directed_offsets,
-        tagged,
-        dynamic,
-    };
+        let edges = ArrayGraphSerializableEdges {
+            directed,
+            directed_offsets,
+            tagged,
+            dynamic,
+        };
 
-    let node_metadata = ArrayGraphSerializableNodeMetadata { metrics, tag_sets };
+        let node_metadata = ArrayGraphSerializableNodeMetadata { metrics, tag_sets };
 
-    Ok(ArrayGraphSerializable {
-        node_names_ordered: Arc::new(ArrayGraphNodes::from_parts(node_names, node_name_offsets)),
-        edges,
-        node_metadata,
-        graph_settings: graph_settings.clone(),
-        traversal_config,
-        entry_points,
+        anyhow::Ok(ArrayGraphSerializable {
+            node_names_ordered: Arc::new(ArrayGraphNodes::from_parts(
+                node_names,
+                node_name_offsets,
+            )),
+            edges,
+            node_metadata,
+            graph_settings: graph_settings.clone(),
+            traversal_config,
+            entry_points,
+        })
+    })()
+    .context("Failed to unpack graph")
+    .with_context(|| {
+        format!(
+            "Manifest: {}",
+            serde_json::to_string_pretty(&package.manifest).unwrap()
+        )
     })
 }
 

@@ -18,7 +18,7 @@ impl fmt::Debug for UnigraphError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let formatter = ErrorFormatter { colors: true };
         let fmt_s = formatter.format_unigraph_error(self);
-        write!(f, "{}", fmt_s)?;
+        write!(f, "{fmt_s}")?;
         Ok(())
     }
 }
@@ -104,7 +104,7 @@ impl ErrorFormatter {
     pub(crate) fn format_unigraph_error(&self, err: &UnigraphError) -> String {
         let mut result = String::new();
         let error_display = self.bold_red(err.display.to_string().trim());
-        writeln!(result, "{}", error_display).unwrap();
+        writeln!(result, "{error_display}").unwrap();
         writeln!(result, "{}", self.dim(SEPARATOR)).unwrap();
 
         let dbg_str = if let Some(debug) = &err.debug {
@@ -113,7 +113,7 @@ impl ErrorFormatter {
             "<UnigraphError did not provide any debug info>".to_string()
         };
         let error_debug = self.dim(&dbg_str);
-        writeln!(result, "{}", error_debug).unwrap();
+        writeln!(result, "{error_debug}").unwrap();
 
         result
     }
@@ -128,10 +128,10 @@ impl ErrorFormatter {
         if let Some(root_cause) = chain.pop() {
             if let Some(unigraph_error) = root_cause.downcast_ref::<UnigraphError>() {
                 let dbg_fmt = self.format_unigraph_error(unigraph_error);
-                writeln!(result, "{}", dbg_fmt).unwrap();
+                writeln!(result, "{dbg_fmt}").unwrap();
             } else {
-                let s = self.bold_red(&format!("{}", root_cause));
-                writeln!(result, "{}", s).unwrap();
+                let s = self.bold_red(&format!("{root_cause}"));
+                writeln!(result, "{s}").unwrap();
             }
         }
 
@@ -141,7 +141,7 @@ impl ErrorFormatter {
         }
         for (idx, next_err) in chain.into_iter().rev().enumerate() {
             let next_err_str = self.red(&next_err.to_string());
-            let idx_str = self.dim(&format!("[{}]:", idx));
+            let idx_str = self.dim(&format!("[{idx}]:"));
             writeln!(result, "{} {}", idx_str, next_err_str.trim()).unwrap();
             writeln!(result, "{}", self.dim(SEPARATOR)).unwrap();
         }

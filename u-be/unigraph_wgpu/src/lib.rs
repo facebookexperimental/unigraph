@@ -3,7 +3,6 @@
 mod basic_uniforms;
 mod global_state;
 mod shared;
-pub mod unigraph_error;
 mod wgpu_graph_state;
 use std::cmp;
 use std::sync::Arc;
