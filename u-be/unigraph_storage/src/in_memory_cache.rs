@@ -115,6 +115,18 @@ impl<K: Eq + Hash + Clone + Send + 'static, V: Send + Sync + 'static> InMemoryCa
 
         Ok(value)
     }
+
+    /// Creates a new value using the entry factory function, bypassing all caching logic.
+    ///
+    /// This function directly calls the `make_entry` function provided during cache creation,
+    /// without checking the cache, storing results, or applying TTL. Useful when you need
+    /// to force a fresh computation or when caching is not desired for specific operations.
+    ///
+    /// # Arguments
+    /// * `key` - The key to pass to the entry factory function
+    pub async fn make_entry(&self, key: K) -> Result<V> {
+        (self.make_entry)(key).await
+    }
 }
 
 #[cfg(test)]
@@ -362,6 +374,56 @@ mod tests {
         k9::assert_equal!(*result2, 12300);
         assert!(Arc::ptr_eq(&result1, &result2)); // Same Arc
         k9::assert_equal!(computation_counter.load(Ordering::SeqCst), 1); // No recomputation
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_make_entry_bypasses_cache() -> anyhow::Result<()> {
+        use std::sync::Arc as StdArc;
+        use std::sync::atomic::AtomicU32;
+        use std::sync::atomic::Ordering;
+
+        let computation_counter = StdArc::new(AtomicU32::new(0));
+
+        let cache = InMemoryCache::new(
+            std::num::NonZero::new(10).unwrap(),
+            Duration::from_secs(60),
+            {
+                let counter = StdArc::clone(&computation_counter);
+                move |key: i32| {
+                    let counter = StdArc::clone(&counter);
+                    async move {
+                        counter.fetch_add(1, Ordering::SeqCst);
+                        sleep(Duration::from_millis(10)).await;
+                        Ok(key * 3)
+                    }
+                }
+            },
+        );
+
+        let key = 15;
+
+        // First, put something in the cache
+        let cached_result = cache.get(key).await?;
+        k9::assert_equal!(*cached_result, 45);
+        k9::assert_equal!(computation_counter.load(Ordering::SeqCst), 1);
+
+        // Now use make_entry - should bypass cache and create new value
+        let direct_result = cache.make_entry(key).await?;
+        k9::assert_equal!(direct_result, 45); // Same value
+        k9::assert_equal!(computation_counter.load(Ordering::SeqCst), 2); // But computed again!
+
+        // Verify cache still has the original value
+        let cached_result2 = cache.get(key).await?;
+        k9::assert_equal!(*cached_result2, 45);
+        assert!(Arc::ptr_eq(&cached_result, &cached_result2)); // Same Arc as before
+        k9::assert_equal!(computation_counter.load(Ordering::SeqCst), 2); // No additional computation
+
+        // make_entry with different key should also work
+        let direct_result2 = cache.make_entry(20).await?;
+        k9::assert_equal!(direct_result2, 60);
+        k9::assert_equal!(computation_counter.load(Ordering::SeqCst), 3);
 
         Ok(())
     }
