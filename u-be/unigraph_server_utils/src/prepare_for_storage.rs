@@ -150,3 +150,48 @@ pub fn pack_parallel(
 
     Ok(ArrayGraphSerializablePackage { manifest, blobs: b })
 }
+
+#[cfg(test)]
+mod tests {
+    use k9::MultilineString;
+    use k9::assert_equal;
+    use unigraph_core::MapGraph;
+
+    use super::*;
+
+    // Larger graph with more complex cases. Cycles, multiple parents, etc
+    // https://fburl.com/excalidraw/23gavkrb
+    const TEST_GRAPH_2: &str =
+        include_str!("../../unigraph_core/src/tests/test_graphs/test_graph_2_left.json");
+
+    #[test]
+    fn test_parallel_packing() -> Result<()> {
+        let ag = MapGraph::from_json(TEST_GRAPH_2)?.to_array_graph_serializable()?;
+        let package = pack_parallel(
+            &ag,
+            &ArrayGraphSerializablePackageConfig {
+                bytes_per_blob_chunk: Some(10),
+                compression_level: None,
+                modify_blob_id: None,
+            },
+        )?;
+
+        let package_base64 = package.into_base_64();
+
+        let roundtrip = ArrayGraphSerializable::unpack(
+            &ArrayGraphSerializablePackage::from_base64(package_base64)?,
+        )?;
+
+        let original_str = ag.into_array_graph().debug().to_forward_edges_string()?;
+        let roundtrip_str = roundtrip
+            .into_array_graph()
+            .debug()
+            .to_forward_edges_string()?;
+
+        assert_equal!(
+            MultilineString(original_str),
+            MultilineString(roundtrip_str)
+        );
+        Ok(())
+    }
+}

@@ -392,11 +392,20 @@ pub fn into_blobs<T: serde::Serialize>(
     let json = serde_json::to_vec(value)?;
     let zstd = to_zstd(&json, cfg.compression_level())?;
 
-    let result: BTreeMap<BlobID, Vec<u8>> = into_chunks(zstd, cfg.bytes_per_chunk())
+    let chunks = into_chunks(zstd, cfg.bytes_per_chunk());
+    let multiple_chunks = chunks.len() > 1;
+    let result: Vec<(BlobID, Vec<u8>)> = chunks
         .into_iter()
-        .map(|chunk| {
+        .enumerate()
+        .map(|(i, chunk)| {
             let xx = xxh3_64(&chunk);
-            let mut blob_id = BlobID(format!("{name}_{xx}"));
+            let chunk_suffix = if multiple_chunks {
+                format!("_chunk_{i}")
+            } else {
+                String::new()
+            };
+
+            let mut blob_id = BlobID(format!("{name}{chunk_suffix}_{xx}"));
             if let Some(f) = cfg.modify_blob_id.as_ref() {
                 blob_id = f(&blob_id.0);
             }
@@ -404,7 +413,7 @@ pub fn into_blobs<T: serde::Serialize>(
         })
         .collect();
 
-    let ids = result.keys().cloned().collect();
+    let ids = result.iter().map(|(id, _)| id.clone()).collect();
     all_blobs.extend(result);
     Ok(ids)
 }
@@ -484,16 +493,16 @@ mod tests {
     "blob_sizes_bytes": {
       "directed_1506826171969472540": 35,
       "directed_offsets_8316678694188447186": 40,
-      "dynamic_3675328647461951329": 23,
-      "dynamic_768470073201454812": 50,
+      "dynamic_chunk_0_768470073201454812": 50,
+      "dynamic_chunk_1_3675328647461951329": 23,
       "entry_points_9535545603450022154": 13,
       "metrics_6304071051133242967": 30,
       "node_names_10311418653884441124": 27,
       "node_names_offsets_15446562321729131330": 43,
-      "tag_sets_121953578755559923": 14,
-      "tag_sets_2696313957685523905": 50,
-      "tagged_3600822166880560972": 50,
-      "tagged_8048188434168318281": 9,
+      "tag_sets_chunk_0_2696313957685523905": 50,
+      "tag_sets_chunk_1_121953578755559923": 14,
+      "tagged_chunk_0_3600822166880560972": 50,
+      "tagged_chunk_1_8048188434168318281": 9,
       "traversal_config_9535545603450022154": 13
     },
     "node_count": 16,
@@ -513,19 +522,19 @@ mod tests {
       "directed_offsets_8316678694188447186"
     ],
     "tagged": [
-      "tagged_3600822166880560972",
-      "tagged_8048188434168318281"
+      "tagged_chunk_0_3600822166880560972",
+      "tagged_chunk_1_8048188434168318281"
     ],
     "dynamic": [
-      "dynamic_3675328647461951329",
-      "dynamic_768470073201454812"
+      "dynamic_chunk_0_768470073201454812",
+      "dynamic_chunk_1_3675328647461951329"
     ],
     "metrics": [
       "metrics_6304071051133242967"
     ],
     "tag_sets": [
-      "tag_sets_121953578755559923",
-      "tag_sets_2696313957685523905"
+      "tag_sets_chunk_0_2696313957685523905",
+      "tag_sets_chunk_1_121953578755559923"
     ],
     "traversal_config": [
       "traversal_config_9535545603450022154"
@@ -551,16 +560,16 @@ mod tests {
     "_manifest.json",
     "directed_1506826171969472540",
     "directed_offsets_8316678694188447186",
-    "dynamic_3675328647461951329",
-    "dynamic_768470073201454812",
+    "dynamic_chunk_0_768470073201454812",
+    "dynamic_chunk_1_3675328647461951329",
     "entry_points_9535545603450022154",
     "metrics_6304071051133242967",
     "node_names_10311418653884441124",
     "node_names_offsets_15446562321729131330",
-    "tag_sets_121953578755559923",
-    "tag_sets_2696313957685523905",
-    "tagged_3600822166880560972",
-    "tagged_8048188434168318281",
+    "tag_sets_chunk_0_2696313957685523905",
+    "tag_sets_chunk_1_121953578755559923",
+    "tagged_chunk_0_3600822166880560972",
+    "tagged_chunk_1_8048188434168318281",
     "traversal_config_9535545603450022154",
 ]
 "#
