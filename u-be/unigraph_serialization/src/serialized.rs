@@ -9,6 +9,7 @@ use crate::SerializationFormatInternal;
 /// serialization format.
 /// This is just a convenient wrapper around the serialized data that can be
 /// passed around (and double serialized as part of a larger payload)
+#[derive(serde::Deserialize, serde::Serialize, typegen::TypeGen)]
 pub struct SerializedStr {
     pub data: String,
     pub format: SerializationFormat,
