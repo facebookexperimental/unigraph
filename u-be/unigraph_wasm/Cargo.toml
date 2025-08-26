@@ -19,6 +19,7 @@ unigraph_core = { path = "../unigraph_core" }
 unigraph_wgpu = { path = "../unigraph_wgpu" }
 unigraph_serialization = { path = "../unigraph_serialization" }
 unigraph_graph_state = { path = "../unigraph_graph_state" }
+unigraph_error = { path = "../unigraph_error" }
 wasm-bindgen = "*"
 wasm-bindgen-futures = "0.4.45"
 winit = "0.30.9"
