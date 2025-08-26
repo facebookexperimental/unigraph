@@ -2,7 +2,7 @@
 
 use std::borrow::Cow;
 
-pub fn truncate_str_in_the_middle(s: &str, max_bytes: usize) -> Cow<str> {
+pub fn truncate_str_in_the_middle(s: &str, max_bytes: usize) -> Cow<'_, str> {
     let len = s.len();
     if len > max_bytes {
         let start = &s[..max_bytes / 2];

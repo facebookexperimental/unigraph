@@ -33,11 +33,11 @@ impl SharedGraphState {
         })
     }
 
-    pub fn get(&self) -> RwLockReadGuard<GraphState> {
+    pub fn get(&self) -> RwLockReadGuard<'_, GraphState> {
         self.inner.read().unwrap()
     }
 
-    pub fn get_mut(&self) -> RwLockWriteGuard<GraphState> {
+    pub fn get_mut(&self) -> RwLockWriteGuard<'_, GraphState> {
         self.inner.write().unwrap()
     }
 

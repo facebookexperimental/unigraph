@@ -338,7 +338,7 @@ impl ArrayGraph {
         get_arrows(self, node_idx, GraphStructure::Reverse)
     }
 
-    pub fn debug(&self) -> ArrayGraphDebugUtils {
+    pub fn debug(&self) -> ArrayGraphDebugUtils<'_> {
         ArrayGraphDebugUtils(self)
     }
 }

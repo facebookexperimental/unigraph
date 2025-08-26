@@ -124,7 +124,7 @@ impl OffsetGraph {
         EdgesIter::new(self)
     }
 
-    pub fn iter_edges_mut(&mut self) -> EdgesIterMut {
+    pub fn iter_edges_mut(&mut self) -> EdgesIterMut<'_> {
         EdgesIterMut::new(self)
     }
 
@@ -132,7 +132,7 @@ impl OffsetGraph {
         &self,
         tiers: &[AscendingTier],
         entry_points: &[NodeIDX],
-    ) -> Result<TieredTraversalIter> {
+    ) -> Result<TieredTraversalIter<'_>> {
         anyhow::ensure!(tiers.len() <= 4, "Maximum of 4 tiers supported {tiers:?}");
 
         Ok(TieredTraversalIter::new(self, tiers, entry_points))
@@ -185,11 +185,11 @@ impl OffsetGraph {
         reverse_graph
     }
 
-    pub fn dfs_configured(&self, roots: &[NodeIDX]) -> OffsetGraphDFSConfigured {
+    pub fn dfs_configured(&self, roots: &[NodeIDX]) -> OffsetGraphDFSConfigured<'_> {
         OffsetGraphDFSConfigured::new(self, roots)
     }
 
-    pub fn dfs_unconfigured(&self, roots: &[NodeIDX]) -> OffsetGraphDFSUnconfigured {
+    pub fn dfs_unconfigured(&self, roots: &[NodeIDX]) -> OffsetGraphDFSUnconfigured<'_> {
         OffsetGraphDFSUnconfigured::new(self, roots)
     }
 

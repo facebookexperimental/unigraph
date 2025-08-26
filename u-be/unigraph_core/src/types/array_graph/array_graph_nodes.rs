@@ -190,7 +190,7 @@ impl SharedArrayGraphNodes {
         self.node_names.idx_to_name(node_idx.into())
     }
 
-    pub fn iter_names(&self) -> NodeNamesOrderedNamesIter {
+    pub fn iter_names(&self) -> NodeNamesOrderedNamesIter<'_> {
         NodeNamesOrderedNamesIter {
             node_names: &self.node_names,
             existence: &self.existence,
