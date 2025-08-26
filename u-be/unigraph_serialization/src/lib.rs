@@ -49,7 +49,10 @@
 use anyhow::Context;
 use anyhow::Result;
 use base64::Engine;
+mod serialized;
 mod truncate_str_in_the_middle;
+
+pub use serialized::SerializedStr;
 
 /// ZSTD compression levels with different performance characteristics.
 ///
@@ -79,9 +82,10 @@ pub enum SerializationFormat {
     /// JSON compressed with ZSTD (best level) and Base64 encoded
     /// Very slow compression time but better compression ratio
     JsonZstdBestBase64,
-    /// JSON compressed with ZSTD (best level) and URL-safe Base64 encoded without padding
-    /// Best for web transmission where URL-safe encoding is required
+    /// JSON compressed with ZSTD and URL-safe Base64 encoded without padding
+    JsonZstdBase64URLSafeNoPad,
     JsonZstdBestBase64URLSafeNoPad,
+    JsonZstdFastBase64URLSafeNoPad,
 }
 
 /// Internal representation of serialization formats with associated compression levels
@@ -108,6 +112,32 @@ impl From<&SerializationFormat> for SerializationFormatInternal {
             SerializationFormat::JsonZstdBestBase64URLSafeNoPad => {
                 SerializationFormatInternal::JsonZstdBase64URLSafeNoPad(ZSTDCompressionLevel::Best)
             }
+            SerializationFormat::JsonZstdBase64URLSafeNoPad => {
+                SerializationFormatInternal::JsonZstdBase64URLSafeNoPad(
+                    ZSTDCompressionLevel::Normal,
+                )
+            }
+            SerializationFormat::JsonZstdFastBase64URLSafeNoPad => {
+                SerializationFormatInternal::JsonZstdBase64URLSafeNoPad(ZSTDCompressionLevel::Fast)
+            }
+        }
+    }
+}
+
+impl From<&SerializationFormatInternal> for SerializationFormat {
+    fn from(value: &SerializationFormatInternal) -> Self {
+        match value {
+            SerializationFormatInternal::Json => SerializationFormat::Json,
+            SerializationFormatInternal::JsonZstdBase64(level) => match level {
+                ZSTDCompressionLevel::Normal => SerializationFormat::JsonZstdBase64,
+                ZSTDCompressionLevel::Fast => SerializationFormat::JsonZstdFastBase64,
+                ZSTDCompressionLevel::Best => SerializationFormat::JsonZstdBestBase64,
+            },
+            SerializationFormatInternal::JsonZstdBase64URLSafeNoPad(level) => match level {
+                ZSTDCompressionLevel::Best => SerializationFormat::JsonZstdBestBase64URLSafeNoPad,
+                ZSTDCompressionLevel::Fast => SerializationFormat::JsonZstdBestBase64URLSafeNoPad,
+                ZSTDCompressionLevel::Normal => SerializationFormat::JsonZstdBestBase64URLSafeNoPad,
+            },
         }
     }
 }
@@ -137,6 +167,14 @@ impl SerializationFormat {
     /// ```
     pub fn to_string<T: serde::Serialize>(&self, value: &T) -> Result<String> {
         SerializationFormatInternal::from(self).to_string(value)
+    }
+
+    pub fn to_serialized_str<T: serde::Serialize>(
+        &self,
+        value: &T,
+        type_hint: Option<String>,
+    ) -> Result<SerializedStr> {
+        SerializationFormatInternal::from(self).to_serialized_str(value, type_hint)
     }
 
     /// Deserialize a value from bytes using the specified format.
@@ -193,6 +231,19 @@ impl SerializationFormatInternal {
                 to_zstd_base64_url_safe_no_pad(&json, *level)
             }
         }
+    }
+
+    pub fn to_serialized_str<T: serde::Serialize>(
+        &self,
+        value: &T,
+        type_hint: Option<String>,
+    ) -> Result<SerializedStr> {
+        let data = self.to_string(value)?;
+        Ok(SerializedStr {
+            data,
+            format: self.into(),
+            type_hint,
+        })
     }
 
     pub fn parse_bytes<T: serde::de::DeserializeOwned>(&self, bytes: &[u8]) -> Result<T> {
