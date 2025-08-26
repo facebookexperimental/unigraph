@@ -4,10 +4,9 @@
  * @generated
  */
 
-
-import type { GraphTableSort } from './GraphTableSort.ts';
-import type { IndividualOptionEnabled } from './IndividualOptionEnabled.ts';
-import type { MetricSettings } from './MetricSettings.ts';
+import type { GraphTableSort } from "./GraphTableSort.ts";
+import type { IndividualOptionEnabled } from "./IndividualOptionEnabled.ts";
+import type { MetricSettings } from "./MetricSettings.ts";
 
 export interface ColumnSettings {
   /**

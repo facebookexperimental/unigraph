@@ -28,6 +28,9 @@
     "enabled": true,
     "rules": {
       "recommended": true,
+      "complexity": {
+        "noBannedTypes": "off"
+      },
       "a11y": {
         "useKeyWithClickEvents": "off"
       },

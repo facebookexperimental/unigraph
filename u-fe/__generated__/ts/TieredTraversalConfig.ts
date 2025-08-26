@@ -4,8 +4,7 @@
  * @generated
  */
 
-
-import type { AscendingTiersConfig } from './AscendingTiersConfig.ts';
+import type { AscendingTiersConfig } from "./AscendingTiersConfig.ts";
 
 /**
  * Configuration for tiered traversal, which allows traversing the graph in tiers.
@@ -15,5 +14,6 @@ import type { AscendingTiersConfig } from './AscendingTiersConfig.ts';
  * we look at the node's current tier and then we look at the new tier this node
  * is supposed to transition to and record that.
  */
-export type TieredTraversalConfig =
-  { "AscendingTiers": AscendingTiersConfig };
+export type TieredTraversalConfig = { AscendingTiers: AscendingTiersConfig };
+
+export type TieredTraversalConfigVariants = "AscendingTiers";

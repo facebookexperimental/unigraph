@@ -4,9 +4,8 @@
  * @generated
  */
 
-
-import type { ArrayGraphDynamicEdge } from './ArrayGraphDynamicEdge.ts';
-import type { NodeIDX } from './NodeIDX.ts';
+import type { ArrayGraphDynamicEdge } from "./ArrayGraphDynamicEdge.ts";
+import type { NodeIDX } from "./NodeIDX.ts";
 
 export interface ArrayGraphSerializableEdges {
   directed: NodeIDX[];

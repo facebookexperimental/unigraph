@@ -1,6 +1,6 @@
 // @flow
 
 export type DynamicEdge = {
-  properties: { [string]: string },
-  branches: { [string]: Array<NodeName> },
+  properties: { [string]: string };
+  branches: { [string]: Array<NodeName> };
 };

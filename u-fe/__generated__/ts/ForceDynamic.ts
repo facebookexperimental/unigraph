@@ -4,8 +4,7 @@
  * @generated
  */
 
-
-import type { Decision } from './Decision.ts';
+import type { Decision } from "./Decision.ts";
 
 export interface ForceDynamic {
   from_node?: string | undefined;

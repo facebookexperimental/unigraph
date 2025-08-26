@@ -4,7 +4,6 @@
  * @generated
  */
 
-
 /**
  * Represents values for metrics for a set of nodes.
  * Not transitive, just aggregated for things like

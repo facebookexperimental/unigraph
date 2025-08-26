@@ -4,9 +4,8 @@
  * @generated
  */
 
-
-import type { IndividualOptionEnabled } from './IndividualOptionEnabled.ts';
-import type { MetricFormat } from './MetricFormat.ts';
+import type { IndividualOptionEnabled } from "./IndividualOptionEnabled.ts";
+import type { MetricFormat } from "./MetricFormat.ts";
 
 export interface MetricSettings {
   description?: string | undefined;

@@ -4,5 +4,4 @@
  * @generated
  */
 
-
 export type CallbackFn = (tvc: string) => void;

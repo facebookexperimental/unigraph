@@ -4,7 +4,6 @@
  * @generated
  */
 
-
 /**
  * Enum that defines whether an individual option is enabled or not.
  * This is for cases where we have a global settings that can show/hide certain

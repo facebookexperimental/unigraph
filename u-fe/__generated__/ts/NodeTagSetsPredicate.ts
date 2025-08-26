@@ -4,13 +4,12 @@
  * @generated
  */
 
-
-import type { Decision } from './Decision.ts';
+import type { Decision } from "./Decision.ts";
 
 /**
  * These predicates are used to decide whether to follow an edge to a node based
  * on node's tag sets, which will contain some annotations about the node.
- * 
+ *
  * Specifically there are two concepts here:
  *        @assert_value v1 v2 v3: if the tag set is present, we ONLY follow the edge
  *          if the tagset contains a passed value (set globally). Otherwise we do not
@@ -18,10 +17,10 @@ import type { Decision } from './Decision.ts';
  *        @disallow_value v1 v2 v3: if the tagset is present, we do NOT follow the edge
  *          if the tagset contains a passed value (set globally). Otherwise we do follow
  *          the edge (unless other predicates disallow it).
- * 
+ *
  * assuming current route is "homepage".
  * this produces these predicates:
- * 
+ *
  * [
  *    { tag_set_name: "assert_route", tag_name: "homepage", contains: true, decision: { include: true } },
  *    { tag_set_name: "assert_route", tag_name: "homepage", contains: false, decision: { include: false } },

@@ -4,14 +4,13 @@
  * @generated
  */
 
-
-import type { CallbackFn } from './CallbackFn.ts';
-import type { ExplorerComponentInputGraphs } from './ExplorerComponentInputGraphs.ts';
+import type { CallbackFn } from "./CallbackFn.ts";
+import type { ExplorerComponentInputGraphs } from "./ExplorerComponentInputGraphs.ts";
 
 export interface ExplorerProps {
   /**
    * NODE: DO NOT FORGET TO MEMOIZE IF YOU CONSTRUCT THIS OBJECT.
-   * 
+   *
    * Provide a graph to visualize/explore. Can be a single graph
    * or two graphs that will be compared to each other.
    */

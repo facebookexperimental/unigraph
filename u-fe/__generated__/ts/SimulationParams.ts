@@ -4,9 +4,8 @@
  * @generated
  */
 
-
-import type { Selection } from './Selection.ts';
-import type { SimulationColors } from './SimulationColors.ts';
+import type { Selection } from "./Selection.ts";
+import type { SimulationColors } from "./SimulationColors.ts";
 
 export interface SimulationParams {
   /**

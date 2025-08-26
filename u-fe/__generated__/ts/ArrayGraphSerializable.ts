@@ -4,12 +4,11 @@
  * @generated
  */
 
-
-import type { ArrayGraphNodes } from './ArrayGraphNodes.ts';
-import type { ArrayGraphSerializableEdges } from './ArrayGraphSerializableEdges.ts';
-import type { ArrayGraphSerializableNodeMetadata } from './ArrayGraphSerializableNodeMetadata.ts';
-import type { GraphSettings } from './GraphSettings.ts';
-import type { TraversalConfig } from './TraversalConfig.ts';
+import type { ArrayGraphNodes } from "./ArrayGraphNodes.ts";
+import type { ArrayGraphSerializableEdges } from "./ArrayGraphSerializableEdges.ts";
+import type { ArrayGraphSerializableNodeMetadata } from "./ArrayGraphSerializableNodeMetadata.ts";
+import type { GraphSettings } from "./GraphSettings.ts";
+import type { TraversalConfig } from "./TraversalConfig.ts";
 
 /**
  * A serializable representation of an array graph, which can be used for

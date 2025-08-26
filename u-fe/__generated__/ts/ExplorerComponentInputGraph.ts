@@ -4,10 +4,14 @@
  * @generated
  */
 
-
-import type { ArrayGraphSerialized } from './ArrayGraphSerialized.ts';
-import type { MapGraphSerialized } from './MapGraphSerialized.ts';
+import type { SerializedStr } from "./SerializedStr.ts";
 
 export type ExplorerComponentInputGraph =
-  { "MapGraphSerialized": MapGraphSerialized } |
-  { "ArrayGraphSerialized": ArrayGraphSerialized };
+  | { MapGraphSerialized: SerializedStr }
+  | { ArrayGraphSerialized: SerializedStr }
+  | { ArrayGraphSerializedPackage: SerializedStr };
+
+export type ExplorerComponentInputGraphVariants =
+  | "MapGraphSerialized"
+  | "ArrayGraphSerialized"
+  | "ArrayGraphSerializedPackage";

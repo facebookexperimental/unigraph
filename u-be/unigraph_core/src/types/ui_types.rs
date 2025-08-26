@@ -1,6 +1,6 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-use unigraph_serialization::SerializationFormat;
+use unigraph_serialization::SerializedStr;
 
 #[derive(typegen::TypeGen)]
 #[typegen(TypeScript("(tvc: string) => void"), Flow("(string) => void"))]
@@ -43,23 +43,10 @@ pub struct ExplorerComponentInputGraphs {
     pub right: Option<ExplorerComponentInputGraph>,
 }
 
-#[derive(typegen::TypeGen, serde::Deserialize)]
+#[derive(typegen::TypeGen, serde::Serialize, serde::Deserialize)]
 #[typegen(skip(Hack))]
 pub enum ExplorerComponentInputGraph {
-    MapGraphSerialized(MapGraphSerialized),
-    ArrayGraphSerialized(ArrayGraphSerialized),
-}
-
-#[derive(typegen::TypeGen, serde::Deserialize)]
-#[typegen(skip(Hack))]
-pub struct MapGraphSerialized {
-    pub format: SerializationFormat,
-    pub value: String,
-}
-
-#[derive(typegen::TypeGen, serde::Deserialize)]
-#[typegen(skip(Hack))]
-pub struct ArrayGraphSerialized {
-    pub format: SerializationFormat,
-    pub value: String,
+    MapGraphSerialized(SerializedStr),
+    ArrayGraphSerialized(SerializedStr),
+    ArrayGraphSerializedPackage(SerializedStr),
 }

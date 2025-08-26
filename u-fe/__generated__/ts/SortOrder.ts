@@ -4,5 +4,4 @@
  * @generated
  */
 
-
 export type SortOrder = "Asc" | "Desc";

@@ -4,8 +4,7 @@
  * @generated
  */
 
-
-import type { SortOrder } from './SortOrder.ts';
+import type { SortOrder } from "./SortOrder.ts";
 
 export interface GraphTableSort {
   column_id: string;

@@ -14,14 +14,14 @@ use unigraph_core::TraversalConfig;
 use unigraph_core::TwinGraph;
 use unigraph_core::graph_settings::GraphStructure;
 use unigraph_core::types::NodeIDX;
-use unigraph_core::ui_types::ArrayGraphSerialized;
 use unigraph_core::ui_types::ExplorerComponentInputGraph;
 use unigraph_core::ui_types::ExplorerComponentInputGraphs;
-use unigraph_core::ui_types::MapGraphSerialized;
 use unigraph_graph_state::GlobalGraphState;
 use unigraph_graph_state::global_graph_state;
 use unigraph_graph_state::types::SimulationParams;
 use unigraph_serialization::SerializationFormat;
+use unigraph_storage::ArrayGraphSerializablePackage;
+use unigraph_storage::unpack;
 use unigraph_wgpu::GlobalState;
 use unigraph_wgpu::UserEvent;
 use unigraph_wgpu::WindowAttributesFactory;
@@ -528,17 +528,18 @@ pub fn to_zstd_base64_url_safe_no_pad(s: String) -> Result<String, WasmJSError> 
 
 fn parse_input_graph(g: ExplorerComponentInputGraph) -> Result<ArrayGraphSerializable> {
     match g {
-        ExplorerComponentInputGraph::ArrayGraphSerialized(ArrayGraphSerialized {
-            format,
-            value,
-        }) => format
-            .parse_string(&value)
-            .context("Failed to deserialize array graph"),
-        ExplorerComponentInputGraph::MapGraphSerialized(MapGraphSerialized { format, value }) => {
-            let map_graph: MapGraph = format
-                .parse_string(&value)
-                .context("Failed to deserialize map graph")?;
+        ExplorerComponentInputGraph::ArrayGraphSerialized(serialized_str) => serialized_str.parse(),
+        ExplorerComponentInputGraph::MapGraphSerialized(serialized_str) => {
+            let map_graph = serialized_str
+                .parse::<MapGraph>()
+                .context("Failed to parse map graph")?;
             map_graph.to_array_graph_serializable()
+        }
+        ExplorerComponentInputGraph::ArrayGraphSerializedPackage(serialized_str) => {
+            let package = serialized_str
+                .parse::<ArrayGraphSerializablePackage>()
+                .context("Failed to parse array graph serialized package")?;
+            unpack(&package)
         }
     }
     .context("Failed to parse input graph")

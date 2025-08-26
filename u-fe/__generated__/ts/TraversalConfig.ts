@@ -4,12 +4,11 @@
  * @generated
  */
 
-
-import type { Decision } from './Decision.ts';
-import type { ForceDynamic } from './ForceDynamic.ts';
-import type { Message } from './Message.ts';
-import type { NodeTagSetsPredicate } from './NodeTagSetsPredicate.ts';
-import type { TieredTraversalConfig } from './TieredTraversalConfig.ts';
+import type { Decision } from "./Decision.ts";
+import type { ForceDynamic } from "./ForceDynamic.ts";
+import type { Message } from "./Message.ts";
+import type { NodeTagSetsPredicate } from "./NodeTagSetsPredicate.ts";
+import type { TieredTraversalConfig } from "./TieredTraversalConfig.ts";
 
 export interface TraversalConfig {
   force_nodes?: { [key: string]: Decision } | undefined;

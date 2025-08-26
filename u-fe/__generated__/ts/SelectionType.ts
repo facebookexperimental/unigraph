@@ -4,5 +4,4 @@
  * @generated
  */
 
-
 export type SelectionType = "None" | "Box" | "Line";

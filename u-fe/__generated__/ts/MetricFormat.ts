@@ -4,8 +4,7 @@
  * @generated
  */
 
-
-import type { SizeConfig } from './SizeConfig.ts';
+import type { SizeConfig } from "./SizeConfig.ts";
 
 /**
  * Value that defines how to format metric values (in the UI or CLI output)
@@ -15,11 +14,11 @@ import type { SizeConfig } from './SizeConfig.ts';
  */
 export type MetricFormat =
   /** a value representing a percentage value. */
-  { "Percent": { scaled_percentage: boolean | undefined } } |
+  | { Percent: { scaled_percentage: boolean | undefined } }
   /** Given a value of bytes, format it as a size (e.g. 1.4MB, 2kB, etc) */
-  { "SizeBytes": { config: SizeConfig | undefined } } |
+  | { SizeBytes: { config: SizeConfig | undefined } }
   /** Given a value of 0 or 1, format it as a boolean */
-  { "NumericBoolean": {  } } |
+  | { NumericBoolean: {} }
   /**
    * 1       -> {min:    2, max: 4, delimiter: true}  -> "1.00"
    * 1.1     -> {min:    2, max: 4, delimiter: true}  -> "1.10"
@@ -31,4 +30,16 @@ export type MetricFormat =
    * 1000000 -> {min:    2, max: 4, delimiter: false} -> "1000000.00"
    * 1000000 -> {min:    0, max: 0, delimiter: true}  -> "1,000,000"
    */
-  { "NumberWithVariablePrecision": { min_precision: number | undefined, max_precision: number | undefined, use_delimiter: boolean | undefined } };
+  | {
+      NumberWithVariablePrecision: {
+        min_precision: number | undefined;
+        max_precision: number | undefined;
+        use_delimiter: boolean | undefined;
+      };
+    };
+
+export type MetricFormatVariants =
+  | "Percent"
+  | "SizeBytes"
+  | "NumericBoolean"
+  | "NumberWithVariablePrecision";

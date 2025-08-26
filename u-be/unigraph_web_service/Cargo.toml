@@ -9,6 +9,8 @@ anyhow = "1.0.98"
 axum = "0.8.3"
 base64 = { version = "0.21", features = ["alloc"] }
 unigraph_core = { path = "../unigraph_core" }
+unigraph_storage = { path = "../unigraph_storage" }
+unigraph_serialization = { path = "../unigraph_serialization" }
 rayon = "1.9.0"
 tokio = { workspace = true }
 tera = "1.20.0"

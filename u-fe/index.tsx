@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Explorer } from "./Explorer";
+import type { ExplorerComponentInputGraph } from "./__generated__/ts/ExplorerComponentInputGraph";
 import type { ExplorerComponentInputGraphs } from "./__generated__/ts/ExplorerComponentInputGraphs";
 
 const ARRAY_GRAPH_JSON_ZSTD_BASE64_LEFT_ELEMENT_ID =
@@ -61,21 +62,8 @@ function Root() {
       throw new Error("Left graph must be present");
     }
     return {
-      left: {
-        ArrayGraphSerialized: {
-          format: "JsonZstdBase64",
-          value: left,
-        },
-      },
-      right:
-        right != null
-          ? {
-              ArrayGraphSerialized: {
-                format: "JsonZstdBase64",
-                value: right,
-              },
-            }
-          : undefined,
+      left,
+      right: right ?? undefined,
     };
   }, []);
 
@@ -137,7 +125,9 @@ function getQueryParam(name: string): string | null {
   return value;
 }
 
-function getSerializedGraphFromHTMLElement(elementID: string): string | null {
+function getSerializedGraphFromHTMLElement(
+  elementID: string,
+): ExplorerComponentInputGraph | null {
   const array_graph_json_zstd_base64_Element =
     document.getElementById(elementID);
 
@@ -149,8 +139,9 @@ function getSerializedGraphFromHTMLElement(elementID: string): string | null {
 
   const content = array_graph_json_zstd_base64_Element.textContent;
 
-  if (content === "") {
+  if (content === "" || content == null) {
     return null;
   }
-  return content;
+
+  return JSON.parse(content) as ExplorerComponentInputGraph;
 }

@@ -1,5 +1,6 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
+use std::any::type_name;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -10,9 +11,13 @@ use anyhow::bail;
 use axum::Router;
 use axum::response::Html;
 use axum::routing::get;
-use base64::Engine;
 use tera::Tera;
 use unigraph_core::MapGraph;
+use unigraph_core::ui_types::ExplorerComponentInputGraph;
+use unigraph_serialization::SerializationFormat;
+use unigraph_storage::ArrayGraphSerializablePackage;
+use unigraph_storage::StorageConfig;
+use unigraph_storage::pack;
 
 const HTML_TEMLPATE_PATH: &str = "../../u-fe/index.html.tera";
 const THIS_FILES_DIR: &str = env!("CARGO_MANIFEST_DIR");
@@ -28,7 +33,7 @@ pub async fn start(
         (Some(l), Some(r)) => (into_array_graph_json(l)?, Some(into_array_graph_json(r)?)),
         (Some(l), None) => (into_array_graph_json(l)?, None),
         (None, None) => (
-            to_array_graph_json_zstd_base64(&unigraph_core::make_test_graph()?)?,
+            to_serialized_str_json(&unigraph_core::make_test_graph()?)?,
             None,
         ),
         (None, Some(_)) => {
@@ -89,16 +94,22 @@ fn read_str(path: &str) -> Result<String> {
     std::fs::read_to_string(path).with_context(|| format!("Failed to read file at `{path}`"))
 }
 
-fn to_array_graph_json_zstd_base64(map_graph: &MapGraph) -> Result<String> {
-    let json = map_graph.to_array_graph()?.into_serializable().to_json()?;
-    let compressed = zstd::encode_all(json.as_bytes(), 14)?;
-    let b64 = base64::engine::general_purpose::STANDARD.encode(compressed);
-    Ok(b64)
+fn to_serialized_str_json(map_graph: &MapGraph) -> Result<String> {
+    let ag = map_graph.to_array_graph()?.into_serializable();
+    let package = pack(&ag, &StorageConfig::default())?;
+    let serialized_str = SerializationFormat::Json.to_serialized_str(
+        &package,
+        Some(type_name::<ArrayGraphSerializablePackage>().into()),
+    )?;
+
+    SerializationFormat::Json.to_string(&ExplorerComponentInputGraph::ArrayGraphSerializedPackage(
+        serialized_str,
+    ))
 }
 
 fn into_array_graph_json(p: &Path) -> Result<String> {
     let file_string_content = std::fs::read_to_string(p).context("Failed to read file")?;
     let map_graph =
         unigraph_core::MapGraph::from_json(&file_string_content).context("Failed to parse JSON")?;
-    to_array_graph_json_zstd_base64(&map_graph)
+    to_serialized_str_json(&map_graph)
 }

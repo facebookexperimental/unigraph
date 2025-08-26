@@ -4,8 +4,7 @@
  * @generated
  */
 
-
-import type { SerializationFormat } from './SerializationFormat.ts';
+import type { SerializationFormat } from "./SerializationFormat.ts";
 
 export interface ArrayGraphSerialized {
   format: SerializationFormat;

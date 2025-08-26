@@ -4,9 +4,9 @@
  * @generated
  */
 
+import type { BlobID } from "./BlobID.ts";
 
-import type { BlobID } from './BlobID.ts';
-
+/** Contains references to all individual blobs */
 export interface ManifestBlobs {
   node_names: BlobID[];
   node_names_offsets: BlobID[];

@@ -4,7 +4,6 @@
  * @generated
  */
 
-
 export interface SimulationColors {
   background: [number, number, number, number];
   node_main: [number, number, number, number];
