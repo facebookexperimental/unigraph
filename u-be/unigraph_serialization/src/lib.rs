@@ -59,7 +59,7 @@ pub use serialized::SerializedStr;
 /// Higher levels provide better compression at the cost of speed.
 #[derive(Clone, Copy)]
 #[repr(i32)]
-enum ZSTDCompressionLevel {
+pub enum ZSTDCompressionLevel {
     /// Fast compression with moderate compression ratio (level 1)
     Fast = 1,
     /// Balanced compression speed and ratio (level 8)
@@ -275,22 +275,28 @@ fn from_zstd_base64(zstd_base64: &str) -> Result<Vec<u8>> {
     let compressed = base64::engine::general_purpose::STANDARD
         .decode(zstd_base64)
         .context("Failed to decode base64 string")?;
+    from_zstd(&compressed[..])
+}
 
-    let decompressed =
-        zstd::decode_all(&compressed[..]).context("Failed to decompress zstd data")?;
+pub fn from_zstd(bytes: &[u8]) -> Result<Vec<u8>> {
+    let decompressed = zstd::decode_all(bytes).context("Failed to decompress zstd data")?;
     Ok(decompressed)
 }
 
-fn to_zstd_base64_url_safe_no_pad(data: &[u8], level: ZSTDCompressionLevel) -> Result<String> {
+pub fn to_zstd(bytes: &[u8], level: ZSTDCompressionLevel) -> Result<Vec<u8>> {
     let compressed =
-        zstd::encode_all(data, level as i32).context("Failed to compress data with zstd")?;
+        zstd::encode_all(bytes, level as i32).context("Failed to compress data with zstd")?;
+    Ok(compressed)
+}
+
+fn to_zstd_base64_url_safe_no_pad(data: &[u8], level: ZSTDCompressionLevel) -> Result<String> {
+    let compressed = to_zstd(data, level)?;
     let encoded = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(compressed);
     Ok(encoded)
 }
 
 fn to_zstd_base64(data: &[u8], level: ZSTDCompressionLevel) -> Result<String> {
-    let compressed =
-        zstd::encode_all(data, level as i32).context("Failed to compress data with zstd")?;
+    let compressed = to_zstd(data, level)?;
     let encoded = base64::engine::general_purpose::STANDARD.encode(compressed);
     Ok(encoded)
 }
@@ -299,10 +305,7 @@ fn from_zstd_base64_url_safe_no_pad(zstd_base64: &str) -> Result<Vec<u8>> {
     let compressed = base64::engine::general_purpose::URL_SAFE_NO_PAD
         .decode(zstd_base64)
         .context("Failed to decode base64 URL-safe string (no padding)")?;
-
-    let decompressed =
-        zstd::decode_all(&compressed[..]).context("Failed to decompress zstd data")?;
-    Ok(decompressed)
+    from_zstd(&compressed[..])
 }
 
 /// Deserialize JSON but give a bit more descriptive deserialization error

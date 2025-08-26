@@ -2,8 +2,8 @@
 
 use std::collections::BTreeMap;
 
-use unigraph_core::ArrayGraphSerializable;
-use unigraph_core::graph_settings::GraphSettings;
+use crate::ArrayGraphSerializable;
+use crate::graph_settings::GraphSettings;
 
 #[derive(
     Debug,

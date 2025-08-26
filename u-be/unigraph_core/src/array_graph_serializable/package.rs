@@ -5,77 +5,32 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use anyhow::Result;
-use unigraph_core::ArrayGraphNodes;
-use unigraph_core::ArrayGraphSerializable;
-use unigraph_core::ArrayGraphSerializableEdges;
-use unigraph_core::ArrayGraphSerializableNodeMetadata;
+use unigraph_serialization::ZSTDCompressionLevel;
+use unigraph_serialization::from_zstd;
+use unigraph_serialization::to_zstd;
 use xxhash_rust::xxh3::xxh3_64;
 
-use crate::manifest::ArrayGraphSerializableManifest;
-use crate::manifest::ArrayGraphSerializablePackage;
-use crate::manifest::BlobID;
-use crate::manifest::ManifestBlobs;
-use crate::manifest::ManifestStats;
-
-/// Macro to serialize multiple fields to blobs in parallel using Rayon.
-///
-/// Usage: `into_blobs_parallelized!(field1, field2, field3; all_blobs, config)`
-/// Returns a tuple of Vec<BlobID> in the same order.
-macro_rules! into_blobs_parallelized {
-    ($($field:ident),* ; $all_blobs:expr, $config:expr) => {
-        {
-            use rayon::scope;
-            use std::sync::Mutex;
-            use paste::paste;
-
-            // Wrap the all_blobs map in a mutex
-            let all_blobs_mutex = Mutex::new($all_blobs);
-
-            paste! {
-                // Create individual result variables for each field
-                $(
-                    let mut [<result_ $field>] = None;
-                )*
-            }
-
-            scope(|s| {
-                $(
-                    s.spawn(|_| {
-                        let mut temp_blobs = std::collections::BTreeMap::new();
-                        let result = into_blobs(&$field, stringify!($field), &mut temp_blobs, $config)
-                            .with_context(|| format!("Failed to serialize field {}", stringify!($field)));
-
-                        paste! {
-                            [<result_ $field>] = Some(result);
-                        }
-                        // Merge temp_blobs into the shared all_blobs map
-                        let mut all_blobs_guard = all_blobs_mutex.lock().unwrap();
-                        all_blobs_guard.extend(temp_blobs);
-                    });
-                )*
-            });
-
-            // Return tuple with all results in order
-            paste! {
-                ($(
-                    [<result_ $field>].context("Empty value")??,
-                )*)
-            }
-        }
-    };
-}
+use super::manifest::ArrayGraphSerializableManifest;
+use super::manifest::ArrayGraphSerializablePackage;
+use super::manifest::BlobID;
+use super::manifest::ManifestBlobs;
+use super::manifest::ManifestStats;
+use crate::ArrayGraphNodes;
+use crate::ArrayGraphSerializable;
+use crate::ArrayGraphSerializableEdges;
+use crate::ArrayGraphSerializableNodeMetadata;
 
 const DEFAULT_BYTES_PER_BLOB_CHUNK: usize = 2_000_000; // 2 MB
-const DEFAULT_COMPRESSION_LEVEL: i32 = 8; // ZSTD compression level
+const DEFAULT_COMPRESSION_LEVEL: ZSTDCompressionLevel = ZSTDCompressionLevel::Normal;
 
 type ModifyBlobID = Option<Arc<dyn Fn(&str) -> BlobID + Send + Sync>>;
 
 #[derive(Default, Clone)]
-pub struct StorageConfig {
+pub struct ArrayGraphSerializablePackageConfig {
     pub bytes_per_blob_chunk: Option<usize>,
 
     /// ZSTD compression level
-    pub compression_level: Option<i32>,
+    pub compression_level: Option<ZSTDCompressionLevel>,
 
     /// A function that generates an ID for the blob.
     /// This is here to decouple the logic of preparing the graph
@@ -86,13 +41,13 @@ pub struct StorageConfig {
     pub modify_blob_id: ModifyBlobID,
 }
 
-impl StorageConfig {
+impl ArrayGraphSerializablePackageConfig {
     pub fn bytes_per_chunk(&self) -> usize {
         self.bytes_per_blob_chunk
             .unwrap_or(DEFAULT_BYTES_PER_BLOB_CHUNK)
     }
 
-    pub fn compression_level(&self) -> i32 {
+    pub fn compression_level(&self) -> ZSTDCompressionLevel {
         self.compression_level.unwrap_or(DEFAULT_COMPRESSION_LEVEL)
     }
 }
@@ -110,7 +65,7 @@ impl StorageConfig {
 /// - blobs is a map from BlobID to the actual blob data
 pub fn pack(
     graph: &ArrayGraphSerializable,
-    c: &StorageConfig,
+    c: &ArrayGraphSerializablePackageConfig,
 ) -> Result<ArrayGraphSerializablePackage> {
     let mut b = BTreeMap::new();
 
@@ -134,30 +89,16 @@ pub fn pack(
 
     let (node_names, node_names_offsets) = node_names_ordered.as_parts();
 
-    let (
-        node_names,
-        node_names_offsets,
-        directed,
-        directed_offsets,
-        tagged,
-        dynamic,
-        metrics,
-        tag_sets,
-        traversal_config,
-        entry_points,
-    ) = into_blobs_parallelized!(
-        node_names,
-        node_names_offsets,
-        directed,
-        directed_offsets,
-        tagged,
-        dynamic,
-        metrics,
-        tag_sets,
-        traversal_config,
-        entry_points;
-        &mut b, c
-    );
+    let node_names = into_blobs(&node_names, "node_names", &mut b, c)?;
+    let node_names_offsets = into_blobs(&node_names_offsets, "node_names_offsets", &mut b, c)?;
+    let directed = into_blobs(&directed, "directed", &mut b, c)?;
+    let directed_offsets = into_blobs(&directed_offsets, "directed_offsets", &mut b, c)?;
+    let tagged = into_blobs(&tagged, "tagged", &mut b, c)?;
+    let dynamic = into_blobs(&dynamic, "dynamic", &mut b, c)?;
+    let metrics = into_blobs(&metrics, "metrics", &mut b, c)?;
+    let tag_sets = into_blobs(&tag_sets, "tag_sets", &mut b, c)?;
+    let traversal_config = into_blobs(&traversal_config, "traversal_config", &mut b, c)?;
+    let entry_points = into_blobs(&entry_points, "entry_points", &mut b, c)?;
 
     let manifest_blobs = ManifestBlobs {
         node_names,
@@ -273,8 +214,7 @@ fn from_blobs_field<T: serde::de::DeserializeOwned + Default>(
         }
 
         // Decompress the combined data
-        let json = zstd::bulk::decompress(&combined_data, DEFAULT_BYTES_PER_BLOB_CHUNK * 10)
-            .context("zstd decompression failed")?;
+        let json = from_zstd(&combined_data)?;
 
         // Deserialize from JSON
         let value: T = serde_json::from_slice(&json).context("Failed to deserialize JSON")?;
@@ -289,14 +229,14 @@ fn from_blobs_field<T: serde::de::DeserializeOwned + Default>(
     })
 }
 
-fn into_blobs<T: serde::Serialize>(
+pub fn into_blobs<T: serde::Serialize>(
     value: &T,
     name: &str,
     all_blobs: &mut BTreeMap<BlobID, Vec<u8>>,
-    cfg: &StorageConfig,
+    cfg: &ArrayGraphSerializablePackageConfig,
 ) -> Result<Vec<BlobID>> {
     let json = serde_json::to_vec(value)?;
-    let zstd = zstd::bulk::compress(&json, cfg.compression_level())?;
+    let zstd = to_zstd(&json, cfg.compression_level())?;
 
     let result: BTreeMap<BlobID, Vec<u8>> = into_chunks(zstd, cfg.bytes_per_chunk())
         .into_iter()
@@ -332,29 +272,20 @@ fn into_chunks(blob: Vec<u8>, chunk_size_bytes: usize) -> Vec<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use k9::snapshot;
-    use unigraph_core::MapGraph;
 
     use super::*;
-
-    const TEST_GRAPH_2: &str =
-        include_str!("../../unigraph_core/src/tests/test_graphs/test_graph_2_left.json");
-
-    fn make_graph() -> ArrayGraphSerializable {
-        MapGraph::from_json(TEST_GRAPH_2)
-            .unwrap()
-            .to_array_graph_serializable()
-            .unwrap()
-    }
+    use crate::MapGraph;
+    use crate::tests::test_graphs::make_test_array_graph_2;
 
     #[test]
     fn serialize() -> Result<()> {
-        let g = make_graph();
+        let g = make_test_array_graph_2()?.into_serializable();
 
         let package = pack(
             &g,
-            &StorageConfig {
+            &ArrayGraphSerializablePackageConfig {
                 bytes_per_blob_chunk: Some(50),
-                compression_level: Some(17),
+                compression_level: Some(ZSTDCompressionLevel::Best),
                 modify_blob_id: Some(Arc::new(|id| BlobID(id.to_string()))),
             },
         )?;
@@ -368,56 +299,56 @@ mod tests {
     "total_blobs": 13,
     "total_size_bytes": 397,
     "blob_sizes_bytes": {
-      "directed_3098825159700367953": 35,
-      "directed_offsets_17048802696332253084": 40,
-      "dynamic_17709666951863227118": 50,
+      "directed_1506826171969472540": 35,
+      "directed_offsets_8316678694188447186": 40,
       "dynamic_3675328647461951329": 23,
-      "entry_points_12265251058727778867": 13,
-      "metrics_17201045065729657183": 30,
-      "node_names_6281809031306549709": 27,
-      "node_names_offsets_6491002063904830174": 43,
+      "dynamic_768470073201454812": 50,
+      "entry_points_9535545603450022154": 13,
+      "metrics_6304071051133242967": 30,
+      "node_names_10311418653884441124": 27,
+      "node_names_offsets_15446562321729131330": 43,
       "tag_sets_121953578755559923": 14,
-      "tag_sets_16961032930212497945": 50,
-      "tagged_10664201214824955125": 50,
+      "tag_sets_2696313957685523905": 50,
+      "tagged_3600822166880560972": 50,
       "tagged_8048188434168318281": 9,
-      "traversal_config_12265251058727778867": 13
+      "traversal_config_9535545603450022154": 13
     },
     "node_count": 16,
     "directed_edge_count": 11
   },
   "blobs": {
     "node_names": [
-      "node_names_6281809031306549709"
+      "node_names_10311418653884441124"
     ],
     "node_names_offsets": [
-      "node_names_offsets_6491002063904830174"
+      "node_names_offsets_15446562321729131330"
     ],
     "directed": [
-      "directed_3098825159700367953"
+      "directed_1506826171969472540"
     ],
     "directed_offsets": [
-      "directed_offsets_17048802696332253084"
+      "directed_offsets_8316678694188447186"
     ],
     "tagged": [
-      "tagged_10664201214824955125",
+      "tagged_3600822166880560972",
       "tagged_8048188434168318281"
     ],
     "dynamic": [
-      "dynamic_17709666951863227118",
-      "dynamic_3675328647461951329"
+      "dynamic_3675328647461951329",
+      "dynamic_768470073201454812"
     ],
     "metrics": [
-      "metrics_17201045065729657183"
+      "metrics_6304071051133242967"
     ],
     "tag_sets": [
       "tag_sets_121953578755559923",
-      "tag_sets_16961032930212497945"
+      "tag_sets_2696313957685523905"
     ],
     "traversal_config": [
-      "traversal_config_12265251058727778867"
+      "traversal_config_9535545603450022154"
     ],
     "entry_points": [
-      "entry_points_12265251058727778867"
+      "entry_points_9535545603450022154"
     ]
   },
   "graph_settings": null
@@ -435,19 +366,19 @@ mod tests {
             r#"
 [
     "_manifest.json",
-    "directed_3098825159700367953",
-    "directed_offsets_17048802696332253084",
-    "dynamic_17709666951863227118",
+    "directed_1506826171969472540",
+    "directed_offsets_8316678694188447186",
     "dynamic_3675328647461951329",
-    "entry_points_12265251058727778867",
-    "metrics_17201045065729657183",
-    "node_names_6281809031306549709",
-    "node_names_offsets_6491002063904830174",
+    "dynamic_768470073201454812",
+    "entry_points_9535545603450022154",
+    "metrics_6304071051133242967",
+    "node_names_10311418653884441124",
+    "node_names_offsets_15446562321729131330",
     "tag_sets_121953578755559923",
-    "tag_sets_16961032930212497945",
-    "tagged_10664201214824955125",
+    "tag_sets_2696313957685523905",
+    "tagged_3600822166880560972",
     "tagged_8048188434168318281",
-    "traversal_config_12265251058727778867",
+    "traversal_config_9535545603450022154",
 ]
 "#
         );
@@ -456,10 +387,13 @@ mod tests {
 
     #[test]
     fn roundtrip_to_blobs_and_from_blobs() -> Result<()> {
-        let original_graph = make_graph();
+        let original_graph = make_test_array_graph_2()?.into_serializable();
 
         // Convert to blobs
-        let package = pack(&original_graph, &StorageConfig::default())?;
+        let package = pack(
+            &original_graph,
+            &ArrayGraphSerializablePackageConfig::default(),
+        )?;
 
         // Convert back from blobs
         let reconstructed_graph = unpack(&package)?;
@@ -485,8 +419,8 @@ mod tests {
             let time_now = std::time::Instant::now();
             let result = pack(
                 &graph,
-                &StorageConfig {
-                    compression_level: Some(18),
+                &ArrayGraphSerializablePackageConfig {
+                    compression_level: Some(ZSTDCompressionLevel::Best),
                     ..Default::default()
                 },
             )?;

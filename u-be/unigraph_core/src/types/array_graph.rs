@@ -6,7 +6,6 @@ pub mod array_graph_derived_state;
 mod array_graph_determine_entrypoints;
 mod array_graph_metrics;
 pub(crate) mod array_graph_nodes;
-pub mod array_graph_serializable;
 pub mod array_graph_state;
 mod array_graph_stats;
 mod conjoint_cost;

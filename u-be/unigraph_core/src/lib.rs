@@ -2,6 +2,7 @@
 
 #![allow(clippy::collapsible_if)]
 
+mod array_graph_serializable;
 pub mod map_graph_builder;
 mod test_graph;
 pub(crate) mod traversal;
@@ -23,14 +24,22 @@ pub use types::array_graph::Arrow;
 pub use types::array_graph::array_graph_debug_utils::ArrayGraphDebugUtils;
 pub use types::array_graph::array_graph_nodes::ArrayGraphNodes;
 pub use types::array_graph::array_graph_nodes::GraphSide;
-pub use types::array_graph::array_graph_serializable::ArrayGraphSerializable;
-pub use types::array_graph::array_graph_serializable::ArrayGraphSerializableEdges;
-pub use types::array_graph::array_graph_serializable::ArrayGraphSerializableNodeMetadata;
 pub use types::array_graph::graph_settings;
 pub use types::array_graph::remap_utils;
 pub use types::map_graph::MapGraph;
 pub use types::twin_graph::TwinGraph;
 pub use types::ui_types;
+
+pub use crate::array_graph_serializable::ArrayGraphSerializable;
+pub use crate::array_graph_serializable::ArrayGraphSerializableEdges;
+pub use crate::array_graph_serializable::ArrayGraphSerializableNodeMetadata;
+pub use crate::array_graph_serializable::manifest::ArrayGraphSerializableManifest;
+pub use crate::array_graph_serializable::manifest::ArrayGraphSerializablePackage;
+pub use crate::array_graph_serializable::manifest::BlobID;
+pub use crate::array_graph_serializable::manifest::ManifestBlobs;
+pub use crate::array_graph_serializable::manifest::ManifestStats;
+pub use crate::array_graph_serializable::package::ArrayGraphSerializablePackageConfig;
+pub use crate::array_graph_serializable::package::into_blobs;
 
 #[cfg(test)]
 mod tests;

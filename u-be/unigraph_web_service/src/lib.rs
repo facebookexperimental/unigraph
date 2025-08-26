@@ -12,12 +12,11 @@ use axum::Router;
 use axum::response::Html;
 use axum::routing::get;
 use tera::Tera;
+use unigraph_core::ArrayGraphSerializablePackage;
+use unigraph_core::ArrayGraphSerializablePackageConfig;
 use unigraph_core::MapGraph;
 use unigraph_core::ui_types::ExplorerComponentInputGraph;
 use unigraph_serialization::SerializationFormat;
-use unigraph_storage::ArrayGraphSerializablePackage;
-use unigraph_storage::StorageConfig;
-use unigraph_storage::pack;
 
 const HTML_TEMLPATE_PATH: &str = "../../u-fe/index.html.tera";
 const THIS_FILES_DIR: &str = env!("CARGO_MANIFEST_DIR");
@@ -96,7 +95,7 @@ fn read_str(path: &str) -> Result<String> {
 
 fn to_serialized_str_json(map_graph: &MapGraph) -> Result<String> {
     let ag = map_graph.to_array_graph()?.into_serializable();
-    let package = pack(&ag, &StorageConfig::default())?;
+    let package = ag.pack(&ArrayGraphSerializablePackageConfig::default())?;
     let serialized_str = SerializationFormat::Json.to_serialized_str(
         &package,
         Some(type_name::<ArrayGraphSerializablePackage>().into()),

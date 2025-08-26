@@ -6,10 +6,10 @@ use anyhow::Result;
 
 use crate::ArrayGraphDynamicEdge;
 use crate::ArrayGraphNodes;
+use crate::ArrayGraphSerializableEdges;
+use crate::ArrayGraphSerializableNodeMetadata;
 use crate::NodeIDX;
 use crate::types::Tag;
-use crate::types::array_graph::array_graph_serializable::ArrayGraphSerializableEdges;
-use crate::types::array_graph::array_graph_serializable::ArrayGraphSerializableNodeMetadata;
 
 /// Utility that takes a vec of sortable values, sorts the original vec in-place and returns
 /// the context of original positions + mapping to the new positions.

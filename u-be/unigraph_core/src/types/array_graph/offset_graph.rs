@@ -19,9 +19,9 @@ use crate::types::array_graph::offset_graph::offset_graph_traversal::EdgesIter;
 use crate::types::array_graph::offset_graph::offset_graph_traversal::OffsetGraphDFSUnconfigured;
 
 pub struct OffsetGraph {
-    pub(super) edges: Vec<Edge>,
-    pub(super) edge_offsets: Vec<usize>,
-    pub(super) non_directed_edges_metadata: Vec<NonDirectedEdgeMetadata>,
+    pub(crate) edges: Vec<Edge>,
+    pub(crate) edge_offsets: Vec<usize>,
+    pub(crate) non_directed_edges_metadata: Vec<NonDirectedEdgeMetadata>,
 }
 
 /// Metadata for non-directed edges in the graph that contains

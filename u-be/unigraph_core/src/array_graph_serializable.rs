@@ -1,5 +1,8 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
+pub(crate) mod manifest;
+pub(crate) mod package;
+
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::sync::Arc;
@@ -9,11 +12,9 @@ use anyhow::Result;
 
 use super::ArrayGraph;
 use super::ArrayGraphDynamicEdge;
-use super::NodeFlags;
-use super::array_graph_nodes::ArrayGraphNodes;
-use super::offset_graph::Edge;
-use super::offset_graph::NonDirectedEdgeMetadata;
-use super::offset_graph::OffsetGraph;
+use crate::ArrayGraphNodes;
+use crate::ArrayGraphSerializablePackage;
+use crate::ArrayGraphSerializablePackageConfig;
 use crate::TraversalConfig;
 use crate::graph_settings::GraphSettings;
 use crate::remap_utils::RemapContext;
@@ -25,9 +26,13 @@ use crate::types::NodeIDX;
 use crate::types::NodeName;
 use crate::types::Tag;
 use crate::types::TagSetName;
+use crate::types::array_graph::NodeFlags;
 use crate::types::array_graph::array_graph_derived_state::ArrayGraphDerivedState;
 use crate::types::array_graph::array_graph_nodes::SharedArrayGraphNodes;
 use crate::types::array_graph::array_graph_state::ArrayGraphState;
+use crate::types::array_graph::offset_graph::Edge;
+use crate::types::array_graph::offset_graph::NonDirectedEdgeMetadata;
+use crate::types::array_graph::offset_graph::OffsetGraph;
 
 /// A serializable representation of an array graph, which can be used for
 /// storing or transmitting the graph structure.
@@ -92,6 +97,20 @@ impl ArrayGraphSerializable {
     pub fn from_json_bytes(json: &[u8]) -> Result<Self> {
         serde_json::from_slice(json)
             .context("Failed to deserialize ArrayGraphSerializable from JSON bytes")
+    }
+
+    /// NOTE: this is a serial operation that is performed on a single thread.
+    /// it works on WASM but it will be much much slower in native than it could be.
+    /// You should use the parallelized version in `unigraph_server_utils` crate instead.
+    pub fn pack(
+        &self,
+        config: &ArrayGraphSerializablePackageConfig,
+    ) -> Result<ArrayGraphSerializablePackage> {
+        package::pack(self, config).context("Failed to pack graph")
+    }
+
+    pub fn unpack(package: &ArrayGraphSerializablePackage) -> Result<ArrayGraphSerializable> {
+        package::unpack(package).context("Failed to unpack graph")
     }
 
     pub fn remap(self, ctx: &RemapContext) -> Result<Self> {

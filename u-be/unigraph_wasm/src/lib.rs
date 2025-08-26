@@ -9,6 +9,7 @@ use anyhow::Result;
 use log::trace;
 use unigraph_core::ArrayGraph;
 use unigraph_core::ArrayGraphSerializable;
+use unigraph_core::ArrayGraphSerializablePackage;
 use unigraph_core::MapGraph;
 use unigraph_core::TraversalConfig;
 use unigraph_core::TwinGraph;
@@ -20,8 +21,6 @@ use unigraph_graph_state::GlobalGraphState;
 use unigraph_graph_state::global_graph_state;
 use unigraph_graph_state::types::SimulationParams;
 use unigraph_serialization::SerializationFormat;
-use unigraph_storage::ArrayGraphSerializablePackage;
-use unigraph_storage::unpack;
 use unigraph_wgpu::GlobalState;
 use unigraph_wgpu::UserEvent;
 use unigraph_wgpu::WindowAttributesFactory;
@@ -539,7 +538,7 @@ fn parse_input_graph(g: ExplorerComponentInputGraph) -> Result<ArrayGraphSeriali
             let package = serialized_str
                 .parse::<ArrayGraphSerializablePackage>()
                 .context("Failed to parse array graph serialized package")?;
-            unpack(&package)
+            ArrayGraphSerializable::unpack(&package)
         }
     }
     .context("Failed to parse input graph")
