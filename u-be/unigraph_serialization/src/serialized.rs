@@ -1,5 +1,6 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
+use anyhow::Context;
 use anyhow::Result;
 
 use crate::SerializationFormat;
@@ -19,6 +20,13 @@ pub struct SerializedStr {
 
 impl SerializedStr {
     pub fn parse<T: serde::de::DeserializeOwned>(&self) -> Result<T> {
-        SerializationFormatInternal::from(&self.format).parse_string(&self.data)
+        SerializationFormatInternal::from(&self.format)
+            .parse_string(&self.data)
+            .with_context(|| {
+                format!(
+                    "Failed to parse serialized string: format: `{:?}`. type_hint: `{:?}`",
+                    &self.format, self.type_hint
+                )
+            })
     }
 }

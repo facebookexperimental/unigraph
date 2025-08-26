@@ -84,8 +84,8 @@ fn html(left_json: &str, right_json: &Option<String>) -> Result<String> {
     let mut context = tera::Context::new();
     context.insert("css", &css);
     context.insert("js", &js.replace("</script>", "<\\/script>"));
-    context.insert("array_graph_json_zstd_base64_left", &left_json);
-    context.insert("array_graph_json_zstd_base64_right", &right_json);
+    context.insert("array_graph_package_base64_left", &left_json);
+    context.insert("array_graph_package_base64_right", &right_json);
     Tera::one_off(&html_template, &context, false).context("Failed to render HTML template")
 }
 

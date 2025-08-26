@@ -6,10 +6,10 @@ import { Explorer } from "./Explorer";
 import type { ExplorerComponentInputGraph } from "./__generated__/ts/ExplorerComponentInputGraph";
 import type { ExplorerComponentInputGraphs } from "./__generated__/ts/ExplorerComponentInputGraphs";
 
-const ARRAY_GRAPH_JSON_ZSTD_BASE64_LEFT_ELEMENT_ID =
-  "array_graph_json_zstd_base64_left";
-const ARRAY_GRAPH_JSON_ZSTD_BASE64_RIGHT_ELEMENT_ID =
-  "array_graph_json_zstd_base64_right";
+const ARRAY_GRAPH_PACKAGE_BASE64_LEFT_ELEMENT_ID =
+  "array_graph_package_base64_left";
+const ARRAY_GRAPH_PACKAGE_BASE64_RIGHT_ELEMENT_ID =
+  "array_graph_package_base64_right";
 
 const QUERY_PARAM_GRAPH_SETTINGS = "graph_settings";
 const QUERY_PARAM_TVC_L = "tvc";
@@ -52,10 +52,10 @@ function Root() {
 
   const graphs: ExplorerComponentInputGraphs = useMemo(() => {
     const left = getSerializedGraphFromHTMLElement(
-      ARRAY_GRAPH_JSON_ZSTD_BASE64_LEFT_ELEMENT_ID,
+      ARRAY_GRAPH_PACKAGE_BASE64_LEFT_ELEMENT_ID,
     );
     const right = getSerializedGraphFromHTMLElement(
-      ARRAY_GRAPH_JSON_ZSTD_BASE64_RIGHT_ELEMENT_ID,
+      ARRAY_GRAPH_PACKAGE_BASE64_RIGHT_ELEMENT_ID,
     );
 
     if (left == null) {
@@ -128,16 +128,15 @@ function getQueryParam(name: string): string | null {
 function getSerializedGraphFromHTMLElement(
   elementID: string,
 ): ExplorerComponentInputGraph | null {
-  const array_graph_json_zstd_base64_Element =
-    document.getElementById(elementID);
+  const array_graph_package_base64_Element = document.getElementById(elementID);
 
-  if (array_graph_json_zstd_base64_Element == null) {
+  if (array_graph_package_base64_Element == null) {
     throw new Error(
       `Array graph JSON element not found. elementID: ${elementID}`,
     );
   }
 
-  const content = array_graph_json_zstd_base64_Element.textContent;
+  const content = array_graph_package_base64_Element.textContent;
 
   if (content === "" || content == null) {
     return null;

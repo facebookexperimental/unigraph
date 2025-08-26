@@ -69,7 +69,7 @@ pub enum ZSTDCompressionLevel {
 }
 
 /// Simple enum that can be used externally and passed around as a simple serialized string
-#[derive(typegen::TypeGen, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, typegen::TypeGen, serde::Deserialize, serde::Serialize)]
 pub enum SerializationFormat {
     /// Plain JSON format - fastest serialization/deserialization but largest size
     Json,
