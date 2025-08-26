@@ -12,6 +12,7 @@ use unigraph_core::ArrayGraphSerializableNodeMetadata;
 use xxhash_rust::xxh3::xxh3_64;
 
 use crate::manifest::ArrayGraphSerializableManifest;
+use crate::manifest::ArrayGraphSerializablePackage;
 use crate::manifest::BlobID;
 use crate::manifest::ManifestBlobs;
 use crate::manifest::ManifestStats;
@@ -107,10 +108,10 @@ impl StorageConfig {
 /// A tuple of (manifest, blobs) where:
 /// - manifest contains the metadata and blob IDs
 /// - blobs is a map from BlobID to the actual blob data
-pub fn to_blobs(
+pub fn pack(
     graph: &ArrayGraphSerializable,
     c: &StorageConfig,
-) -> Result<(ArrayGraphSerializableManifest, BTreeMap<BlobID, Vec<u8>>)> {
+) -> Result<ArrayGraphSerializablePackage> {
     let mut b = BTreeMap::new();
 
     let ArrayGraphSerializable {
@@ -191,7 +192,7 @@ pub fn to_blobs(
         serde_json::to_string_pretty(&manifest)?.into_bytes(),
     );
 
-    Ok((manifest, b))
+    Ok(ArrayGraphSerializablePackage { manifest, blobs: b })
 }
 
 /// Restores an `ArrayGraphSerializable` from a manifest and blob data.
@@ -201,16 +202,14 @@ pub fn to_blobs(
 /// * `manifest` - The manifest containing metadata and blob IDs
 /// * `blobs` - Map from BlobID to the actual blob data. This would be fetched from
 ///   the underlying storage where the graph was stored (db/filesystem/etc)
-pub fn from_blobs(
-    manifest: &ArrayGraphSerializableManifest,
-    b: &BTreeMap<BlobID, Vec<u8>>,
-) -> Result<ArrayGraphSerializable> {
-    let &ArrayGraphSerializableManifest {
+pub fn unpack(package: &ArrayGraphSerializablePackage) -> Result<ArrayGraphSerializable> {
+    let ArrayGraphSerializableManifest {
         self_reference: _,
         stats: _,
         blobs,
         graph_settings,
-    } = &manifest;
+    } = &package.manifest;
+
     let ManifestBlobs {
         node_names,
         node_names_offsets, // This is the same data as node_names, so we ignore it
@@ -223,6 +222,8 @@ pub fn from_blobs(
         traversal_config,
         entry_points,
     } = &blobs;
+
+    let b = &package.blobs;
 
     // Reconstruct each field by combining chunks and deserializing
     let node_names = from_blobs_field(node_names, b)?;
@@ -349,7 +350,7 @@ mod tests {
     fn serialize() -> Result<()> {
         let g = make_graph();
 
-        let (manifest, blobs) = to_blobs(
+        let package = pack(
             &g,
             &StorageConfig {
                 bytes_per_blob_chunk: Some(50),
@@ -359,7 +360,7 @@ mod tests {
         )?;
 
         snapshot!(
-            serde_json::to_string_pretty(&manifest)?,
+            serde_json::to_string_pretty(&package.manifest)?,
             r#"
 {
   "self_reference": "_manifest.json",
@@ -425,7 +426,12 @@ mod tests {
         );
 
         snapshot!(
-            blobs.keys().cloned().map(|id| id.0).collect::<Vec<_>>(),
+            package
+                .blobs
+                .keys()
+                .cloned()
+                .map(|id| id.0)
+                .collect::<Vec<_>>(),
             r#"
 [
     "_manifest.json",
@@ -453,10 +459,10 @@ mod tests {
         let original_graph = make_graph();
 
         // Convert to blobs
-        let (manifest, blobs) = to_blobs(&original_graph, &StorageConfig::default())?;
+        let package = pack(&original_graph, &StorageConfig::default())?;
 
         // Convert back from blobs
-        let reconstructed_graph = from_blobs(&manifest, &blobs)?;
+        let reconstructed_graph = unpack(&package)?;
 
         // Verify they're the same (by comparing JSON representations)
         let original_json = serde_json::to_string_pretty(&original_graph)?;
@@ -477,7 +483,7 @@ mod tests {
                 .context("Failed to convert to ArrayGraphSerializable")?;
 
             let time_now = std::time::Instant::now();
-            let result = to_blobs(
+            let result = pack(
                 &graph,
                 &StorageConfig {
                     compression_level: Some(18),

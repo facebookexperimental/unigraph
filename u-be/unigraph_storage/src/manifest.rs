@@ -61,6 +61,12 @@ pub struct ManifestStats {
     pub directed_edge_count: u32,
 }
 
+#[derive(Debug, typegen::TypeGen, serde::Serialize, serde::Deserialize)]
+pub struct ArrayGraphSerializablePackage {
+    pub manifest: ArrayGraphSerializableManifest,
+    pub blobs: BTreeMap<BlobID, Vec<u8>>,
+}
+
 impl ManifestBlobs {
     pub fn get_all_blob_ids(&self) -> Vec<BlobID> {
         let Self {
