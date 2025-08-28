@@ -100,6 +100,12 @@ function defaultColumnDefinitions(
     }
   }
 
+  if (graphSettings.ui_settings?.columns?.show_parents_count === true) {
+    const [parentsCountColumnID, parentsCountColumnDefinition] =
+      createParentsCountColumn(nativeGraph);
+    columnDefinitions[parentsCountColumnID] = parentsCountColumnDefinition;
+  }
+
   for (const metricName of nativeGraph.metricNames) {
     const metricSettings =
       graphSettings.ui_settings?.columns?.metric_settings?.[metricName] ?? null;
@@ -141,12 +147,6 @@ function defaultColumnDefinitions(
       for (const { columnID, definition } of tieredTransitiveColumns) {
         columnDefinitions[columnID] = definition;
       }
-    }
-
-    if (graphSettings.ui_settings?.columns?.show_parents_count === true) {
-      const [parentsCountColumnID, parentsCountColumnDefinition] =
-        createParentsCountColumn(nativeGraph);
-      columnDefinitions[parentsCountColumnID] = parentsCountColumnDefinition;
     }
 
     if (showConjoint) {
