@@ -8,10 +8,9 @@ import { useMemo } from "react";
 import { ARROW_POINTS_FROM_NON_EXISTENT } from "../ArrowUtils";
 import type NativeGraph from "../NativeGraph";
 import { GRAPH_SIDE, type GraphSide } from "../NativeGraph";
-import type TwinGraph from "../TwinGraph";
 import UTooltip from "../components/UTooltip";
 import { useGraphSettings } from "../context/GraphSettingsContext";
-import { useTwinGraph } from "../context/NativeGraphContext";
+import { useNativeGraphs } from "../context/NativeGraphContext";
 import { useTVC } from "../context/TraversalConfigContext";
 import formatMetric from "../lib/formatMetric";
 import ContextMenuCell from "./ContextMenuCell";
@@ -32,21 +31,45 @@ const NO_PRECISION_FORMAT: MetricFormat = {
 };
 
 export default function useGraphTreeTableColumns(): ColumnDefinitions {
-  const twinGraph = useTwinGraph();
+  const [l, r] = useNativeGraphs();
   const [graphSettings] = useGraphSettings();
   const { tvc } = useTVC();
 
   return useMemo(() => {
-    // TODO: make it work with the right graph
-    return defaultColumnDefinitions(twinGraph, graphSettings, tvc);
-  }, [twinGraph, graphSettings, tvc]);
+    const builder =
+      r !== null
+        ? new DeltaGraphColumnsBuilder(l, r, graphSettings, tvc)
+        : new SingleGraphColumnsBuilder(l, graphSettings, tvc);
+
+    const nonTreeColumns = builder.makeColumns();
+
+    const treeColumn: TreeColumnDefinition = {
+      label: "Node Name",
+      getNodeName: (idx: NodeIDX) => l.getNodeName(idx),
+      flexGrow: 1,
+    };
+
+    nonTreeColumns.context_menu = {
+      t: "non_sortable_column",
+      label: "More Menu",
+      renderer: (row: Readonly<Row>) => <ContextMenuCell row={row} />,
+      isHidden: false,
+      isLabelHidden: true,
+    };
+
+    return {
+      treeColumn,
+      columns: nonTreeColumns,
+    };
+  }, [l, r, graphSettings, tvc]);
 }
 
 function defaultColumnDefinitions(
-  twinGraph: TwinGraph,
+  nativeGraph: NativeGraph,
+  nativeGraphR: NativeGraph | null,
   graphSettings: GraphSettings,
   tvc: TraversalConfig,
-): ColumnDefinitions {
+): { [name: string]: NonTreeColumnDefinition } {
   const showTransitive =
     graphSettings.ui_settings?.columns?.show_transitive ?? false;
   const showConjoint =
@@ -54,10 +77,7 @@ function defaultColumnDefinitions(
   const showMetrics = graphSettings.ui_settings?.columns?.hide_metrics !== true;
   const showTiered = graphSettings.ui_settings?.columns?.show_tiered === true;
   const dominated = graphSettings.ui_settings?.graph_structure === "Dominator";
-  const showWouldBeMetric = !twinGraph.isDeltaGraph();
-
-  const nativeGraph = twinGraph.l;
-  const nativeGraphR = twinGraph.r;
+  const showWouldBeMetric = nativeGraphR == null;
 
   const columnDefinitions: { [name: string]: NonTreeColumnDefinition } = {};
 
@@ -67,7 +87,7 @@ function defaultColumnDefinitions(
   ) {
     const [transitiveCountColumnIDL, transitiveCountColumnDefinitionL] =
       createTransitiveCountColumn(
-        twinGraph.l,
+        nativeGraph,
         dominated,
         GRAPH_SIDE.L,
         showWouldBeMetric,
@@ -169,24 +189,7 @@ function defaultColumnDefinitions(
     }
   }
 
-  const treeColumn: TreeColumnDefinition = {
-    label: "Node Name",
-    getNodeName: (idx: NodeIDX) => nativeGraph.getNodeName(idx),
-    flexGrow: 1,
-  };
-
-  columnDefinitions.context_menu = {
-    t: "non_sortable_column",
-    label: "More Menu",
-    renderer: (row: Readonly<Row>) => <ContextMenuCell row={row} />,
-    isHidden: false,
-    isLabelHidden: true,
-  };
-
-  return {
-    treeColumn,
-    columns: columnDefinitions,
-  };
+  return columnDefinitions;
 }
 
 function createMetricColumn(
@@ -705,4 +708,275 @@ function diffMetricArrays(a: Float32Array, b: Float32Array): Float32Array {
     result[i] = (b[i] ?? 0) - (a[i] ?? 0);
   }
   return result;
+}
+
+/// Simple context type to capture the current settings on the graph
+/// with consistent defaults.
+type ColumnsCtx = {
+  showTransitive: boolean;
+  showTransitiveCount: boolean;
+  showParentsCount: boolean;
+  dominated: boolean;
+  showMetrics: boolean;
+  showTiered: boolean;
+  showConjoint: boolean;
+};
+
+function makeColumnCtx(graphSettings: GraphSettings): ColumnsCtx {
+  return {
+    showTransitive:
+      graphSettings.ui_settings?.columns?.show_transitive ?? false,
+    showTransitiveCount:
+      graphSettings.ui_settings?.columns?.show_transitive_count !== "Never",
+    showParentsCount:
+      graphSettings.ui_settings?.columns?.show_parents_count === true,
+    dominated: graphSettings.ui_settings?.graph_structure === "Dominator",
+    showMetrics: graphSettings.ui_settings?.columns?.hide_metrics !== true,
+    showTiered: graphSettings.ui_settings?.columns?.show_tiered === true,
+    showConjoint: graphSettings.ui_settings?.columns?.show_conjoint ?? false,
+  };
+}
+
+class SingleGraphColumnsBuilder {
+  nativeGraph: NativeGraph;
+  graphSettings: GraphSettings;
+  tvc: TraversalConfig;
+  ctx: ColumnsCtx;
+  columnDefinitions: { [name: string]: NonTreeColumnDefinition } = {};
+
+  constructor(
+    nativeGraph: NativeGraph,
+    graphSettings: GraphSettings,
+    tvc: TraversalConfig,
+  ) {
+    this.nativeGraph = nativeGraph;
+    this.graphSettings = graphSettings;
+    this.tvc = tvc;
+    this.ctx = makeColumnCtx(graphSettings);
+    this.columnDefinitions = {};
+  }
+
+  makeColumns(): { [name: string]: NonTreeColumnDefinition } {
+    this.transitiveCountColumn();
+    this.conjointCountColumn();
+    this.parentsCountColumn();
+
+    for (const metricName of this.nativeGraph.metricNames) {
+      this.selfMetricColumn(metricName);
+      this.transitiveMetricColumn(metricName);
+      this.conjointMetricColumns(metricName);
+      this.transitiveTieredMetricColumn(metricName);
+      for (const tierName of this.nativeGraph.stats().tier_names) {
+        this.conjointTieredMetricColumns(metricName, tierName);
+      }
+    }
+
+    return this.columnDefinitions;
+  }
+
+  private transitiveCountColumn() {
+    if (this.ctx.showTransitiveCount && this.ctx.showTransitive) {
+      const [transitiveCountColumnIDL, transitiveCountColumnDefinitionL] =
+        createTransitiveCountColumn(
+          this.nativeGraph,
+          this.ctx.dominated,
+          GRAPH_SIDE.L,
+          true,
+        );
+
+      this.columnDefinitions[transitiveCountColumnIDL] =
+        transitiveCountColumnDefinitionL;
+    }
+  }
+
+  private parentsCountColumn() {
+    if (this.ctx.showParentsCount) {
+      const [parentsCountColumnID, parentsCountColumnDefinition] =
+        createParentsCountColumn(this.nativeGraph);
+      this.columnDefinitions[parentsCountColumnID] =
+        parentsCountColumnDefinition;
+    }
+  }
+
+  private metricSettings(metricName: string): MetricSettings | null {
+    return (
+      this.graphSettings.ui_settings?.columns?.metric_settings?.[metricName] ??
+      null
+    );
+  }
+
+  private selfMetricColumn(metricName: string) {
+    const metricSettings = this.metricSettings(metricName);
+    if (metricSettings?.column_hide_self !== true && this.ctx.showMetrics) {
+      const [metricColumnID, metricColumnDefinition] = createMetricColumn(
+        this.nativeGraph,
+        metricName,
+        metricSettings,
+      );
+      this.columnDefinitions[metricColumnID] = metricColumnDefinition;
+    }
+  }
+
+  private transitiveMetricColumn(metricName: string) {
+    const metricSettings = this.metricSettings(metricName);
+    if (
+      this.ctx.showTransitive &&
+      metricSettings?.column_show_transitive === "WhenEnabledGlobally"
+    ) {
+      const [transitiveMetricColumnID, transitiveMetricColumnDefinition] =
+        createTransitiveMetricColumn(
+          metricName,
+          this.nativeGraph,
+          metricSettings,
+          this.ctx.dominated,
+        );
+      this.columnDefinitions[transitiveMetricColumnID] =
+        transitiveMetricColumnDefinition;
+    }
+  }
+
+  private transitiveTieredMetricColumn(metricName: string) {
+    const metricSettings = this.metricSettings(metricName);
+    if (this.ctx.showTiered) {
+      const tieredTransitiveColumns = createTieredTransitiveMetricColumn(
+        metricName,
+        this.nativeGraph,
+        metricSettings,
+        this.tvc,
+        this.ctx.dominated,
+      );
+      for (const { columnID, definition } of tieredTransitiveColumns) {
+        this.columnDefinitions[columnID] = definition;
+      }
+    }
+  }
+
+  private conjointMetricColumns(metricName: string) {
+    const metricSettings = this.metricSettings(metricName);
+    if (
+      this.ctx.showConjoint &&
+      metricSettings?.show_conjoint_self === "WhenEnabledGlobally"
+    ) {
+      const columnID = `[conjoint ${metricName}`;
+      const label = `C(${metricName})`;
+      const values =
+        this.nativeGraph.getConjointCost().metrics?.[metricName] ?? null;
+      const getValues = (idxs: NodeIDX[]) =>
+        idxs.map((idx) => values?.[idx] ?? 0);
+
+      const definition: NumericValueColumnDefinition = {
+        t: "numeric_value_column",
+        label,
+        renderer: (row: Readonly<Row>) => {
+          if (this.nativeGraph.isNodeReachable(row.arrow_pair.points_to)) {
+            return (
+              <MetricCell
+                value={getValues([row.arrow_pair.points_to])[0] as number}
+                format={metricSettings?.format}
+              />
+            );
+          } else {
+            return <MissingMetric />;
+          }
+        },
+        getNumericValues: (idxs: NodeIDX[]) => {
+          return new Float32Array(getValues(idxs));
+        },
+        sortable: true,
+        isHidden: false,
+      };
+
+      this.columnDefinitions[columnID] = definition;
+    }
+  }
+
+  private conjointTieredMetricColumns(metricName: string, tierName: string) {
+    const metricSettings = this.metricSettings(metricName);
+    if (
+      !this.ctx.showConjoint ||
+      metricSettings?.show_conjoint_tiered?.[tierName] === "Never"
+    ) {
+      return;
+    }
+
+    const columnID = `[tiered_conjoint ${tierName}] ${metricName}`;
+    const label = `C(${tierName})`;
+    const values =
+      this.nativeGraph.getConjointCost().tiered_metric?.[metricName]?.[
+        tierName
+      ];
+
+    const getValues = (idxs: NodeIDX[]) =>
+      idxs.map((idx) => values?.[idx] ?? 0);
+
+    const definition: NumericValueColumnDefinition = {
+      t: "numeric_value_column",
+      label,
+      renderer: (row: Readonly<Row>) => {
+        if (this.nativeGraph.isNodeReachable(row.arrow_pair.points_to)) {
+          return (
+            <MetricCell
+              value={getValues([row.arrow_pair.points_to])[0] as number}
+              format={metricSettings?.format}
+            />
+          );
+        } else {
+          return <MissingMetric />;
+        }
+      },
+      getNumericValues: (idxs: NodeIDX[]) => {
+        return new Float32Array(getValues(idxs));
+      },
+      sortable: true,
+      isHidden: false,
+    };
+
+    this.columnDefinitions[columnID] = definition;
+  }
+
+  private conjointCountColumn() {
+    if (
+      this.ctx.showConjoint &&
+      this.graphSettings.ui_settings?.columns?.show_conjoint_count !== "Never"
+    ) {
+      const [conjointCountColumnID, conjointCountColumnDefinition] =
+        createConjointCountColumn(this.nativeGraph);
+      this.columnDefinitions[conjointCountColumnID] =
+        conjointCountColumnDefinition;
+    }
+  }
+}
+
+class DeltaGraphColumnsBuilder {
+  columnDefinitions: { [name: string]: NonTreeColumnDefinition } = {};
+  nativeGraphL: NativeGraph;
+  nativeGraphR: NativeGraph;
+  ctx: ColumnsCtx;
+  graphSettings: GraphSettings;
+  tvc: TraversalConfig;
+
+  constructor(
+    // left graph
+    nativeGraphL: NativeGraph,
+    // right graph
+    nativeGraphR: NativeGraph,
+    graphSettings: GraphSettings,
+    tvc: TraversalConfig,
+  ) {
+    this.nativeGraphL = nativeGraphL;
+    this.nativeGraphR = nativeGraphR;
+    this.graphSettings = graphSettings;
+    this.tvc = tvc;
+    this.ctx = makeColumnCtx(graphSettings);
+    this.columnDefinitions = {};
+  }
+
+  makeColumns(): { [name: string]: NonTreeColumnDefinition } {
+    return defaultColumnDefinitions(
+      this.nativeGraphL,
+      this.nativeGraphR,
+      this.graphSettings,
+      this.tvc,
+    );
+  }
 }
