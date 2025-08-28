@@ -14,7 +14,9 @@
       "dist",
       ".build",
       "*.tera*",
-      "u-be/**/bindings/*"
+      "u-be/**/bindings/*",
+      "*/__generated__/*",
+      "*/test_types/ts/*.ts"
     ]
   },
   "formatter": {

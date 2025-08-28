@@ -60,6 +60,46 @@ function defaultColumnDefinitions(
   const nativeGraphR = twinGraph.r;
 
   const columnDefinitions: { [name: string]: NonTreeColumnDefinition } = {};
+
+  if (
+    showTransitive &&
+    graphSettings.ui_settings?.columns?.show_transitive_count !== "Never"
+  ) {
+    const [transitiveCountColumnIDL, transitiveCountColumnDefinitionL] =
+      createTransitiveCountColumn(
+        twinGraph.l,
+        dominated,
+        GRAPH_SIDE.L,
+        showWouldBeMetric,
+      );
+
+    columnDefinitions[transitiveCountColumnIDL] =
+      transitiveCountColumnDefinitionL;
+
+    if (nativeGraphR != null) {
+      const [transitiveCountColumnIDR, transitiveCountColumnDefinitionR] =
+        createTransitiveCountColumn(
+          nativeGraphR,
+          dominated,
+          GRAPH_SIDE.R,
+          showWouldBeMetric,
+        );
+      columnDefinitions[transitiveCountColumnIDR] =
+        transitiveCountColumnDefinitionR;
+
+      const [
+        transitiveCountDeltaColumnIDLR,
+        transitiveCountDeltaColumnDefinitionLR,
+      ] = createTransitiveCountDeltaColumn(
+        nativeGraph,
+        nativeGraphR,
+        dominated,
+      );
+      columnDefinitions[transitiveCountDeltaColumnIDLR] =
+        transitiveCountDeltaColumnDefinitionLR;
+    }
+  }
+
   for (const metricName of nativeGraph.metricNames) {
     const metricSettings =
       graphSettings.ui_settings?.columns?.metric_settings?.[metricName] ?? null;
@@ -107,45 +147,6 @@ function defaultColumnDefinitions(
       const [parentsCountColumnID, parentsCountColumnDefinition] =
         createParentsCountColumn(nativeGraph);
       columnDefinitions[parentsCountColumnID] = parentsCountColumnDefinition;
-    }
-
-    if (
-      showTransitive &&
-      graphSettings.ui_settings?.columns?.show_transitive_count !== "Never"
-    ) {
-      const [transitiveCountColumnIDL, transitiveCountColumnDefinitionL] =
-        createTransitiveCountColumn(
-          twinGraph.l,
-          dominated,
-          GRAPH_SIDE.L,
-          showWouldBeMetric,
-        );
-
-      columnDefinitions[transitiveCountColumnIDL] =
-        transitiveCountColumnDefinitionL;
-
-      if (nativeGraphR != null) {
-        const [transitiveCountColumnIDR, transitiveCountColumnDefinitionR] =
-          createTransitiveCountColumn(
-            nativeGraphR,
-            dominated,
-            GRAPH_SIDE.R,
-            showWouldBeMetric,
-          );
-        columnDefinitions[transitiveCountColumnIDR] =
-          transitiveCountColumnDefinitionR;
-
-        const [
-          transitiveCountDeltaColumnIDLR,
-          transitiveCountDeltaColumnDefinitionLR,
-        ] = createTransitiveCountDeltaColumn(
-          nativeGraph,
-          nativeGraphR,
-          dominated,
-        );
-        columnDefinitions[transitiveCountDeltaColumnIDLR] =
-          transitiveCountDeltaColumnDefinitionLR;
-      }
     }
 
     if (showConjoint) {
