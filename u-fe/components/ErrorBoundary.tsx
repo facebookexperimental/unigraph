@@ -26,10 +26,13 @@ export default class ErrorBoundary extends Component<Props, State> {
     if (this.state.e != null) {
       // You can render any custom fallback UI
       return (
-        <>
-          <H2 text="Something went wrong." />
+        <div className="flex grow-1 justify-center items-center p-4">
+          <H2
+            text="Something went wrong."
+            className="text-red-600 underline decoration-dashed"
+          />
           <ErrorModal error={this.state.e.error} info={this.state.e.info} />
-        </>
+        </div>
       );
     }
 
@@ -42,9 +45,11 @@ function ErrorModal({ error, info }: { error: Error; info: ErrorInfo }) {
   console.error(error);
   return (
     <UAlertDialog open={open} className="max-w-[1100px]">
-      <div className="flex flex-col gap-2 w-full min-w-0">
+      <div className="flex flex-col gap-2 w-full min-w-0 max-h-[80vh]">
         <AlertDialogTitle>Error</AlertDialogTitle>
-        <Pre text={formatError(error, info)} />
+        <div className="overflow-auto grow-1 ">
+          <Pre text={formatError(error, info)} />
+        </div>
         <div className="flex justify-end my-4">
           <Button
             type="submit"

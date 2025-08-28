@@ -26,6 +26,7 @@ import type { ArrayGraphUISettingsTreeTableEntryPoints } from "../__generated__/
 import type { GraphStructure } from "../__generated__/ts/GraphStructure";
 import type { GraphTableSort } from "../__generated__/ts/GraphTableSort";
 import type { SortOrder } from "../__generated__/ts/SortOrder";
+import UTooltip from "../components/UTooltip";
 import { Progress } from "../components/ui/progress";
 import { useSelectedPath } from "../context/SelectedPathContext";
 import type { NodeIDX } from "../types";
@@ -397,7 +398,13 @@ export function TreeTable(props: {
             sortOrder != null ? "bg-primary text-background" : "bg-accent",
           )}
         >
-          {column.c.isLabelHidden === true ? "" : column.c.label}
+          {column.c.isLabelHidden === true ? (
+            ""
+          ) : (
+            <UTooltip tooltip={column.columnID} delayDuration={500}>
+              <p>{column.c.label}</p>
+            </UTooltip>
+          )}
           {sortIcon}
         </div>
         <div
