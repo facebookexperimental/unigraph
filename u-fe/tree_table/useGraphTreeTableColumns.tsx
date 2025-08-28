@@ -674,7 +674,7 @@ function WouldBeDeltaMetricCell({
     >
       <p
         className={clsx(
-          "px-2 mx-2 py-1 rounded-md text-right tabular-nums w-full whitespace-nowrap bg-background",
+          "px-2 mx-2 py-1 text-right tabular-nums w-full whitespace-nowrap",
           {
             "text-green-500": value < 0,
             "text-red-500": value >= 0,
