@@ -11,6 +11,7 @@ use anyhow::bail;
 use crate::remap_utils::RemapContext;
 use crate::types::NodeIDX;
 use crate::types::NodeName;
+use crate::types::array_graph::array_graph_name_search::search_fuzzy_regex;
 
 /// Ordered list of all node names in a graph.
 /// Stored as a massive single string with offsets recorded for how
@@ -98,7 +99,7 @@ impl ArrayGraphNodes {
 
     /// Iterator over all node idxs for both graphs, they might or might not exist in one of
     /// the graphs.
-    fn combined_node_idx_iter(
+    pub fn combined_node_idx_iter(
         &self,
     ) -> std::iter::Map<std::ops::Range<usize>, fn(usize) -> NodeIDX> {
         (0..self.combined_nodes_len()).map(NodeIDX::from)
@@ -131,6 +132,14 @@ impl ArrayGraphNodes {
             }
         }
         None
+    }
+
+    pub fn search_name_fuzzy<'a>(
+        &'a self,
+        pattern: &str,
+        limit: usize,
+    ) -> Result<Vec<(&'a str, NodeIDX)>> {
+        search_fuzzy_regex(self, pattern, limit)
     }
 
     pub fn append_node_name(&mut self, name: &str) -> Result<NodeIDX> {

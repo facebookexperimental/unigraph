@@ -5,6 +5,7 @@ pub mod array_graph_debug_utils;
 pub mod array_graph_derived_state;
 mod array_graph_determine_entrypoints;
 mod array_graph_metrics;
+mod array_graph_name_search;
 pub(crate) mod array_graph_nodes;
 pub mod array_graph_state;
 mod array_graph_stats;
@@ -335,6 +336,14 @@ impl ArrayGraph {
 
     pub fn get_arrows_reverse(&self, node_idx: NodeIDX) -> Result<Vec<Arrow>> {
         get_arrows(self, node_idx, GraphStructure::Reverse)
+    }
+
+    pub fn search_name_fuzzy<'a>(
+        &'a self,
+        pattern: &str,
+        limit: usize,
+    ) -> Result<Vec<(&'a str, NodeIDX)>> {
+        self.nodes.node_names.search_name_fuzzy(pattern, limit)
     }
 
     pub fn debug(&self) -> ArrayGraphDebugUtils<'_> {
