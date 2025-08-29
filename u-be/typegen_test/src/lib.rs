@@ -34,6 +34,9 @@ pub struct Address {
     pub maybe_flag: NotTypeGennable,
 
     pub tags: BTreeSet<String>,
+
+    #[typegen(skip_all)]
+    pub this_field_should_be_skipped: NotTypeGennable,
 }
 
 /// Person struct that references Address

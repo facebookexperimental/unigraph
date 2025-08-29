@@ -22,7 +22,12 @@ pub fn type_gen(input: TokenStream) -> TokenStream {
                     let fields = fields_named
                         .named
                         .iter()
-                        .map(|field| {
+                        .filter_map(|field| {
+                            // Check if this field should be skipped entirely
+                            if extract_typegen_skip_all(&field.attrs) {
+                                return None;
+                            }
+
                             let field_name = field.ident.as_ref().unwrap().to_string();
                             let field_type = &field.ty;
                             let field_docs = extract_docs(&field.attrs);
@@ -35,13 +40,13 @@ pub fn type_gen(input: TokenStream) -> TokenStream {
 
                             let type_ref_token = generate_type_ref_token(type_override, field_type);
 
-                            quote! {
+                            Some(quote! {
                                 ::typegen::FieldDeclaration {
                                     field_name: #field_name.to_string(),
                                     docs: #docs_token,
                                     type_ref: #type_ref_token,
                                 }
-                            }
+                            })
                         })
                         .collect::<Vec<_>>();
 
@@ -238,7 +243,12 @@ pub fn type_gen(input: TokenStream) -> TokenStream {
                         }
                         syn::Fields::Named(fields) => {
                             // Struct variant: Variant { field1: Type1, field2: Type2, ... }
-                            let struct_fields = fields.named.iter().map(|field| {
+                            let struct_fields = fields.named.iter().filter_map(|field| {
+                                // Check if this field should be skipped entirely
+                                if extract_typegen_skip_all(&field.attrs) {
+                                    return None;
+                                }
+
                                 let field_name = field.ident.as_ref().unwrap().to_string();
                                 let field_type = &field.ty;
                                 let field_docs = extract_docs(&field.attrs);
@@ -252,13 +262,13 @@ pub fn type_gen(input: TokenStream) -> TokenStream {
                                 let type_ref_token =
                                     generate_type_ref_token(type_override, field_type);
 
-                                quote! {
+                                Some(quote! {
                                     ::typegen::FieldDeclaration {
                                         field_name: #field_name.to_string(),
                                         type_ref: #type_ref_token,
                                         docs: #field_docs_token,
                                     }
-                                }
+                                })
                             });
                             quote! {
                                 ::typegen::EnumVariant::Struct {
@@ -338,6 +348,22 @@ fn extract_docs(attrs: &[syn::Attribute]) -> Option<String> {
     } else {
         Some(docs.join("\n"))
     }
+}
+
+fn extract_typegen_skip_all(attrs: &[syn::Attribute]) -> bool {
+    for attr in attrs {
+        if attr.path().is_ident("typegen") {
+            if let syn::Meta::List(meta_list) = &attr.meta {
+                let tokens_str = meta_list.tokens.to_string();
+
+                // Look for skip_all pattern
+                if tokens_str.contains("skip_all") {
+                    return true;
+                }
+            }
+        }
+    }
+    false
 }
 
 fn extract_typegen_as(attrs: &[syn::Attribute]) -> Option<String> {
