@@ -192,6 +192,19 @@ pub fn node_name_to_idx_log(name: &str) -> Result<Option<u32>, WasmJSError> {
 }
 
 #[wasm_bindgen]
+pub fn search_node_name_fuzzy(pattern: &str, limit: usize) -> Result<Vec<String>, WasmJSError> {
+    Ok(global_graph_state()
+        .graph_state
+        .get()
+        .twin_graph
+        .node_names
+        .search_name_fuzzy(pattern, limit)?
+        .into_iter()
+        .map(|(name, _node_idx)| name.to_string())
+        .collect())
+}
+
+#[wasm_bindgen]
 pub fn get_metric_names(side: u32) -> Result<Vec<String>, WasmJSError> {
     Ok(GlobalGraphState::graph_state()
         .get()

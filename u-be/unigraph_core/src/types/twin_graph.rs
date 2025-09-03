@@ -80,4 +80,12 @@ impl TwinGraph {
     ) -> Result<Vec<(Option<Arrow>, Option<Arrow>)>> {
         get_arrows::get_arrows_pairs(self, node_idx, graph_structure)
     }
+
+    pub fn search_name_fuzzy<'a>(
+        &'a self,
+        pattern: &str,
+        limit: usize,
+    ) -> Result<Vec<(&'a str, NodeIDX)>> {
+        self.node_names.search_name_fuzzy(pattern, limit)
+    }
 }
