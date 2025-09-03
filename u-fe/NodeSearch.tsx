@@ -10,6 +10,7 @@ import {
   CommandItem,
   CommandList,
 } from "./components/ui/command";
+import { useNodeSearchRef } from "./context/GlobalKeyboardShortcutsContext";
 import { useTwinGraph } from "./context/NativeGraphContext";
 import { useSelectedPath } from "./context/SelectedPathContext";
 import { cn } from "./lib/utils";
@@ -144,7 +145,7 @@ function Typeahead({
   const [searchValue, setSearchValue] = useState("");
 
   const containerRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useNodeSearchRef();
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Debounced search results

@@ -66,7 +66,7 @@ function ExcludeNodeItem({ arrow, row }: { arrow: Arrow; row: Readonly<Row> }) {
     >
       {`${action === "Include" ? "Undo Exclude" : "Exclude"} Node`}
       <KeyboardShortcutLabel
-        label={KEYBOARD_SHORTCUTS.FORCE_EXCLUDE_NODE.toUpperCase()}
+        label={KEYBOARD_SHORTCUTS.FORCE_EXCLUDE_NODE.key.toUpperCase()}
       />
     </DropdownMenuItem>
   );
@@ -93,7 +93,7 @@ function ForceEdgeItem({
     >
       {`Force ${action} Edge`}
       <KeyboardShortcutLabel
-        label={KEYBOARD_SHORTCUTS.FORCE_EDGE.toUpperCase()}
+        label={KEYBOARD_SHORTCUTS.FORCE_EDGE.key.toUpperCase()}
       />
     </DropdownMenuItem>
   );

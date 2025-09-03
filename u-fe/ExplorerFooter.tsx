@@ -257,7 +257,7 @@ function Toggles() {
           <span>
             Show as a flat list{" "}
             <KeyboardShortcutLabel
-              label={KEYBOARD_SHORTCUTS.FLAT_LIST.toUpperCase()}
+              label={KEYBOARD_SHORTCUTS.FLAT_LIST.key.toUpperCase()}
             />
           </span>
         }
@@ -273,7 +273,7 @@ function Toggles() {
           <span>
             Show reverse graph (children to parents)
             <KeyboardShortcutLabel
-              label={KEYBOARD_SHORTCUTS.REVERSE_GRAPH.toUpperCase()}
+              label={KEYBOARD_SHORTCUTS.REVERSE_GRAPH.key.toUpperCase()}
             />
           </span>
         }
@@ -288,7 +288,7 @@ function Toggles() {
           <span>
             Show as a dominator tree
             <KeyboardShortcutLabel
-              label={KEYBOARD_SHORTCUTS.DOMINATOR_TREE.toUpperCase()}
+              label={KEYBOARD_SHORTCUTS.DOMINATOR_TREE.key.toUpperCase()}
             />
           </span>
         }

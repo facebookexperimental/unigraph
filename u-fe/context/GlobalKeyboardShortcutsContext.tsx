@@ -1,6 +1,14 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-import { createContext, useCallback, useEffect, useMemo } from "react";
+import {
+  type RefObject,
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+} from "react";
 import {
   useToggleDominatorTreeView,
   useToggleFlatListView,
@@ -12,15 +20,27 @@ import {
   useFlipForceExcludeNodeL,
 } from "./TraversalConfigContext";
 
-export const KEYBOARD_SHORTCUTS = {
-  FORCE_EDGE: "e",
-  FORCE_EXCLUDE_NODE: "n",
-  FLAT_LIST: "f",
-  REVERSE_GRAPH: "r",
-  DOMINATOR_TREE: "d",
+export type TShortcutDefinition = {
+  key: string;
+  cmd: boolean;
 };
 
-type GlobalKeyboardShortcutsContextType = {};
+export const KEYBOARD_SHORTCUTS = {
+  FORCE_EDGE: { key: "e", cmd: false },
+  FORCE_EXCLUDE_NODE: { key: "n", cmd: false },
+  FLAT_LIST: { key: "f", cmd: false },
+  REVERSE_GRAPH: { key: "r", cmd: false },
+  DOMINATOR_TREE: { key: "d", cmd: false },
+  NODE_SEARCH: { key: "k", cmd: true },
+} as const satisfies Record<string, TShortcutDefinition>;
+
+type ShortcutNames = keyof typeof KEYBOARD_SHORTCUTS;
+
+type GlobalKeyboardShortcutsContextType = {
+  /// Ref for the search bar element. Stored globally so we
+  /// can focus/blur it from anywhere on keyboard shortcuts
+  nodeSearchRef: RefObject<HTMLInputElement | null>;
+};
 
 const GlobalKeyboardShortcutsContext = createContext<
   GlobalKeyboardShortcutsContextType | undefined
@@ -31,8 +51,9 @@ export function GlobalKeyboardShortcutsContextProvider({
 }: {
   children: React.ReactNode;
 }) {
-  const value = useMemo(() => ({}), []);
-  const handler = useExplorerKeyboardShortcutsHandler();
+  const nodeSearchRef = useRef<HTMLInputElement | null>(null);
+  const value = useMemo(() => ({ nodeSearchRef }), []);
+  const handler = useExplorerKeyboardShortcutsHandler(value);
 
   useEffect(() => {
     // add handler to global document when the component mounts
@@ -52,9 +73,24 @@ export function GlobalKeyboardShortcutsContextProvider({
   );
 }
 
-export function useExplorerKeyboardShortcutsHandler(): (
-  e: KeyboardEvent,
-) => void {
+function useGlobalKeyboardShortcutsContext(): GlobalKeyboardShortcutsContextType {
+  const context = useContext(GlobalKeyboardShortcutsContext);
+  if (!context) {
+    throw new Error(
+      "useGlobalKeyboardShortcutsContext must be used within a GlobalKeyboardShortcutsContextProvider",
+    );
+  }
+  return context;
+}
+
+export function useNodeSearchRef(): RefObject<HTMLInputElement | null> {
+  const context = useGlobalKeyboardShortcutsContext();
+  return context.nodeSearchRef;
+}
+
+export function useExplorerKeyboardShortcutsHandler(
+  ctx: GlobalKeyboardShortcutsContextType,
+): (e: KeyboardEvent) => void {
   const { selectedRow } = useSelectedPath();
   const arrow = selectedRow?.arrow_pair || null;
 
@@ -70,36 +106,41 @@ export function useExplorerKeyboardShortcutsHandler(): (
     (e: KeyboardEvent) => {
       const key = e.key.toLowerCase();
 
-      const modifiers = e.ctrlKey || e.metaKey;
-      if (modifiers) {
-        // Ignore shortcuts with modifiers, otherwise it will conflict with
-        // other browser shortcuts (like Cmd+R to refresh will trigger REVERSE_GRAPH)
-        return;
-      }
+      const cmdPressed = e.ctrlKey || e.metaKey;
 
-      switch (key) {
-        case KEYBOARD_SHORTCUTS.FORCE_EXCLUDE_NODE: {
-          if (flipForceExcludeNode.enabled) {
-            flipForceExcludeNode.forceExcludeNode();
+      for (const [name, shortcut] of Object.entries(KEYBOARD_SHORTCUTS)) {
+        if (shortcut.key === key && shortcut.cmd === cmdPressed) {
+          const shortcutName = name as ShortcutNames;
+          switch (shortcutName) {
+            case "FORCE_EDGE":
+              if (flipForceEdge.enabled) {
+                flipForceEdge.forceEdge();
+              }
+              break;
+            case "FORCE_EXCLUDE_NODE":
+              if (flipForceExcludeNode.enabled) {
+                flipForceExcludeNode.forceExcludeNode();
+              }
+              break;
+            case "FLAT_LIST":
+              toggleFlatList();
+              break;
+            case "REVERSE_GRAPH":
+              toggleReverseView();
+              break;
+            case "DOMINATOR_TREE":
+              toggleDominatorTreeView();
+              break;
+            case "NODE_SEARCH": {
+              console.log("node search");
+              ctx.nodeSearchRef.current?.focus();
+              break;
+            }
+            default: {
+              const exhaustiveCheck: never = shortcutName;
+              console.error(`Unexpected shortcut: ${exhaustiveCheck}`);
+            }
           }
-          break;
-        }
-        case KEYBOARD_SHORTCUTS.FORCE_EDGE: {
-          if (flipForceEdge.enabled) {
-            flipForceEdge.forceEdge();
-          }
-          break;
-        }
-        case KEYBOARD_SHORTCUTS.FLAT_LIST: {
-          toggleFlatList();
-          break;
-        }
-        case KEYBOARD_SHORTCUTS.REVERSE_GRAPH: {
-          toggleReverseView();
-          break;
-        }
-        case KEYBOARD_SHORTCUTS.DOMINATOR_TREE: {
-          toggleDominatorTreeView();
           break;
         }
       }
@@ -110,6 +151,7 @@ export function useExplorerKeyboardShortcutsHandler(): (
       toggleFlatList,
       toggleReverseView,
       toggleDominatorTreeView,
+      ctx,
     ],
   );
 
