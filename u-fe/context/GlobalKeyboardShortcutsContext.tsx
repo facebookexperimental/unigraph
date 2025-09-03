@@ -158,10 +158,16 @@ export function useExplorerKeyboardShortcutsHandler(
   return keyboardEventHandler;
 }
 
-export function KeyboardShortcutLabel({ label }: { label: string }) {
+export function KeyboardShortcutLabel({
+  shortcut,
+}: { shortcut: TShortcutDefinition }) {
+  const cmdSpan = shortcut.cmd ? (
+    <span className="text-xs font-bold">⌘</span>
+  ) : null;
   return (
     <span className="text-xs font-bold text-background rounded px-1 mx-1 bg-foreground">
-      <kbd className="kbd">{label}</kbd>
+      {cmdSpan}
+      <kbd className="kbd">{shortcut.key.toUpperCase()}</kbd>
     </span>
   );
 }

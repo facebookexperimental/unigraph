@@ -65,9 +65,7 @@ function ExcludeNodeItem({ arrow, row }: { arrow: Arrow; row: Readonly<Row> }) {
       }}
     >
       {`${action === "Include" ? "Undo Exclude" : "Exclude"} Node`}
-      <KeyboardShortcutLabel
-        label={KEYBOARD_SHORTCUTS.FORCE_EXCLUDE_NODE.key.toUpperCase()}
-      />
+      <KeyboardShortcutLabel shortcut={KEYBOARD_SHORTCUTS.FORCE_EXCLUDE_NODE} />
     </DropdownMenuItem>
   );
 }
@@ -92,9 +90,7 @@ function ForceEdgeItem({
       }}
     >
       {`Force ${action} Edge`}
-      <KeyboardShortcutLabel
-        label={KEYBOARD_SHORTCUTS.FORCE_EDGE.key.toUpperCase()}
-      />
+      <KeyboardShortcutLabel shortcut={KEYBOARD_SHORTCUTS.FORCE_EDGE} />
     </DropdownMenuItem>
   );
 }

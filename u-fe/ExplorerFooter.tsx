@@ -256,9 +256,7 @@ function Toggles() {
         tooltip={
           <span>
             Show as a flat list{" "}
-            <KeyboardShortcutLabel
-              label={KEYBOARD_SHORTCUTS.FLAT_LIST.key.toUpperCase()}
-            />
+            <KeyboardShortcutLabel shortcut={KEYBOARD_SHORTCUTS.FLAT_LIST} />
           </span>
         }
         size="sm"
@@ -273,7 +271,7 @@ function Toggles() {
           <span>
             Show reverse graph (children to parents)
             <KeyboardShortcutLabel
-              label={KEYBOARD_SHORTCUTS.REVERSE_GRAPH.key.toUpperCase()}
+              shortcut={KEYBOARD_SHORTCUTS.REVERSE_GRAPH}
             />
           </span>
         }
@@ -288,7 +286,7 @@ function Toggles() {
           <span>
             Show as a dominator tree
             <KeyboardShortcutLabel
-              label={KEYBOARD_SHORTCUTS.DOMINATOR_TREE.key.toUpperCase()}
+              shortcut={KEYBOARD_SHORTCUTS.DOMINATOR_TREE}
             />
           </span>
         }
