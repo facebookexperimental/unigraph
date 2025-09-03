@@ -85,8 +85,8 @@ impl SimulationGraph {
         let mut mappings = vec![];
         let mut lfsr = Lfsr32::new(84848484);
 
-        for node_idx in array_graph.node_idx_iter() {
-            if array_graph.node_flags[node_idx].is_node_unreachable() {
+        for node_idx in array_graph.nodes.node_names.combined_node_idx_iter() {
+            if array_graph.is_node_unreachable(node_idx) {
                 mappings.push(None);
             } else {
                 let (mut local, mut gpu) = (
@@ -113,10 +113,10 @@ impl SimulationGraph {
             if edge.is_excluded() {
                 continue;
             }
-            if array_graph.node_flags[from_idx].is_node_unreachable() {
+            if array_graph.is_node_unreachable(from_idx) {
                 continue;
             }
-            if array_graph.node_flags[edge.points_to].is_node_unreachable() {
+            if array_graph.is_node_unreachable(edge.points_to) {
                 continue;
             }
 

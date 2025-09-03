@@ -984,6 +984,44 @@ class DeltaGraphColumnsBuilder {
       this.tvc,
     );
 
+    this.transitiveCountDeltaColumn();
     return this.columnDefinitions;
+  }
+
+  private transitiveCountDeltaColumn() {
+    if (this.ctx.showTransitiveCount && this.ctx.showTransitive) {
+      const [id, def] = new TransitiveCountDeltaColumn(
+        this.twinGraph,
+      ).columnDefinition();
+      this.columnDefinitions[id] = def;
+    }
+  }
+}
+
+class TransitiveCountDeltaColumn {
+  constructor(private twinGraph: TwinGraph) {}
+
+  columnDefinition(): [string, NumericValueColumnDefinition] {
+    const columnID = "transitive_count_delta_1";
+    const getValues = (idxs: NodeIDX[]) =>
+      this.twinGraph.getTransitiveCountDelta(idxs);
+    const label = "T(count) ∆";
+
+    const definition: NumericValueColumnDefinition = {
+      t: "numeric_value_column",
+      label: label,
+      renderer: (row: Readonly<Row>) => {
+        return (
+          <MetricCell
+            value={getValues([row.arrow_pair.points_to])[0] ?? 0}
+            format={NO_PRECISION_FORMAT}
+          />
+        );
+      },
+      getNumericValues: getValues,
+      sortable: true,
+      isHidden: false,
+    };
+    return [columnID, definition];
   }
 }
