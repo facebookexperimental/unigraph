@@ -75,6 +75,58 @@ interface TypeaheadProps {
   clearable?: boolean;
 }
 
+// Helper function to highlight matching characters in fuzzy search
+function highlightMatches(
+  text: string,
+  searchPattern: string,
+): React.ReactNode {
+  if (!searchPattern) return text;
+
+  const pattern = searchPattern.toLowerCase();
+  const textLower = text.toLowerCase();
+  const result: React.ReactNode[] = [];
+
+  let textIndex = 0;
+  let patternIndex = 0;
+  let lastMatchEnd = 0;
+
+  while (textIndex < text.length && patternIndex < pattern.length) {
+    if (textLower[textIndex] === pattern[patternIndex]) {
+      // Add non-matching text before this match
+      if (textIndex > lastMatchEnd) {
+        result.push(
+          <span key={`text-${lastMatchEnd}`}>
+            {text.slice(lastMatchEnd, textIndex)}
+          </span>,
+        );
+      }
+
+      // Add the matching character in bold
+      result.push(
+        <span
+          className="font-bold text-primary"
+          key={`match-${textIndex}-${patternIndex}`}
+        >
+          {text[textIndex]}
+        </span>,
+      );
+
+      lastMatchEnd = textIndex + 1;
+      patternIndex++;
+    }
+    textIndex++;
+  }
+
+  // Add any remaining text
+  if (lastMatchEnd < text.length) {
+    result.push(
+      <span key={`text-${lastMatchEnd}`}>{text.slice(lastMatchEnd)}</span>,
+    );
+  }
+
+  return <p>{result}</p>;
+}
+
 function Typeahead({
   searchSource,
   placeholder = "Search...",
@@ -251,7 +303,7 @@ function Typeahead({
                       onSelect={() => handleSelect(option)}
                       className="cursor-pointer"
                     >
-                      {option.label}
+                      {highlightMatches(option.label, searchValue)}
                     </CommandItem>
                   ))}
                 </CommandGroup>
