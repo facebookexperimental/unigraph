@@ -26,6 +26,7 @@ import {
   useToggleFlatListView,
   useToggleReverseView,
 } from "./GraphStructureHooks";
+import NodeSearch from "./NodeSearch";
 import { H3 } from "./Typography";
 import UTooltip from "./components/UTooltip";
 import { Button } from "./components/ui/button";
@@ -38,8 +39,9 @@ import formatNumber from "./lib/formatNumber";
 
 export default function ExplorerFooter() {
   return (
-    <div className="flex h-16 bg-card border-t justify-between">
+    <div className="flex h-16 shrink-0 bg-card border-t justify-between items-center px-4 gap-8">
       <Toggles />
+      <NodeSearch />
       <SelectedNodesMetrics />
     </div>
   );
@@ -138,7 +140,7 @@ function Toggles() {
     useToggleDominatorTreeView();
 
   return (
-    <div className="flex gap-4 items-center m-4">
+    <div className="flex gap-4 items-center">
       <UHoverCard content={<TransitiveHovercardContent />}>
         <UToggleButton
           size="sm"

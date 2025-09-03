@@ -164,7 +164,8 @@ export function TreeTable(props: {
 
   useEffect(() => {
     pathSelector.navigate = (path: NodeIDX[] | null) => {
-      ctx.navigateToPath(path ?? []);
+      ctx.selectedNodeIDXPath = path ?? [];
+      ctx.navigateToCurrentPathOrFallbackToShortestPath();
     };
     if (ctx.selectedNodeIDXPath.length > 0) {
       ctx.navigateToPath(ctx.selectedNodeIDXPath);

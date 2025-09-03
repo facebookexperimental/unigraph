@@ -4,6 +4,7 @@ import {
   get_arrow_pairs,
   node_idx_to_name,
   node_name_to_idx_log,
+  search_node_name_fuzzy,
 } from "../.build/wasm/unigraph_wasm";
 import type NativeGraph from "./NativeGraph";
 import type { GraphStructureU8, NodeIDXVecSet } from "./NativeGraph";
@@ -76,6 +77,10 @@ export default class TwinGraph {
   // pretty slow for very large lookups
   getNodeIDXByNameLog(name: string): NodeIDX | null {
     return node_name_to_idx_log(name) ?? null;
+  }
+
+  search_nodes_fuzzy(pattern: string, limit: number): string[] {
+    return search_node_name_fuzzy(pattern, limit);
   }
 
   getArrowPairs(
