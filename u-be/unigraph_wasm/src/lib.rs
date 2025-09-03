@@ -13,6 +13,7 @@ use unigraph_core::ArrayGraphSerializablePackage;
 use unigraph_core::ArrayGraphSerializablePackageBase64;
 use unigraph_core::MapGraph;
 use unigraph_core::TraversalConfig;
+use unigraph_core::TraversalType;
 use unigraph_core::TwinGraph;
 use unigraph_core::graph_settings::GraphStructure;
 use unigraph_core::types::NodeIDX;
@@ -361,6 +362,7 @@ pub fn get_shortest_path(
     to: u32,
     graph_structure: u8,
     side: u32,
+    traversal_type: u8,
 ) -> Result<Option<Vec<u32>>, WasmJSError> {
     let graph_state = GlobalGraphState::graph_state().get();
     let ag = &graph_state.twin_graph.graph_u32(side)?;
@@ -377,8 +379,9 @@ pub fn get_shortest_path(
         GraphStructure::Reverse => &ag.derived_state.edges_reverse,
     };
 
+    let traversal_type = TraversalType::from_u8(traversal_type)?;
     #[allow(clippy::collapsible_if)]
-    if let Some(shortest_path) = offset_graph.shortest_path_configured(&from, to) {
+    if let Some(shortest_path) = offset_graph.shortest_path(&from, to, traversal_type) {
         if !shortest_path.is_empty() {
             return Ok(Some(
                 shortest_path

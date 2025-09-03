@@ -60,11 +60,30 @@ export default function GraphTreeTable(props: {
 
   const getShortestPath = useCallback(
     (fromNodeIDX: readonly NodeIDX[], toNodeIDX: NodeIDX) => {
-      return nativeGraphL.getShortestPath(
+      const configuredPath = nativeGraphL.getShortestPath(
         fromNodeIDX,
         toNodeIDX,
         graphStructure,
+        "Configured",
       );
+
+      // first try to find shortest configured path to the graph to prioritize
+      // reachable nodes.
+      if (configuredPath != null && configuredPath.length !== 0) {
+        return configuredPath;
+      }
+
+      // if the are no paths between nodes in the configured graph resort to
+      // unconfigured shortest path, which (if exists) will go though
+      // excluded edges.
+      const unconfiguredPath = nativeGraphL.getShortestPath(
+        fromNodeIDX,
+        toNodeIDX,
+        graphStructure,
+        "Unconfigured",
+      );
+
+      return unconfiguredPath;
     },
     [nativeGraphL, graphStructure],
   );

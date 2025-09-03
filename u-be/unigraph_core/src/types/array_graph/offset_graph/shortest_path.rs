@@ -4,11 +4,13 @@ use std::collections::hash_map::Entry;
 
 use crate::NodeIDX;
 use crate::types::array_graph::offset_graph::OffsetGraph;
+use crate::types::array_graph::offset_graph::TraversalType;
 
-pub fn shortest_path_configured(
+pub fn shortest_path(
     offset_graph: &OffsetGraph,
     from: &[NodeIDX],
     to: NodeIDX,
+    traversal_type: TraversalType,
 ) -> Option<Vec<NodeIDX>> {
     // here we will need to run a BFS on our directed graph in a very efficient way.
 
@@ -36,7 +38,20 @@ pub fn shortest_path_configured(
         }
 
         // iterate over the edges of the current node
-        for edge in offset_graph.edges_configured(current) {
+        for edge in offset_graph.edges(current) {
+            match traversal_type {
+                TraversalType::Configured => {
+                    // this is a bit annoying that we have to reach directly into
+                    // excluded instead of using `edges_configured`, but it's a very
+                    // hot loop and messing with dynamic objects will have some
+                    // overhead
+                    if edge.is_excluded() {
+                        continue;
+                    }
+                }
+                TraversalType::Unconfigured => {}
+            }
+
             let child = edge.points_to;
 
             // if we have not seen this child before, add it to the queue
@@ -78,6 +93,7 @@ mod tests {
     use crate::tests::test_graphs::make_test_array_graph_2;
     use crate::tests::test_utils::idx_to_names;
     use crate::tests::test_utils::name_to_idx;
+    use crate::types::array_graph::offset_graph::TraversalType;
 
     #[test]
     fn test_shortest_path_configured() -> Result<()> {
@@ -85,7 +101,11 @@ mod tests {
 
         let p = ag
             .edges_forward
-            .shortest_path_configured(&[name_to_idx(&ag, "A")], name_to_idx(&ag, "K"))
+            .shortest_path(
+                &[name_to_idx(&ag, "A")],
+                name_to_idx(&ag, "K"),
+                TraversalType::Configured,
+            )
             .unwrap();
 
         assert_equal!(idx_to_names(&ag, p), vec!["A", "B", "J", "K"]);
@@ -93,29 +113,35 @@ mod tests {
         // FROM A NODE TO ITSELF
         let p = ag
             .edges_forward
-            .shortest_path_configured(&[name_to_idx(&ag, "A")], name_to_idx(&ag, "A"))
+            .shortest_path(
+                &[name_to_idx(&ag, "A")],
+                name_to_idx(&ag, "A"),
+                TraversalType::Configured,
+            )
             .unwrap();
         assert_equal!(idx_to_names(&ag, p), vec!["A"]);
 
         // FROM A NODE TO ITSELF IN A CYCLE
         let p = ag
             .edges_forward
-            .shortest_path_configured(
+            .shortest_path(
                 &[
                     name_to_idx(&ag, "M"),
                     name_to_idx(&ag, "N"),
                     name_to_idx(&ag, "O"),
                 ],
                 name_to_idx(&ag, "N"),
+                TraversalType::Configured,
             )
             .unwrap();
         assert_equal!(idx_to_names(&ag, p), vec!["N"]);
 
         let p = ag
             .edges_forward
-            .shortest_path_configured(
+            .shortest_path(
                 &[name_to_idx(&ag, "A"), name_to_idx(&ag, "L")],
                 name_to_idx(&ag, "H"),
+                TraversalType::Configured,
             )
             .unwrap();
 
@@ -125,18 +151,20 @@ mod tests {
         let p = ag
             .derived_state
             .edges_reverse
-            .shortest_path_configured(
+            .shortest_path(
                 &[name_to_idx(&ag, "F"), name_to_idx(&ag, "H")],
                 name_to_idx(&ag, "A"),
+                TraversalType::Configured,
             )
             .unwrap();
 
         assert_equal!(idx_to_names(&ag, p), vec!["H", "F", "D", "A"]);
 
         // NO PATHS
-        let p = ag.derived_state.edges_reverse.shortest_path_configured(
+        let p = ag.derived_state.edges_reverse.shortest_path(
             &[name_to_idx(&ag, "K"), name_to_idx(&ag, "E")],
             name_to_idx(&ag, "I"),
+            TraversalType::Configured,
         );
 
         assert_equal!(p, None);

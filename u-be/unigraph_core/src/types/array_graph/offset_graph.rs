@@ -24,6 +24,27 @@ pub struct OffsetGraph {
     pub(crate) non_directed_edges_metadata: Vec<NonDirectedEdgeMetadata>,
 }
 
+#[derive(typegen::TypeGen, Clone, Copy)]
+#[typegen(skip(Flow, Hack))]
+/// Configured/Unconfigured is borrowed from buck2 terminology.
+pub enum TraversalType {
+    /// Unconfigured: follow all edges possible, don't care about excluded/included
+    Configured = 0,
+    /// Configured: follow only the edges that are included, based on
+    /// provided TraversalConfig.
+    Unconfigured = 1,
+}
+
+impl TraversalType {
+    pub fn from_u8(value: u8) -> Result<Self> {
+        match value {
+            0 => Ok(TraversalType::Configured),
+            1 => Ok(TraversalType::Unconfigured),
+            _ => anyhow::bail!("Invalid TraversalType value: {value}"),
+        }
+    }
+}
+
 /// Metadata for non-directed edges in the graph that contains
 /// flattened, per edge data for easier access when we need to
 /// construct error, or reverse graphs, etc.
@@ -105,6 +126,8 @@ impl OffsetGraph {
         (0..self.node_count()).map(NodeIDX::from)
     }
 
+    /// This is a much faster method since it just returns a slice of
+    /// the original edges untouched without creating any interators
     pub fn edges(&self, node_idx: NodeIDX) -> &[Edge] {
         let start = self.edge_offsets[node_idx];
         let end = self.edge_offsets[node_idx + 1];
@@ -193,8 +216,13 @@ impl OffsetGraph {
         OffsetGraphDFSUnconfigured::new(self, roots)
     }
 
-    pub fn shortest_path_configured(&self, from: &[NodeIDX], to: NodeIDX) -> Option<Vec<NodeIDX>> {
-        shortest_path::shortest_path_configured(self, from, to)
+    pub fn shortest_path(
+        &self,
+        from: &[NodeIDX],
+        to: NodeIDX,
+        traversal_type: TraversalType,
+    ) -> Option<Vec<NodeIDX>> {
+        shortest_path::shortest_path(self, from, to, traversal_type)
     }
 
     /// Override an edge to exclude it from the graph and returns a struct

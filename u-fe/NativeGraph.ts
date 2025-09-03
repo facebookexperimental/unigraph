@@ -32,6 +32,7 @@ import type { ExplorerComponentInputGraphs } from "./__generated__/ts/ExplorerCo
 import type { GraphSettings } from "./__generated__/ts/GraphSettings";
 import type { GraphStructure } from "./__generated__/ts/GraphStructure";
 import type { TraversalConfig } from "./__generated__/ts/TraversalConfig";
+import type { TraversalType } from "./__generated__/ts/TraversalType";
 import type { NodeIDX } from "./types";
 
 export type GraphSide = 1 | 2;
@@ -61,6 +62,11 @@ export const GRAPH_STRUCTURE = {
   FORWARD: 0 as const,
   DOMINATOR: 1 as const,
   REVERSE: 2 as const,
+};
+
+export const TRAVERSAL_TYPE = {
+  CONFIGURED: 0 as const,
+  UNCONFIGURED: 1 as const,
 };
 
 // It serves as a bridge/cache layer between JS and WASM.
@@ -165,12 +171,14 @@ export default class NativeGraph {
     fromNodeIDX: readonly NodeIDX[],
     toNodeIDX: NodeIDX,
     graphStructure: GraphStructure,
+    traversalType: TraversalType,
   ): NodeIDX[] | null {
     const path = get_shortest_path(
       new Uint32Array(fromNodeIDX),
       toNodeIDX,
       graphStructureToU8(graphStructure),
       this.side,
+      traversalTypeToU8(traversalType),
     );
 
     if (path == null || path.length === 0) {
@@ -556,6 +564,19 @@ function graphStructureToU8(graphStructure: GraphStructure): number {
     default: {
       const _exhaustiveCheck: never = graphStructure;
       throw new Error(`Unknown graph structure: ${_exhaustiveCheck}`);
+    }
+  }
+}
+
+function traversalTypeToU8(traversalType: TraversalType): number {
+  switch (traversalType) {
+    case "Configured":
+      return TRAVERSAL_TYPE.CONFIGURED;
+    case "Unconfigured":
+      return TRAVERSAL_TYPE.UNCONFIGURED;
+    default: {
+      const _exhaustiveCheck: never = traversalType;
+      throw new Error(`Unknown traversal type: ${_exhaustiveCheck}`);
     }
   }
 }

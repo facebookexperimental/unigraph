@@ -211,10 +211,13 @@ export function expandToPath(
   }
 
   let currentChildrenRefs: Row[] = rows;
+
+  /// This is our current pointer to the row
   let currentGlobalRowIDX = -1;
 
   for (let i = 0; i < nodeIDXPath.length; i++) {
     const currentParentRow = rows[currentGlobalRowIDX];
+
     if (currentParentRow != null) {
       const childrenArrows = getArrowPairs(
         currentParentRow.arrow_pair.points_to,
@@ -225,15 +228,37 @@ export function expandToPath(
 
     const nextNodeIDXInPath = nodeIDXPath[i] as NodeIDX;
 
-    const childRowIDX = currentChildrenRefs.findIndex(
-      (row) => row.arrow_pair.points_to === nextNodeIDXInPath,
-    );
+    /// Next node in the path will be one of the children (if exists)
+    /// and we need to calculate how much farther we need to jump
+    /// in the row list once we find that next child.
+    /// We already have a row state and some rows can be expanded
+    /// so we must account for that in our offsets.
+    //// e.g.
+    ///  A        <- we're here
+    ///    B
+    ///      C    <- B is already expanded and C is its child
+    ///    D      <- we want to go here (second child, or IDX 1)
+    ///
+    /// In here when we jump from A to D we will have to add additional
+    /// offset to account for expanded B and its child C row
+    let additionalChildRowOffset = 0;
+
+    let childRowIDX = -1;
+    for (let childIDX = 0; childIDX < currentChildrenRefs.length; childIDX++) {
+      const childRow = currentChildrenRefs[childIDX] as Row;
+      if (childRow.arrow_pair.points_to === nextNodeIDXInPath) {
+        childRowIDX = childIDX;
+        break;
+      } else {
+        additionalChildRowOffset += childRow.transitiveChildrenCount;
+      }
+    }
 
     if (childRowIDX === -1) {
       break;
     }
 
-    currentGlobalRowIDX += childRowIDX + 1;
+    currentGlobalRowIDX += childRowIDX + additionalChildRowOffset + 1;
   }
   return currentGlobalRowIDX === -1 ? null : currentGlobalRowIDX;
 }
