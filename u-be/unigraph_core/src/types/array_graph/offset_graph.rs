@@ -208,6 +208,7 @@ impl OffsetGraph {
         reverse_graph
     }
 
+    /// DFS that will follow only the edges that are not excluded.
     pub fn dfs_configured(&self, roots: &[NodeIDX]) -> OffsetGraphDFSConfigured<'_> {
         OffsetGraphDFSConfigured::new(self, roots)
     }

@@ -208,7 +208,12 @@ impl ArrayGraph {
 
     #[inline(always)]
     pub fn is_node_unreachable(&self, node_idx: NodeIDX) -> bool {
-        self.node_flags[node_idx].is_node_unreachable()
+        self.node_flags[node_idx].is_node_unreachable() || !self.node_exists(node_idx)
+    }
+
+    #[inline(always)]
+    pub fn node_exists(&self, node_idx: NodeIDX) -> bool {
+        self.nodes.node_exists(node_idx)
     }
 
     pub fn idxs_to_names(&self, idxs: &[NodeIDX]) -> Vec<&str> {
@@ -270,7 +275,7 @@ impl ArrayGraph {
     }
 
     pub fn transitive_count_configured(&self, node_idx: NodeIDX) -> usize {
-        if self.is_node_unreachable(node_idx) {
+        if self.is_node_unreachable(node_idx) || !self.node_exists(node_idx) {
             0
         } else {
             self.edges_forward.dfs_configured(&[node_idx]).count()
@@ -278,7 +283,7 @@ impl ArrayGraph {
     }
 
     pub fn transitive_count_configured_dominated(&self, node_idx: NodeIDX) -> usize {
-        if self.is_node_unreachable(node_idx) {
+        if self.is_node_unreachable(node_idx) || !self.node_exists(node_idx) {
             0
         } else {
             self.edges_dom().dfs_configured(&[node_idx]).count()

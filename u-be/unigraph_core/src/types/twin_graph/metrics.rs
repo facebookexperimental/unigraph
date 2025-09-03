@@ -74,18 +74,25 @@ pub fn get_transitive_count_delta(
         }
     };
 
-    let count_l = l
-        .edges_forward
-        .dfs_configured(&[node_idx])
-        .filter(should_count)
-        .count();
+    let count_l = if l.node_exists(node_idx) {
+        l.edges_forward
+            .dfs_configured(&[node_idx])
+            .filter(should_count)
+            .count()
+    } else {
+        0
+    };
 
-    let count_r = r
-        .edges_forward
-        .dfs_configured(&[node_idx])
-        .filter(should_count)
-        .count();
+    let count_r = if r.node_exists(node_idx) {
+        r.edges_forward
+            .dfs_configured(&[node_idx])
+            .filter(should_count)
+            .count()
+    } else {
+        0
+    };
 
+    dbg!(&count_l, &count_r);
     Ok(count_r as i32 - count_l as i32)
 }
 
@@ -105,9 +112,9 @@ mod tests {
         let t_right = tg.r.as_ref().unwrap().transitive_count_configured(t_idx);
         let t_delta = tg.get_transitive_count_delta(t_idx)?;
 
-        assert_equal!(t_left, 1);
+        assert_equal!(t_left, 0);
         assert_equal!(t_right, 8);
-        assert_equal!(t_delta, 0);
+        assert_equal!(t_delta, 1); // this is 1 (!!!), not 8. Because only one node was added with 7 existing deps
         Ok(())
     }
 }
