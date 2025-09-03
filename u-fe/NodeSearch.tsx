@@ -10,7 +10,11 @@ import {
   CommandItem,
   CommandList,
 } from "./components/ui/command";
-import { useNodeSearchRef } from "./context/GlobalKeyboardShortcutsContext";
+import {
+  KEYBOARD_SHORTCUTS,
+  KeyboardShortcutLabel,
+  useNodeSearchRef,
+} from "./context/GlobalKeyboardShortcutsContext";
 import { useTwinGraph } from "./context/NativeGraphContext";
 import { useSelectedPath } from "./context/SelectedPathContext";
 import { cn } from "./lib/utils";
@@ -31,6 +35,9 @@ export default function NodeSearch() {
     <div className="h-8 grow">
       <Typeahead
         searchSource={searchSource}
+        endComponent={
+          <KeyboardShortcutLabel shortcut={KEYBOARD_SHORTCUTS.NODE_SEARCH} />
+        }
         onSelect={(option) => {
           const nodeIDX = twinGraph.getNodeIDXByNameLog(option.id);
           if (nodeIDX != null) {
@@ -74,6 +81,8 @@ interface TypeaheadProps {
   debounceMs?: number;
   /** Whether to allow clearing the selection */
   clearable?: boolean;
+  /** Component to render at the end of the search box (e.g., keyboard shortcut label) */
+  endComponent?: React.ReactNode;
 }
 
 // Helper function to highlight matching characters in fuzzy search
@@ -140,6 +149,7 @@ function Typeahead({
   minSearchLength = 1,
   debounceMs = 500,
   clearable = true,
+  endComponent,
 }: TypeaheadProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchValue, setSearchValue] = useState("");
@@ -200,7 +210,7 @@ function Typeahead({
     setIsOpen(false);
     onValueChange?.(option.id);
     onSelect?.(option);
-    inputRef.current?.focus();
+    inputRef.current?.blur();
   };
 
   // Handle clear
@@ -233,7 +243,6 @@ function Typeahead({
 
   // Handle keyboard navigation
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    // e.stopPropagation();
     if (e.key === "Escape") {
       setIsOpen(false);
       inputRef.current?.blur();
@@ -276,6 +285,7 @@ function Typeahead({
             />
 
             <div className="flex items-center gap-1">
+              {endComponent}
               {clearable && (
                 <button
                   type="button"
