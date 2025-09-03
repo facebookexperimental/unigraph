@@ -23,7 +23,6 @@ import {
 import { ARROW_POINTS_FROM_NON_EXISTENT } from "../ArrowUtils";
 import type { ArrayGraphUISettingsTreeTableEntryPoints } from "../__generated__/ts/ArrayGraphUISettingsTreeTableEntryPoints";
 import type { GraphStructure } from "../__generated__/ts/GraphStructure";
-import type { GraphTableSort } from "../__generated__/ts/GraphTableSort";
 import type { SortOrder } from "../__generated__/ts/SortOrder";
 import UTooltip from "../components/UTooltip";
 import { Progress } from "../components/ui/progress";
@@ -61,11 +60,18 @@ export type CommonNonTreeColumnDefinitionFields = {
   isLabelHidden?: boolean;
 };
 
+export type TSortable = {
+  // If present, that means the table is sorted by this column with
+  // the provided sort order
+  order: SortOrder | null;
+  onSortChange: (sort: SortOrder | null) => void;
+};
+
 export type NumericValueColumnDefinition =
   CommonNonTreeColumnDefinitionFields & {
     t: "numeric_value_column";
     getNumericValues: (idx: NodeIDX[]) => Float32Array;
-    sortable: boolean;
+    sortable: TSortable | null;
   };
 
 export type NonSortableColumnDefinition =
@@ -82,6 +88,7 @@ export type TreeColumnDefinition = {
   getNodeName: (idx: NodeIDX) => string;
   flexGrow?: number;
   isLabelHidden?: boolean;
+  sortable: TSortable | null;
 };
 
 type ColumnInternal =
@@ -113,9 +120,6 @@ export function TreeTable(props: {
   treeTableGraph: TreeTableGraph;
   headerHeight?: number;
   focusOnMount?: boolean;
-  sortColumnID: TreeColumnID | string | null;
-  sortOrder: SortOrder | null;
-  onSortChange: (sort: GraphTableSort | null) => void;
 }) {
   const [sortingProgress, setSortingProgress] = useState<
     null | [number, number]
@@ -152,7 +156,7 @@ export function TreeTable(props: {
       // stuck in the initial render
       EMPTY_TREE_TABLE_GRAPH,
     );
-    ctx.updateSortState(props.sortColumnID, props.sortOrder);
+    ctx.updateSortState();
     ctx.forceUpdate = forceUpdate;
 
     return ctx;
@@ -174,7 +178,7 @@ export function TreeTable(props: {
 
   useEffect(() => {
     ctx.columns = columns;
-    ctx.updateSortState(props.sortColumnID, props.sortOrder);
+    ctx.updateSortState();
 
     // if the graph changed we nuke the whole table
     // and start over from clean state. This could have been triggerred
@@ -193,7 +197,7 @@ export function TreeTable(props: {
         await ctx.resortRowsAsync(setSortingProgress);
       });
     }
-  }, [props.sortColumnID, props.sortOrder, ctx, columns, props.treeTableGraph]);
+  }, [ctx, columns, props.treeTableGraph]);
 
   useEffect(() => {
     setSelectedPath(ctx.selectedNodeIDXPath);
@@ -270,8 +274,8 @@ export function TreeTable(props: {
       return null; // skip hidden columns
     }
 
-    const columnID = column.columnID;
-    const sortOrder = columnID === props.sortColumnID ? props.sortOrder : null;
+    const SelectedSortOrder =
+      ctx.sortState?.sortColumn === column ? ctx.sortState.sortOrder : null;
 
     const columnCells = virtualItems.map((virtualItem) => {
       const rowIDX = virtualItem.index;
@@ -337,37 +341,31 @@ export function TreeTable(props: {
       );
     });
 
-    const isSortable =
-      (column.t === "numeric_value_column" &&
-        column.c.getNumericValues != null) ||
-      column.t === "tree";
+    const sortable =
+      column.t !== "non_sortable_column" ? column.c.sortable : null;
 
     const sortIcon = (() => {
       const isNumeric = column.t === "numeric_value_column";
-      if (isSortable === false) {
+      if (sortable == null) {
         return null;
       }
-      if (sortOrder === "Asc") {
+      if (SelectedSortOrder === "Asc") {
         const Icon = isNumeric ? ArrowDown01 : ArrowDownAZ;
 
         return (
           <Icon
             size={16}
             className="mx-2 cursor-pointer"
-            onClick={() =>
-              props.onSortChange({ column_id: columnID, order: "Desc" })
-            }
+            onClick={() => sortable.onSortChange("Desc")}
           />
         );
-      } else if (sortOrder === "Desc") {
+      } else if (SelectedSortOrder === "Desc") {
         const Icon = isNumeric ? ArrowUp10 : ArrowUpZA;
         return (
           <Icon
             size={16}
             className="mx-2 cursor-pointer"
-            onClick={() =>
-              props.onSortChange({ column_id: columnID, order: "Asc" })
-            }
+            onClick={() => sortable.onSortChange("Asc")}
           />
         );
       } else {
@@ -375,9 +373,7 @@ export function TreeTable(props: {
           <ArrowDownUp
             size={16}
             className="mx-2 cursor-pointer"
-            onClick={() =>
-              props.onSortChange({ column_id: columnID, order: "Desc" })
-            }
+            onClick={() => sortable.onSortChange("Desc")}
           />
         );
       }
@@ -396,7 +392,9 @@ export function TreeTable(props: {
           style={{ height: `${headerHeight}px` }}
           className={clsx(
             "sticky top-0 border-b px-4 flex items-center whitespace-nowrap",
-            sortOrder != null ? "bg-primary text-background" : "bg-accent",
+            SelectedSortOrder != null
+              ? "bg-primary text-background"
+              : "bg-accent",
           )}
         >
           {column.c.isLabelHidden === true ? (
@@ -478,9 +476,9 @@ export function TreeTable(props: {
 }
 
 export type SortState = {
-  sortFn: SortFn;
-  sortColumnID: TreeColumnID | ColumnID;
   sortColumn: ColumnInternal | null;
+  sortOrder: SortOrder | null;
+  sortFn: SortFn;
 };
 
 class TreeTableCtx {
@@ -508,55 +506,64 @@ class TreeTableCtx {
     this.selectedNodeIDXPath = selectedNodeIDXPath;
   }
 
-  updateSortState(
-    columnID: TreeColumnID | ColumnID | null,
-    order: SortOrder | null,
-  ) {
-    if (columnID == null || order == null) {
-      this.sortState = null;
+  updateSortState() {
+    this.sortState = null;
+    const result: [ColumnInternal, SortOrder] | null = (() => {
+      for (const column of this.columns) {
+        switch (column.t) {
+          case "tree":
+          case "numeric_value_column":
+            if (column.c.sortable?.order != null) {
+              return [column, column.c.sortable.order];
+            }
+            continue;
+          case "non_sortable_column":
+            continue;
+        }
+      }
+
+      return null;
+    })();
+
+    if (result == null) {
       return;
     }
 
-    const column = this.columns.find((c) => c.columnID === columnID);
-    if (column == null) {
-      this.sortState = null;
-      return;
-    }
+    const [sortColumn, sortOrder] = result;
 
     const getSortValue = (() => {
-      switch (column?.t) {
+      switch (sortColumn?.t) {
         case "tree":
-          return (idx: NodeIDX) => column.c.getNodeName(idx);
+          return (idx: NodeIDX) => sortColumn.c.getNodeName(idx);
         case "numeric_value_column": {
           return (nodeIDX: NodeIDX) =>
-            column.c.getNumericValues([nodeIDX])[0] as number;
+            sortColumn.c.getNumericValues([nodeIDX])[0] as number;
         }
         case "non_sortable_column": {
           return null;
         }
         default: {
-          const _exhaustiveCheck: never = column;
+          const _exhaustiveCheck: never = sortColumn;
           throw new Error(`Unknown column type: ${_exhaustiveCheck}`);
         }
       }
     })();
 
     if (getSortValue == null) {
-      this.sortState = null;
       return;
     }
 
     this.sortState = {
-      sortColumnID: columnID,
-      sortColumn: column ?? null,
+      sortColumn,
+      sortOrder,
       sortFn: (a: Row, b: Row) => {
         const aValue = getSortValue(a.arrow_pair.points_to);
         const bValue = getSortValue(b.arrow_pair.points_to);
         if (aValue < bValue) {
-          return order === "Desc" ? 1 : -1;
+          return sortOrder === "Desc" ? 1 : -1;
         }
         if (aValue > bValue) {
-          return order === "Desc" ? -1 : 1;
+          return sortOrder === "Desc" ? -1 : 1;
         }
         return 0;
       },
@@ -617,7 +624,7 @@ class TreeTableCtx {
     // them as much as possible.
     for (const column of this.columns) {
       if (column.t === "numeric_value_column") {
-        if (this.sortState?.sortColumnID === column.columnID) {
+        if (this.sortState?.sortColumn === column) {
           // If we're sorting by this column we need to
           // get all the values for the children. We will need them
           // anyway to order the rows, even if they're virtualized and

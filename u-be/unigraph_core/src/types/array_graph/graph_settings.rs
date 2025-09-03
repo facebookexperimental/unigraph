@@ -124,12 +124,6 @@ pub enum SortOrder {
     Desc,
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize, typegen::TypeGen, Clone)]
-pub struct GraphTableSort {
-    pub column_id: String,
-    pub order: SortOrder,
-}
-
 #[derive(
     Debug,
     serde::Serialize,
@@ -242,7 +236,7 @@ pub enum ArrayGraphUISettingsTreeTableEntryPoints {
     Default
 )]
 pub struct ColumnSettings {
-    /// Graph table in UI will be sorted using provided column ID
+    /// Graph table in UI will be sorted using provided column
     /// and order if any
     #[serde(skip_serializing_if = "Option::is_none")]
     pub graph_table_sort: Option<GraphTableSort>,
@@ -307,4 +301,56 @@ pub enum IndividualOptionEnabled {
     #[default]
     WhenEnabledGlobally,
     Never,
+}
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, typegen::TypeGen)]
+pub struct GraphTableSort {
+    column: SortColumn,
+    order: SortOrder,
+}
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, typegen::TypeGen)]
+pub enum ColumnType {
+    Left,
+    Right,
+    Delta,
+}
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, typegen::TypeGen)]
+pub enum SortColumn {
+    /// Sort by node name (tree column)
+    NodeName {},
+
+    /// Transitive count column
+    TransitiveCount { t: ColumnType },
+
+    /// Number of parents for each node
+    ParentsCount { t: ColumnType },
+
+    /// Metric column for specified metric
+    Metric { t: ColumnType, name: String },
+    /// Metric column for specified metric (Right Graph)
+
+    /// Transitive metric column for specified metric
+    TransitiveMetric { t: ColumnType, name: String },
+
+    /// Tiered transitive metric column for specified metric
+    TieredTransitiveMetric {
+        t: ColumnType,
+        name: String,
+        tier: String,
+    },
+
+    /// Conjoint count
+    ConjointCount { t: ColumnType },
+
+    /// Conjoint metric
+    ConjointMetric { t: ColumnType, name: String },
+
+    /// Conjoint tiered metric
+    ConjointTieredMetric {
+        t: ColumnType,
+        name: String,
+        tier: String,
+    },
 }

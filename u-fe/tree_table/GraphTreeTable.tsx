@@ -3,7 +3,6 @@
 import type { NodeIDX } from "../types";
 import { TreeTable } from "./TreeTable";
 
-import type { GraphTableSort } from "@/__generated__/ts/GraphTableSort";
 import { useCallback, useMemo } from "react";
 import ErrorBoundary from "../components/ErrorBoundary";
 import { useGraphSettings } from "../context/GraphSettingsContext";
@@ -17,23 +16,7 @@ export default function GraphTreeTable(props: {
 }) {
   const nativeGraphL = useNativeGraphL();
   const twinGraph = useTwinGraph();
-  const [settings, setSettings] = useGraphSettings();
-
-  const onSortChange = useCallback(
-    (sort: GraphTableSort | null) => {
-      setSettings({
-        ...settings,
-        ui_settings: {
-          ...settings.ui_settings,
-          columns: {
-            ...settings?.ui_settings?.columns,
-            graph_table_sort: sort == null ? undefined : sort,
-          },
-        },
-      });
-    },
-    [settings, setSettings],
-  );
+  const [settings] = useGraphSettings();
 
   const columnDefinitions = useGraphTreeTableColumns();
   const graphStructure = settings.ui_settings?.graph_structure ?? "Forward";
@@ -112,13 +95,6 @@ export default function GraphTreeTable(props: {
         columnDefinitions={columnDefinitions}
         treeTableGraph={treeTableGraph}
         focusOnMount={props.focusOnMount}
-        onSortChange={onSortChange}
-        sortColumnID={
-          settings?.ui_settings?.columns?.graph_table_sort?.column_id ?? null
-        }
-        sortOrder={
-          settings?.ui_settings?.columns?.graph_table_sort?.order ?? null
-        }
       />
     </ErrorBoundary>
   );

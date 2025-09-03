@@ -5,9 +5,10 @@
  */
 
 
+import type { SortColumn } from './SortColumn.ts';
 import type { SortOrder } from './SortOrder.ts';
 
 export interface GraphTableSort {
-  column_id: string;
+  column: SortColumn;
   order: SortOrder;
 }

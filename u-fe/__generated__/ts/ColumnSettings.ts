@@ -11,7 +11,7 @@ import type { MetricSettings } from './MetricSettings.ts';
 
 export interface ColumnSettings {
   /**
-   * Graph table in UI will be sorted using provided column ID
+   * Graph table in UI will be sorted using provided column
    * and order if any
    */
   graph_table_sort?: GraphTableSort | undefined;

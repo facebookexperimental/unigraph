@@ -1,11 +1,14 @@
-import type { GraphSettings } from "@/__generated__/ts/GraphSettings";
-import type { MetricFormat } from "@/__generated__/ts/MetricFormat";
-import type { MetricSettings } from "@/__generated__/ts/MetricSettings";
-import type { TraversalConfig } from "@/__generated__/ts/TraversalConfig";
-import type { NodeIDX } from "@/types";
 import clsx from "clsx";
 import { useMemo } from "react";
 import { ARROW_POINTS_FROM_NON_EXISTENT } from "../ArrowUtils";
+import type { ColumnType } from "../__generated__/ts/ColumnType";
+import type { GraphSettings } from "../__generated__/ts/GraphSettings";
+import type { GraphTableSort } from "../__generated__/ts/GraphTableSort";
+import type { MetricFormat } from "../__generated__/ts/MetricFormat";
+import type { MetricSettings } from "../__generated__/ts/MetricSettings";
+import type { SortColumn } from "../__generated__/ts/SortColumn";
+import type { SortOrder } from "../__generated__/ts/SortOrder";
+import type { TraversalConfig } from "../__generated__/ts/TraversalConfig";
 import UTooltip from "../components/UTooltip";
 import { useGraphSettings } from "../context/GraphSettingsContext";
 import { useTwinGraph } from "../context/NativeGraphContext";
@@ -13,12 +16,14 @@ import { useTVC } from "../context/TraversalConfigContext";
 import formatMetric from "../lib/formatMetric";
 import type NativeGraph from "../native/NativeGraph";
 import { GRAPH_SIDE, type GraphSide } from "../native/NativeGraph";
+import type { NodeIDX } from "../types";
 import ContextMenuCell from "./ContextMenuCell";
 import type {
   ColumnDefinitions,
   ColumnID,
   NonTreeColumnDefinition,
   NumericValueColumnDefinition,
+  TSortable,
   TreeColumnDefinition,
 } from "./TreeTable";
 import type { Row } from "./TreeTableRows";
@@ -34,19 +39,25 @@ const NO_PRECISION_FORMAT: MetricFormat = {
 interface Column {
   isEnabled: () => boolean;
   definition: () => [string, NonTreeColumnDefinition];
+  sortable: () => TSortable | null;
 }
 
 export default function useGraphTreeTableColumns(): ColumnDefinitions {
   const twinGraph = useTwinGraph();
   const l = twinGraph.l;
-  const [graphSettings] = useGraphSettings();
+  const [graphSettings, setGraphSettings] = useGraphSettings();
   const { tvc } = useTVC();
 
   return useMemo(() => {
     const builder =
       twinGraph.r !== null
         ? new DeltaGraphColumnsBuilder()
-        : new SingleGraphColumnsBuilder(l, graphSettings, tvc);
+        : new SingleGraphColumnsBuilder(
+            l,
+            graphSettings,
+            setGraphSettings,
+            tvc,
+          );
 
     const nonTreeColumns: { [columnID: ColumnID]: NonTreeColumnDefinition } =
       {};
@@ -58,10 +69,45 @@ export default function useGraphTreeTableColumns(): ColumnDefinitions {
       }
     }
 
+    const nodeNameSortOrder = (() => {
+      const tableSort =
+        graphSettings?.ui_settings?.columns?.graph_table_sort ?? null;
+      if (tableSort == null) {
+        return null;
+      }
+
+      if ("NodeName" in tableSort.column) {
+        return tableSort.order;
+      }
+
+      return null;
+    })();
+
     const treeColumn: TreeColumnDefinition = {
       label: "Node Name",
       getNodeName: (idx: NodeIDX) => l.getNodeName(idx),
       flexGrow: 1,
+      sortable: {
+        order: nodeNameSortOrder,
+        onSortChange: (order: SortOrder | null) => {
+          setGraphSettings({
+            ...graphSettings,
+            ui_settings: {
+              ...graphSettings.ui_settings,
+              columns: {
+                ...graphSettings?.ui_settings?.columns,
+                graph_table_sort:
+                  order == null
+                    ? undefined
+                    : {
+                        order,
+                        column: { NodeName: {} },
+                      },
+              },
+            },
+          });
+        },
+      },
     };
 
     nonTreeColumns.context_menu = {
@@ -76,7 +122,7 @@ export default function useGraphTreeTableColumns(): ColumnDefinitions {
       treeColumn,
       columns: nonTreeColumns,
     };
-  }, [twinGraph, l, graphSettings, tvc]);
+  }, [twinGraph, l, graphSettings, setGraphSettings, tvc]);
 }
 
 function MetricCell({
@@ -133,6 +179,7 @@ function MissingMetric() {
 /// with consistent defaults.
 class ColumnsCtx {
   graphSettings: GraphSettings;
+  setGraphSettings: (gs: GraphSettings) => void;
   tvc: TraversalConfig;
   showTransitive: boolean;
   showTransitiveCount: boolean;
@@ -143,8 +190,13 @@ class ColumnsCtx {
   showConjoint: boolean;
   showConjointCount: boolean;
 
-  constructor(graphSettings: GraphSettings, tvc: TraversalConfig) {
+  constructor(
+    graphSettings: GraphSettings,
+    setGraphSettings: (gs: GraphSettings) => void,
+    tvc: TraversalConfig,
+  ) {
     this.graphSettings = graphSettings;
+    this.setGraphSettings = setGraphSettings;
     this.tvc = tvc;
 
     this.showTransitive =
@@ -169,11 +221,29 @@ class ColumnsCtx {
       null
     );
   }
+
+  sort(): GraphTableSort | null {
+    return this.graphSettings.ui_settings?.columns?.graph_table_sort ?? null;
+  }
+
+  onSortChange(order: SortOrder | null, column: SortColumn) {
+    this.setGraphSettings({
+      ...this.graphSettings,
+      ui_settings: {
+        ...this.graphSettings.ui_settings,
+        columns: {
+          ...this.graphSettings?.ui_settings?.columns,
+          graph_table_sort: order == null ? undefined : { column, order },
+        },
+      },
+    });
+  }
 }
 
 class SingleGraphColumnsBuilder {
   nativeGraph: NativeGraph;
   graphSettings: GraphSettings;
+  setGraphSettings: (gs: GraphSettings) => void;
   tvc: TraversalConfig;
   ctx: ColumnsCtx;
   columns: Column[] = [];
@@ -181,18 +251,20 @@ class SingleGraphColumnsBuilder {
   constructor(
     nativeGraph: NativeGraph,
     graphSettings: GraphSettings,
+    setGraphSettings: (gs: GraphSettings) => void,
     tvc: TraversalConfig,
   ) {
     this.nativeGraph = nativeGraph;
     this.graphSettings = graphSettings;
+    this.setGraphSettings = setGraphSettings;
     this.tvc = tvc;
-    this.ctx = new ColumnsCtx(graphSettings, tvc);
+    this.ctx = new ColumnsCtx(graphSettings, setGraphSettings, tvc);
     this.columns = [];
   }
 
   makeColumns(): Column[] {
     const { ctx, nativeGraph: g } = this;
-    const columns = [
+    const columns: Column[] = [
       new TransitiveCountColumn(ctx, g),
       new ConjointCountColumn(ctx, g),
       new ParentsCountColumn(ctx, g),
@@ -233,6 +305,31 @@ class TransitiveCountColumn implements Column {
 
   isEnabled() {
     return this.ctx.showTransitiveCount && this.ctx.showTransitive;
+  }
+
+  sortable(): TSortable | null {
+    const columnType: ColumnType =
+      this.side === GRAPH_SIDE.R ? "Right" : "Left";
+    const sortable: TSortable = {
+      order: null,
+      onSortChange: (order: SortOrder | null) =>
+        this.ctx.onSortChange(order, {
+          TransitiveCount: {
+            t: columnType,
+          },
+        }),
+    };
+
+    const sort = this.ctx.sort();
+    if (
+      sort != null &&
+      "TransitiveCount" in sort.column &&
+      sort.column.TransitiveCount.t === columnType
+    ) {
+      sortable.order = sort.order;
+    }
+
+    return sortable;
   }
 
   getValuesFn(): (idxs: NodeIDX[]) => Float32Array {
@@ -292,7 +389,7 @@ class TransitiveCountColumn implements Column {
         }
       },
       getNumericValues: getValues,
-      sortable: true,
+      sortable: this.sortable(),
       isHidden: false,
     };
     return [columnID, definition];
@@ -322,6 +419,31 @@ class ConjointCountColumn implements Column {
     return `C(count)${this.side === GRAPH_SIDE.L ? "L" : "R"}`;
   }
 
+  sortable() {
+    const columnType: ColumnType =
+      this.side === GRAPH_SIDE.R ? "Right" : "Left";
+    const sortable: TSortable = {
+      order: null,
+      onSortChange: (order: SortOrder | null) =>
+        this.ctx.onSortChange(order, {
+          ConjointCount: {
+            t: columnType,
+          },
+        }),
+    };
+
+    const sort = this.ctx.sort();
+    if (
+      sort != null &&
+      "ConjointCount" in sort.column &&
+      sort.column.ConjointCount.t === columnType
+    ) {
+      sortable.order = sort.order;
+    }
+
+    return sortable;
+  }
+
   definition(): [string, NumericValueColumnDefinition] {
     const columnID = this.getID();
     const definition: NumericValueColumnDefinition = {
@@ -347,7 +469,7 @@ class ConjointCountColumn implements Column {
         const count = this.nativeGraph.getConjointCost().count;
         return new Float32Array(idxs.map((idx) => count[idx] ?? 0));
       },
-      sortable: true,
+      sortable: this.sortable(),
       isHidden: false,
     };
     return [columnID, definition];
@@ -376,6 +498,31 @@ class ParentsCountColumn implements Column {
     return `Parents # ${this.side === GRAPH_SIDE.L ? "L" : "R"}`;
   }
 
+  sortable() {
+    const columnType: ColumnType =
+      this.side === GRAPH_SIDE.R ? "Right" : "Left";
+    const sortable: TSortable = {
+      order: null,
+      onSortChange: (order: SortOrder | null) =>
+        this.ctx.onSortChange(order, {
+          ParentsCount: {
+            t: columnType,
+          },
+        }),
+    };
+
+    const sort = this.ctx.sort();
+    if (
+      sort != null &&
+      "ParentsCount" in sort.column &&
+      sort.column.ParentsCount.t === columnType
+    ) {
+      sortable.order = sort.order;
+    }
+
+    return sortable;
+  }
+
   definition(): [string, NumericValueColumnDefinition] {
     const columnID = this.getID();
     const definition: NumericValueColumnDefinition = {
@@ -400,7 +547,7 @@ class ParentsCountColumn implements Column {
       getNumericValues: (idxs: NodeIDX[]) => {
         return this.nativeGraph.getParentsCount(idxs);
       },
-      sortable: true,
+      sortable: this.sortable(),
       isHidden: false,
     };
     return [columnID, definition];
@@ -439,6 +586,33 @@ class MetricColumn implements Column {
     return `${this.metricName} ${this.side === GRAPH_SIDE.L ? "L" : "R"}`;
   }
 
+  sortable() {
+    const columnType: ColumnType =
+      this.side === GRAPH_SIDE.R ? "Right" : "Left";
+    const sortable: TSortable = {
+      order: null,
+      onSortChange: (order: SortOrder | null) =>
+        this.ctx.onSortChange(order, {
+          Metric: {
+            t: columnType,
+            name: this.metricName,
+          },
+        }),
+    };
+
+    const sort = this.ctx.sort();
+    if (
+      sort != null &&
+      "Metric" in sort.column &&
+      sort.column.Metric.t === columnType &&
+      sort.column.Metric.name === this.metricName
+    ) {
+      sortable.order = sort.order;
+    }
+
+    return sortable;
+  }
+
   definition(): [string, NumericValueColumnDefinition] {
     const columnID = this.getID();
     const metricSettings = this.ctx.metricSettings(this.metricName);
@@ -462,7 +636,7 @@ class MetricColumn implements Column {
       },
       getNumericValues: (idxs: NodeIDX[]) =>
         this.nativeGraph.getNodeMetricBatched(idxs, this.metricName),
-      sortable: true,
+      sortable: this.sortable(),
       isHidden: false,
     };
 
@@ -509,6 +683,33 @@ class TransitiveMetricColumn implements Column {
     return base;
   }
 
+  sortable() {
+    const columnType: ColumnType =
+      this.side === GRAPH_SIDE.R ? "Right" : "Left";
+    const sortable: TSortable = {
+      order: null,
+      onSortChange: (order: SortOrder | null) =>
+        this.ctx.onSortChange(order, {
+          TransitiveMetric: {
+            t: columnType,
+            name: this.metricName,
+          },
+        }),
+    };
+
+    const sort = this.ctx.sort();
+    if (
+      sort != null &&
+      "TransitiveMetric" in sort.column &&
+      sort.column.TransitiveMetric.t === columnType &&
+      sort.column.TransitiveMetric.name === this.metricName
+    ) {
+      sortable.order = sort.order;
+    }
+
+    return sortable;
+  }
+
   getValuesFn(): (idxs: NodeIDX[]) => Float32Array {
     if (this.ctx.dominated) {
       return (idxs: NodeIDX[]) =>
@@ -543,7 +744,7 @@ class TransitiveMetricColumn implements Column {
         }
       },
       getNumericValues: getValues,
-      sortable: true,
+      sortable: this.sortable(),
       isHidden: false,
     };
     return [columnID, definition];
@@ -584,6 +785,33 @@ class ConjointMetricColumn implements Column {
     return `${base} ${this.side === GRAPH_SIDE.L ? "L" : "R"}`;
   }
 
+  sortable() {
+    const columnType: ColumnType =
+      this.side === GRAPH_SIDE.R ? "Right" : "Left";
+    const sortable: TSortable = {
+      order: null,
+      onSortChange: (order: SortOrder | null) =>
+        this.ctx.onSortChange(order, {
+          ConjointMetric: {
+            t: columnType,
+            name: this.metricName,
+          },
+        }),
+    };
+
+    const sort = this.ctx.sort();
+    if (
+      sort != null &&
+      "ConjointMetric" in sort.column &&
+      sort.column.ConjointMetric.t === columnType &&
+      sort.column.ConjointMetric.name === this.metricName
+    ) {
+      sortable.order = sort.order;
+    }
+
+    return sortable;
+  }
+
   definition(): [string, NumericValueColumnDefinition] {
     const columnID = this.getID();
     const values =
@@ -610,7 +838,7 @@ class ConjointMetricColumn implements Column {
       getNumericValues: (idxs: NodeIDX[]) => {
         return new Float32Array(getValues(idxs));
       },
-      sortable: true,
+      sortable: this.sortable(),
       isHidden: false,
     };
 
@@ -676,6 +904,35 @@ class TransitiveTieredMetricColumn implements Column {
     return base;
   }
 
+  sortable() {
+    const columnType: ColumnType =
+      this.side === GRAPH_SIDE.R ? "Right" : "Left";
+    const sortable: TSortable = {
+      order: null,
+      onSortChange: (order: SortOrder | null) =>
+        this.ctx.onSortChange(order, {
+          TieredTransitiveMetric: {
+            t: columnType,
+            name: this.metricName,
+            tier: this.tierName,
+          },
+        }),
+    };
+
+    const sort = this.ctx.sort();
+    if (
+      sort != null &&
+      "TieredTransitiveMetric" in sort.column &&
+      sort.column.TieredTransitiveMetric.t === columnType &&
+      sort.column.TieredTransitiveMetric.name === this.metricName &&
+      sort.column.TieredTransitiveMetric.tier === this.tierName
+    ) {
+      sortable.order = sort.order;
+    }
+
+    return sortable;
+  }
+
   getValuesFn(): (idxs: NodeIDX[]) => number[] {
     if (this.ctx.dominated) {
       return (idxs: NodeIDX[]) => {
@@ -734,7 +991,7 @@ class TransitiveTieredMetricColumn implements Column {
       getNumericValues: (idxs: NodeIDX[]) => {
         return new Float32Array(getValues(idxs));
       },
-      sortable: true,
+      sortable: this.sortable(),
       isHidden: false,
     };
 
@@ -797,6 +1054,35 @@ class ConjointTieredMetricColumn implements Column {
     return `C(${base})`;
   }
 
+  sortable() {
+    const columnType: ColumnType =
+      this.side === GRAPH_SIDE.R ? "Right" : "Left";
+    const sortable: TSortable = {
+      order: null,
+      onSortChange: (order: SortOrder | null) =>
+        this.ctx.onSortChange(order, {
+          ConjointTieredMetric: {
+            t: columnType,
+            name: this.metricName,
+            tier: this.tierName,
+          },
+        }),
+    };
+
+    const sort = this.ctx.sort();
+    if (
+      sort != null &&
+      "ConjointTieredMetric" in sort.column &&
+      sort.column.ConjointTieredMetric.t === columnType &&
+      sort.column.ConjointTieredMetric.name === this.metricName &&
+      sort.column.ConjointTieredMetric.tier === this.tierName
+    ) {
+      sortable.order = sort.order;
+    }
+
+    return sortable;
+  }
+
   definition(): [string, NumericValueColumnDefinition] {
     const columnID = this.getID();
     const values =
@@ -824,7 +1110,7 @@ class ConjointTieredMetricColumn implements Column {
       getNumericValues: (idxs: NodeIDX[]) => {
         return new Float32Array(getValues(idxs));
       },
-      sortable: true,
+      sortable: this.sortable(),
       isHidden: false,
     };
 
