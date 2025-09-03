@@ -1,16 +1,16 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-import { useCallback } from "react";
+import { createContext, useCallback, useEffect, useMemo } from "react";
 import {
   useToggleDominatorTreeView,
   useToggleFlatListView,
   useToggleReverseView,
-} from "./GraphStructureHooks";
-import { useSelectedPath } from "./context/SelectedPathContext";
+} from "../GraphStructureHooks";
+import { useSelectedPath } from "./SelectedPathContext";
 import {
   useFlipForceEdgeL,
   useFlipForceExcludeNodeL,
-} from "./context/TraversalConfigContext";
+} from "./TraversalConfigContext";
 
 export const KEYBOARD_SHORTCUTS = {
   FORCE_EDGE: "e",
@@ -20,8 +20,40 @@ export const KEYBOARD_SHORTCUTS = {
   DOMINATOR_TREE: "d",
 };
 
-export function useExplorerKeyboardShortcuts(): (
-  e: React.KeyboardEvent<HTMLDivElement>,
+type GlobalKeyboardShortcutsContextType = {};
+
+const GlobalKeyboardShortcutsContext = createContext<
+  GlobalKeyboardShortcutsContextType | undefined
+>(undefined);
+
+export function GlobalKeyboardShortcutsContextProvider({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const value = useMemo(() => ({}), []);
+  const handler = useExplorerKeyboardShortcutsHandler();
+
+  useEffect(() => {
+    // add handler to global document when the component mounts
+    const handleKeyDown = (e: KeyboardEvent) => {
+      handler(e);
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [handler]);
+
+  return (
+    <GlobalKeyboardShortcutsContext.Provider value={value}>
+      {children}
+    </GlobalKeyboardShortcutsContext.Provider>
+  );
+}
+
+export function useExplorerKeyboardShortcutsHandler(): (
+  e: KeyboardEvent,
 ) => void {
   const { selectedRow } = useSelectedPath();
   const arrow = selectedRow?.arrow_pair || null;
@@ -35,7 +67,7 @@ export function useExplorerKeyboardShortcuts(): (
   const [_d, toggleDominatorTreeView] = useToggleDominatorTreeView();
 
   const keyboardEventHandler = useCallback(
-    (e: React.KeyboardEvent<HTMLDivElement>) => {
+    (e: KeyboardEvent) => {
       const key = e.key.toLowerCase();
 
       const modifiers = e.ctrlKey || e.metaKey;

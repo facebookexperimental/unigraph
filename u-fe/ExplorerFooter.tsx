@@ -18,10 +18,6 @@ import UHoverCard from "./components/UHoverCard";
 import UToggleButton from "./components/UToggleButton";
 
 import {
-  KEYBOARD_SHORTCUTS,
-  KeyboardShortcutLabel,
-} from "./ExplorerKeyboardShortcutsWrapper";
-import {
   useToggleDominatorTreeView,
   useToggleFlatListView,
   useToggleReverseView,
@@ -30,6 +26,10 @@ import NodeSearch from "./NodeSearch";
 import { H3 } from "./Typography";
 import UTooltip from "./components/UTooltip";
 import { Button } from "./components/ui/button";
+import {
+  KEYBOARD_SHORTCUTS,
+  KeyboardShortcutLabel,
+} from "./context/GlobalKeyboardShortcutsContext";
 import { useGraphSettings } from "./context/GraphSettingsContext";
 import { useNativeGraphL } from "./context/NativeGraphContext";
 import { useSelectedNodes } from "./context/SelectedNodesContext";

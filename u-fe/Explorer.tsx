@@ -6,7 +6,6 @@ import {
   to_zstd_base64_url_safe_no_pad,
 } from "../.build/wasm/unigraph_wasm";
 import ExplorerFooter from "./ExplorerFooter";
-import { useExplorerKeyboardShortcuts } from "./ExplorerKeyboardShortcutsWrapper";
 import NativeGraph from "./NativeGraph";
 import Sidebar from "./Sidebar";
 import Simulation from "./Simulation";
@@ -16,6 +15,7 @@ import type { GraphSettings } from "./__generated__/ts/GraphSettings";
 import type { TraversalConfig } from "./__generated__/ts/TraversalConfig";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { PortalContextProvider } from "./components/PortalContext";
+import { GlobalKeyboardShortcutsContextProvider } from "./context/GlobalKeyboardShortcutsContext";
 import {
   GraphSettingsContextProvider,
   useGraphSettings,
@@ -122,7 +122,9 @@ export function Explorer(props: ExplorerProps) {
                     setSettings={setSettingsCb}
                   >
                     <SelectedPathContextProvider syncToURL={true}>
-                      <Page containerRef={containerRef} />
+                      <GlobalKeyboardShortcutsContextProvider>
+                        <Page containerRef={containerRef} />
+                      </GlobalKeyboardShortcutsContextProvider>
                     </SelectedPathContextProvider>
                   </GraphSettingsContextProvider>
                 </SelectedNodesContextProvider>
@@ -142,7 +144,6 @@ function Page(props: {
   const [graphSettings] = useGraphSettings();
   const [settings] = useGraphSettings();
   const [selectedNodes] = useSelectedNodes();
-  const keyboardEventHandler = useExplorerKeyboardShortcuts();
 
   const selectedSidebarPanel =
     settings.ui_settings?.selected_sidebar_panel ?? "None";
@@ -193,7 +194,6 @@ function Page(props: {
     <div
       className="flex grow-1 shrink flex-row bg-background text-foreground min-h-0"
       ref={props.containerRef}
-      onKeyDown={keyboardEventHandler}
     >
       <Sidebar selectedPanelTab={selectedSidebarPanel} />
       {panelTab}

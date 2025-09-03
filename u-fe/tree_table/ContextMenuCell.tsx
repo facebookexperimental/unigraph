@@ -2,15 +2,15 @@
 
 import type { Arrow } from "@/__generated__/ts/Arrow";
 import { Ellipsis } from "lucide-react";
-import {
-  KEYBOARD_SHORTCUTS,
-  KeyboardShortcutLabel,
-} from "../ExplorerKeyboardShortcutsWrapper";
 import { UDropdownMenu } from "../components/UDropdownMenu";
 import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "../components/ui/dropdown-menu";
+import {
+  KEYBOARD_SHORTCUTS,
+  KeyboardShortcutLabel,
+} from "../context/GlobalKeyboardShortcutsContext";
 import { useSelectedPath } from "../context/SelectedPathContext";
 import {
   useFlipForceEdgeL,
