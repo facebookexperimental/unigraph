@@ -336,7 +336,7 @@ fn from_zstd_base64_url_safe_no_pad(zstd_base64: &str) -> Result<Vec<u8>> {
 /// - The detailed error description
 #[macro_export]
 macro_rules! de_json_path_to_error {
-    ( $json:expr_2021, $t:ty ) => {{
+    ( $json:expr, $t:ty ) => {{
         let result: anyhow::Result<$t> =
             $crate::__de_json_with_path_to_error($json, stringify!($t));
         result
@@ -357,7 +357,7 @@ macro_rules! de_json_path_to_error {
 /// * `Result<T>` - The deserialized value or an error with path information
 #[macro_export]
 macro_rules! de_json_bytes_path_to_error {
-    ( $json:expr_2021, $t:ty ) => {{
+    ( $json:expr, $t:ty ) => {{
         let result: anyhow::Result<$t> =
             $crate::__de_json_bytes_with_path_to_error($json, stringify!($t));
         result
