@@ -2,7 +2,7 @@
   "nodes": {
     "A": {
       "metrics": { "size": 1 },
-      "edges": { "directed": ["B", "D"] }
+      "edges": { "directed": ["B", "D", "T"] }
     },
     "B": {
       "metrics": { "size": 1 },
@@ -84,6 +84,10 @@
     "S": {
       "metrics": { "size": 1 },
       "edges": { "directed": [] }
+    },
+    "T": {
+      "metrics": { "size": 1 },
+      "edges": { "directed": ["D"] }
     }
   }
 }

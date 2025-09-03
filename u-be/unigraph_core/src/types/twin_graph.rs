@@ -2,6 +2,7 @@
 
 mod get_arrows;
 mod merge;
+mod metrics;
 
 use std::sync::Arc;
 
@@ -87,5 +88,13 @@ impl TwinGraph {
         limit: usize,
     ) -> Result<Vec<(&'a str, NodeIDX)>> {
         self.node_names.search_name_fuzzy(pattern, limit)
+    }
+
+    pub fn get_transitive_count_delta(&self, node_idx: NodeIDX) -> Result<i32> {
+        if let Some(r) = &self.r {
+            metrics::get_transitive_count_delta(&self.l, r, node_idx)
+        } else {
+            Ok(0)
+        }
     }
 }

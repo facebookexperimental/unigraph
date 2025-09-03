@@ -430,6 +430,23 @@ pub fn get_transitive_count(node_idxs: Vec<u32>, side: u32) -> Result<Vec<usize>
 }
 
 #[wasm_bindgen]
+pub fn get_transitive_count_delta(node_idxs: Vec<u32>) -> Result<Vec<i32>, WasmJSError> {
+    let graph_state = GlobalGraphState::graph_state().get();
+
+    let result = node_idxs
+        .into_iter()
+        .map(|node_idx| {
+            Ok(graph_state
+                .twin_graph
+                .get_transitive_count_delta(NodeIDX::from(node_idx))
+                .unwrap_or_default())
+        })
+        .collect::<Result<Vec<i32>>>()?;
+
+    Ok(result)
+}
+
+#[wasm_bindgen]
 pub fn get_transitive_count_dominated(
     node_idxs: Vec<u32>,
     side: u32,
