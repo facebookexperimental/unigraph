@@ -1,9 +1,9 @@
-import type NativeGraph from "../NativeGraph";
 import Metric from "../components/Metric";
 import { Card } from "../components/ui/card";
 import { Separator } from "../components/ui/separator";
 import { useNativeGraphs } from "../context/NativeGraphContext";
 import formatNumber from "../lib/formatNumber";
+import type NativeGraph from "../native/NativeGraph";
 import { SidebarPanel, SidebarPanelHeader } from "./SidebarPanel";
 
 export default function GraphInfoPanel() {

@@ -1,6 +1,6 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-import type { ArrowPair } from "../TwinGraph";
+import type { ArrowPair } from "../native/TwinGraph";
 import type { NodeIDX } from "../types";
 import type { SortState } from "./TreeTable";
 

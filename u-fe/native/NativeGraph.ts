@@ -24,16 +24,21 @@ import {
   node_idx_to_name,
   node_name_to_idx_log,
   set_graphs,
-} from "../.build/wasm/unigraph_wasm";
-import type { ArrayGraphStats } from "./__generated__/ts/ArrayGraphStats";
-import type { CombinedMetricsForNodes } from "./__generated__/ts/CombinedMetricsForNodes";
-import type { ConjointCost } from "./__generated__/ts/ConjointCost";
-import type { ExplorerComponentInputGraphs } from "./__generated__/ts/ExplorerComponentInputGraphs";
-import type { GraphSettings } from "./__generated__/ts/GraphSettings";
-import type { GraphStructure } from "./__generated__/ts/GraphStructure";
-import type { TraversalConfig } from "./__generated__/ts/TraversalConfig";
-import type { TraversalType } from "./__generated__/ts/TraversalType";
-import type { NodeIDX } from "./types";
+} from "../../.build/wasm/unigraph_wasm";
+import type { ArrayGraphStats } from "../__generated__/ts/ArrayGraphStats";
+import type { CombinedMetricsForNodes } from "../__generated__/ts/CombinedMetricsForNodes";
+import type { ConjointCost } from "../__generated__/ts/ConjointCost";
+import type { ExplorerComponentInputGraphs } from "../__generated__/ts/ExplorerComponentInputGraphs";
+import type { GraphSettings } from "../__generated__/ts/GraphSettings";
+import type { GraphStructure } from "../__generated__/ts/GraphStructure";
+import type { TraversalConfig } from "../__generated__/ts/TraversalConfig";
+import type { TraversalType } from "../__generated__/ts/TraversalType";
+import type { NodeIDX } from "../types";
+import {
+  type KeyedMetrics,
+  KeyedMetricsCache,
+  SingleMetricsCache,
+} from "./MetricCaches";
 
 export type GraphSide = 1 | 2;
 export const GRAPH_SIDE = {
@@ -459,97 +464,6 @@ class MetricCaches {
     const metricsCache = new KeyedMetricsCache(this.nodeCount, getMetrics);
     this.transitive_tiered_dominated.set(metricName, metricsCache);
     return metricsCache;
-  }
-}
-
-/// Class that contains metrics extracted from the graph on WASM side.
-/// WASM<->JS interop is not cheap, so we do these operations in
-/// batches and cache the results on JS side so we don't have to go
-/// multiple to WASM for the same data.
-class SingleMetricsCache {
-  private metrics: Float32Array;
-  private valueExists: Uint8Array;
-  private getMetrics: (nodeIDXs: NodeIDX[]) => Float32Array;
-
-  constructor(size: number, getMetrics: (nodeIDXs: NodeIDX[]) => Float32Array) {
-    this.metrics = new Float32Array(size);
-    this.valueExists = new Uint8Array(size).fill(0);
-    this.getMetrics = getMetrics;
-  }
-
-  getForIDXs(nodeIDXs: NodeIDX[]): Float32Array {
-    const cacheMissesIDXs: NodeIDX[] = [];
-
-    for (let i = 0; i < nodeIDXs.length; i++) {
-      const nodeIDX = nodeIDXs[i] as NodeIDX;
-      if (this.valueExists[nodeIDX] === 0) {
-        cacheMissesIDXs.push(nodeIDX);
-      }
-    }
-
-    if (cacheMissesIDXs.length !== 0) {
-      const newMetrics = this.getMetrics(cacheMissesIDXs);
-      for (let i = 0; i < cacheMissesIDXs.length; i++) {
-        const nodeIDX = cacheMissesIDXs[i] as NodeIDX;
-        const value = newMetrics[i] as number;
-        this.metrics[nodeIDX] = value;
-        this.valueExists[nodeIDX] = 1;
-      }
-    }
-
-    const result = new Float32Array(nodeIDXs.length);
-
-    for (let i = 0; i < nodeIDXs.length; i++) {
-      const nodeIDX = nodeIDXs[i] as NodeIDX;
-      // at this point there should not be missing values
-      result[i] = this.metrics[nodeIDX] as number;
-    }
-
-    return result;
-  }
-}
-
-export type KeyedMetrics = { [metricName: string]: number };
-class KeyedMetricsCache {
-  private metrics: Array<KeyedMetrics | null>;
-  private getMetrics: (nodeIDXs: NodeIDX[]) => Array<KeyedMetrics>;
-
-  constructor(
-    size: number,
-    getMetrics: (nodeIDXs: NodeIDX[]) => Array<KeyedMetrics>,
-  ) {
-    this.metrics = new Array(size).fill(null);
-    this.getMetrics = getMetrics;
-  }
-
-  getForIDXs(nodeIDXs: NodeIDX[]): Array<KeyedMetrics> {
-    const cacheMissesIDXs: NodeIDX[] = [];
-
-    for (let i = 0; i < nodeIDXs.length; i++) {
-      const nodeIDX = nodeIDXs[i] as NodeIDX;
-      if (this.metrics[nodeIDX] === null) {
-        cacheMissesIDXs.push(nodeIDX);
-      }
-    }
-
-    if (cacheMissesIDXs.length !== 0) {
-      const newMetrics = this.getMetrics(cacheMissesIDXs);
-      for (let i = 0; i < cacheMissesIDXs.length; i++) {
-        const nodeIDX = cacheMissesIDXs[i] as NodeIDX;
-        const value = newMetrics[i] as KeyedMetrics;
-        this.metrics[nodeIDX] = value;
-      }
-    }
-
-    const result = [];
-
-    for (let i = 0; i < nodeIDXs.length; i++) {
-      const nodeIDX = nodeIDXs[i] as NodeIDX;
-      // at this point there should not be missing values
-      result[i] = this.metrics[nodeIDX] as KeyedMetrics;
-    }
-
-    return result;
   }
 }
 

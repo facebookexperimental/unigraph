@@ -5,10 +5,10 @@ import { TreeTable } from "./TreeTable";
 
 import type { GraphTableSort } from "@/__generated__/ts/GraphTableSort";
 import { useCallback, useMemo } from "react";
-import { GRAPH_STRUCTURE } from "../NativeGraph";
 import ErrorBoundary from "../components/ErrorBoundary";
 import { useGraphSettings } from "../context/GraphSettingsContext";
 import { useNativeGraphL, useTwinGraph } from "../context/NativeGraphContext";
+import { GRAPH_STRUCTURE } from "../native/NativeGraph";
 import useGraphTreeTableColumns from "./useGraphTreeTableColumns";
 
 export default function GraphTreeTable(props: {

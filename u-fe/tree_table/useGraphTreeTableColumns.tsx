@@ -6,13 +6,14 @@ import type { NodeIDX } from "@/types";
 import clsx from "clsx";
 import { useMemo } from "react";
 import { ARROW_POINTS_FROM_NON_EXISTENT } from "../ArrowUtils";
-import type NativeGraph from "../NativeGraph";
-import { GRAPH_SIDE, type GraphSide } from "../NativeGraph";
 import UTooltip from "../components/UTooltip";
 import { useGraphSettings } from "../context/GraphSettingsContext";
-import { useNativeGraphs } from "../context/NativeGraphContext";
+import { useTwinGraph } from "../context/NativeGraphContext";
 import { useTVC } from "../context/TraversalConfigContext";
 import formatMetric from "../lib/formatMetric";
+import type NativeGraph from "../native/NativeGraph";
+import { GRAPH_SIDE, type GraphSide } from "../native/NativeGraph";
+import type TwinGraph from "../native/TwinGraph";
 import ContextMenuCell from "./ContextMenuCell";
 import type {
   ColumnDefinitions,
@@ -31,14 +32,15 @@ const NO_PRECISION_FORMAT: MetricFormat = {
 };
 
 export default function useGraphTreeTableColumns(): ColumnDefinitions {
-  const [l, r] = useNativeGraphs();
+  const twinGraph = useTwinGraph();
+  const l = twinGraph.l;
   const [graphSettings] = useGraphSettings();
   const { tvc } = useTVC();
 
   return useMemo(() => {
     const builder =
-      r !== null
-        ? new DeltaGraphColumnsBuilder(l, r, graphSettings, tvc)
+      twinGraph.r !== null
+        ? new DeltaGraphColumnsBuilder(twinGraph, graphSettings, tvc)
         : new SingleGraphColumnsBuilder(l, graphSettings, tvc);
 
     const nonTreeColumns = builder.makeColumns();
@@ -61,7 +63,7 @@ export default function useGraphTreeTableColumns(): ColumnDefinitions {
       treeColumn,
       columns: nonTreeColumns,
     };
-  }, [l, r, graphSettings, tvc]);
+  }, [twinGraph, l, graphSettings, tvc]);
 }
 
 function defaultColumnDefinitions(
@@ -949,6 +951,7 @@ class SingleGraphColumnsBuilder {
 
 class DeltaGraphColumnsBuilder {
   columnDefinitions: { [name: string]: NonTreeColumnDefinition } = {};
+  twinGraph: TwinGraph;
   nativeGraphL: NativeGraph;
   nativeGraphR: NativeGraph;
   ctx: ColumnsCtx;
@@ -956,15 +959,17 @@ class DeltaGraphColumnsBuilder {
   tvc: TraversalConfig;
 
   constructor(
-    // left graph
-    nativeGraphL: NativeGraph,
-    // right graph
-    nativeGraphR: NativeGraph,
+    twinGraph: TwinGraph,
     graphSettings: GraphSettings,
     tvc: TraversalConfig,
   ) {
-    this.nativeGraphL = nativeGraphL;
-    this.nativeGraphR = nativeGraphR;
+    this.twinGraph = twinGraph;
+    this.nativeGraphL = twinGraph.l;
+    const r = twinGraph.r;
+    if (r == null) {
+      throw new Error("Right graph must not be null");
+    }
+    this.nativeGraphR = r;
     this.graphSettings = graphSettings;
     this.tvc = tvc;
     this.ctx = makeColumnCtx(graphSettings);
@@ -972,11 +977,13 @@ class DeltaGraphColumnsBuilder {
   }
 
   makeColumns(): { [name: string]: NonTreeColumnDefinition } {
-    return defaultColumnDefinitions(
+    this.columnDefinitions = defaultColumnDefinitions(
       this.nativeGraphL,
       this.nativeGraphR,
       this.graphSettings,
       this.tvc,
     );
+
+    return this.columnDefinitions;
   }
 }

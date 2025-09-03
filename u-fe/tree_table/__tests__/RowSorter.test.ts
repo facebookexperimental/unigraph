@@ -1,7 +1,7 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-import type { ArrowPair } from "@/TwinGraph";
 import type { SortOrder } from "@/__generated__/ts/SortOrder";
+import type { ArrowPair } from "@/native/TwinGraph";
 import { expect, test } from "vitest";
 import { type Row, sortRows } from "../TreeTableRows";
 

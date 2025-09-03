@@ -1,8 +1,8 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 import { createContext, useContext, useMemo } from "react";
-import type NativeGraph from "../NativeGraph";
-import TwinGraph from "../TwinGraph";
+import type NativeGraph from "../native/NativeGraph";
+import TwinGraph from "../native/TwinGraph";
 
 export type TNativeGraphContext = TwinGraph;
 const NativeGraphContext = createContext<TNativeGraphContext | null>(null);

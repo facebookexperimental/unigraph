@@ -10,7 +10,7 @@ import {
   useRef,
   useState,
 } from "react";
-import type TwinGraph from "../TwinGraph";
+import type TwinGraph from "../native/TwinGraph";
 import { useTwinGraph } from "./NativeGraphContext";
 
 export type SelectedPathContextType = {

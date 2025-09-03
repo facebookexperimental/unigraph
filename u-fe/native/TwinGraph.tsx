@@ -2,14 +2,16 @@
 
 import {
   get_arrow_pairs,
+  get_transitive_count_delta,
   node_idx_to_name,
   node_name_to_idx_log,
   search_node_name_fuzzy,
-} from "../.build/wasm/unigraph_wasm";
+} from "../../.build/wasm/unigraph_wasm";
+import type { Arrow } from "../__generated__/ts/Arrow";
+import type { NodeIDX } from "../types";
+import { SingleMetricsCache } from "./MetricCaches";
 import type NativeGraph from "./NativeGraph";
 import type { GraphStructureU8, NodeIDXVecSet } from "./NativeGraph";
-import type { Arrow } from "./__generated__/ts/Arrow";
-import type { NodeIDX } from "./types";
 
 // This is a wrapper class over One or Two Native Graphs (left + ?right)
 
@@ -42,10 +44,16 @@ export default class TwinGraph {
   readonly l: NativeGraph;
   readonly r: NativeGraph | null;
   private entrypointsCache: NodeIDXVecSet | null = null;
+  private transitiveCountDeltaCache: SingleMetricsCache;
 
   constructor(l: NativeGraph, r: NativeGraph | null) {
     this.l = l;
     this.r = r;
+    this.transitiveCountDeltaCache = new SingleMetricsCache(
+      l.nodeCount,
+      (nodeIDXs: NodeIDX[]) =>
+        new Float32Array(get_transitive_count_delta(new Uint32Array(nodeIDXs))),
+    );
   }
 
   isDeltaGraph(): boolean {
@@ -81,6 +89,10 @@ export default class TwinGraph {
 
   search_nodes_fuzzy(pattern: string, limit: number): string[] {
     return search_node_name_fuzzy(pattern, limit);
+  }
+
+  getTransitiveCountDelta(nodeIDX: NodeIDX[]): Float32Array {
+    return this.transitiveCountDeltaCache.getForIDXs(nodeIDX);
   }
 
   getArrowPairs(

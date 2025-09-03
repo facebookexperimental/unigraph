@@ -8,13 +8,13 @@ import {
   ChevronRight,
   RefreshCw,
 } from "lucide-react";
-import type TwinGraph from "../TwinGraph";
-import type { ArrowPair } from "../TwinGraph";
 import { H2 } from "../Typography";
 import type { Arrow } from "../__generated__/ts/Arrow";
 import UHoverCard from "../components/UHoverCard";
 import { Badge } from "../components/ui/badge";
 import { useTwinGraph } from "../context/NativeGraphContext";
+import type TwinGraph from "../native/TwinGraph";
+import type { ArrowPair } from "../native/TwinGraph";
 import type { Row } from "./TreeTableRows";
 
 type Props = {

@@ -21,7 +21,6 @@ import {
   useTransition,
 } from "react";
 import { ARROW_POINTS_FROM_NON_EXISTENT } from "../ArrowUtils";
-import type { ArrowPair } from "../TwinGraph";
 import type { ArrayGraphUISettingsTreeTableEntryPoints } from "../__generated__/ts/ArrayGraphUISettingsTreeTableEntryPoints";
 import type { GraphStructure } from "../__generated__/ts/GraphStructure";
 import type { GraphTableSort } from "../__generated__/ts/GraphTableSort";
@@ -29,6 +28,7 @@ import type { SortOrder } from "../__generated__/ts/SortOrder";
 import UTooltip from "../components/UTooltip";
 import { Progress } from "../components/ui/progress";
 import { useSelectedPath } from "../context/SelectedPathContext";
+import type { ArrowPair } from "../native/TwinGraph";
 import type { NodeIDX } from "../types";
 import TreeCell from "./TreeCell";
 import {
