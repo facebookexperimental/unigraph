@@ -10,7 +10,7 @@ use crate::ArrayGraph;
 use crate::NodeIDX;
 use crate::types::array_graph::NodeFlags;
 use crate::types::array_graph::array_graph_derived_state::ArrayGraphDerivedState;
-use crate::types::array_graph::array_graph_nodes::SharedArrayGraphNodes;
+use crate::types::array_graph::array_graph_nodes::ArrayGraphNodesForGraphSide;
 use crate::types::array_graph::offset_graph::Edge;
 use crate::types::array_graph::offset_graph::OffsetGraph;
 
@@ -73,7 +73,7 @@ be no other node already on the list that doesn't start from the same character"
 
     let derived_state = ArrayGraphDerivedState::from_forward_edges(&edges_forward);
 
-    let nodes = SharedArrayGraphNodes::new_left_only(Arc::new(node_names_ordered));
+    let nodes = ArrayGraphNodesForGraphSide::new_left_only(Arc::new(node_names_ordered));
 
     Ok(ArrayGraph {
         nodes,

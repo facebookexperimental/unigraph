@@ -52,8 +52,8 @@ use crate::types::array_graph::array_graph_metrics::get_metrics_sums_tiered_for_
 use crate::types::array_graph::array_graph_metrics::get_transitive_metric_value;
 use crate::types::array_graph::array_graph_metrics::get_transitive_tiered_metric_values;
 use crate::types::array_graph::array_graph_metrics::parents_len_configured;
+use crate::types::array_graph::array_graph_nodes::ArrayGraphNodesForGraphSide;
 use crate::types::array_graph::array_graph_nodes::NodeIDXsArcIter;
-use crate::types::array_graph::array_graph_nodes::SharedArrayGraphNodes;
 use crate::types::array_graph::array_graph_state::ArrayGraphState;
 use crate::types::array_graph::array_graph_stats::ArrayGraphStats;
 use crate::types::array_graph::conjoint_cost::ConjointCost;
@@ -62,7 +62,7 @@ use crate::types::array_graph::tiers::ALL_TIER_FLAGS;
 use crate::types::array_graph::tiers::TIER_FLAGS;
 
 pub struct ArrayGraph {
-    pub nodes: SharedArrayGraphNodes,
+    pub nodes: ArrayGraphNodesForGraphSide,
     pub node_flags: Vec<NodeFlags>,
 
     pub edges_forward: OffsetGraph,

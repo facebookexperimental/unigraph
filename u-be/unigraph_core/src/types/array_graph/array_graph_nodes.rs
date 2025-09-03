@@ -12,6 +12,8 @@ use crate::remap_utils::RemapContext;
 use crate::types::NodeIDX;
 use crate::types::NodeName;
 use crate::types::array_graph::array_graph_name_search::search_fuzzy_regex;
+use crate::types::twin_graph;
+use crate::types::twin_graph::NodeExistenceFlags;
 
 /// Ordered list of all node names in a graph.
 /// Stored as a massive single string with offsets recorded for how
@@ -26,11 +28,19 @@ pub struct ArrayGraphNodes {
     offsets: Vec<usize>,
 }
 
+/// This struct represents the nodes for a specific side of the graph.
+/// Each graph (left and right) will have a separate instance of this struct
+/// but both of them will have a reference to the same shared graph nodes and
+/// the existence checks
 #[readonly::make]
-pub struct SharedArrayGraphNodes {
+pub struct ArrayGraphNodesForGraphSide {
     pub node_names: Arc<ArrayGraphNodes>,
-    existence: Vec<NodeExistenceFlags>,
+
+    /// Existence + side can be used to determine if a node exists
+    /// in this specific graph.
+    existence: Arc<Vec<twin_graph::NodeExistenceFlags>>,
     side: GraphSide,
+
     // Precomputed. only nodes that exist in the side of the graph.
     #[readonly]
     pub nodes_len: usize,
@@ -51,18 +61,6 @@ impl GraphSide {
             0b0010 => Ok(GraphSide::Right),
             _ => bail!("Invalid GraphSide value: {}", value),
         }
-    }
-}
-
-bitflags::bitflags! {
-    /// Flags that represent whether a node does not exist in one of the
-    /// sides of the twin graph.
-    #[repr(transparent)]
-    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-    pub struct NodeExistenceFlags: u32 {
-        const NOT_IN_LEFT =  GraphSide::Left as u32;
-        const NOT_IN_RIGHT = GraphSide::Right as u32;
-        const IN_BOTH = 0b0000;
     }
 }
 
@@ -165,17 +163,36 @@ Last name must be `<` the new name, which was not the case.
     }
 }
 
-impl SharedArrayGraphNodes {
+impl ArrayGraphNodesForGraphSide {
     pub fn new_left_only(nodes: Arc<ArrayGraphNodes>) -> Self {
         let existence = vec![NodeExistenceFlags::IN_BOTH; nodes.combined_nodes_len()];
         let nodes_len = nodes.combined_nodes_len(); // all nodes exist in the left side
         Self {
             node_names: nodes,
-            existence,
+            existence: Arc::new(existence),
             side: GraphSide::Left,
             nodes_len,
             existing_node_idxes: OnceLock::new(),
         }
+    }
+
+    pub fn new_with_existence(
+        nodes: Arc<ArrayGraphNodes>,
+        existence: Arc<Vec<NodeExistenceFlags>>,
+        side: GraphSide,
+    ) -> Self {
+        let nodes_len = nodes.combined_nodes_len();
+        Self {
+            node_names: nodes,
+            existence,
+            side,
+            nodes_len,
+            existing_node_idxes: OnceLock::new(),
+        }
+    }
+
+    pub fn node_exists(&self, node_idx: NodeIDX) -> bool {
+        !self.existence[node_idx].does_not_exist_in(self.side)
     }
 
     fn existing_node_idxes(&self) -> Arc<Vec<NodeIDX>> {
@@ -287,15 +304,6 @@ impl Iterator for NodeIDXsArcIter {
             let node_idx = self.existing_node_idxes[self.current_idx];
             self.current_idx += 1;
             Some(node_idx)
-        }
-    }
-}
-
-impl NodeExistenceFlags {
-    pub fn does_not_exist_in(self, side: GraphSide) -> bool {
-        match side {
-            GraphSide::Left => self.contains(NodeExistenceFlags::NOT_IN_LEFT),
-            GraphSide::Right => self.contains(NodeExistenceFlags::NOT_IN_RIGHT),
         }
     }
 }

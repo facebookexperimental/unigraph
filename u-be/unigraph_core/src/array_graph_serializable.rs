@@ -27,7 +27,7 @@ use crate::types::Tag;
 use crate::types::TagSetName;
 use crate::types::array_graph::NodeFlags;
 use crate::types::array_graph::array_graph_derived_state::ArrayGraphDerivedState;
-use crate::types::array_graph::array_graph_nodes::SharedArrayGraphNodes;
+use crate::types::array_graph::array_graph_nodes::ArrayGraphNodesForGraphSide;
 use crate::types::array_graph::array_graph_state::ArrayGraphState;
 use crate::types::array_graph::offset_graph::Edge;
 use crate::types::array_graph::offset_graph::NonDirectedEdgeMetadata;
@@ -235,7 +235,7 @@ impl From<ArrayGraphSerializable> for ArrayGraph {
 
         let derived_state = ArrayGraphDerivedState::from_forward_edges(&edges_forward);
 
-        let nodes = SharedArrayGraphNodes::new_left_only(serializable.node_names_ordered);
+        let nodes = ArrayGraphNodesForGraphSide::new_left_only(serializable.node_names_ordered);
 
         ArrayGraph {
             nodes,

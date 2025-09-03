@@ -35,6 +35,18 @@ pub struct TwinGraph {
     pub node_names: Arc<ArrayGraphNodes>,
 }
 
+bitflags::bitflags! {
+    /// Flags that represent whether a node does not exist in one of the
+    /// sides of the twin graph.
+    #[repr(transparent)]
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub struct NodeExistenceFlags: u32 {
+        const NOT_IN_LEFT =  GraphSide::Left as u32;
+        const NOT_IN_RIGHT = GraphSide::Right as u32;
+        const IN_BOTH = 0b0000;
+    }
+}
+
 impl TwinGraph {
     pub fn from_one(l: ArrayGraph) -> Result<Self> {
         Ok(Self {
@@ -96,5 +108,69 @@ impl TwinGraph {
         } else {
             Ok(0)
         }
+    }
+}
+
+impl NodeExistenceFlags {
+    #[inline(always)]
+    pub fn does_not_exist_in(self, side: GraphSide) -> bool {
+        match side {
+            GraphSide::Left => self.contains(NodeExistenceFlags::NOT_IN_LEFT),
+            GraphSide::Right => self.contains(NodeExistenceFlags::NOT_IN_RIGHT),
+        }
+    }
+
+    #[inline(always)]
+    pub fn mark_not_in_left(&mut self) {
+        self.insert(NodeExistenceFlags::NOT_IN_LEFT);
+    }
+
+    #[inline(always)]
+    pub fn mark_not_in_right(&mut self) {
+        self.insert(NodeExistenceFlags::NOT_IN_RIGHT);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use k9::assert_equal;
+    use k9::snapshot;
+
+    use super::*;
+    use crate::tests::test_graphs::make_twin_graph;
+    use crate::tests::test_utils::idx_to_names;
+
+    #[test]
+    fn test_twin_graphs() -> Result<()> {
+        let tg = make_twin_graph()?;
+
+        let l = &tg.l;
+        let r = tg.graph(GraphSide::Right)?;
+
+        let entrypoints_l = l.determine_entrypoints();
+        let entrypoints_r = r.determine_entrypoints();
+
+        snapshot!(
+            idx_to_names(l, entrypoints_l),
+            r#"
+[
+    "A",
+    "L",
+]
+"#
+        );
+        snapshot!(
+            idx_to_names(r, entrypoints_r),
+            r#"
+[
+    "A",
+    "L",
+]
+"#
+        );
+
+        assert_equal!(l.all_reachable_node_idxs().len(), 16);
+        assert_equal!(r.all_reachable_node_idxs().len(), 20);
+        Ok(())
     }
 }
