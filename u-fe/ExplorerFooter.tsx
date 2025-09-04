@@ -3,6 +3,7 @@
 import {
   ArrowLeftRight,
   ArrowUpNarrowWide,
+  ArrowUpToLine,
   ChartNoAxesCombined,
   CircleDollarSign,
   Layers,
@@ -12,7 +13,7 @@ import {
   TreePalm,
   X,
 } from "lucide-react";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Metric from "./components/Metric";
 import UHoverCard from "./components/UHoverCard";
 import UToggleButton from "./components/UToggleButton";
@@ -26,6 +27,7 @@ import NodeSearch from "./NodeSearch";
 import { H3 } from "./Typography";
 import UTooltip from "./components/UTooltip";
 import { Button } from "./components/ui/button";
+import { useTreeTableRef } from "./context/GlobalElementRefs";
 import {
   KEYBOARD_SHORTCUTS,
   KeyboardShortcutLabel,
@@ -43,6 +45,7 @@ export default function ExplorerFooter() {
       <Toggles />
       <NodeSearch />
       <SelectedNodesMetrics />
+      <BackToTopButton />
     </div>
   );
 }
@@ -693,5 +696,35 @@ function TiersHoverCardContent() {
       <H3 text="Max Tier" />
       <div className="flex flex-wrap gap-2">{tierSwitches}</div>
     </div>
+  );
+}
+
+function BackToTopButton() {
+  const treeTableRef = useTreeTableRef();
+
+  const [isEnabled, setIsEnabled] = useState(false);
+
+  useEffect(() => {
+    treeTableRef.current?.addEventListener("scroll", () => {
+      const scrollTop = treeTableRef.current?.scrollTop;
+      setIsEnabled(scrollTop == null || scrollTop > 100);
+    });
+  }, [treeTableRef]);
+
+  const handleClick = () => {
+    treeTableRef.current?.scrollTo(0, 0);
+  };
+
+  return (
+    <UTooltip tooltip="Scroll Back to Top">
+      <Button
+        className="cursor-pointer"
+        disabled={!isEnabled}
+        variant={"secondary"}
+        onClick={handleClick}
+      >
+        <ArrowUpToLine />
+      </Button>
+    </UTooltip>
   );
 }
