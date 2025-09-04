@@ -85,7 +85,7 @@ export default function TreeCell(props: Props) {
       <ArrowBadge arrow_pair={arrow_pair} />
       <p
         className={clsx(
-          "pe-4",
+          "pe-4 text-ellipsis text-nowrap",
           isExcludedInBoth(twinGraph, arrow_pair) && "text-foreground/50",
           lineThrough,
         )}
