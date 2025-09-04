@@ -452,6 +452,21 @@ export function TreeTable(props: {
               ctx.navigateLeft();
               break;
             }
+            case "Home": {
+              e.preventDefault();
+              ctx.navigateTop();
+              break;
+            }
+            case "End": {
+              e.preventDefault();
+              ctx.navigateBottom();
+              break;
+            }
+            case "Escape": {
+              e.preventDefault();
+              ctx.clearSelectedRow();
+              break;
+            }
           }
         }}
       >
@@ -771,10 +786,12 @@ class TreeTableCtx {
     setProgress(null);
   }
 
-  setSelectedRowIDX(rowIDX: number) {
+  setSelectedRowIDX(rowIDX: number | null) {
     this.selectedRowIDX = rowIDX;
     const newSelectedPath: NodeIDX[] = [];
-    let current: Row | null = this.rows[rowIDX] ?? null;
+    let current: Row | null =
+      rowIDX != null ? (this.rows[rowIDX] ?? null) : null;
+
     while (current != null) {
       newSelectedPath.push(current.arrow_pair.points_to);
       current = current.parentRowRef;
@@ -788,6 +805,22 @@ class TreeTableCtx {
     if (this.selectedRowIDX != null) {
       this.scrollToIndex(this.selectedRowIDX + 1, { align: "center" });
     }
+  }
+
+  clearSelectedRow() {
+    this.setSelectedRowIDX(null);
+  }
+
+  navigateTop() {
+    this.setSelectedRowIDX(0);
+    this.forceUpdate();
+    this.scrollToSelected();
+  }
+
+  navigateBottom() {
+    this.setSelectedRowIDX(this.rows.length - 1);
+    this.forceUpdate();
+    this.scrollToSelected();
   }
 
   navigateUp(count: number) {
