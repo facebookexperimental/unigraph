@@ -136,6 +136,7 @@ function Toggles() {
   const [graphSettings, setGraphSettings] = useGraphSettings();
   const nativeGraph = useNativeGraphL();
   const hasTiers = nativeGraph.stats().tier_names.length > 0;
+  const hasMetrics = nativeGraph.metricNames.length > 0;
 
   const [flatViewEnabled, toggleFlatListView] = useToggleFlatListView();
   const [reverseViewEnabled, toggleReverseView] = useToggleReverseView();
@@ -209,26 +210,28 @@ function Toggles() {
         <ArrowUpNarrowWide />
       </UToggleButton>
 
-      <UHoverCard content={<MetricsHovercardContent />}>
-        <UToggleButton
-          size="sm"
-          selected={graphSettings.ui_settings?.columns?.hide_metrics !== true}
-          onSelectedChange={(checked) => {
-            setGraphSettings({
-              ...graphSettings,
-              ui_settings: {
-                ...graphSettings.ui_settings,
-                columns: {
-                  ...graphSettings.ui_settings?.columns,
-                  hide_metrics: !checked,
+      {hasMetrics && (
+        <UHoverCard content={<MetricsHovercardContent />}>
+          <UToggleButton
+            size="sm"
+            selected={graphSettings.ui_settings?.columns?.hide_metrics !== true}
+            onSelectedChange={(checked) => {
+              setGraphSettings({
+                ...graphSettings,
+                ui_settings: {
+                  ...graphSettings.ui_settings,
+                  columns: {
+                    ...graphSettings.ui_settings?.columns,
+                    hide_metrics: !checked,
+                  },
                 },
-              },
-            });
-          }}
-        >
-          <ChartNoAxesCombined />
-        </UToggleButton>
-      </UHoverCard>
+              });
+            }}
+          >
+            <ChartNoAxesCombined />
+          </UToggleButton>
+        </UHoverCard>
+      )}
 
       {hasTiers && (
         <UHoverCard content={<TiersHoverCardContent />}>
@@ -253,7 +256,7 @@ function Toggles() {
         </UHoverCard>
       )}
 
-      <div className="border-l border border-accent h-full w-0" />
+      <div className="border-l border border-accent py-3 h-full w-0" />
 
       <UToggleButton
         tooltip={
