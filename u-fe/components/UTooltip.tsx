@@ -1,7 +1,7 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 import { TooltipPortal } from "@radix-ui/react-tooltip";
-import { usePortalContainer } from "./PortalContext";
+import { usePortalContainer } from "../context/GlobalElementRefs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 export default function UTooltip({

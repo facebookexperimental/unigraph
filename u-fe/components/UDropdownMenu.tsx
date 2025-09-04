@@ -1,7 +1,7 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 import { useState } from "react";
-import { usePortalContainer } from "./PortalContext";
+import { usePortalContainer } from "../context/GlobalElementRefs";
 import {
   DropdownMenu,
   DropdownMenuPortal,

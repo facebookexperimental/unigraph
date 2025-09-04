@@ -10,10 +10,10 @@ import {
   CommandItem,
   CommandList,
 } from "./components/ui/command";
+import { useNodeSearchRef } from "./context/GlobalElementRefs";
 import {
   KEYBOARD_SHORTCUTS,
   KeyboardShortcutLabel,
-  useNodeSearchRef,
 } from "./context/GlobalKeyboardShortcutsContext";
 import { useTwinGraph } from "./context/NativeGraphContext";
 import { useSelectedPath } from "./context/SelectedPathContext";

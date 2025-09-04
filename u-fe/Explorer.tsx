@@ -1,6 +1,6 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useMemo } from "react";
 import {
   from_zstd_base64_url_safe_no_pad,
   to_zstd_base64_url_safe_no_pad,
@@ -13,8 +13,12 @@ import type { ExplorerProps } from "./__generated__/ts/ExplorerProps";
 import type { GraphSettings } from "./__generated__/ts/GraphSettings";
 import type { TraversalConfig } from "./__generated__/ts/TraversalConfig";
 import ErrorBoundary from "./components/ErrorBoundary";
-import { PortalContextProvider } from "./components/PortalContext";
-import { GlobalKeyboardShortcutsContextProvider } from "./context/GlobalKeyboardShortcutsContext";
+import {
+  GlobalElementRefsContextProvider,
+  usePortalContainer,
+} from "./context/GlobalElementRefs";
+
+import { useGlobalKeyboardShortcuts } from "./context/GlobalKeyboardShortcutsContext";
 import {
   GraphSettingsContextProvider,
   useGraphSettings,
@@ -48,8 +52,6 @@ export function Explorer(props: ExplorerProps) {
     graph_settings,
     on_graph_settings_change,
   } = props;
-
-  const containerRef = useRef<HTMLDivElement>(null);
 
   /// This graph initializes a new native graph every time the raw data changes.
   const [nativeGraphNoTVCL, nativeGraphNoTVCR] = useMemo(
@@ -108,7 +110,7 @@ export function Explorer(props: ExplorerProps) {
 
   return (
     <div className="h-screen flex flex-col unigraph-explorer bg-background">
-      <PortalContextProvider containerRef={containerRef}>
+      <GlobalElementRefsContextProvider>
         <ErrorBoundary>
           <NativeGraphContextProvider
             nativeGraphL={nativeGraphL}
@@ -122,9 +124,7 @@ export function Explorer(props: ExplorerProps) {
                     setSettings={setSettingsCb}
                   >
                     <SelectedPathContextProvider syncToURL={true}>
-                      <GlobalKeyboardShortcutsContextProvider>
-                        <Page containerRef={containerRef} />
-                      </GlobalKeyboardShortcutsContextProvider>
+                      <Page />
                     </SelectedPathContextProvider>
                   </GraphSettingsContextProvider>
                 </SelectedNodesContextProvider>
@@ -132,18 +132,18 @@ export function Explorer(props: ExplorerProps) {
             </TraversalConfigContextProvider>
           </NativeGraphContextProvider>
         </ErrorBoundary>
-      </PortalContextProvider>
+      </GlobalElementRefsContextProvider>
     </div>
   );
 }
 
-function Page(props: {
-  containerRef?: React.RefObject<HTMLDivElement | null>;
-}) {
+function Page() {
   const [nativeGraphL, nativeGraphR] = useNativeGraphs();
   const [graphSettings] = useGraphSettings();
   const [settings] = useGraphSettings();
   const [selectedNodes] = useSelectedNodes();
+  const portalRef = usePortalContainer();
+  useGlobalKeyboardShortcuts();
 
   const selectedSidebarPanel =
     settings.ui_settings?.selected_sidebar_panel ?? "None";
@@ -193,7 +193,7 @@ function Page(props: {
   return (
     <div
       className="flex grow-1 shrink flex-row bg-background text-foreground min-h-0"
-      ref={props.containerRef}
+      ref={portalRef}
     >
       <Sidebar selectedPanelTab={selectedSidebarPanel} />
       {panelTab}

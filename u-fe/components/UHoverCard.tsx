@@ -1,6 +1,6 @@
 import { HoverCardPortal } from "@radix-ui/react-hover-card";
 import { useState } from "react";
-import { usePortalContainer } from "./PortalContext";
+import { usePortalContainer } from "../context/GlobalElementRefs";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "./ui/hover-card";
 
 // Copyright (c) Meta Platforms, Inc. and affiliates.

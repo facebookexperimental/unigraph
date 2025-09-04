@@ -1,19 +1,12 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-import {
-  type RefObject,
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useRef,
-} from "react";
+import { useCallback, useEffect } from "react";
 import {
   useToggleDominatorTreeView,
   useToggleFlatListView,
   useToggleReverseView,
 } from "../GraphStructureHooks";
+import { useNodeSearchRef } from "./GlobalElementRefs";
 import { useSelectedPath } from "./SelectedPathContext";
 import {
   useFlipForceEdgeL,
@@ -36,24 +29,8 @@ export const KEYBOARD_SHORTCUTS = {
 
 type ShortcutNames = keyof typeof KEYBOARD_SHORTCUTS;
 
-type GlobalKeyboardShortcutsContextType = {
-  /// Ref for the search bar element. Stored globally so we
-  /// can focus/blur it from anywhere on keyboard shortcuts
-  nodeSearchRef: RefObject<HTMLInputElement | null>;
-};
-
-const GlobalKeyboardShortcutsContext = createContext<
-  GlobalKeyboardShortcutsContextType | undefined
->(undefined);
-
-export function GlobalKeyboardShortcutsContextProvider({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  const nodeSearchRef = useRef<HTMLInputElement | null>(null);
-  const value = useMemo(() => ({ nodeSearchRef }), []);
-  const handler = useExplorerKeyboardShortcutsHandler(value);
+export function useGlobalKeyboardShortcuts() {
+  const handler = useExplorerKeyboardShortcutsHandler();
 
   useEffect(() => {
     // add handler to global document when the component mounts
@@ -65,33 +42,13 @@ export function GlobalKeyboardShortcutsContextProvider({
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, [handler]);
-
-  return (
-    <GlobalKeyboardShortcutsContext.Provider value={value}>
-      {children}
-    </GlobalKeyboardShortcutsContext.Provider>
-  );
 }
 
-function useGlobalKeyboardShortcutsContext(): GlobalKeyboardShortcutsContextType {
-  const context = useContext(GlobalKeyboardShortcutsContext);
-  if (!context) {
-    throw new Error(
-      "useGlobalKeyboardShortcutsContext must be used within a GlobalKeyboardShortcutsContextProvider",
-    );
-  }
-  return context;
-}
-
-export function useNodeSearchRef(): RefObject<HTMLInputElement | null> {
-  const context = useGlobalKeyboardShortcutsContext();
-  return context.nodeSearchRef;
-}
-
-export function useExplorerKeyboardShortcutsHandler(
-  ctx: GlobalKeyboardShortcutsContextType,
-): (e: KeyboardEvent) => void {
+export function useExplorerKeyboardShortcutsHandler(): (
+  e: KeyboardEvent,
+) => void {
   const { selectedRow } = useSelectedPath();
+  const nodeSearchRef = useNodeSearchRef();
   const arrow = selectedRow?.arrow_pair || null;
 
   const arrowL = arrow?.l ?? null;
@@ -133,7 +90,7 @@ export function useExplorerKeyboardShortcutsHandler(
               break;
             case "NODE_SEARCH": {
               console.log("node search");
-              ctx.nodeSearchRef.current?.focus();
+              nodeSearchRef.current?.focus();
               break;
             }
             default: {
@@ -151,7 +108,7 @@ export function useExplorerKeyboardShortcutsHandler(
       toggleFlatList,
       toggleReverseView,
       toggleDominatorTreeView,
-      ctx,
+      nodeSearchRef,
     ],
   );
 

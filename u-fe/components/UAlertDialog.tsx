@@ -1,6 +1,6 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-import { usePortalContainer } from "./PortalContext";
+import { usePortalContainer } from "../context/GlobalElementRefs";
 import {
   AlertDialog,
   AlertDialogContent,
