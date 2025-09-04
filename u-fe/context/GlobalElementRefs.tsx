@@ -16,6 +16,9 @@ type GlobalElementRefsContextType = {
   /// Mostly used for rendering modals/tooltips inside it
   /// instead of using document.createElement
   portalContainerRef: RefObject<HTMLDivElement | null>;
+
+  /// ref for the tree table (virtualized)
+  treeTableRef: RefObject<HTMLDivElement | null>;
 };
 
 const GlobalElementRefsContext = createContext<
@@ -27,7 +30,11 @@ export function GlobalElementRefsContextProvider({
 }: { children: React.ReactNode }) {
   const nodeSearchRef = useRef<HTMLInputElement | null>(null);
   const portalContainerRef = useRef<HTMLDivElement | null>(null);
-  const value = useMemo(() => ({ nodeSearchRef, portalContainerRef }), []);
+  const treeTableRef = useRef<HTMLDivElement | null>(null);
+  const value = useMemo(
+    () => ({ nodeSearchRef, portalContainerRef, treeTableRef }),
+    [],
+  );
   return (
     <GlobalElementRefsContext.Provider value={value}>
       {children}
@@ -53,4 +60,9 @@ export function useNodeSearchRef(): RefObject<HTMLInputElement | null> {
 export function usePortalContainer(): RefObject<HTMLDivElement | null> {
   const context = useGlobalElementRefsContext();
   return context.portalContainerRef;
+}
+
+export function useTreeTableRef(): RefObject<HTMLDivElement | null> {
+  const context = useGlobalElementRefsContext();
+  return context.treeTableRef;
 }

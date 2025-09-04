@@ -10,7 +10,7 @@ import {
   CommandItem,
   CommandList,
 } from "./components/ui/command";
-import { useNodeSearchRef } from "./context/GlobalElementRefs";
+import { useNodeSearchRef, useTreeTableRef } from "./context/GlobalElementRefs";
 import {
   KEYBOARD_SHORTCUTS,
   KeyboardShortcutLabel,
@@ -157,6 +157,7 @@ function Typeahead({
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useNodeSearchRef();
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const treeTableRef = useTreeTableRef();
 
   // Debounced search results
   const searchResults = useMemo(() => {
@@ -210,7 +211,10 @@ function Typeahead({
     setIsOpen(false);
     onValueChange?.(option.id);
     onSelect?.(option);
-    inputRef.current?.blur();
+    // Focus on tree table so after selecting the
+    // navigation shortcuts can start working again (up, down, right)
+    // after the node was selected
+    treeTableRef.current?.focus();
   };
 
   // Handle clear

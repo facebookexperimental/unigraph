@@ -12,20 +12,14 @@ import {
   Dot,
   TreePalm,
 } from "lucide-react";
-import {
-  useEffect,
-  useMemo,
-  useReducer,
-  useRef,
-  useState,
-  useTransition,
-} from "react";
+import { useEffect, useMemo, useReducer, useState, useTransition } from "react";
 import { ARROW_POINTS_FROM_NON_EXISTENT } from "../ArrowUtils";
 import type { ArrayGraphUISettingsTreeTableEntryPoints } from "../__generated__/ts/ArrayGraphUISettingsTreeTableEntryPoints";
 import type { GraphStructure } from "../__generated__/ts/GraphStructure";
 import type { SortOrder } from "../__generated__/ts/SortOrder";
 import UTooltip from "../components/UTooltip";
 import { Progress } from "../components/ui/progress";
+import { useTreeTableRef } from "../context/GlobalElementRefs";
 import { useSelectedPath } from "../context/SelectedPathContext";
 import type { ArrowPair } from "../native/TwinGraph";
 import type { NodeIDX } from "../types";
@@ -162,7 +156,7 @@ export function TreeTable(props: {
     return ctx;
   }, []);
 
-  const parentRef = useRef<HTMLDivElement>(null); // scrollable element for virtualizer
+  const parentRef = useTreeTableRef();
 
   const headerHeight = props.headerHeight ?? 35;
 
@@ -218,7 +212,7 @@ export function TreeTable(props: {
         }
       }, 0);
     }
-  }, [props.focusOnMount]);
+  }, [props.focusOnMount, parentRef]);
 
   const ITEM_SIZE = 35;
 
