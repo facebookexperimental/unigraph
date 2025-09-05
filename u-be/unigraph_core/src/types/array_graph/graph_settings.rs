@@ -305,8 +305,8 @@ pub enum IndividualOptionEnabled {
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize, typegen::TypeGen)]
 pub struct GraphTableSort {
-    column: SortColumn,
-    order: SortOrder,
+    pub column: SortColumn,
+    pub order: SortOrder,
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize, typegen::TypeGen)]
