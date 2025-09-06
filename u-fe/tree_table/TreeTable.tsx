@@ -21,7 +21,8 @@ import UTooltip from "../components/UTooltip";
 import { Progress } from "../components/ui/progress";
 import { useTreeTableRef } from "../context/GlobalElementRefs";
 import { useSelectedPath } from "../context/SelectedPathContext";
-import type { ArrowPair } from "../native/TwinGraph";
+
+import type { TwinArrow } from "../__generated__/ts/TwinArrow";
 import type { NodeIDX } from "../types";
 import TreeCell from "./TreeCell";
 import {
@@ -297,10 +298,10 @@ export function TreeTable(props: {
                   }
                 }}
                 canExpand={
-                  props.treeTableGraph.getArrowPairs(row.arrow_pair.points_to)
+                  props.treeTableGraph.getArrowPairs(row.twinArrow.points_to)
                     .length > 0
                 }
-                nodeName={column.c.getNodeName(row.arrow_pair.points_to)}
+                nodeName={column.c.getNodeName(row.twinArrow.points_to)}
               />
             );
           }
@@ -566,8 +567,8 @@ class TreeTableCtx {
       sortColumn,
       sortOrder,
       sortFn: (a: Row, b: Row) => {
-        const aValue = getSortValue(a.arrow_pair.points_to);
-        const bValue = getSortValue(b.arrow_pair.points_to);
+        const aValue = getSortValue(a.twinArrow.points_to);
+        const bValue = getSortValue(b.twinArrow.points_to);
         if (aValue < bValue) {
           return sortOrder === "Desc" ? 1 : -1;
         }
@@ -602,7 +603,7 @@ class TreeTableCtx {
         parentRowRef: null,
         childrenRefs: [],
         transitiveChildrenCount: 0,
-        arrow_pair: {
+        twinArrow: {
           points_to: rootArrow.points_to,
           points_from: rootArrow.points_from,
           l: rootArrow,
@@ -620,7 +621,7 @@ class TreeTableCtx {
       return;
     }
 
-    const arrows = this.treeTableGraph.getArrowPairs(row.arrow_pair.points_to);
+    const arrows = this.treeTableGraph.getArrowPairs(row.twinArrow.points_to);
 
     const childrenIDXs = arrows.map((a) => a.points_to);
 
@@ -673,7 +674,7 @@ class TreeTableCtx {
     const selectedRow =
       this.selectedRowIDX != null ? this.rows[this.selectedRowIDX] : null;
 
-    const allRowIDXsChuncked = this.rows.map((row) => row.arrow_pair.points_to);
+    const allRowIDXsChuncked = this.rows.map((row) => row.twinArrow.points_to);
     const column = this.sortState.sortColumn;
     await this.warmUpNumericValuesCache(
       column,
@@ -793,7 +794,7 @@ class TreeTableCtx {
       rowIDX != null ? (this.rows[rowIDX] ?? null) : null;
 
     while (current != null) {
-      newSelectedPath.push(current.arrow_pair.points_to);
+      newSelectedPath.push(current.twinArrow.points_to);
       current = current.parentRowRef;
     }
     newSelectedPath.reverse();
@@ -874,7 +875,7 @@ class TreeTableCtx {
         // pretty heavy and we can optimize this to a simple
         // direct memory access check on a cached datastructure
         // or something.
-        this.treeTableGraph.getArrowPairs(selectedRow.arrow_pair.points_to)
+        this.treeTableGraph.getArrowPairs(selectedRow.twinArrow.points_to)
           .length === 0 ||
         selectedRow.isCycle
       ) {
@@ -1044,7 +1045,7 @@ export class TreeTablePathSelector {
 /// in the tree table and how to havigate it
 type TreeTableGraph = {
   roots: Readonly<NodeIDX[]>;
-  getArrowPairs: (idx: NodeIDX) => ArrowPair[];
+  getArrowPairs: (idx: NodeIDX) => TwinArrow[];
   getShortestPath: (from: readonly NodeIDX[], to: NodeIDX) => NodeIDX[] | null;
   graphStructure: GraphStructure;
   treeTableEntryPoints: ArrayGraphUISettingsTreeTableEntryPoints;

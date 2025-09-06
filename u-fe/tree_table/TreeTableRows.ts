@@ -1,6 +1,6 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-import type { ArrowPair } from "../native/TwinGraph";
+import type { TwinArrow } from "../__generated__/ts/TwinArrow";
 import type { NodeIDX } from "../types";
 import type { SortState } from "./TreeTable";
 
@@ -9,7 +9,7 @@ export type Row = {
   depth: number;
   expanded: boolean;
   isCycle: boolean;
-  arrow_pair: ArrowPair;
+  twinArrow: TwinArrow;
 
   parentRowRef: Row | null;
   childrenRefs: Row[];
@@ -117,7 +117,7 @@ export function sortRows(rows: Row[], sortFn: SortFn): Row[] {
 export function expandRow(
   rows: Row[],
   rowIDX: number,
-  arrow_pairs: ArrowPair[],
+  twin_arrows: TwinArrow[],
   sortState: SortState | null,
 ): void {
   const row = rows[rowIDX];
@@ -127,14 +127,14 @@ export function expandRow(
 
   const newRows: Row[] = [];
   // iterate over the children and add them to the newRows array
-  for (let i = 0; i < arrow_pairs.length; i++) {
-    const childArrow = arrow_pairs[i] as ArrowPair;
+  for (let i = 0; i < twin_arrows.length; i++) {
+    const childArrow = twin_arrows[i] as TwinArrow;
 
     const newRow = {
       depth: row.depth + 1,
       expanded: false,
       isCycle: false,
-      arrow_pair: childArrow,
+      twinArrow: childArrow,
       parentRowRef: row,
       childrenRefs: [],
       transitiveChildrenCount: 0,
@@ -145,7 +145,7 @@ export function expandRow(
     // exists in the path.
     let current: Row | null = newRow.parentRowRef;
     while (current != null) {
-      if (current.arrow_pair.points_to === newRow.arrow_pair.points_to) {
+      if (current.twinArrow.points_to === newRow.twinArrow.points_to) {
         newRow.isCycle = true;
         break;
       }
@@ -203,7 +203,7 @@ export function collapseRow(rows: Row[], rowIDX: number) {
 export function expandToPath(
   rows: Row[],
   nodeIDXPath: NodeIDX[],
-  getArrowPairs: (nodeIDX: NodeIDX) => ArrowPair[],
+  getTwinArrows: (nodeIDX: NodeIDX) => TwinArrow[],
   sortState: SortState | null,
 ): RowIDX | null {
   if (nodeIDXPath.length === 0) {
@@ -219,8 +219,8 @@ export function expandToPath(
     const currentParentRow = rows[currentGlobalRowIDX];
 
     if (currentParentRow != null) {
-      const childrenArrows = getArrowPairs(
-        currentParentRow.arrow_pair.points_to,
+      const childrenArrows = getTwinArrows(
+        currentParentRow.twinArrow.points_to,
       );
       expandRow(rows, currentGlobalRowIDX, childrenArrows, sortState);
       currentChildrenRefs = currentParentRow.childrenRefs;
@@ -246,7 +246,7 @@ export function expandToPath(
     let childRowIDX = -1;
     for (let childIDX = 0; childIDX < currentChildrenRefs.length; childIDX++) {
       const childRow = currentChildrenRefs[childIDX] as Row;
-      if (childRow.arrow_pair.points_to === nextNodeIDXInPath) {
+      if (childRow.twinArrow.points_to === nextNodeIDXInPath) {
         childRowIDX = childIDX;
         break;
       } else {
@@ -267,7 +267,7 @@ export function pathToRow(row: Readonly<Row>): NodeIDX[] {
   const path: NodeIDX[] = [];
   let current: Row | null = row;
   while (current != null) {
-    path.push(current.arrow_pair.points_to);
+    path.push(current.twinArrow.points_to);
     current = current.parentRowRef;
   }
   return path.reverse();

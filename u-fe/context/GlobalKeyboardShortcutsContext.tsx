@@ -49,7 +49,7 @@ export function useExplorerKeyboardShortcutsHandler(): (
 ) => void {
   const { selectedRow } = useSelectedPath();
   const nodeSearchRef = useNodeSearchRef();
-  const arrow = selectedRow?.arrow_pair || null;
+  const arrow = selectedRow?.twinArrow || null;
 
   const arrowL = arrow?.l ?? null;
 

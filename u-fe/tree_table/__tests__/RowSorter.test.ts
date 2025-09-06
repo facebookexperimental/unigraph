@@ -1,11 +1,11 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-import type { SortOrder } from "@/__generated__/ts/SortOrder";
-import type { ArrowPair } from "@/native/TwinGraph";
 import { expect, test } from "vitest";
+import type { SortOrder } from "../../__generated__/ts/SortOrder";
+import type { TwinArrow } from "../../__generated__/ts/TwinArrow";
 import { type Row, sortRows } from "../TreeTableRows";
 
-function arrow_pair(fromIDX: number, toIDX: number): ArrowPair {
+function twinArrow(fromIDX: number, toIDX: number): TwinArrow {
   return {
     points_to: toIDX,
     points_from: fromIDX,
@@ -18,7 +18,7 @@ function arrow_pair(fromIDX: number, toIDX: number): ArrowPair {
       excluded: false,
       message: undefined,
     },
-    r: null,
+    r: undefined,
   };
 }
 //    1
@@ -35,7 +35,7 @@ const ROW_8: Row = {
   depth: 0,
   expanded: false,
   isCycle: false,
-  arrow_pair: arrow_pair(-1, 8),
+  twinArrow: twinArrow(-1, 8),
   transitiveChildrenCount: 0,
   childrenRefs: [],
   parentRowRef: null,
@@ -44,7 +44,7 @@ const ROW_7: Row = {
   depth: 2,
   expanded: false,
   isCycle: false,
-  arrow_pair: arrow_pair(3, 7),
+  twinArrow: twinArrow(3, 7),
   transitiveChildrenCount: 0,
   childrenRefs: [],
   parentRowRef: null,
@@ -53,7 +53,7 @@ const ROW_6: Row = {
   depth: 2,
   expanded: false,
   isCycle: false,
-  arrow_pair: arrow_pair(3, 6),
+  twinArrow: twinArrow(3, 6),
   transitiveChildrenCount: 0,
   childrenRefs: [],
   parentRowRef: null,
@@ -62,7 +62,7 @@ const ROW_5: Row = {
   depth: 3,
   expanded: false,
   isCycle: false,
-  arrow_pair: arrow_pair(40, 5),
+  twinArrow: twinArrow(40, 5),
   transitiveChildrenCount: 0,
   childrenRefs: [],
   parentRowRef: null,
@@ -71,7 +71,7 @@ const ROW_0: Row = {
   depth: 4,
   expanded: false,
   isCycle: false,
-  arrow_pair: arrow_pair(9, 0),
+  twinArrow: twinArrow(9, 0),
   transitiveChildrenCount: 0,
   childrenRefs: [],
   parentRowRef: null,
@@ -80,7 +80,7 @@ const ROW_9: Row = {
   depth: 3,
   expanded: false,
   isCycle: false,
-  arrow_pair: arrow_pair(40, 9),
+  twinArrow: twinArrow(40, 9),
   transitiveChildrenCount: 0,
   childrenRefs: [ROW_0],
   parentRowRef: null,
@@ -89,7 +89,7 @@ const ROW_40: Row = {
   depth: 2,
   expanded: true,
   isCycle: false,
-  arrow_pair: arrow_pair(3, 40),
+  twinArrow: twinArrow(3, 40),
   transitiveChildrenCount: 0,
   childrenRefs: [ROW_9, ROW_5],
   parentRowRef: null,
@@ -98,7 +98,7 @@ const ROW_3: Row = {
   depth: 1,
   expanded: true,
   isCycle: false,
-  arrow_pair: arrow_pair(2, 3),
+  twinArrow: twinArrow(2, 3),
   transitiveChildrenCount: 0,
   childrenRefs: [ROW_40, ROW_6, ROW_7],
   parentRowRef: null,
@@ -107,7 +107,7 @@ const ROW_2: Row = {
   depth: 0,
   expanded: true,
   isCycle: false,
-  arrow_pair: arrow_pair(-1, 2),
+  twinArrow: twinArrow(-1, 2),
   transitiveChildrenCount: 0,
   childrenRefs: [ROW_3],
   parentRowRef: null,
@@ -117,7 +117,7 @@ const ROW_1: Row = {
   depth: 0,
   expanded: false,
   isCycle: false,
-  arrow_pair: arrow_pair(-1, 1),
+  twinArrow: twinArrow(-1, 1),
   transitiveChildrenCount: 0,
   childrenRefs: [],
   parentRowRef: null,
@@ -244,7 +244,7 @@ test("sorting", () => {
 function printRows(rows: Row[]): string {
   const lines = rows.map(
     (row) =>
-      `${"* ".repeat(row.depth)}${row.arrow_pair.points_to}${" ".repeat(15 - row.depth * 2 - row.arrow_pair.points_to.toString().length)}transitiveChildrenCount: ${row.transitiveChildrenCount}`,
+      `${"* ".repeat(row.depth)}${row.twinArrow.points_to}${" ".repeat(15 - row.depth * 2 - row.twinArrow.points_to.toString().length)}transitiveChildrenCount: ${row.transitiveChildrenCount}`,
   );
 
   return `\n${lines.join("\n")}\n`;
@@ -261,9 +261,9 @@ function desc(rows: Row[]): Row[] {
 }
 
 function compare(a: Row, b: Row, order: SortOrder): 0 | -1 | 1 {
-  if (a.arrow_pair.points_to < b.arrow_pair.points_to) {
+  if (a.twinArrow.points_to < b.twinArrow.points_to) {
     return order === "Asc" ? -1 : 1;
-  } else if (a.arrow_pair.points_to > b.arrow_pair.points_to) {
+  } else if (a.twinArrow.points_to > b.twinArrow.points_to) {
     return order === "Asc" ? 1 : -1;
   }
   return 0;

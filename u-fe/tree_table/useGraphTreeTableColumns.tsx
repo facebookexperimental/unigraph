@@ -357,15 +357,15 @@ class TransitiveCountColumn implements Column {
       t: "numeric_value_column",
       label: columnID,
       renderer: (row: Readonly<Row>) => {
-        if (this.nativeGraph.isNodeReachable(row.arrow_pair.points_to)) {
+        if (this.nativeGraph.isNodeReachable(row.twinArrow.points_to)) {
           return (
             <MetricCell
-              value={getValues([row.arrow_pair.points_to])[0] ?? 0}
+              value={getValues([row.twinArrow.points_to])[0] ?? 0}
               format={NO_PRECISION_FORMAT}
             />
           );
         } else if (
-          row.arrow_pair.points_from === ARROW_POINTS_FROM_NON_EXISTENT
+          row.twinArrow.points_from === ARROW_POINTS_FROM_NON_EXISTENT
         ) {
           // If the arrow is coming from a non-existent point, we don't know
           // what to override
@@ -375,8 +375,8 @@ class TransitiveCountColumn implements Column {
             this.nativeGraph.getCombinedMetricsForEntryPoints().node_count ?? 0;
           const wouldBeValue =
             this.nativeGraph.getCombinedMetricsForEntryPointsWithOverrides({
-              from: row.arrow_pair.points_from,
-              to: row.arrow_pair.points_to,
+              from: row.twinArrow.points_from,
+              to: row.twinArrow.points_to,
             }).node_count ?? 0;
           return this.showWouldBe ? (
             <WouldBeDeltaMetricCell
@@ -450,12 +450,12 @@ class ConjointCountColumn implements Column {
       t: "numeric_value_column",
       label: columnID,
       renderer: (row: Readonly<Row>) => {
-        if (this.nativeGraph.isNodeReachable(row.arrow_pair.points_to)) {
+        if (this.nativeGraph.isNodeReachable(row.twinArrow.points_to)) {
           return (
             <MetricCell
               value={
                 this.nativeGraph.getConjointCost().count[
-                  row.arrow_pair.points_to
+                  row.twinArrow.points_to
                 ] ?? 0
               }
               format={NO_PRECISION_FORMAT}
@@ -529,12 +529,12 @@ class ParentsCountColumn implements Column {
       t: "numeric_value_column",
       label: columnID,
       renderer: (row: Readonly<Row>) => {
-        if (this.nativeGraph.isNodeReachable(row.arrow_pair.points_to)) {
+        if (this.nativeGraph.isNodeReachable(row.twinArrow.points_to)) {
           return (
             <MetricCell
               value={
                 this.nativeGraph.getParentsCount([
-                  row.arrow_pair.points_to,
+                  row.twinArrow.points_to,
                 ])[0] ?? 0
               }
               format={NO_PRECISION_FORMAT}
@@ -620,11 +620,11 @@ class MetricColumn implements Column {
       t: "numeric_value_column",
       label: columnID,
       renderer: (row: Readonly<Row>) => {
-        if (this.nativeGraph.isNodeReachable(row.arrow_pair.points_to)) {
+        if (this.nativeGraph.isNodeReachable(row.twinArrow.points_to)) {
           return (
             <MetricCell
               value={this.nativeGraph.getNodeMetric(
-                row.arrow_pair.points_to,
+                row.twinArrow.points_to,
                 this.metricName,
               )}
               format={metricSettings?.format}
@@ -732,10 +732,10 @@ class TransitiveMetricColumn implements Column {
       t: "numeric_value_column",
       label: columnID,
       renderer: (row: Readonly<Row>) => {
-        if (this.nativeGraph.isNodeReachable(row.arrow_pair.points_to)) {
+        if (this.nativeGraph.isNodeReachable(row.twinArrow.points_to)) {
           return (
             <MetricCell
-              value={getValues([row.arrow_pair.points_to])[0] as number}
+              value={getValues([row.twinArrow.points_to])[0] as number}
               format={format}
             />
           );
@@ -824,10 +824,10 @@ class ConjointMetricColumn implements Column {
       t: "numeric_value_column",
       label: columnID,
       renderer: (row: Readonly<Row>) => {
-        if (this.nativeGraph.isNodeReachable(row.arrow_pair.points_to)) {
+        if (this.nativeGraph.isNodeReachable(row.twinArrow.points_to)) {
           return (
             <MetricCell
-              value={getValues([row.arrow_pair.points_to])[0] as number}
+              value={getValues([row.twinArrow.points_to])[0] as number}
               format={format}
             />
           );
@@ -958,15 +958,15 @@ class TransitiveTieredMetricColumn implements Column {
       t: "numeric_value_column",
       label: columnID,
       renderer: (row: Readonly<Row>) => {
-        if (this.nativeGraph.isNodeReachable(row.arrow_pair.points_to)) {
+        if (this.nativeGraph.isNodeReachable(row.twinArrow.points_to)) {
           return (
             <MetricCell
-              value={getValues([row.arrow_pair.points_to])[0] as number}
+              value={getValues([row.twinArrow.points_to])[0] as number}
               format={format}
             />
           );
         } else if (
-          row.arrow_pair.points_from === ARROW_POINTS_FROM_NON_EXISTENT
+          row.twinArrow.points_from === ARROW_POINTS_FROM_NON_EXISTENT
         ) {
           // If the arrow is coming from a non-existent point, we don't know
           // what to override
@@ -977,8 +977,8 @@ class TransitiveTieredMetricColumn implements Column {
               .tiered_metrics?.[this.metricName]?.[this.tierName] ?? 0;
           const wouldBeValue =
             this.nativeGraph.getCombinedMetricsForEntryPointsWithOverrides({
-              from: row.arrow_pair.points_from,
-              to: row.arrow_pair.points_to,
+              from: row.twinArrow.points_from,
+              to: row.twinArrow.points_to,
             }).tiered_metrics?.[this.metricName]?.[this.tierName] ?? 0;
           return (
             <WouldBeDeltaMetricCell
@@ -1096,10 +1096,10 @@ class ConjointTieredMetricColumn implements Column {
       t: "numeric_value_column",
       label: columnID,
       renderer: (row: Readonly<Row>) => {
-        if (this.nativeGraph.isNodeReachable(row.arrow_pair.points_to)) {
+        if (this.nativeGraph.isNodeReachable(row.twinArrow.points_to)) {
           return (
             <MetricCell
-              value={getValues([row.arrow_pair.points_to])[0] as number}
+              value={getValues([row.twinArrow.points_to])[0] as number}
               format={format}
             />
           );

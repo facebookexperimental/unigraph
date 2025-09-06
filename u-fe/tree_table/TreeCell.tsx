@@ -10,11 +10,11 @@ import {
 } from "lucide-react";
 import { H2 } from "../Typography";
 import type { Arrow } from "../__generated__/ts/Arrow";
+import type { TwinArrow } from "../__generated__/ts/TwinArrow";
 import UHoverCard from "../components/UHoverCard";
 import { Badge } from "../components/ui/badge";
 import { useTwinGraph } from "../context/NativeGraphContext";
 import type TwinGraph from "../native/TwinGraph";
-import type { ArrowPair } from "../native/TwinGraph";
 import type { Row } from "./TreeTableRows";
 
 type Props = {
@@ -32,7 +32,7 @@ type Props = {
 
 export default function TreeCell(props: Props) {
   const twinGraph = useTwinGraph();
-  const arrow_pair = props.row.arrow_pair;
+  const twinArrow = props.row.twinArrow;
 
   const chevron = (() => {
     if (props.canExpand) {
@@ -68,10 +68,10 @@ export default function TreeCell(props: Props) {
     );
   }
 
-  const color = getPresenceColor(twinGraph, arrow_pair);
+  const color = getPresenceColor(twinGraph, twinArrow);
 
   let lineThrough = null;
-  switch (getPresence(twinGraph, arrow_pair)) {
+  switch (getPresence(twinGraph, twinArrow)) {
     case "node_became_unreachable":
     case "single_graph_unreachable": {
       lineThrough = "text-foreground/50 line-through";
@@ -82,33 +82,33 @@ export default function TreeCell(props: Props) {
     <div className={clsx("flex items-center w-full h-full", color)}>
       {padding}
       {chevron}
-      <ArrowBadge arrow_pair={arrow_pair} />
+      <ArrowBadge twinArrow={twinArrow} />
       <p
         className={clsx(
           "pe-4 text-ellipsis text-nowrap",
-          isExcludedInBoth(twinGraph, arrow_pair) && "text-foreground/50",
+          isExcludedInBoth(twinGraph, twinArrow) && "text-foreground/50",
           lineThrough,
         )}
       >
         {props.nodeName}
       </p>
-      <InfoIcon arrow_pair={arrow_pair} twinGraph={twinGraph} />
+      <InfoIcon twinArrow={twinArrow} twinGraph={twinGraph} />
     </div>
   );
 }
 
 function InfoIcon({
-  arrow_pair,
+  twinArrow,
   twinGraph,
 }: {
-  arrow_pair: ArrowPair;
+  twinArrow: TwinArrow;
   twinGraph: TwinGraph;
 }) {
   let content = null;
   let messageL = null;
   let messageR = null;
 
-  const badgeContent = getBadgeContent(twinGraph, arrow_pair);
+  const badgeContent = getBadgeContent(twinGraph, twinArrow);
 
   if (badgeContent != null) {
     content = (
@@ -119,21 +119,21 @@ function InfoIcon({
     );
   }
 
-  if (arrow_pair.l?.message != null) {
+  if (twinArrow.l?.message != null) {
     const label = twinGraph.isDeltaGraph() ? " (Left Graph)" : "";
     messageL = (
       <>
         <H2 text={`Additional Information${label}`} />
-        <p className="break-words">{arrow_pair.l.message}</p>
+        <p className="break-words">{twinArrow.l.message}</p>
       </>
     );
   }
 
-  if (arrow_pair.r?.message != null) {
+  if (twinArrow.r?.message != null) {
     messageR = (
       <>
         <H2 text="Additional Information (Right Graph)" />
-        <p className="break-words">{arrow_pair.r.message}</p>
+        <p className="break-words">{twinArrow.r.message}</p>
       </>
     );
   }
@@ -157,9 +157,9 @@ function InfoIcon({
   );
 }
 
-function ArrowBadge({ arrow_pair }: { arrow_pair: ArrowPair }) {
-  const l = getBadgeData(arrow_pair.l);
-  const r = getBadgeData(arrow_pair.r);
+function ArrowBadge({ twinArrow }: { twinArrow: TwinArrow }) {
+  const l = getBadgeData(twinArrow.l ?? null);
+  const r = getBadgeData(twinArrow.r ?? null);
 
   if (l != null && r != null) {
     const areEqual = l.t === r.t && l.label === r.label;
@@ -215,22 +215,22 @@ function getBadgeData(
   return null;
 }
 
-function isExcludedInBoth(twinGraph: TwinGraph, arrow_pair: ArrowPair) {
+function isExcludedInBoth(twinGraph: TwinGraph, twinArrow: TwinArrow) {
   if (twinGraph.isDeltaGraph()) {
     return (
-      arrow_pair.l &&
-      arrow_pair.l.excluded === true &&
-      arrow_pair.r &&
-      arrow_pair.r.excluded === true
+      twinArrow.l &&
+      twinArrow.l.excluded === true &&
+      twinArrow.r &&
+      twinArrow.r.excluded === true
     );
   } else {
-    return arrow_pair.l && arrow_pair.l.excluded === true;
+    return twinArrow.l && twinArrow.l.excluded === true;
   }
 }
 
 function getPresence(
   twinGraph: TwinGraph,
-  arrow_pair: ArrowPair,
+  twinArrow: TwinArrow,
 ):
   | "node_became_reachable"
   | "node_became_unreachable"
@@ -244,30 +244,30 @@ function getPresence(
   | "single_graph_edge_excluded"
   | "no_change" {
   if (twinGraph.r != null) {
-    const reachableL = twinGraph.l.isNodeReachable(arrow_pair.points_to);
-    const reachableR = twinGraph.r.isNodeReachable(arrow_pair.points_to);
+    const reachableL = twinGraph.l.isNodeReachable(twinArrow.points_to);
+    const reachableR = twinGraph.r.isNodeReachable(twinArrow.points_to);
 
     if (reachableL && !reachableR) {
       return "node_became_reachable";
     } else if (!reachableL && reachableR) {
       return "node_became_unreachable";
     } else if (reachableL && reachableR) {
-      if (arrow_pair.l != null && arrow_pair.r != null) {
-        if (arrow_pair.l.excluded && !arrow_pair.r.excluded) {
+      if (twinArrow.l != null && twinArrow.r != null) {
+        if (twinArrow.l.excluded && !twinArrow.r.excluded) {
           return "edge_became_included";
-        } else if (!arrow_pair.l.excluded && arrow_pair.r.excluded) {
+        } else if (!twinArrow.l.excluded && twinArrow.r.excluded) {
           return "edge_became_excluded";
         } else {
           return "no_change";
         }
-      } else if (arrow_pair.l == null && arrow_pair.r != null) {
-        if (arrow_pair.r.excluded) {
+      } else if (twinArrow.l == null && twinArrow.r != null) {
+        if (twinArrow.r.excluded) {
           return "excluded_edge_was_added";
         } else {
           return "edge_was_added";
         }
-      } else if (arrow_pair.l != null && arrow_pair.r == null) {
-        if (arrow_pair.l.excluded) {
+      } else if (twinArrow.l != null && twinArrow.r == null) {
+        if (twinArrow.l.excluded) {
           return "excluded_edge_was_removed";
         } else {
           return "edge_was_removed";
@@ -275,10 +275,10 @@ function getPresence(
       }
     }
   } else {
-    const reachableL = twinGraph.l.isNodeReachable(arrow_pair.points_to);
+    const reachableL = twinGraph.l.isNodeReachable(twinArrow.points_to);
     if (!reachableL) {
       return "single_graph_unreachable";
-    } else if (arrow_pair.l?.excluded) {
+    } else if (twinArrow.l?.excluded) {
       return "single_graph_edge_excluded";
     }
   }
@@ -288,9 +288,9 @@ function getPresence(
 
 function getPresenceColor(
   twinGraph: TwinGraph,
-  arrow_pair: ArrowPair,
+  twinArrow: TwinArrow,
 ): string | null {
-  switch (getPresence(twinGraph, arrow_pair)) {
+  switch (getPresence(twinGraph, twinArrow)) {
     case "node_became_reachable":
     case "edge_became_included":
     case "edge_was_added":
@@ -311,9 +311,9 @@ function getPresenceColor(
 
 function getBadgeContent(
   twinGraph: TwinGraph,
-  arrow_pair: ArrowPair,
+  twinArrow: TwinArrow,
 ): { content: string; header: string } | null {
-  switch (getPresence(twinGraph, arrow_pair)) {
+  switch (getPresence(twinGraph, twinArrow)) {
     case "node_became_reachable": {
       return {
         content:

@@ -14,8 +14,8 @@ use crate::ArrayGraphNodes;
 use crate::ArrayGraphSerializable;
 use crate::NodeIDX;
 use crate::graph_settings::GraphStructure;
-use crate::types::array_graph::Arrow;
 use crate::types::array_graph::array_graph_nodes::GraphSide;
+use crate::types::twin_graph::get_arrows::TwinArrow;
 
 const MISSING_RIGHT_ERROR: &str = "TwinGraph: You are trying to access the right graph, but it is not present. \
      Please ensure that the TwinGraph was initialized with a right graph.";
@@ -90,7 +90,7 @@ impl TwinGraph {
         &self,
         node_idx: NodeIDX,
         graph_structure: GraphStructure,
-    ) -> Result<Vec<(Option<Arrow>, Option<Arrow>)>> {
+    ) -> Result<Vec<TwinArrow>> {
         get_arrows::get_arrows_pairs(self, node_idx, graph_structure)
     }
 

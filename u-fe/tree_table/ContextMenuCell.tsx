@@ -29,7 +29,7 @@ export default function ContextMenuCell(props: {
 }
 
 function Content({ row }: { row: Readonly<Row> }) {
-  const arrowL = row.arrow_pair.l;
+  const arrowL = row.twinArrow.l;
 
   if (arrowL == null) {
     // exclusion gets messy with two graphs. need to figure this one out later
