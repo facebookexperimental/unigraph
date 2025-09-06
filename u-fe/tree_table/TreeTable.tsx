@@ -321,7 +321,7 @@ export function TreeTable(props: {
         <div
           className={clsx(
             "border-b box-border-gray-200 flex items-center cursor-pointer",
-            selected && "bg-primary/10",
+            selected && "bg-gray-200",
           )}
           onMouseDown={(_e) => {
             ctx.setSelectedRowIDX(rowIDX);
