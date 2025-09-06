@@ -606,6 +606,7 @@ class TreeTableCtx {
         twinArrow: {
           points_to: rootArrow.points_to,
           points_from: rootArrow.points_from,
+          node_diff: 0,
           l: rootArrow,
           r: rootArrow,
         },

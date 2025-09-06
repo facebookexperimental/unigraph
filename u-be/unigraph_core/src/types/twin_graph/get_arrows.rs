@@ -6,6 +6,7 @@ use crate::NodeIDX;
 use crate::TwinGraph;
 use crate::graph_settings::GraphStructure;
 use crate::types::array_graph::Arrow;
+use crate::types::twin_graph::NodeDiff;
 
 /// When working with twin graphs we want to get the list of
 /// arrows for the node in both graphs and match them together.
@@ -42,28 +43,35 @@ pub(crate) fn get_arrows_pairs(
             (Some(l_arrow), Some(r_arrow)) => {
                 match l_arrow.points_to.cmp(&r_arrow.points_to) {
                     std::cmp::Ordering::Less => {
+                        let points_to = l_arrow.points_to;
+
                         // l arrow has smaller points_to value
                         result.push(TwinArrow {
-                            points_to: l_arrow.points_to,
+                            points_to,
                             points_from: l_arrow.points_from,
+                            node_diff: tg.node_diff[points_to],
                             l: Some(l_iter.next().unwrap()),
                             r: None,
                         });
                     }
                     std::cmp::Ordering::Greater => {
+                        let points_to = r_arrow.points_to;
                         // r arrow has smaller points_to value
                         result.push(TwinArrow {
-                            points_to: r_arrow.points_to,
+                            points_to,
                             points_from: r_arrow.points_from,
+                            node_diff: tg.node_diff[points_to],
                             l: None,
                             r: Some(r_iter.next().unwrap()),
                         });
                     }
                     std::cmp::Ordering::Equal => {
+                        let points_to = r_arrow.points_to;
                         // Both arrows have the same points_to value
                         result.push(TwinArrow {
-                            points_to: l_arrow.points_to,
+                            points_to,
                             points_from: l_arrow.points_from,
+                            node_diff: tg.node_diff[points_to],
                             l: Some(l_iter.next().unwrap()),
                             r: Some(r_iter.next().unwrap()),
                         });
@@ -71,19 +79,23 @@ pub(crate) fn get_arrows_pairs(
                 }
             }
             (Some(l_arrow), None) => {
+                let points_to = l_arrow.points_to;
                 // Only l has remaining elements
                 result.push(TwinArrow {
-                    points_to: l_arrow.points_to,
+                    points_to,
                     points_from: l_arrow.points_from,
+                    node_diff: tg.node_diff[points_to],
                     l: Some(l_iter.next().unwrap()),
                     r: None,
                 });
             }
             (None, Some(r_arrow)) => {
+                let points_to = r_arrow.points_to;
                 // Only r has remaining elements
                 result.push(TwinArrow {
-                    points_to: r_arrow.points_to,
+                    points_to,
                     points_from: r_arrow.points_from,
+                    node_diff: tg.node_diff[points_to],
                     l: None,
                     r: Some(r_iter.next().unwrap()),
                 });
@@ -107,6 +119,8 @@ pub(crate) fn get_arrows_pairs(
 pub struct TwinArrow {
     pub points_to: NodeIDX,
     pub points_from: NodeIDX,
+    #[typegen(as = "u32")]
+    pub node_diff: NodeDiff,
     pub l: Option<Arrow>,
     pub r: Option<Arrow>,
 }

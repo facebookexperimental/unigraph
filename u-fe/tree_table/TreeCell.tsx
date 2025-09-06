@@ -14,6 +14,7 @@ import type { TwinArrow } from "../__generated__/ts/TwinArrow";
 import UHoverCard from "../components/UHoverCard";
 import { Badge } from "../components/ui/badge";
 import { useTwinGraph } from "../context/NativeGraphContext";
+import { nodeEdgesChanged, nodeMetricsChanged } from "../native/NodeDiff";
 import type TwinGraph from "../native/TwinGraph";
 import type { Row } from "./TreeTableRows";
 
@@ -93,6 +94,7 @@ export default function TreeCell(props: Props) {
         {props.nodeName}
       </p>
       <InfoIcon twinArrow={twinArrow} twinGraph={twinGraph} />
+      <NodeDiffBadges twinArrow={twinArrow} />
     </div>
   );
 }
@@ -388,4 +390,34 @@ function getBadgeContent(
       return null;
     }
   }
+}
+
+function NodeDiffBadges({ twinArrow }: { twinArrow: TwinArrow }) {
+  const diff = twinArrow.node_diff;
+
+  const badges = [];
+
+  if (nodeEdgesChanged(diff)) {
+    badges.push(
+      <span
+        key="edges"
+        className="bg-accent text-xs py-0.5 px-2 me-1 rounded-lg"
+      >
+        edges changed
+      </span>,
+    );
+  }
+
+  if (nodeMetricsChanged(diff)) {
+    badges.push(
+      <span
+        key="metrics"
+        className="bg-accent text-xs py-0.5 px-2 me-1 rounded-lg"
+      >
+        metrics changed
+      </span>,
+    );
+  }
+
+  return badges;
 }
