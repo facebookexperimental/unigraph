@@ -1,18 +1,12 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-use std::collections::HashSet;
-use std::collections::VecDeque;
-
-use anyhow::Context;
 use anyhow::Result;
 
-use crate::ArrayGraph;
 use crate::GraphSide;
 use crate::NodeIDX;
 use crate::TwinGraph;
 use crate::graph_settings::GraphStructure;
 use crate::types::array_graph::Arrow;
-use crate::types::array_graph::edge_to_arrow;
 use crate::types::twin_graph::NodeDiff;
 
 /// When working with twin graphs we want to get the list of
@@ -46,131 +40,15 @@ pub(crate) fn get_twin_arrows_changed_nodes_only(
     node_idx: NodeIDX,
     graph_structure: GraphStructure,
 ) -> Result<Vec<TwinArrow>> {
-    let right_graph = tg
-        .graph(GraphSide::Right)
-        .context("arrows: changed nodes only")?;
+    let l =
+        tg.changed_nodes_graph_left
+            .get_arrows(tg, GraphSide::Left, node_idx, graph_structure)?;
 
-    let l = get_arrows_changed_nodes_only(
-        &tg.node_diff,
-        &tg.l,
-        right_graph,
-        node_idx,
-        graph_structure,
-        GraphSide::Left,
-    )?;
-    let r = get_arrows_changed_nodes_only(
-        &tg.node_diff,
-        &tg.l,
-        right_graph,
-        node_idx,
-        graph_structure,
-        GraphSide::Right,
-    )?;
-
-    #[cfg(test)]
-    {
-        use crate::tests::test_utils::print_arrow;
-        for la in &l {
-            eprintln!("Left: {}", print_arrow(&tg.l, la));
-        }
-
-        for ra in &r {
-            eprintln!("Right: {}", print_arrow(right_graph, ra));
-        }
-    }
+    let r =
+        tg.changed_nodes_graph_right
+            .get_arrows(tg, GraphSide::Right, node_idx, graph_structure)?;
 
     merge_arrows(tg, l, r)
-}
-
-pub(crate) fn get_arrows_changed_nodes_only(
-    node_diff: &[NodeDiff],
-    left: &ArrayGraph,
-    right: &ArrayGraph,
-    node_idx: NodeIDX,
-    graph_structure: GraphStructure,
-    side: GraphSide,
-) -> Result<Vec<Arrow>> {
-    let target_graph = match side {
-        GraphSide::Left => left,
-        GraphSide::Right => right,
-    };
-
-    let offset_graph = match graph_structure {
-        GraphStructure::Forward => &target_graph.edges_forward,
-        GraphStructure::Reverse => &target_graph.derived_state.edges_reverse,
-        GraphStructure::Dominator => target_graph.edges_dom(),
-    };
-
-    let mut visited: HashSet<NodeIDX> = HashSet::from([]);
-
-    let mut queue = VecDeque::from([(node_idx, 0usize)]);
-    let mut needles: Vec<Arrow> = Vec::new();
-
-    // We're doing a BFS here from the root to changed nodes only. (and cut the traversal
-    // when we hit a changed node).
-    while let Some((current_node_idx, current_depth)) = queue.pop_front() {
-        if !visited.insert(current_node_idx) {
-            continue;
-        }
-
-        for (edge, metadata) in offset_graph.edges_with_metadata(current_node_idx) {
-            let points_to = edge.points_to;
-
-            if visited.contains(&points_to) {
-                continue;
-            }
-
-            let edges_changed = node_diff[points_to].has_changed_edgses();
-            let metrics_changed = node_diff[points_to].has_changed_metrics();
-
-            let left_unreachable = left.node_flags[points_to].is_node_unreachable();
-            let right_unreachable = right.node_flags[points_to].is_node_unreachable();
-
-            let left_existence = node_diff[points_to].does_not_exist_in(GraphSide::Left);
-            let right_existence = node_diff[points_to].does_not_exist_in(GraphSide::Right);
-
-            let node_changed = edges_changed
-                || metrics_changed
-                || (left_unreachable != right_unreachable)
-                || (left_existence != right_existence);
-
-            // if it's a changed node we add the arrow for it and stop the traversal.
-            // we don't want to go any further than that.
-            if node_changed {
-                let needle = if current_node_idx == node_idx {
-                    // if it's a direct node we want to have the legit arrow with
-                    // al the info about the edge.
-                    edge_to_arrow(target_graph, current_node_idx, edge, metadata)?
-                } else {
-                    // if it's NOT a direct arrow and has some nodes in between our start
-                    // and the needle then we don't really want to show all the edge info
-                    // because this does not represent an actual edge in the graph.
-                    Arrow {
-                        tag: None,
-                        branch: None,
-                        properties: None,
-                        points_from: node_idx,
-                        points_to,
-                        excluded: false,
-                        message: None,
-                        skipped: current_depth,
-                    }
-                };
-
-                needles.push(needle);
-
-                // cut the traversal if we found a changed node
-                visited.insert(points_to);
-            } else {
-                // if it's not a changed node we continue the traversal
-                if !visited.contains(&points_to) {
-                    queue.push_back((points_to, current_depth + 1));
-                }
-            }
-        }
-    }
-
-    Ok(needles)
 }
 
 fn merge_arrows(tg: &TwinGraph, mut l: Vec<Arrow>, mut r: Vec<Arrow>) -> Result<Vec<TwinArrow>> {
@@ -288,7 +166,12 @@ mod tests {
                 r.as_ref().map(|a| print_arrow(ag, a)).unwrap_or_default()
             ));
         }
-        result.join("\n\n--------\n\n").trim().to_string()
+        result
+            .join("\n\n--------\n\n")
+            .lines()
+            .map(|l| l.trim_end().to_string())
+            .collect::<Vec<String>>()
+            .join("\n")
     }
 
     #[test]
@@ -344,19 +227,19 @@ R: J -> K
 
 --------
 
-L: 
+L:
 
 R: J -> Q
 
 --------
 
-L: 
+L:
 
 R: J -> R
 
 --------
 
-L: 
+L:
 
 R: J -> S
 "
@@ -407,7 +290,7 @@ R: H -> F
                 &get_twin_arrows(&tg, q_idx, GraphStructure::Reverse)?
             ),
             "
-L: 
+L:
 
 R: Q -> J
 "
@@ -441,7 +324,7 @@ R: A -> F
 
 --------
 
-L: 
+L:
 
 R: A -> T
 "

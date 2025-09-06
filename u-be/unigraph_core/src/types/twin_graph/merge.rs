@@ -12,6 +12,7 @@ use crate::TwinGraph;
 use crate::remap_utils::RemapContext;
 use crate::types::array_graph::array_graph_nodes::ArrayGraphNodesForGraphSide;
 use crate::types::twin_graph::NodeDiff;
+use crate::types::twin_graph::changed_nodes_graph::ChangedNodesGraph;
 
 pub fn merge_into_twin(
     left: ArrayGraphSerializable,
@@ -82,6 +83,8 @@ pub fn merge_into_twin(
     Ok(TwinGraph {
         node_names,
         node_diff: Arc::clone(&node_diff),
+        changed_nodes_graph_left: ChangedNodesGraph::new(),
+        changed_nodes_graph_right: ChangedNodesGraph::new(),
         l: left,
         r: Some(right),
     })

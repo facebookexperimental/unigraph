@@ -93,5 +93,5 @@ pub fn print_arrow(array_graph: &ArrayGraph, arrow: &Arrow) -> String {
     if arrow.skipped > 0 {
         result.push_str(&format!("\n   skipped: {}", arrow.skipped));
     }
-    result
+    result.trim().to_string()
 }

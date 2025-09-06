@@ -1,10 +1,10 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
+mod changed_nodes_graph;
 mod diff;
 mod get_arrows;
 mod merge;
 mod metrics;
-
 use std::sync::Arc;
 
 use anyhow::Context;
@@ -17,6 +17,7 @@ use crate::ArrayGraphSerializable;
 use crate::NodeIDX;
 use crate::graph_settings::GraphStructure;
 use crate::types::array_graph::array_graph_nodes::GraphSide;
+use crate::types::twin_graph::changed_nodes_graph::ChangedNodesGraph;
 use crate::types::twin_graph::get_arrows::TwinArrow;
 
 const MISSING_RIGHT_ERROR: &str = "TwinGraph: You are trying to access the right graph, but it is not present. \
@@ -32,6 +33,8 @@ pub struct TwinGraph {
     #[readonly]
     pub node_names: Arc<ArrayGraphNodes>,
     pub node_diff: Arc<Vec<NodeDiff>>,
+    pub changed_nodes_graph_left: ChangedNodesGraph,
+    pub changed_nodes_graph_right: ChangedNodesGraph,
 
     /// Left graph must always be present.
     #[readonly]
@@ -44,6 +47,8 @@ impl TwinGraph {
         Ok(Self {
             node_names: Arc::clone(&l.nodes.node_names),
             node_diff: Arc::clone(&l.nodes.node_diff),
+            changed_nodes_graph_left: ChangedNodesGraph::new(),
+            changed_nodes_graph_right: ChangedNodesGraph::new(),
             l,
             r: None,
         })

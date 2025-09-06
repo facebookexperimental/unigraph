@@ -2,6 +2,7 @@
 
 #![allow(clippy::collapsible_if)]
 #![allow(clippy::collapsible_else_if)]
+#![feature(once_cell_try)]
 mod array_graph_serializable;
 pub mod map_graph_builder;
 mod test_graph;
