@@ -67,6 +67,7 @@ pub fn edge_to_arrow(
             points_to: edge.points_to,
             excluded,
             message: render_message(ag, edge, metadata, points_from)?,
+            skipped: 0,
         })
     } else {
         match metadata {
@@ -81,6 +82,7 @@ pub fn edge_to_arrow(
                 points_to: edge.points_to,
                 excluded,
                 message: render_message(ag, edge, metadata, points_from)?,
+                skipped: 0,
             }),
             NonDirectedEdgeMetadata::Dynamic { properties, branch } => Ok(Arrow {
                 tag: None,
@@ -90,6 +92,7 @@ pub fn edge_to_arrow(
                 points_to: edge.points_to,
                 excluded,
                 message: render_message(ag, edge, metadata, points_from)?,
+                skipped: 0,
             }),
         }
     }

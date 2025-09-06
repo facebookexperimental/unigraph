@@ -83,6 +83,7 @@ export default function TreeCell(props: Props) {
     <div className={clsx("flex items-center w-full h-full", color)}>
       {padding}
       {chevron}
+      <SkippedNodes twinGraph={twinGraph} twinArrow={twinArrow} />
       <ArrowBadge twinArrow={twinArrow} />
       <p
         className={clsx(
@@ -420,4 +421,28 @@ function NodeDiffBadges({ twinArrow }: { twinArrow: TwinArrow }) {
   }
 
   return badges;
+}
+
+function SkippedNodes({
+  twinGraph,
+  twinArrow,
+}: {
+  twinGraph: TwinGraph;
+  twinArrow: TwinArrow;
+}) {
+  if (twinGraph.r == null) {
+    return null;
+  }
+
+  const min = Math.min(twinArrow.l?.skipped ?? 0, twinArrow.r?.skipped ?? 0);
+
+  if (min > 0) {
+    return (
+      <span className="bg-primary text-background text-xs py-0.5 px-2 me-1 rounded-lg">
+        +{min} nodes
+      </span>
+    );
+  }
+
+  return null;
 }

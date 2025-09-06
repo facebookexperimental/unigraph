@@ -594,6 +594,7 @@ class TreeTableCtx {
         points_to_unreachable: false,
         excluded: false,
         message: undefined,
+        skipped: 0,
       };
 
       return {

@@ -89,5 +89,9 @@ pub fn print_arrow(array_graph: &ArrayGraph, arrow: &Arrow) -> String {
     if let Some(message) = &arrow.message {
         result.push_str(&format!("\n   message: {message}"));
     }
+
+    if arrow.skipped > 0 {
+        result.push_str(&format!("\n   skipped: {}", arrow.skipped));
+    }
     result
 }

@@ -23,4 +23,30 @@ export interface Arrow {
   points_to: NodeIDX;
   excluded: boolean;
   message?: string | undefined;
+  /**
+   * Relevant only for cases where arrows represent compressed path.
+   * e.g. when we show Changed Nodes only each row in the tree table
+   * represent a path from one node to another with potential nodes
+   * in between skipped. This value will represent how many nodes
+   * were skipped (shortest path)
+   * 0 means direct edge.
+   * 
+   * Example:
+   * 
+   * Actual Graph:
+   *         A
+   *       /  \
+   *      B    C
+   *       \  /
+   *         D     <- only changed node
+   * 
+   * Graph with changed nodes only:
+   *         A
+   *         |
+   *         D     <- only changed node
+   * 
+   * The arrow will look like: { from: A, to: D, skipped: 1 }
+   * where `1` means that D is at least 1 skippe node away from A
+   */
+  skipped: number;
 }

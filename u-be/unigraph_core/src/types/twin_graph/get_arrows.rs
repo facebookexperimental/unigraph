@@ -153,6 +153,7 @@ pub(crate) fn get_arrows_changed_nodes_only(
                         points_to,
                         excluded: false,
                         message: None,
+                        skipped: current_depth,
                     }
                 };
 
@@ -282,9 +283,9 @@ mod tests {
         for twin_arrow in twin_arrows {
             let TwinArrow { l, r, .. } = twin_arrow;
             result.push(format!(
-                "L: {:?}\n\nR: {:?}",
-                l.as_ref().map(|a| print_arrow(ag, a)),
-                r.as_ref().map(|a| print_arrow(ag, a))
+                "L: {}\n\nR: {}",
+                l.as_ref().map(|a| print_arrow(ag, a)).unwrap_or_default(),
+                r.as_ref().map(|a| print_arrow(ag, a)).unwrap_or_default()
             ));
         }
         result.join("\n\n--------\n\n").trim().to_string()
@@ -302,31 +303,31 @@ mod tests {
                 &get_twin_arrows(&tg, f_idx, GraphStructure::Forward)?
             ),
             r#"
-L: Some("F -> G\
-   branch: b1\
-   properties: {\\"type\\": \\"DDD\\"}")
+L: F -> G
+   branch: b1
+   properties: {"type": "DDD"}
 
-R: Some("F -> G\
-   branch: b1\
-   properties: {\\"type\\": \\"DDD\\"}")
-
---------
-
-L: Some("F -> H\
-   branch: b1\
-   properties: {\\"type\\": \\"DDD\\"}")
-
-R: Some("F -> H")
+R: F -> G
+   branch: b1
+   properties: {"type": "DDD"}
 
 --------
 
-L: Some("F -> I\
-   branch: b2\
-   properties: {\\"type\\": \\"DDD\\"}")
+L: F -> H
+   branch: b1
+   properties: {"type": "DDD"}
 
-R: Some("F -> I\
-   branch: b2\
-   properties: {\\"type\\": \\"DDD\\"}")
+R: F -> H
+
+--------
+
+L: F -> I
+   branch: b2
+   properties: {"type": "DDD"}
+
+R: F -> I
+   branch: b2
+   properties: {"type": "DDD"}
 "#
         );
         let j_idx = tg.node_names.name_to_idx_log("J").unwrap();
@@ -336,29 +337,29 @@ R: Some("F -> I\
                 &tg.l,
                 &get_twin_arrows(&tg, j_idx, GraphStructure::Forward)?
             ),
-            r#"
-L: Some("J -> K")
+            "
+L: J -> K
 
-R: Some("J -> K")
-
---------
-
-L: None
-
-R: Some("J -> Q")
+R: J -> K
 
 --------
 
-L: None
+L: 
 
-R: Some("J -> R")
+R: J -> Q
 
 --------
 
-L: None
+L: 
 
-R: Some("J -> S")
-"#
+R: J -> R
+
+--------
+
+L: 
+
+R: J -> S
+"
         );
         let b_idx = tg.node_names.name_to_idx_log("B").unwrap();
 
@@ -367,21 +368,21 @@ R: Some("J -> S")
                 &tg.l,
                 &get_twin_arrows(&tg, b_idx, GraphStructure::Forward)?
             ),
-            r#"
-L: Some("B -> C\
-   tag: BL")
+            "
+L: B -> C
+   tag: BL
 
-R: Some("B -> C\
-   tag: BL")
+R: B -> C
+   tag: BL
 
 --------
 
-L: Some("B -> J\
-   tag: RD")
+L: B -> J
+   tag: RD
 
-R: Some("B -> J\
-   tag: RDFD")
-"#
+R: B -> J
+   tag: RDFD
+"
         );
 
         let h_idx = tg.node_names.name_to_idx_log("H").unwrap();
@@ -391,11 +392,11 @@ R: Some("B -> J\
                 &get_twin_arrows(&tg, h_idx, GraphStructure::Reverse)?
             ),
             r#"
-L: Some("H -> F\
-   branch: b1\
-   properties: {\\"type\\": \\"DDD\\"}")
+L: H -> F
+   branch: b1
+   properties: {"type": "DDD"}
 
-R: Some("H -> F")
+R: H -> F
 "#
         );
 
@@ -405,11 +406,11 @@ R: Some("H -> F")
                 &tg.l,
                 &get_twin_arrows(&tg, q_idx, GraphStructure::Reverse)?
             ),
-            r#"
-L: None
+            "
+L: 
 
-R: Some("Q -> J")
-"#
+R: Q -> J
+"
         );
         Ok(())
     }
@@ -425,23 +426,25 @@ R: Some("Q -> J")
                 &tg.l,
                 &get_twin_arrows_changed_nodes_only(&tg, a_idx, GraphStructure::Forward)?
             ),
-            r#"
-L: Some("A -> B")
+            "
+L: A -> B
 
-R: Some("A -> B")
-
---------
-
-L: Some("A -> F")
-
-R: Some("A -> F")
+R: A -> B
 
 --------
 
-L: None
+L: A -> F
+   skipped: 1
 
-R: Some("A -> T")
-"#
+R: A -> F
+   skipped: 1
+
+--------
+
+L: 
+
+R: A -> T
+"
         );
         Ok(())
     }

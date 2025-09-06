@@ -18,6 +18,7 @@ function twinArrow(fromIDX: number, toIDX: number): TwinArrow {
       points_to: toIDX,
       excluded: false,
       message: undefined,
+      skipped: 0,
     },
     r: undefined,
   };
