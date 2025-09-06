@@ -69,11 +69,16 @@ export default class TwinGraph {
     return this.transitiveCountDeltaCache.getForIDXs(nodeIDX);
   }
 
-  getArrowPairs(
+  getTwinArrows(
     nodeIDX: NodeIDX,
     graph_structure: GraphStructureU8,
+    changedNodesOnly: boolean,
   ): TwinArrow[] {
-    const arrowsJSON = get_arrow_pairs(nodeIDX, graph_structure, false);
+    const arrowsJSON = get_arrow_pairs(
+      nodeIDX,
+      graph_structure,
+      changedNodesOnly,
+    );
     const parsed: TwinArrow[] = JSON.parse(arrowsJSON);
     return parsed;
   }

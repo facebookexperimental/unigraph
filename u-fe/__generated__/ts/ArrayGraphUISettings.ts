@@ -15,6 +15,32 @@ export interface ArrayGraphUISettings {
   columns?: ColumnSettings | undefined;
   graph_structure?: GraphStructure | undefined;
   /**
+   * Only used in delta view when comparing two graphs.
+   * This will compress paths that graph table renders
+   * and only show nodes that have changed between the two graphs
+   * while skipping a lot of nodes in between.
+   * 
+   * We want to find the CLOSEST (possibly not direct) children
+   * in the transitive dependencies of the node so we can show changed
+   * nodes graph only.
+   * 
+   * E.g. if we have two graphs we're comparing:
+   * 
+   * A          A
+   *   B          B
+   *     C          C
+   *       D          F    <- D was removed and F was added
+   * 
+   * 
+   * The actual change is hidden deep down in the node. We would want to skip
+   * showing B because it has no changes, and only show C, D and F because they
+   * 
+   * A          A
+   *   C          C
+   *     D          F
+   */
+  show_changed_nodes_only?: boolean | undefined;
+  /**
    * What nodes should we use as the "start" of the graph
    * when we render the table.
    */

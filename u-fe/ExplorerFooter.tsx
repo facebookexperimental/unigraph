@@ -6,6 +6,7 @@ import {
   ArrowUpToLine,
   ChartNoAxesCombined,
   CircleDollarSign,
+  FileDiff,
   Layers,
   List,
   Network,
@@ -33,7 +34,7 @@ import {
   KeyboardShortcutLabel,
 } from "./context/GlobalKeyboardShortcutsContext";
 import { useGraphSettings } from "./context/GraphSettingsContext";
-import { useNativeGraphL } from "./context/NativeGraphContext";
+import { useNativeGraphL, useTwinGraph } from "./context/NativeGraphContext";
 import { useSelectedNodes } from "./context/SelectedNodesContext";
 import { useTVC } from "./context/TraversalConfigContext";
 import formatMetric from "./lib/formatMetric";
@@ -256,7 +257,7 @@ function Toggles() {
         </UHoverCard>
       )}
 
-      <div className="border-l border border-accent py-3 h-full w-0" />
+      <Separator />
 
       <UToggleButton
         tooltip={
@@ -302,6 +303,7 @@ function Toggles() {
       >
         <TreePalm />
       </UToggleButton>
+      <ChangedNodesOnlyToggle />
     </div>
   );
 }
@@ -730,4 +732,39 @@ function BackToTopButton() {
       </Button>
     </UTooltip>
   );
+}
+
+function ChangedNodesOnlyToggle() {
+  const twinGraph = useTwinGraph();
+  const [graphSettings, setGraphSettings] = useGraphSettings();
+
+  if (twinGraph.r == null) {
+    return null;
+  }
+
+  return (
+    <>
+      <Separator />
+      <UToggleButton
+        className="cursor-pointer"
+        tooltip="Show only changed nodes"
+        selected={graphSettings.ui_settings?.show_changed_nodes_only === true}
+        onSelectedChange={(selected) => {
+          setGraphSettings({
+            ...graphSettings,
+            ui_settings: {
+              ...graphSettings.ui_settings,
+              show_changed_nodes_only: selected ? true : undefined,
+            },
+          });
+        }}
+      >
+        <FileDiff />
+      </UToggleButton>
+    </>
+  );
+}
+
+function Separator() {
+  return <div className="border-l border border-accent py-3 h-full w-0" />;
 }

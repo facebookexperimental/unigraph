@@ -101,7 +101,7 @@ pub(crate) fn get_arrows_changed_nodes_only(
         GraphStructure::Dominator => target_graph.edges_dom(),
     };
 
-    let mut visited: HashSet<NodeIDX> = HashSet::from([node_idx]);
+    let mut visited: HashSet<NodeIDX> = HashSet::from([]);
 
     let mut queue = VecDeque::from([(node_idx, 0usize)]);
     let mut needles: Vec<Arrow> = Vec::new();
@@ -109,15 +109,30 @@ pub(crate) fn get_arrows_changed_nodes_only(
     // We're doing a BFS here from the root to changed nodes only. (and cut the traversal
     // when we hit a changed node).
     while let Some((current_node_idx, current_depth)) = queue.pop_front() {
+        if !visited.insert(current_node_idx) {
+            continue;
+        }
+
         for (edge, metadata) in offset_graph.edges_with_metadata(current_node_idx) {
             let points_to = edge.points_to;
+
+            if visited.contains(&points_to) {
+                continue;
+            }
+
             let edges_changed = node_diff[points_to].has_changed_edgses();
             let metrics_changed = node_diff[points_to].has_changed_metrics();
 
-            let left_unreachable = left.is_node_unreachable(points_to);
-            let right_unreachable = right.is_node_unreachable(points_to);
-            let node_changed =
-                edges_changed || metrics_changed || left_unreachable != right_unreachable;
+            let left_unreachable = left.node_flags[points_to].is_node_unreachable();
+            let right_unreachable = right.node_flags[points_to].is_node_unreachable();
+
+            let left_existence = node_diff[points_to].does_not_exist_in(GraphSide::Left);
+            let right_existence = node_diff[points_to].does_not_exist_in(GraphSide::Right);
+
+            let node_changed = edges_changed
+                || metrics_changed
+                || (left_unreachable != right_unreachable)
+                || (left_existence != right_existence);
 
             // if it's a changed node we add the arrow for it and stop the traversal.
             // we don't want to go any further than that.
@@ -142,9 +157,12 @@ pub(crate) fn get_arrows_changed_nodes_only(
                 };
 
                 needles.push(needle);
+
+                // cut the traversal if we found a changed node
+                visited.insert(points_to);
             } else {
                 // if it's not a changed node we continue the traversal
-                if visited.insert(points_to) {
+                if !visited.contains(&points_to) {
                     queue.push_back((points_to, current_depth + 1));
                 }
             }

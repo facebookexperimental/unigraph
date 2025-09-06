@@ -298,7 +298,7 @@ export function TreeTable(props: {
                   }
                 }}
                 canExpand={
-                  props.treeTableGraph.getArrowPairs(row.twinArrow.points_to)
+                  props.treeTableGraph.getTwinArrows(row.twinArrow.points_to)
                     .length > 0
                 }
                 nodeName={column.c.getNodeName(row.twinArrow.points_to)}
@@ -622,7 +622,7 @@ class TreeTableCtx {
       return;
     }
 
-    const arrows = this.treeTableGraph.getArrowPairs(row.twinArrow.points_to);
+    const arrows = this.treeTableGraph.getTwinArrows(row.twinArrow.points_to);
 
     const childrenIDXs = arrows.map((a) => a.points_to);
 
@@ -876,7 +876,7 @@ class TreeTableCtx {
         // pretty heavy and we can optimize this to a simple
         // direct memory access check on a cached datastructure
         // or something.
-        this.treeTableGraph.getArrowPairs(selectedRow.twinArrow.points_to)
+        this.treeTableGraph.getTwinArrows(selectedRow.twinArrow.points_to)
           .length === 0 ||
         selectedRow.isCycle
       ) {
@@ -891,7 +891,7 @@ class TreeTableCtx {
     const selectedRowIDX = expandToPath(
       this.rows,
       path,
-      this.treeTableGraph.getArrowPairs,
+      this.treeTableGraph.getTwinArrows,
       this.sortState,
     );
 
@@ -935,7 +935,7 @@ class TreeTableCtx {
       for (let i = 0; i < currentPath.length - 1; i++) {
         const currentNodeIDX = currentPath[i] as NodeIDX;
         const nextNodeIDX = currentPath[i + 1] as NodeIDX;
-        const arrows = this.treeTableGraph.getArrowPairs(currentNodeIDX);
+        const arrows = this.treeTableGraph.getTwinArrows(currentNodeIDX);
 
         if (arrows.find((a) => a.points_to === nextNodeIDX) == null) {
           // our next node is not a child of the current node, which means the path is invalid
@@ -1046,7 +1046,7 @@ export class TreeTablePathSelector {
 /// in the tree table and how to havigate it
 type TreeTableGraph = {
   roots: Readonly<NodeIDX[]>;
-  getArrowPairs: (idx: NodeIDX) => TwinArrow[];
+  getTwinArrows: (idx: NodeIDX) => TwinArrow[];
   getShortestPath: (from: readonly NodeIDX[], to: NodeIDX) => NodeIDX[] | null;
   graphStructure: GraphStructure;
   treeTableEntryPoints: ArrayGraphUISettingsTreeTableEntryPoints;
@@ -1056,7 +1056,7 @@ type TreeTableGraph = {
 
 const EMPTY_TREE_TABLE_GRAPH: TreeTableGraph = {
   roots: [],
-  getArrowPairs: () => [],
+  getTwinArrows: () => [],
   getShortestPath: () => null,
   graphStructure: "Forward",
   treeTableEntryPoints: "Determine",

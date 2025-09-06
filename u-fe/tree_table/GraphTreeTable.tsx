@@ -22,23 +22,37 @@ export default function GraphTreeTable(props: {
   const graphStructure = settings.ui_settings?.graph_structure ?? "Forward";
   const treeTableEntryPoints =
     settings.ui_settings?.entry_points ?? "Determine";
+  const changedNodesOnly =
+    settings.ui_settings?.show_changed_nodes_only === true;
 
-  const getArrowPairs = useCallback(
+  const getTwinArrows = useCallback(
     (nodeIDX: NodeIDX) => {
       switch (graphStructure) {
         case "Forward":
-          return twinGraph.getArrowPairs(nodeIDX, GRAPH_STRUCTURE.FORWARD);
+          return twinGraph.getTwinArrows(
+            nodeIDX,
+            GRAPH_STRUCTURE.FORWARD,
+            changedNodesOnly,
+          );
         case "Dominator":
-          return twinGraph.getArrowPairs(nodeIDX, GRAPH_STRUCTURE.DOMINATOR);
+          return twinGraph.getTwinArrows(
+            nodeIDX,
+            GRAPH_STRUCTURE.DOMINATOR,
+            changedNodesOnly,
+          );
         case "Reverse":
-          return twinGraph.getArrowPairs(nodeIDX, GRAPH_STRUCTURE.REVERSE);
+          return twinGraph.getTwinArrows(
+            nodeIDX,
+            GRAPH_STRUCTURE.REVERSE,
+            changedNodesOnly,
+          );
         default: {
           const _exhaustiveCheck: never = graphStructure;
           throw new Error(`Unknown column type: ${_exhaustiveCheck}`);
         }
       }
     },
-    [twinGraph, graphStructure],
+    [twinGraph, graphStructure, changedNodesOnly],
   );
 
   const getShortestPath = useCallback(
@@ -73,7 +87,7 @@ export default function GraphTreeTable(props: {
 
   const treeTableGraph = useMemo(() => {
     return {
-      getArrowPairs,
+      getTwinArrows,
       roots: props.roots,
       getShortestPath,
       graphStructure,
@@ -83,7 +97,7 @@ export default function GraphTreeTable(props: {
   }, [
     twinGraph,
     props.roots,
-    getArrowPairs,
+    getTwinArrows,
     graphStructure,
     getShortestPath,
     treeTableEntryPoints,
