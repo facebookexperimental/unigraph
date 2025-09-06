@@ -83,8 +83,14 @@ impl TwinGraph {
         &self,
         node_idx: NodeIDX,
         graph_structure: GraphStructure,
+        changed_node_only: bool,
     ) -> Result<Vec<TwinArrow>> {
-        get_arrows::get_arrows_pairs(self, node_idx, graph_structure)
+        if changed_node_only {
+            get_arrows::get_twin_arrows_changed_nodes_only(self, node_idx, graph_structure)
+        } else {
+            get_arrows::get_twin_arrows(self, node_idx, graph_structure)
+        }
+        .context("get_arrow_pairs")
     }
 
     pub fn search_name_fuzzy<'a>(

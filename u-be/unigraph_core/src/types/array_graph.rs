@@ -42,6 +42,7 @@ use crate::traversal::apply_to_array_graph::apply_traversal_config_to_array_grap
 use crate::traversal::reachable_subgraph::get_reachable_subgraph_unconfigured;
 use crate::types::NodeName;
 use crate::types::TierName;
+pub use crate::types::array_graph::array_graph_arrows::edge_to_arrow;
 use crate::types::array_graph::array_graph_arrows::get_arrows;
 use crate::types::array_graph::array_graph_derived_state::ArrayGraphDerivedState;
 use crate::types::array_graph::array_graph_determine_entrypoints::determine_entrypoints;

@@ -51,7 +51,7 @@ pub struct ArrayGraphNodesForGraphSide {
 }
 
 /// Enum that represents one of the sides of the twin graph, either left graph or right graph.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum GraphSide {
     Left = 0b0001,
     Right = 0b0010,

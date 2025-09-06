@@ -73,7 +73,7 @@ export default class TwinGraph {
     nodeIDX: NodeIDX,
     graph_structure: GraphStructureU8,
   ): TwinArrow[] {
-    const arrowsJSON = get_arrow_pairs(nodeIDX, graph_structure);
+    const arrowsJSON = get_arrow_pairs(nodeIDX, graph_structure, false);
     const parsed: TwinArrow[] = JSON.parse(arrowsJSON);
     return parsed;
   }

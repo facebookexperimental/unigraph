@@ -1,7 +1,7 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 #![allow(clippy::collapsible_if)]
-
+#![allow(clippy::collapsible_else_if)]
 mod array_graph_serializable;
 pub mod map_graph_builder;
 mod test_graph;

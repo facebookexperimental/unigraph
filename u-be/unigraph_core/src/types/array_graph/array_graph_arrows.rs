@@ -42,48 +42,55 @@ pub fn get_arrows(
 
     offset_graph
         .edges_with_metadata(node_idx)
-        .map(|(edge, metadata)| {
-            let excluded = edge.flags.is_excluded();
-            if !edge.flags.is_tagged_or_dynamic() {
-                Ok(Arrow {
-                    tag: None,
-                    branch: None,
-                    properties: None,
-                    points_from: node_idx,
-                    points_to: edge.points_to,
-                    excluded,
-                    message: render_message(ag, edge, metadata, node_idx)?,
-                })
-            } else {
-                match metadata {
-                    NonDirectedEdgeMetadata::Directed => {
-                        anyhow::bail!("Directed edge should not have metadata")
-                    }
-                    NonDirectedEdgeMetadata::Tagged { tag } => Ok(Arrow {
-                        tag: Some(tag.clone()),
-                        branch: None,
-                        properties: None,
-                        points_from: node_idx,
-                        points_to: edge.points_to,
-                        excluded,
-                        message: render_message(ag, edge, metadata, node_idx)?,
-                    }),
-                    NonDirectedEdgeMetadata::Dynamic { properties, branch } => Ok(Arrow {
-                        tag: None,
-                        branch: Some(branch.clone()),
-                        properties: Some(properties.clone()),
-                        points_from: node_idx,
-                        points_to: edge.points_to,
-                        excluded,
-                        message: render_message(ag, edge, metadata, node_idx)?,
-                    }),
-                }
-            }
-        })
+        .map(|(edge, metadata)| edge_to_arrow(ag, node_idx, edge, metadata))
         .collect::<Result<Vec<Arrow>>>()
         .with_context(|| {
             format!(
                 "Failed to get arrows for node {node_idx} in graph structure {graph_structure:?}"
             )
         })
+}
+
+pub fn edge_to_arrow(
+    ag: &ArrayGraph,
+    points_from: NodeIDX,
+    edge: Edge,
+    metadata: &NonDirectedEdgeMetadata,
+) -> Result<Arrow> {
+    let excluded = edge.flags.is_excluded();
+    if !edge.flags.is_tagged_or_dynamic() {
+        Ok(Arrow {
+            tag: None,
+            branch: None,
+            properties: None,
+            points_from,
+            points_to: edge.points_to,
+            excluded,
+            message: render_message(ag, edge, metadata, points_from)?,
+        })
+    } else {
+        match metadata {
+            NonDirectedEdgeMetadata::Directed => {
+                anyhow::bail!("Directed edge should not have metadata")
+            }
+            NonDirectedEdgeMetadata::Tagged { tag } => Ok(Arrow {
+                tag: Some(tag.clone()),
+                branch: None,
+                properties: None,
+                points_from,
+                points_to: edge.points_to,
+                excluded,
+                message: render_message(ag, edge, metadata, points_from)?,
+            }),
+            NonDirectedEdgeMetadata::Dynamic { properties, branch } => Ok(Arrow {
+                tag: None,
+                branch: Some(branch.clone()),
+                properties: Some(properties.clone()),
+                points_from,
+                points_to: edge.points_to,
+                excluded,
+                message: render_message(ag, edge, metadata, points_from)?,
+            }),
+        }
+    }
 }

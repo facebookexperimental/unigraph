@@ -1,11 +1,18 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
+use std::collections::HashSet;
+use std::collections::VecDeque;
+
+use anyhow::Context;
 use anyhow::Result;
 
+use crate::ArrayGraph;
+use crate::GraphSide;
 use crate::NodeIDX;
 use crate::TwinGraph;
 use crate::graph_settings::GraphStructure;
 use crate::types::array_graph::Arrow;
+use crate::types::array_graph::edge_to_arrow;
 use crate::types::twin_graph::NodeDiff;
 
 /// When working with twin graphs we want to get the list of
@@ -19,18 +26,135 @@ use crate::types::twin_graph::NodeDiff;
 /// (Some<Arrow>, None) or (None, Some<Arrow>).
 ///
 /// (None, None) is not a valid case.
-pub(crate) fn get_arrows_pairs(
+pub(crate) fn get_twin_arrows(
     tg: &TwinGraph,
     node_idx: NodeIDX,
     graph_structure: GraphStructure,
 ) -> Result<Vec<TwinArrow>> {
-    let mut l = tg.l.get_arrows(node_idx, graph_structure)?;
-    let mut r =
+    let l = tg.l.get_arrows(node_idx, graph_structure)?;
+    let r =
         tg.r.as_ref()
             .map(|r| r.get_arrows(node_idx, graph_structure))
             .transpose()?
             .unwrap_or_default();
 
+    merge_arrows(tg, l, r)
+}
+
+pub(crate) fn get_twin_arrows_changed_nodes_only(
+    tg: &TwinGraph,
+    node_idx: NodeIDX,
+    graph_structure: GraphStructure,
+) -> Result<Vec<TwinArrow>> {
+    let right_graph = tg
+        .graph(GraphSide::Right)
+        .context("arrows: changed nodes only")?;
+
+    let l = get_arrows_changed_nodes_only(
+        &tg.node_diff,
+        &tg.l,
+        right_graph,
+        node_idx,
+        graph_structure,
+        GraphSide::Left,
+    )?;
+    let r = get_arrows_changed_nodes_only(
+        &tg.node_diff,
+        &tg.l,
+        right_graph,
+        node_idx,
+        graph_structure,
+        GraphSide::Right,
+    )?;
+
+    #[cfg(test)]
+    {
+        use crate::tests::test_utils::print_arrow;
+        for la in &l {
+            eprintln!("Left: {}", print_arrow(&tg.l, la));
+        }
+
+        for ra in &r {
+            eprintln!("Right: {}", print_arrow(right_graph, ra));
+        }
+    }
+
+    merge_arrows(tg, l, r)
+}
+
+pub(crate) fn get_arrows_changed_nodes_only(
+    node_diff: &[NodeDiff],
+    left: &ArrayGraph,
+    right: &ArrayGraph,
+    node_idx: NodeIDX,
+    graph_structure: GraphStructure,
+    side: GraphSide,
+) -> Result<Vec<Arrow>> {
+    let target_graph = match side {
+        GraphSide::Left => left,
+        GraphSide::Right => right,
+    };
+
+    let offset_graph = match graph_structure {
+        GraphStructure::Forward => &target_graph.edges_forward,
+        GraphStructure::Reverse => &target_graph.derived_state.edges_reverse,
+        GraphStructure::Dominator => target_graph.edges_dom(),
+    };
+
+    let mut visited: HashSet<NodeIDX> = HashSet::from([node_idx]);
+
+    let mut queue = VecDeque::from([(node_idx, 0usize)]);
+    let mut needles: Vec<Arrow> = Vec::new();
+
+    // We're doing a BFS here from the root to changed nodes only. (and cut the traversal
+    // when we hit a changed node).
+    while let Some((current_node_idx, current_depth)) = queue.pop_front() {
+        for (edge, metadata) in offset_graph.edges_with_metadata(current_node_idx) {
+            let points_to = edge.points_to;
+            let edges_changed = node_diff[points_to].has_changed_edgses();
+            let metrics_changed = node_diff[points_to].has_changed_metrics();
+
+            let left_unreachable = left.is_node_unreachable(points_to);
+            let right_unreachable = right.is_node_unreachable(points_to);
+            let node_changed =
+                edges_changed || metrics_changed || left_unreachable != right_unreachable;
+
+            // if it's a changed node we add the arrow for it and stop the traversal.
+            // we don't want to go any further than that.
+            if node_changed {
+                let needle = if current_node_idx == node_idx {
+                    // if it's a direct node we want to have the legit arrow with
+                    // al the info about the edge.
+                    edge_to_arrow(target_graph, current_node_idx, edge, metadata)?
+                } else {
+                    // if it's NOT a direct arrow and has some nodes in between our start
+                    // and the needle then we don't really want to show all the edge info
+                    // because this does not represent an actual edge in the graph.
+                    Arrow {
+                        tag: None,
+                        branch: None,
+                        properties: None,
+                        points_from: node_idx,
+                        points_to,
+                        excluded: false,
+                        message: None,
+                    }
+                };
+
+                needles.push(needle);
+            } else {
+                // if it's not a changed node we continue the traversal
+                if visited.insert(points_to) {
+                    queue.push_back((points_to, current_depth + 1));
+                }
+            }
+        }
+    }
+
+    Ok(needles)
+}
+
+fn merge_arrows(tg: &TwinGraph, mut l: Vec<Arrow>, mut r: Vec<Arrow>) -> Result<Vec<TwinArrow>> {
     l.sort_by(|a, b| a.points_to.cmp(&b.points_to));
     r.sort_by(|a, b| a.points_to.cmp(&b.points_to));
 
@@ -149,7 +273,7 @@ mod tests {
     }
 
     #[test]
-    fn test_get_arrows_pairs() -> Result<()> {
+    fn test_get_twin_arrows() -> Result<()> {
         let tg = make_twin_graph()?;
 
         let f_idx = tg.node_names.name_to_idx_log("F").unwrap();
@@ -157,7 +281,7 @@ mod tests {
         snapshot!(
             print_twin_arrows(
                 &tg.l,
-                &get_arrows_pairs(&tg, f_idx, GraphStructure::Forward)?
+                &get_twin_arrows(&tg, f_idx, GraphStructure::Forward)?
             ),
             r#"
 L: Some("F -> G\
@@ -192,7 +316,7 @@ R: Some("F -> I\
         snapshot!(
             print_twin_arrows(
                 &tg.l,
-                &get_arrows_pairs(&tg, j_idx, GraphStructure::Forward)?
+                &get_twin_arrows(&tg, j_idx, GraphStructure::Forward)?
             ),
             r#"
 L: Some("J -> K")
@@ -223,7 +347,7 @@ R: Some("J -> S")
         snapshot!(
             print_twin_arrows(
                 &tg.l,
-                &get_arrows_pairs(&tg, b_idx, GraphStructure::Forward)?
+                &get_twin_arrows(&tg, b_idx, GraphStructure::Forward)?
             ),
             r#"
 L: Some("B -> C\
@@ -246,7 +370,7 @@ R: Some("B -> J\
         snapshot!(
             print_twin_arrows(
                 &tg.l,
-                &get_arrows_pairs(&tg, h_idx, GraphStructure::Reverse)?
+                &get_twin_arrows(&tg, h_idx, GraphStructure::Reverse)?
             ),
             r#"
 L: Some("H -> F\
@@ -261,12 +385,44 @@ R: Some("H -> F")
         snapshot!(
             print_twin_arrows(
                 &tg.l,
-                &get_arrows_pairs(&tg, q_idx, GraphStructure::Reverse)?
+                &get_twin_arrows(&tg, q_idx, GraphStructure::Reverse)?
             ),
             r#"
 L: None
 
 R: Some("Q -> J")
+"#
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_get_twin_arrows_changed_nodes_only() -> Result<()> {
+        let tg = make_twin_graph()?;
+
+        let a_idx = tg.node_names.name_to_idx_log("A").unwrap();
+
+        snapshot!(
+            print_twin_arrows(
+                &tg.l,
+                &get_twin_arrows_changed_nodes_only(&tg, a_idx, GraphStructure::Forward)?
+            ),
+            r#"
+L: Some("A -> B")
+
+R: Some("A -> B")
+
+--------
+
+L: Some("A -> F")
+
+R: Some("A -> F")
+
+--------
+
+L: None
+
+R: Some("A -> T")
 "#
         );
         Ok(())

@@ -344,13 +344,18 @@ pub fn get_available_tiers(side: u32) -> Result<Vec<String>, WasmJSError> {
 
 // TODO: we will need to build combined arrows and dedup
 #[wasm_bindgen]
-pub fn get_arrow_pairs(node_idx: usize, graph_structure: u8) -> Result<String, WasmJSError> {
+pub fn get_arrow_pairs(
+    node_idx: usize,
+    graph_structure: u8,
+    changed_nodes_only: bool,
+) -> Result<String, WasmJSError> {
     let graph_state = GlobalGraphState::graph_state().get();
     let graph_structure = GraphStructure::from_u8(graph_structure)?;
     let node_idx = NodeIDX::from(node_idx);
-    let arrow_pairs = graph_state
-        .twin_graph
-        .get_arrow_pairs(node_idx, graph_structure)?;
+    let arrow_pairs =
+        graph_state
+            .twin_graph
+            .get_arrow_pairs(node_idx, graph_structure, changed_nodes_only)?;
 
     Ok(serde_json::to_string(&arrow_pairs).context("Failed to serialize arrows")?)
 }

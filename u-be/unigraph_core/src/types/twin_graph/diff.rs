@@ -16,6 +16,14 @@ bitflags::bitflags! {
 }
 
 impl NodeDiff {
+    pub fn has_changed_edgses(&self) -> bool {
+        self.contains(NodeDiff::EDGES_CHANGED)
+    }
+
+    pub fn has_changed_metrics(&self) -> bool {
+        self.contains(NodeDiff::METRICS_CHANGED)
+    }
+
     #[inline(always)]
     pub fn does_not_exist_in(self, side: GraphSide) -> bool {
         match side {
