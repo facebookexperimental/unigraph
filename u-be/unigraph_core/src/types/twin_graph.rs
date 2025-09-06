@@ -1,5 +1,6 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
+mod diff;
 mod get_arrows;
 mod merge;
 mod metrics;
@@ -8,6 +9,7 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use anyhow::Result;
+pub use diff::NodeDiff;
 
 use crate::ArrayGraph;
 use crate::ArrayGraphNodes;
@@ -27,30 +29,21 @@ const MISSING_RIGHT_ERROR: &str = "TwinGraph: You are trying to access the right
 /// We use this struct as a first class citizen even if we only have one graph.
 #[readonly::make]
 pub struct TwinGraph {
+    #[readonly]
+    pub node_names: Arc<ArrayGraphNodes>,
+    pub node_diff: Arc<Vec<NodeDiff>>,
+
     /// Left graph must always be present.
     #[readonly]
     pub l: ArrayGraph,
     pub r: Option<ArrayGraph>,
-    #[readonly]
-    pub node_names: Arc<ArrayGraphNodes>,
-}
-
-bitflags::bitflags! {
-    /// Flags that represent whether a node does not exist in one of the
-    /// sides of the twin graph.
-    #[repr(transparent)]
-    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-    pub struct NodeExistenceFlags: u32 {
-        const NOT_IN_LEFT =  GraphSide::Left as u32;
-        const NOT_IN_RIGHT = GraphSide::Right as u32;
-        const IN_BOTH = 0b0000;
-    }
 }
 
 impl TwinGraph {
     pub fn from_one(l: ArrayGraph) -> Result<Self> {
         Ok(Self {
             node_names: Arc::clone(&l.nodes.node_names),
+            node_diff: Arc::clone(&l.nodes.node_diff),
             l,
             r: None,
         })
@@ -108,26 +101,6 @@ impl TwinGraph {
         } else {
             Ok(0)
         }
-    }
-}
-
-impl NodeExistenceFlags {
-    #[inline(always)]
-    pub fn does_not_exist_in(self, side: GraphSide) -> bool {
-        match side {
-            GraphSide::Left => self.contains(NodeExistenceFlags::NOT_IN_LEFT),
-            GraphSide::Right => self.contains(NodeExistenceFlags::NOT_IN_RIGHT),
-        }
-    }
-
-    #[inline(always)]
-    pub fn mark_not_in_left(&mut self) {
-        self.insert(NodeExistenceFlags::NOT_IN_LEFT);
-    }
-
-    #[inline(always)]
-    pub fn mark_not_in_right(&mut self) {
-        self.insert(NodeExistenceFlags::NOT_IN_RIGHT);
     }
 }
 

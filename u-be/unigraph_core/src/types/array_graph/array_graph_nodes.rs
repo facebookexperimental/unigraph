@@ -13,7 +13,7 @@ use crate::types::NodeIDX;
 use crate::types::NodeName;
 use crate::types::array_graph::array_graph_name_search::search_fuzzy_regex;
 use crate::types::twin_graph;
-use crate::types::twin_graph::NodeExistenceFlags;
+use crate::types::twin_graph::NodeDiff;
 
 /// Ordered list of all node names in a graph.
 /// Stored as a massive single string with offsets recorded for how
@@ -36,15 +36,18 @@ pub struct ArrayGraphNodes {
 pub struct ArrayGraphNodesForGraphSide {
     pub node_names: Arc<ArrayGraphNodes>,
 
-    /// Existence + side can be used to determine if a node exists
+    /// Shared information about nodes and how they changed between the two graphs.
+    /// We would need this for existence checks to determine if a node exists
     /// in this specific graph.
-    existence: Arc<Vec<twin_graph::NodeExistenceFlags>>,
-    side: GraphSide,
+    #[readonly]
+    pub node_diff: Arc<Vec<twin_graph::NodeDiff>>,
 
     // Precomputed. only nodes that exist in the side of the graph.
     #[readonly]
     pub nodes_len: usize,
-    pub existing_node_idxes: OnceLock<Arc<Vec<NodeIDX>>>,
+
+    existing_node_idxes: OnceLock<Arc<Vec<NodeIDX>>>,
+    side: GraphSide,
 }
 
 /// Enum that represents one of the sides of the twin graph, either left graph or right graph.
@@ -165,26 +168,26 @@ Last name must be `<` the new name, which was not the case.
 
 impl ArrayGraphNodesForGraphSide {
     pub fn new_left_only(nodes: Arc<ArrayGraphNodes>) -> Self {
-        let existence = vec![NodeExistenceFlags::IN_BOTH; nodes.combined_nodes_len()];
+        let node_diff = vec![NodeDiff::empty(); nodes.combined_nodes_len()];
         let nodes_len = nodes.combined_nodes_len(); // all nodes exist in the left side
         Self {
             node_names: nodes,
-            existence: Arc::new(existence),
+            node_diff: Arc::new(node_diff),
             side: GraphSide::Left,
             nodes_len,
             existing_node_idxes: OnceLock::new(),
         }
     }
 
-    pub fn new_with_existence(
-        nodes: Arc<ArrayGraphNodes>,
-        existence: Arc<Vec<NodeExistenceFlags>>,
+    pub fn new_with_changes(
+        node_names: Arc<ArrayGraphNodes>,
+        node_diff: Arc<Vec<NodeDiff>>,
         side: GraphSide,
     ) -> Self {
-        let nodes_len = nodes.combined_nodes_len();
+        let nodes_len = node_names.combined_nodes_len();
         Self {
-            node_names: nodes,
-            existence,
+            node_names,
+            node_diff,
             side,
             nodes_len,
             existing_node_idxes: OnceLock::new(),
@@ -192,7 +195,7 @@ impl ArrayGraphNodesForGraphSide {
     }
 
     pub fn node_exists(&self, node_idx: NodeIDX) -> bool {
-        !self.existence[node_idx].does_not_exist_in(self.side)
+        !self.node_diff[node_idx].does_not_exist_in(self.side)
     }
 
     fn existing_node_idxes(&self) -> Arc<Vec<NodeIDX>> {
@@ -201,7 +204,7 @@ impl ArrayGraphNodesForGraphSide {
                 Arc::new(
                     self.node_names
                         .combined_node_idx_iter()
-                        .filter(|&idx| !self.existence[idx].does_not_exist_in(self.side))
+                        .filter(|&idx| !self.node_diff[idx].does_not_exist_in(self.side))
                         .collect::<Vec<_>>(),
                 )
             })
@@ -219,7 +222,7 @@ impl ArrayGraphNodesForGraphSide {
     pub fn iter_names(&self) -> NodeNamesOrderedNamesIter<'_> {
         NodeNamesOrderedNamesIter {
             node_names: &self.node_names,
-            existence: &self.existence,
+            node_diff: &self.node_diff,
             side: self.side,
             idx: 0,
         }
@@ -266,7 +269,7 @@ impl NodeNamesOrderedBuilder {
 
 pub struct NodeNamesOrderedNamesIter<'a> {
     node_names: &'a ArrayGraphNodes,
-    existence: &'a [NodeExistenceFlags],
+    node_diff: &'a [NodeDiff],
     side: GraphSide,
     idx: usize,
 }
@@ -278,8 +281,8 @@ impl<'a> Iterator for NodeNamesOrderedNamesIter<'a> {
         if self.idx >= self.node_names.combined_nodes_len() {
             return None;
         }
-        let existence = self.existence[self.idx];
-        if existence.does_not_exist_in(self.side) {
+        let node_diff = self.node_diff[self.idx];
+        if node_diff.does_not_exist_in(self.side) {
             self.idx += 1;
             return self.next(); // skip nodes that do not exist in the current side
         }
