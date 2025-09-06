@@ -17,6 +17,7 @@ use crate::types::array_graph::edge_to_arrow;
 use crate::types::array_graph::offset_graph::Edge;
 use crate::types::array_graph::offset_graph::NonDirectedEdgeMetadata;
 use crate::types::array_graph::offset_graph::OffsetGraph;
+use crate::types::array_graph::offset_graph::edge_flags::EdgeFlags;
 use crate::types::twin_graph::NodeDiff;
 
 pub struct ChangedNodesGraph {
@@ -194,6 +195,13 @@ pub fn get_edges_changed_nodes_only(
                 continue;
             }
 
+            if edge.is_excluded() {
+                // We look for changed nodes on configured graph.
+                // We could do it on unconfigured but it can be a much much
+                // heavier operation and it won't bring much value.
+                continue;
+            }
+
             let edges_changed = node_diff[points_to].has_changed_edgses();
             let metrics_changed = node_diff[points_to].has_changed_metrics();
 
@@ -216,6 +224,10 @@ pub fn get_edges_changed_nodes_only(
                     // al the info about the edge.
                     (edge, metadata.clone(), current_depth)
                 } else {
+                    let edge = Edge {
+                        points_to: edge.points_to,
+                        flags: EdgeFlags::empty(),
+                    };
                     // if it's NOT a direct arrow and has some nodes in between our start
                     // and the needle then we don't really want to show all the edge info
                     // because this does not represent an actual edge in the graph.
