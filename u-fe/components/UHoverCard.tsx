@@ -19,7 +19,7 @@ export default function UHoverCard({
       <HoverCardTrigger className="cursor-pointer">{children}</HoverCardTrigger>
       {open && (
         <HoverCardPortal container={container?.current}>
-          <HoverCardContent className="w-96">{content}</HoverCardContent>
+          <HoverCardContent className="w-96 mx-6">{content}</HoverCardContent>
         </HoverCardPortal>
       )}
     </HoverCard>
