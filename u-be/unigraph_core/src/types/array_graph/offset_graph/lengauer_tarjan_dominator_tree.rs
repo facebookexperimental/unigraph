@@ -176,9 +176,11 @@ fn dsu_union(dsu: &mut [Option<TravIDX>], id1: TravIDX, id2: TravIDX) {
 #[cfg(test)]
 mod tests {
     use anyhow::Result;
+    use k9::assert_equal;
     use k9::snapshot;
 
     use crate::tests::test_graphs::make_test_array_graph_2;
+    use crate::tests::test_utils::name_to_idx;
 
     #[test]
     fn test_dominator_tree() -> Result<()> {
@@ -222,6 +224,14 @@ P:
   - A
 "#
         );
+
+        let a_idx = name_to_idx(&ag, "A");
+        assert_equal!(ag.transitive_count_configured_dominated(a_idx), 4);
+
+        let b_idx = name_to_idx(&ag, "B");
+        assert_equal!(ag.transitive_count_configured_dominated(b_idx), 3);
+        let c_idx = name_to_idx(&ag, "C");
+        assert_equal!(ag.transitive_count_configured_dominated(c_idx), 1);
         Ok(())
     }
 }

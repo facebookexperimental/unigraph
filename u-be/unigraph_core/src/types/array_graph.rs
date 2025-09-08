@@ -415,6 +415,8 @@ mod tests {
     use k9::*;
 
     use crate::make_test_graph;
+    use crate::tests::test_graphs::make_test_array_graph_2;
+    use crate::tests::test_utils::name_to_idx;
     use crate::types::NodeIDX;
 
     #[test]
@@ -472,6 +474,20 @@ mod tests {
         let expected = [3u32, 4, 5].iter().map(NodeIDX::from).collect();
         assert_equal!(visited, expected);
 
+        Ok(())
+    }
+
+    #[test]
+    fn transitive_count_test() -> Result<()> {
+        let ag = make_test_array_graph_2()?;
+
+        let a_idx = name_to_idx(&ag, "A");
+        assert_equal!(ag.transitive_count_configured(a_idx), 11);
+
+        let b_idx = name_to_idx(&ag, "B");
+        assert_equal!(ag.transitive_count_configured(b_idx), 4);
+        let c_idx = name_to_idx(&ag, "C");
+        assert_equal!(ag.transitive_count_configured(c_idx), 1);
         Ok(())
     }
 }
