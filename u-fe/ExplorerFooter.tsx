@@ -37,6 +37,7 @@ import { useGraphSettings } from "./context/GraphSettingsContext";
 import { useNativeGraphL, useTwinGraph } from "./context/NativeGraphContext";
 import { useSelectedNodes } from "./context/SelectedNodesContext";
 import { useTVC } from "./context/TraversalConfigContext";
+import ConjointCostDocs from "./inline_docs/ConjointCost";
 import formatMetric from "./lib/formatMetric";
 import formatNumber from "./lib/formatNumber";
 
@@ -393,33 +394,7 @@ function ConjointCostHoverCardContent() {
 
   return (
     <div className="flex flex-col gap-2">
-      <p>
-        Conjoint cost of a node is a value that represents its transitive size
-        adjusted for how many other nodes it depends on.
-      </p>
-      <p>
-        It's calculated by summing up the cost of all ConjCost(direct children)
-        and dividing it by the number of parents.
-      </p>
-      <pre className="text-wrap break-words bg-secondary rounded-md p-2">
-        {`conj(A) = (
-    1_for_self +
-    A.children.map(
-      child -> conj(child)
-    ).sum()
-) / A.parents.length`}
-      </pre>
-      <p>
-        This way people will be penalized less for things that are popular. E.g.
-        if there is a popular framework that almost every single node uses it
-        would not make sense for it to try to remove that depenedncy, since it
-        will likely still stay in the graph.
-      </p>
-      <p>
-        Best way to use this metric is to show the graph as a flat list, order
-        by conjoint cost "descending" and then look for nodes that have high
-        conjoint cost but don't seem like they should be there.
-      </p>
+      <ConjointCostDocs />
       <div className="flex gap-2 flex-wrap">
         <UToggleButton
           size="sm"

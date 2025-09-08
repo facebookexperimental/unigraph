@@ -16,8 +16,8 @@ export default function UHoverCard({
 
   return (
     <HoverCard openDelay={0} onOpenChange={() => setOpen(!open)} open={open}>
-      <HoverCardTrigger className="cursor-pointer">{children}</HoverCardTrigger>
-      {open && (
+      <HoverCardTrigger>{children}</HoverCardTrigger>
+      {open && content != null && (
         <HoverCardPortal container={container?.current}>
           <HoverCardContent className="w-96 mx-6">{content}</HoverCardContent>
         </HoverCardPortal>

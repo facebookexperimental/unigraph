@@ -1,6 +1,7 @@
 import clsx from "clsx";
 import { useMemo } from "react";
 import { ARROW_POINTS_FROM_NON_EXISTENT } from "../ArrowUtils";
+import { H1, H2, Link, Pre } from "../Typography";
 import type { ColumnType } from "../__generated__/ts/ColumnType";
 import type { GraphSettings } from "../__generated__/ts/GraphSettings";
 import type { GraphTableSort } from "../__generated__/ts/GraphTableSort";
@@ -13,6 +14,7 @@ import UTooltip from "../components/UTooltip";
 import { useGraphSettings } from "../context/GraphSettingsContext";
 import { useTwinGraph } from "../context/NativeGraphContext";
 import { useTVC } from "../context/TraversalConfigContext";
+import ConjointCostDocs from "../inline_docs/ConjointCost";
 import formatMetric from "../lib/formatMetric";
 import type NativeGraph from "../native/NativeGraph";
 import { GRAPH_SIDE, type GraphSide } from "../native/NativeGraph";
@@ -391,6 +393,11 @@ class TransitiveCountColumn implements Column {
       getNumericValues: getValues,
       sortable: this.sortable(),
       isHidden: false,
+      hovercardContent: this.ctx.dominated ? (
+        <TransitiveDominatedCountHovercard />
+      ) : (
+        <TransitiveCountHovercard />
+      ),
     };
     return [columnID, definition];
   }
@@ -471,6 +478,7 @@ class ConjointCountColumn implements Column {
       },
       sortable: this.sortable(),
       isHidden: false,
+      hovercardContent: <ConjointCostDocs />,
     };
     return [columnID, definition];
   }
@@ -1116,4 +1124,55 @@ class ConjointTieredMetricColumn implements Column {
 
     return [columnID, definition];
   }
+}
+
+function TransitiveCountHovercard() {
+  return (
+    <div className="flex flex-col gap-2 p-2">
+      <H1 text="Transitive Node Count" />
+      <div>
+        The total number of nodes reachable from this node, including itself.
+      </div>
+      <H2 text="Example:" />
+      <Pre
+        className="mt-2"
+        text={`
+        A
+      /  \\
+     B    C
+      \\  /
+        D
+
+A = 4 (A, B, C, D)
+B = 2 (B, D)
+C = 2 (C, D)
+D = 1 (D)
+`}
+      />
+    </div>
+  );
+}
+
+function TransitiveDominatedCountHovercard() {
+  return (
+    <div className="flex flex-col gap-2 p-2">
+      <H1 text="Transitive Dominated Node Count" />
+      <div>
+        The total number of nodes that are dominated by this node, including
+        itself.
+      </div>
+      <div>
+        See{" "}
+        <Link
+          text="Dominator Trees"
+          href="https://www.ngavalas.com/posts/dominator-trees"
+          target="_blank"
+        />
+      </div>
+      <div>
+        In simpler words, dominated count means "how many nodes will become
+        unreachable if this node is removed?"
+      </div>
+    </div>
+  );
 }

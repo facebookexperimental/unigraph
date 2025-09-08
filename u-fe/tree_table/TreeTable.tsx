@@ -17,12 +17,12 @@ import { ARROW_POINTS_FROM_NON_EXISTENT } from "../ArrowUtils";
 import type { ArrayGraphUISettingsTreeTableEntryPoints } from "../__generated__/ts/ArrayGraphUISettingsTreeTableEntryPoints";
 import type { GraphStructure } from "../__generated__/ts/GraphStructure";
 import type { SortOrder } from "../__generated__/ts/SortOrder";
-import UTooltip from "../components/UTooltip";
 import { Progress } from "../components/ui/progress";
 import { useTreeTableRef } from "../context/GlobalElementRefs";
 import { useSelectedPath } from "../context/SelectedPathContext";
 
 import type { TwinArrow } from "../__generated__/ts/TwinArrow";
+import UHoverCard from "../components/UHoverCard";
 import type { NodeIDX } from "../types";
 import TreeCell from "./TreeCell";
 import {
@@ -53,6 +53,7 @@ export type CommonNonTreeColumnDefinitionFields = {
   renderer: (row: Readonly<Row>) => React.ReactNode;
   isHidden: boolean;
   isLabelHidden?: boolean;
+  hovercardContent?: React.ReactNode;
 };
 
 export type TSortable = {
@@ -84,6 +85,7 @@ export type TreeColumnDefinition = {
   flexGrow?: number;
   isLabelHidden?: boolean;
   sortable: TSortable | null;
+  hovercardContent?: React.ReactNode;
 };
 
 type ColumnInternal =
@@ -395,9 +397,9 @@ export function TreeTable(props: {
           {column.c.isLabelHidden === true ? (
             ""
           ) : (
-            <UTooltip tooltip={column.columnID} delayDuration={500}>
+            <UHoverCard content={column.c.hovercardContent ?? null}>
               <p>{column.c.label}</p>
-            </UTooltip>
+            </UHoverCard>
           )}
           {sortIcon}
         </div>
