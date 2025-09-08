@@ -134,7 +134,7 @@ function highlightMatches(
     );
   }
 
-  return <p>{result}</p>;
+  return <div>{result}</div>;
 }
 
 function Typeahead({
