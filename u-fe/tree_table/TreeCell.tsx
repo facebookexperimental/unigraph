@@ -8,9 +8,11 @@ import {
   ChevronRight,
   RefreshCw,
 } from "lucide-react";
+import { useState } from "react";
 import { H2 } from "../Typography";
 import type { Arrow } from "../__generated__/ts/Arrow";
 import type { TwinArrow } from "../__generated__/ts/TwinArrow";
+import CopyToClipboard from "../components/CopyToClipboard";
 import UHoverCard from "../components/UHoverCard";
 import { Badge } from "../components/ui/badge";
 import { useTwinGraph } from "../context/NativeGraphContext";
@@ -34,6 +36,7 @@ type Props = {
 export default function TreeCell(props: Props) {
   const twinGraph = useTwinGraph();
   const twinArrow = props.row.twinArrow;
+  const [isHovered, setIsHovered] = useState(false);
 
   const chevron = (() => {
     if (props.canExpand) {
@@ -80,7 +83,11 @@ export default function TreeCell(props: Props) {
   }
 
   return (
-    <div className={clsx("flex items-center w-full h-full", color)}>
+    <div
+      className={clsx("flex items-center w-full h-full", color)}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
       {padding}
       {chevron}
       <SkippedNodes twinGraph={twinGraph} twinArrow={twinArrow} />
@@ -96,6 +103,7 @@ export default function TreeCell(props: Props) {
       </p>
       <InfoIcon twinArrow={twinArrow} twinGraph={twinGraph} />
       <NodeDiffBadges twinArrow={twinArrow} />
+      {isHovered && <CopyToClipboard text={props.nodeName} className="ml-2" />}
     </div>
   );
 }
