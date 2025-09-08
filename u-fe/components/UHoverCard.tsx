@@ -7,16 +7,18 @@ import { HoverCard, HoverCardContent, HoverCardTrigger } from "./ui/hover-card";
 export default function UHoverCard({
   children,
   content,
+  asChild,
 }: {
   children: React.ReactNode;
   content: React.ReactNode;
+  asChild?: boolean;
 }) {
   const container = usePortalContainer();
   const [open, setOpen] = useState(false);
 
   return (
     <HoverCard openDelay={0} onOpenChange={() => setOpen(!open)} open={open}>
-      <HoverCardTrigger>{children}</HoverCardTrigger>
+      <HoverCardTrigger asChild={asChild}>{children}</HoverCardTrigger>
       {open && content != null && (
         <HoverCardPortal container={container?.current}>
           <HoverCardContent className="w-96 mx-6">{content}</HoverCardContent>

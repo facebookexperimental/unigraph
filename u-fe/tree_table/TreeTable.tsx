@@ -397,8 +397,8 @@ export function TreeTable(props: {
           {column.c.isLabelHidden === true ? (
             ""
           ) : (
-            <UHoverCard content={column.c.hovercardContent ?? null}>
-              <p>{column.c.label}</p>
+            <UHoverCard asChild content={column.c.hovercardContent ?? null}>
+              <span>{column.c.label}</span>
             </UHoverCard>
           )}
           {sortIcon}
