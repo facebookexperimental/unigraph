@@ -8,16 +8,22 @@ export default function UHoverCard({
   children,
   content,
   asChild,
+  openDelay = 500,
 }: {
   children: React.ReactNode;
   content: React.ReactNode;
   asChild?: boolean;
+  openDelay?: number;
 }) {
   const container = usePortalContainer();
   const [open, setOpen] = useState(false);
 
   return (
-    <HoverCard openDelay={0} onOpenChange={() => setOpen(!open)} open={open}>
+    <HoverCard
+      openDelay={openDelay}
+      onOpenChange={() => setOpen(!open)}
+      open={open}
+    >
       <HoverCardTrigger asChild={asChild}>{children}</HoverCardTrigger>
       {open && content != null && (
         <HoverCardPortal container={container?.current}>

@@ -9,15 +9,17 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { useState } from "react";
+import { useGraphSettings } from "../context/GraphSettingsContext";
 import type { Arrow } from "../__generated__/ts/Arrow";
 import type { TwinArrow } from "../__generated__/ts/TwinArrow";
 import CopyToClipboard from "../components/CopyToClipboard";
 import UHoverCard from "../components/UHoverCard";
 import { Badge } from "../components/ui/badge";
 import { useTwinGraph } from "../context/NativeGraphContext";
+import { useSelectedPath } from "../context/SelectedPathContext";
 import { nodeEdgesChanged, nodeMetricsChanged } from "../native/NodeDiff";
 import type TwinGraph from "../native/TwinGraph";
-import { H2 } from "../Typography";
+import {  H2, P } from "../Typography";
 import type { Row } from "./TreeTableRows";
 
 type Props = {
@@ -441,19 +443,68 @@ function SkippedNodes({
   twinGraph: TwinGraph;
   twinArrow: TwinArrow;
 }) {
+  const selectedPath = useSelectedPath();
+  const [graphSettings, setGraphSettings] = useGraphSettings();
+
   if (twinGraph.r == null) {
     return null;
   }
+
+  const onClick = () => {
+    setGraphSettings({
+      ...graphSettings,
+      ui_settings: {
+        ...graphSettings.ui_settings,
+        show_changed_nodes_only: undefined,
+      },
+    });
+    selectedPath.setSelectedPath([twinArrow.points_to], true);
+  };
 
   const min = Math.min(twinArrow.l?.skipped ?? 0, twinArrow.r?.skipped ?? 0);
 
   if (min > 0) {
     return (
-      <span className="bg-primary text-background text-xs py-0.5 px-2 me-1 rounded-lg">
-        +{min} nodes
-      </span>
+      <UHoverCard
+        asChild
+        content={
+          <SkippedNodesHovercardContent
+            twinGraph={twinGraph}
+            twinArrow={twinArrow}
+            skipped={min}
+          />
+        }
+      >
+        <span className="bg-primary text-background text-xs py-0.5 px-3 me-1 rounded-lg cursor-pointer" onClick={onClick} >
+          {`+${min}`}
+        </span>
+      </UHoverCard>
     );
   }
 
   return null;
+}
+
+function SkippedNodesHovercardContent({
+  twinGraph,
+  twinArrow,
+  skipped,
+}: {
+  twinGraph: TwinGraph;
+  twinArrow: TwinArrow;
+  skipped: number;
+}) {
+  const fromName = twinGraph.getNodeName(twinArrow.points_from);
+  const toName = twinGraph.getNodeName(twinArrow.points_to);
+
+  return (
+    <div className="flex flex-col gap-2">
+      <H2 text={`Skipped ${skipped} nodes`} />
+      <P text="You are currently comparing two graphs in a 'changed nodes only' mode." />
+      <P
+        text={`There are ${skipped} nodes between "${fromName}" and "${toName}" that were skipped to reduce clutter.`}
+      />
+      <P text={`Clicking on the badge will disable this mode and show the full (shortest) path to "${toName}".`} />
+    </div>
+  );
 }

@@ -21,6 +21,7 @@ import { cn } from "./lib/utils";
 
 export default function NodeSearch() {
   const twinGraph = useTwinGraph();
+  const treeTableRef = useTreeTableRef();
   const searchSource = useMemo(() => {
     return {
       search: (pattern: string) =>
@@ -42,6 +43,10 @@ export default function NodeSearch() {
           const nodeIDX = twinGraph.getNodeIDXByNameLog(option.id);
           if (nodeIDX != null) {
             selectedPath.setSelectedPath([nodeIDX], true);
+            // Focus on tree table so after selecting the
+            // navigation shortcuts can start working again (up, down, right)
+            // after the node was selected
+            treeTableRef.current?.focus();
           }
         }}
       />
@@ -157,7 +162,6 @@ function Typeahead({
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useNodeSearchRef();
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const treeTableRef = useTreeTableRef();
 
   // Debounced search results
   const searchResults = useMemo(() => {
@@ -211,10 +215,6 @@ function Typeahead({
     setIsOpen(false);
     onValueChange?.(option.id);
     onSelect?.(option);
-    // Focus on tree table so after selecting the
-    // navigation shortcuts can start working again (up, down, right)
-    // after the node was selected
-    treeTableRef.current?.focus();
   };
 
   // Handle clear

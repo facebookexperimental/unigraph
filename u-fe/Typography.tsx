@@ -39,6 +39,8 @@ export function H3({ text, className }: { text: string; className?: string }) {
   );
 }
 
+// Use a <div> instead of <p> to avoid conflicts with global CSS styles
+// when explorer is embedded.
 export function P({ text, className }: { text: string; className?: string }) {
   return <div className={clsx("text-foreground", className)}>{text}</div>;
 }
