@@ -170,7 +170,7 @@ function Toggles() {
         </UToggleButton>
       </UHoverCard>
 
-      <UHoverCard content={<ConjointCostHovercard />}>
+      <UHoverCard content={<ConjointCostHoverCardContent />}>
         <UToggleButton
           size="sm"
           selected={graphSettings.ui_settings?.columns?.show_conjoint === true}
@@ -742,13 +742,4 @@ function ChangedNodesOnlyToggle() {
 
 function Separator() {
   return <div className="border-l border border-accent py-3 h-full w-0" />;
-}
-
-function ConjointCostHovercard() {
-  return (
-    <div className="flex flex-col gap-2">
-      <H3 text="Conjoint Cost" />
-      <ConjointCostDocs />
-    </div>
-  );
 }

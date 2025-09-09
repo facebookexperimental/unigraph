@@ -1,10 +1,11 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-import { P, Pre } from "../Typography";
+import { H1, P, Pre } from "../Typography";
 
 export default function ConjointCostDocs() {
   return (
     <div className="flex flex-col gap-4">
+      <H1 text="Conjoint Cost" />
       <P
         text="
 Conjoint cost of a node is a value that represents its transitive size
