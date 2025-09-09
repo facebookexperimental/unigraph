@@ -2,7 +2,6 @@
 
 use anyhow::Result;
 
-use crate::GraphSide;
 use crate::NodeIDX;
 use crate::TwinGraph;
 use crate::graph_settings::GraphStructure;
@@ -35,23 +34,11 @@ pub(crate) fn get_twin_arrows(
     merge_arrows(tg, l, r)
 }
 
-pub(crate) fn get_twin_arrows_changed_nodes_only(
+pub(crate) fn merge_arrows(
     tg: &TwinGraph,
-    node_idx: NodeIDX,
-    graph_structure: GraphStructure,
+    mut l: Vec<Arrow>,
+    mut r: Vec<Arrow>,
 ) -> Result<Vec<TwinArrow>> {
-    let l =
-        tg.changed_nodes_graph_left
-            .get_arrows(tg, GraphSide::Left, node_idx, graph_structure)?;
-
-    let r =
-        tg.changed_nodes_graph_right
-            .get_arrows(tg, GraphSide::Right, node_idx, graph_structure)?;
-
-    merge_arrows(tg, l, r)
-}
-
-fn merge_arrows(tg: &TwinGraph, mut l: Vec<Arrow>, mut r: Vec<Arrow>) -> Result<Vec<TwinArrow>> {
     l.sort_by(|a, b| a.points_to.cmp(&b.points_to));
     r.sort_by(|a, b| a.points_to.cmp(&b.points_to));
 
@@ -151,28 +138,8 @@ mod tests {
     use k9::snapshot;
 
     use super::*;
-    use crate::ArrayGraph;
     use crate::tests::test_graphs::make_twin_graph;
-    use crate::tests::test_utils::print_arrow;
-
-    fn print_twin_arrows(ag: &ArrayGraph, twin_arrows: &Vec<TwinArrow>) -> String {
-        let mut result = Vec::new();
-
-        for twin_arrow in twin_arrows {
-            let TwinArrow { l, r, .. } = twin_arrow;
-            result.push(format!(
-                "L: {}\n\nR: {}",
-                l.as_ref().map(|a| print_arrow(ag, a)).unwrap_or_default(),
-                r.as_ref().map(|a| print_arrow(ag, a)).unwrap_or_default()
-            ));
-        }
-        result
-            .join("\n\n--------\n\n")
-            .lines()
-            .map(|l| l.trim_end().to_string())
-            .collect::<Vec<String>>()
-            .join("\n")
-    }
+    use crate::tests::test_utils::print_twin_arrows;
 
     #[test]
     fn test_get_twin_arrows() -> Result<()> {
@@ -293,40 +260,6 @@ R: H -> F
 L:
 
 R: Q -> J
-"
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn test_get_twin_arrows_changed_nodes_only() -> Result<()> {
-        let tg = make_twin_graph()?;
-
-        let a_idx = tg.node_names.name_to_idx_log("A").unwrap();
-
-        snapshot!(
-            print_twin_arrows(
-                &tg.l,
-                &get_twin_arrows_changed_nodes_only(&tg, a_idx, GraphStructure::Forward)?
-            ),
-            "
-L: A -> B
-
-R: A -> B
-
---------
-
-L: A -> F
-   skipped: 1
-
-R: A -> F
-   skipped: 1
-
---------
-
-L:
-
-R: A -> T
 "
         );
         Ok(())

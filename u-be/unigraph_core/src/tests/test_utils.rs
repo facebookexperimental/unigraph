@@ -4,6 +4,7 @@ pub mod array_graph_test_trait;
 pub mod traversal_config_test_trait;
 
 use crate::ArrayGraph;
+use crate::TwinArrow;
 use crate::types::NodeIDX;
 use crate::types::array_graph::Arrow;
 use crate::types::array_graph::offset_graph::Edge;
@@ -67,6 +68,25 @@ pub fn print_arrows(array_graph: &ArrayGraph) -> String {
         }
     }
     result.trim().to_string()
+}
+
+pub fn print_twin_arrows(ag: &ArrayGraph, twin_arrows: &Vec<TwinArrow>) -> String {
+    let mut result = Vec::new();
+
+    for twin_arrow in twin_arrows {
+        let TwinArrow { l, r, .. } = twin_arrow;
+        result.push(format!(
+            "L: {}\n\nR: {}",
+            l.as_ref().map(|a| print_arrow(ag, a)).unwrap_or_default(),
+            r.as_ref().map(|a| print_arrow(ag, a)).unwrap_or_default()
+        ));
+    }
+    result
+        .join("\n\n--------\n\n")
+        .lines()
+        .map(|l| l.trim_end().to_string())
+        .collect::<Vec<String>>()
+        .join("\n")
 }
 
 pub fn print_arrow(array_graph: &ArrayGraph, arrow: &Arrow) -> String {

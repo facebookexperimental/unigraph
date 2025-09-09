@@ -355,7 +355,7 @@ pub fn get_arrow_pairs(
     let arrow_pairs =
         graph_state
             .twin_graph
-            .get_arrow_pairs(node_idx, graph_structure, changed_nodes_only)?;
+            .get_twin_arrows(node_idx, graph_structure, changed_nodes_only)?;
 
     Ok(serde_json::to_string(&arrow_pairs).context("Failed to serialize arrows")?)
 }

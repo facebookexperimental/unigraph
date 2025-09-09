@@ -41,6 +41,7 @@ pub use crate::types::array_graph::offset_graph::TraversalType;
 pub use crate::types::array_graph::remap_utils;
 pub use crate::types::map_graph::MapGraph;
 pub use crate::types::twin_graph::TwinGraph;
+pub use crate::types::twin_graph::get_arrows::TwinArrow;
 pub use crate::types::ui_types;
 #[cfg(test)]
 mod tests;

@@ -19,8 +19,42 @@ use crate::types::array_graph::offset_graph::NonDirectedEdgeMetadata;
 use crate::types::array_graph::offset_graph::OffsetGraph;
 use crate::types::array_graph::offset_graph::edge_flags::EdgeFlags;
 use crate::types::twin_graph::NodeDiff;
+use crate::types::twin_graph::get_arrows::TwinArrow;
+use crate::types::twin_graph::get_arrows::merge_arrows;
 
 pub struct ChangedNodesGraph {
+    left: ChangedNodesGraphOneSide,
+    right: ChangedNodesGraphOneSide,
+}
+
+impl ChangedNodesGraph {
+    #[allow(clippy::new_without_default)]
+    pub fn new() -> Self {
+        Self {
+            left: ChangedNodesGraphOneSide::new(),
+            right: ChangedNodesGraphOneSide::new(),
+        }
+    }
+
+    pub(crate) fn get_twin_arrows(
+        &self,
+        tg: &TwinGraph,
+        node_idx: NodeIDX,
+        graph_structure: GraphStructure,
+    ) -> Result<Vec<TwinArrow>> {
+        let l = self
+            .left
+            .get_arrows(tg, GraphSide::Left, node_idx, graph_structure)?;
+
+        let r = self
+            .right
+            .get_arrows(tg, GraphSide::Right, node_idx, graph_structure)?;
+
+        merge_arrows(tg, l, r)
+    }
+}
+
+struct ChangedNodesGraphOneSide {
     forward: OnceLock<ChangedNodesOffsetGraph>,
     reverse: OnceLock<ChangedNodesOffsetGraph>,
     dominator: OnceLock<ChangedNodesOffsetGraph>,
@@ -34,9 +68,9 @@ struct ChangedNodesOffsetGraph {
     offset_graph: OffsetGraph,
 }
 
-impl ChangedNodesGraph {
+impl ChangedNodesGraphOneSide {
     #[allow(clippy::new_without_default)]
-    pub fn new() -> Self {
+    fn new() -> Self {
         Self {
             forward: OnceLock::new(),
             reverse: OnceLock::new(),
@@ -44,7 +78,7 @@ impl ChangedNodesGraph {
         }
     }
 
-    pub fn get_arrows(
+    fn get_arrows(
         &self,
         tg: &TwinGraph,
         side: GraphSide,
@@ -169,7 +203,7 @@ fn make_offset_graph(
     })
 }
 
-pub fn get_edges_changed_nodes_only(
+fn get_edges_changed_nodes_only(
     node_diff: &[NodeDiff],
     left: &ArrayGraph,
     right: &ArrayGraph,
@@ -248,4 +282,47 @@ pub fn get_edges_changed_nodes_only(
     }
 
     Ok(needles)
+}
+
+#[cfg(test)]
+mod tests {
+    use k9::snapshot;
+
+    use super::*;
+    use crate::tests::test_graphs::make_twin_graph;
+    use crate::tests::test_utils::print_twin_arrows;
+
+    #[test]
+    fn test_get_twin_arrows_changed_nodes_only() -> Result<()> {
+        let tg = make_twin_graph()?;
+
+        let a_idx = tg.node_names.name_to_idx_log("A").unwrap();
+
+        snapshot!(
+            print_twin_arrows(
+                &tg.l,
+                &tg.get_twin_arrows(a_idx, GraphStructure::Forward, true)?
+            ),
+            "
+L: A -> B
+
+R: A -> B
+
+--------
+
+L: A -> F
+   skipped: 1
+
+R: A -> F
+   skipped: 1
+
+--------
+
+L:
+
+R: A -> T
+"
+        );
+        Ok(())
+    }
 }

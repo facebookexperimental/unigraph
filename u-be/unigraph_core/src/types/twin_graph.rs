@@ -2,7 +2,7 @@
 
 mod changed_nodes_graph;
 mod diff;
-mod get_arrows;
+pub(crate) mod get_arrows;
 mod merge;
 mod metrics;
 use std::sync::Arc;
@@ -33,13 +33,12 @@ pub struct TwinGraph {
     #[readonly]
     pub node_names: Arc<ArrayGraphNodes>,
     pub node_diff: Arc<Vec<NodeDiff>>,
-    pub changed_nodes_graph_left: ChangedNodesGraph,
-    pub changed_nodes_graph_right: ChangedNodesGraph,
 
     /// Left graph must always be present.
     #[readonly]
     pub l: ArrayGraph,
     pub r: Option<ArrayGraph>,
+    changed_nodes: Option<ChangedNodesGraph>,
 }
 
 impl TwinGraph {
@@ -47,8 +46,7 @@ impl TwinGraph {
         Ok(Self {
             node_names: Arc::clone(&l.nodes.node_names),
             node_diff: Arc::clone(&l.nodes.node_diff),
-            changed_nodes_graph_left: ChangedNodesGraph::new(),
-            changed_nodes_graph_right: ChangedNodesGraph::new(),
+            changed_nodes: Some(ChangedNodesGraph::new()),
             l,
             r: None,
         })
@@ -84,14 +82,22 @@ impl TwinGraph {
             .context("graph_u32: Invalid GraphSide value")
     }
 
-    pub fn get_arrow_pairs(
+    pub fn get_twin_arrows(
         &self,
         node_idx: NodeIDX,
         graph_structure: GraphStructure,
         changed_node_only: bool,
     ) -> Result<Vec<TwinArrow>> {
         if changed_node_only {
-            get_arrows::get_twin_arrows_changed_nodes_only(self, node_idx, graph_structure)
+            Ok(self
+                .changed_nodes
+                .as_ref()
+                // if there is no changed nodes graph we return an empty result.
+                // (likely because we only have one graph and the client wrongly asked
+                // for changed nodes only but we don't want the UI to blow up)
+                .map(|c| c.get_twin_arrows(self, node_idx, graph_structure))
+                .transpose()?
+                .unwrap_or_default())
         } else {
             get_arrows::get_twin_arrows(self, node_idx, graph_structure)
         }

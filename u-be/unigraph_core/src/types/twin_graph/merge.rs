@@ -83,10 +83,9 @@ pub fn merge_into_twin(
     Ok(TwinGraph {
         node_names,
         node_diff: Arc::clone(&node_diff),
-        changed_nodes_graph_left: ChangedNodesGraph::new(),
-        changed_nodes_graph_right: ChangedNodesGraph::new(),
         l: left,
         r: Some(right),
+        changed_nodes: Some(ChangedNodesGraph::new()),
     })
 }
 
