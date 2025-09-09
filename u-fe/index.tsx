@@ -40,8 +40,12 @@ function Root() {
     const urlHandler = () => {
       const newTvcUrlParamL = getQueryParam(QUERY_PARAM_TVC_L);
       const newTvcUrlParamR = getQueryParam(QUERY_PARAM_TVC_R);
+      const newGraphSettingsUrlParam = getQueryParam(
+        QUERY_PARAM_GRAPH_SETTINGS,
+      );
       setTvcUrlParamL(newTvcUrlParamL);
       setTvcUrlParamR(newTvcUrlParamR);
+      setGraphSettingsURLParam(newGraphSettingsUrlParam);
     };
 
     window.addEventListener("popstate", urlHandler);

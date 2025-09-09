@@ -451,6 +451,7 @@ function SkippedNodes({
   }
 
   const onClick = () => {
+    selectedPath.setSelectedPath([twinArrow.points_to], true);
     setGraphSettings({
       ...graphSettings,
       ui_settings: {
@@ -458,7 +459,6 @@ function SkippedNodes({
         show_changed_nodes_only: undefined,
       },
     });
-    selectedPath.setSelectedPath([twinArrow.points_to], true);
   };
 
   const min = Math.min(twinArrow.l?.skipped ?? 0, twinArrow.r?.skipped ?? 0);
