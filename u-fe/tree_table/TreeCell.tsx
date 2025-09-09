@@ -9,7 +9,6 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { useState } from "react";
-import { H2 } from "../Typography";
 import type { Arrow } from "../__generated__/ts/Arrow";
 import type { TwinArrow } from "../__generated__/ts/TwinArrow";
 import CopyToClipboard from "../components/CopyToClipboard";
@@ -18,6 +17,7 @@ import { Badge } from "../components/ui/badge";
 import { useTwinGraph } from "../context/NativeGraphContext";
 import { nodeEdgesChanged, nodeMetricsChanged } from "../native/NodeDiff";
 import type TwinGraph from "../native/TwinGraph";
+import { H2 } from "../Typography";
 import type { Row } from "./TreeTableRows";
 
 type Props = {
@@ -198,7 +198,10 @@ function ArrowBadge({ twinArrow }: { twinArrow: TwinArrow }) {
 function EdgeBadge({
   label,
   badgeType,
-}: { label: string; badgeType?: BadgeType }) {
+}: {
+  label: string;
+  badgeType?: BadgeType;
+}) {
   const color = badgeType === "tag" ? "bg-green-800" : "bg-orange-800";
   return (
     <Badge className={clsx("me-2 text-xs py-0 px-0.5", color)}>{label}</Badge>

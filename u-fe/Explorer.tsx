@@ -5,9 +5,6 @@ import {
   from_zstd_base64_url_safe_no_pad,
   to_zstd_base64_url_safe_no_pad,
 } from "../.build/wasm/unigraph_wasm";
-import ExplorerFooter from "./ExplorerFooter";
-import Sidebar from "./Sidebar";
-import Simulation from "./Simulation";
 import type { ArrayGraphUISettingsTreeTableEntryPoints } from "./__generated__/ts/ArrayGraphUISettingsTreeTableEntryPoints";
 import type { ExplorerProps } from "./__generated__/ts/ExplorerProps";
 import type { GraphSettings } from "./__generated__/ts/GraphSettings";
@@ -17,7 +14,6 @@ import {
   GlobalElementRefsContextProvider,
   usePortalContainer,
 } from "./context/GlobalElementRefs";
-
 import { useGlobalKeyboardShortcuts } from "./context/GlobalKeyboardShortcutsContext";
 import {
   GraphSettingsContextProvider,
@@ -34,8 +30,11 @@ import {
 import { SelectedPathContextProvider } from "./context/SelectedPathContext";
 import { SimulationParamsContextProvider } from "./context/SimulationParamsContext";
 import { TraversalConfigContextProvider } from "./context/TraversalConfigContext";
+import ExplorerFooter from "./ExplorerFooter";
 import initWasm from "./init_wasm";
 import NativeGraph from "./native/NativeGraph";
+import Sidebar from "./Sidebar";
+import Simulation from "./Simulation";
 import GraphInfoPanel from "./sidebar_panels/GraphInfoPanel";
 import GraphTreeTable from "./tree_table/GraphTreeTable";
 import type { NodeIDX } from "./types";

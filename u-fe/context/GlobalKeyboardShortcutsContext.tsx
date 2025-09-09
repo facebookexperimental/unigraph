@@ -117,7 +117,9 @@ export function useExplorerKeyboardShortcutsHandler(): (
 
 export function KeyboardShortcutLabel({
   shortcut,
-}: { shortcut: TShortcutDefinition }) {
+}: {
+  shortcut: TShortcutDefinition;
+}) {
   const cmdSpan = shortcut.cmd ? (
     <span className="text-xs font-bold">⌘</span>
   ) : null;

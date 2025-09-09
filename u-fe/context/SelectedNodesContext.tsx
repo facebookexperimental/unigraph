@@ -1,6 +1,5 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-import type { NodeIDX } from "@/types";
 import {
   createContext,
   useCallback,
@@ -8,6 +7,7 @@ import {
   useMemo,
   useState,
 } from "react";
+import type { NodeIDX } from "@/types";
 import { get_selected_node_idxs } from "../../.build/wasm/unigraph_wasm";
 import { useSimulationParams } from "./SimulationParamsContext";
 

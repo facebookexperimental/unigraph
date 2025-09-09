@@ -1,7 +1,7 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-import type { GraphSettings } from "@/__generated__/ts/GraphSettings";
 import { createContext, useContext, useMemo } from "react";
+import type { GraphSettings } from "@/__generated__/ts/GraphSettings";
 
 export type GraphSettingsContextType = [
   GraphSettings,

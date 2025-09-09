@@ -1,8 +1,7 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-import wasmBase64String from "../.build/wasm/unigraph_wasm_base64";
-
 import { initSync } from "../.build/wasm/unigraph_wasm";
+import wasmBase64String from "../.build/wasm/unigraph_wasm_base64";
 
 let INITIALIZED = false;
 

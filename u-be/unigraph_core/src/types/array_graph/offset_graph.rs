@@ -3,7 +3,7 @@
 pub mod edge_flags;
 pub(super) mod lengauer_tarjan_dominator_tree;
 mod offset_graph_traversal;
-mod shortest_path;
+pub(super) mod shortest_path;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 

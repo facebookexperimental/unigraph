@@ -1,5 +1,6 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
+#![allow(clippy::collapsible_if)]
 mod wasm_error;
 
 use std::vec;
@@ -366,11 +367,11 @@ pub fn get_shortest_path(
     from: &[u32],
     to: u32,
     graph_structure: u8,
-    side: u32,
     traversal_type: u8,
+    changed_nodes_only: bool,
 ) -> Result<Option<Vec<u32>>, WasmJSError> {
     let graph_state = GlobalGraphState::graph_state().get();
-    let ag = &graph_state.twin_graph.graph_u32(side)?;
+    let tg = &graph_state.twin_graph;
     let graph_structure = GraphStructure::from_u8(graph_structure)?;
     let from = from
         .iter()
@@ -378,15 +379,15 @@ pub fn get_shortest_path(
         .collect::<Vec<NodeIDX>>();
     let to = NodeIDX::from(to);
 
-    let offset_graph = match graph_structure {
-        GraphStructure::Forward => &ag.edges_forward,
-        GraphStructure::Dominator => ag.edges_dom(),
-        GraphStructure::Reverse => &ag.derived_state.edges_reverse,
-    };
-
     let traversal_type = TraversalType::from_u8(traversal_type)?;
-    #[allow(clippy::collapsible_if)]
-    if let Some(shortest_path) = offset_graph.shortest_path(&from, to, traversal_type) {
+
+    if let Some(shortest_path) = tg.shortest_path(
+        &from,
+        to,
+        graph_structure,
+        traversal_type,
+        changed_nodes_only,
+    )? {
         if !shortest_path.is_empty() {
             return Ok(Some(
                 shortest_path

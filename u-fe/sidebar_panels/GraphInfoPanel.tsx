@@ -27,7 +27,10 @@ export default function GraphInfoPanel() {
 function StatsForNativeGraph({
   nativeGraph,
   label,
-}: { nativeGraph: NativeGraph; label: string }) {
+}: {
+  nativeGraph: NativeGraph;
+  label: string;
+}) {
   const stats = nativeGraph.stats();
   return (
     <div>
@@ -68,12 +71,6 @@ function StatsForNativeGraph({
   );
 }
 
-function InfoMetric({
-  label,
-  value,
-}: {
-  label: string;
-  value: number;
-}) {
+function InfoMetric({ label, value }: { label: string; value: number }) {
   return <Metric value={formatNumber(value, 0, 0)} label={label} />;
 }

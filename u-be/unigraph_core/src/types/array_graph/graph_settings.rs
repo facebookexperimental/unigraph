@@ -138,6 +138,27 @@ pub enum SidebarPanel {
     GraphInfo,
 }
 
+/// Enum that defines whether an option is enabled or not depending
+/// on whether the right graph is present or not.
+/// For example, when we have `changed nodes only` enabled it has no
+/// meaning in the context of a single graph. This option provides
+/// extra safety to make sure we don't accedentally pass `true` in
+/// cases that are invalid.
+#[derive(
+    Debug,
+    serde::Serialize,
+    serde::Deserialize,
+    typegen::TypeGen,
+    Clone,
+    Copy,
+    Default
+)]
+pub enum OptionEnabledDependingOnRightGraph {
+    WhenRightGraphPresent,
+    #[default]
+    Never,
+}
+
 #[derive(
     Debug,
     serde::Serialize,
@@ -180,7 +201,7 @@ pub struct ArrayGraphUISettings {
     ///   C          C
     ///     D          F
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub show_changed_nodes_only: Option<bool>,
+    pub show_changed_nodes_only: Option<OptionEnabledDependingOnRightGraph>,
 
     /// What nodes should we use as the "start" of the graph
     /// when we render the table.

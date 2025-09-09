@@ -1,7 +1,5 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-import type { Row } from "@/tree_table/TreeTableRows";
-import type { NodeIDX } from "@/types";
 import {
   createContext,
   useContext,
@@ -10,6 +8,8 @@ import {
   useRef,
   useState,
 } from "react";
+import type { Row } from "@/tree_table/TreeTableRows";
+import type { NodeIDX } from "@/types";
 import type TwinGraph from "../native/TwinGraph";
 import { useTwinGraph } from "./NativeGraphContext";
 

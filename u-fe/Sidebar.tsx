@@ -1,15 +1,17 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 import { Info, Waypoints } from "lucide-react";
-import { IS_DEBUG_MODE } from "./DebugMode";
 import type { SidebarPanel } from "./__generated__/ts/SidebarPanel";
 import { Button } from "./components/ui/button";
 import { useGraphSettings } from "./context/GraphSettingsContext";
+import { IS_DEBUG_MODE } from "./DebugMode";
 import TraversalConfigInspector from "./sidebar_panels/TraversalConfigInspector";
 
 export default function Sidebar({
   selectedPanelTab,
-}: { selectedPanelTab: SidebarPanel }) {
+}: {
+  selectedPanelTab: SidebarPanel;
+}) {
   return (
     <div className="flex h-full flex-col items-center gap-2 py-4 px-2 bg-sidebar border-r">
       <TabSelector tabName="Simulation" selectedPanelTab={selectedPanelTab}>

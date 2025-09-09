@@ -1,8 +1,8 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 import {
-  type RefObject,
   createContext,
+  type RefObject,
   useContext,
   useMemo,
   useRef,
@@ -27,7 +27,9 @@ const GlobalElementRefsContext = createContext<
 
 export function GlobalElementRefsContextProvider({
   children,
-}: { children: React.ReactNode }) {
+}: {
+  children: React.ReactNode;
+}) {
   const nodeSearchRef = useRef<HTMLInputElement | null>(null);
   const portalContainerRef = useRef<HTMLDivElement | null>(null);
   const treeTableRef = useRef<HTMLDivElement | null>(null);

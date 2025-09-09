@@ -2,11 +2,11 @@
 
 import { GitGraph } from "lucide-react";
 import { useMemo, useState } from "react";
-import { Pre } from "../Typography";
 import UAlertDialog from "../components/UAlertDialog";
 import { AlertDialogTitle } from "../components/ui/alert-dialog";
 import { Button } from "../components/ui/button";
 import { useTVC } from "../context/TraversalConfigContext";
+import { Pre } from "../Typography";
 
 export default function TraversalConfigInspector() {
   const [isOpen, setIsOpen] = useState(false);

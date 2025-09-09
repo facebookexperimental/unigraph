@@ -8,6 +8,7 @@
 import type { ArrayGraphUISettingsTreeTableEntryPoints } from './ArrayGraphUISettingsTreeTableEntryPoints.ts';
 import type { ColumnSettings } from './ColumnSettings.ts';
 import type { GraphStructure } from './GraphStructure.ts';
+import type { OptionEnabledDependingOnRightGraph } from './OptionEnabledDependingOnRightGraph.ts';
 import type { SidebarPanel } from './SidebarPanel.ts';
 
 export interface ArrayGraphUISettings {
@@ -39,7 +40,7 @@ export interface ArrayGraphUISettings {
    *   C          C
    *     D          F
    */
-  show_changed_nodes_only?: boolean | undefined;
+  show_changed_nodes_only?: OptionEnabledDependingOnRightGraph | undefined;
   /**
    * What nodes should we use as the "start" of the graph
    * when we render the table.

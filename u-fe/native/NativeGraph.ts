@@ -16,7 +16,6 @@ import {
   get_metric_names,
   get_node_metrics,
   get_reverse_edges_len,
-  get_shortest_path,
   get_transitive_count,
   get_transitive_count_dominated,
   get_transitive_metrics,
@@ -30,9 +29,7 @@ import type { CombinedMetricsForNodes } from "../__generated__/ts/CombinedMetric
 import type { ConjointCost } from "../__generated__/ts/ConjointCost";
 import type { ExplorerComponentInputGraphs } from "../__generated__/ts/ExplorerComponentInputGraphs";
 import type { GraphSettings } from "../__generated__/ts/GraphSettings";
-import type { GraphStructure } from "../__generated__/ts/GraphStructure";
 import type { TraversalConfig } from "../__generated__/ts/TraversalConfig";
-import type { TraversalType } from "../__generated__/ts/TraversalType";
 import type { NodeIDX } from "../types";
 import {
   type KeyedMetrics,
@@ -170,27 +167,6 @@ export default class NativeGraph {
   // pretty slow for very large lookups
   getNodeIDXByNameLog(name: string): NodeIDX | null {
     return node_name_to_idx_log(name) ?? null;
-  }
-
-  getShortestPath(
-    fromNodeIDX: readonly NodeIDX[],
-    toNodeIDX: NodeIDX,
-    graphStructure: GraphStructure,
-    traversalType: TraversalType,
-  ): NodeIDX[] | null {
-    const path = get_shortest_path(
-      new Uint32Array(fromNodeIDX),
-      toNodeIDX,
-      graphStructureToU8(graphStructure),
-      this.side,
-      traversalTypeToU8(traversalType),
-    );
-
-    if (path == null || path.length === 0) {
-      return null;
-    }
-
-    return Array.from(path) as NodeIDX[];
   }
 
   determineEntrypoints(): NodeIDXVecSet {
@@ -464,33 +440,5 @@ class MetricCaches {
     const metricsCache = new KeyedMetricsCache(this.nodeCount, getMetrics);
     this.transitive_tiered_dominated.set(metricName, metricsCache);
     return metricsCache;
-  }
-}
-
-function graphStructureToU8(graphStructure: GraphStructure): number {
-  switch (graphStructure) {
-    case "Forward":
-      return GRAPH_STRUCTURE.FORWARD;
-    case "Dominator":
-      return GRAPH_STRUCTURE.DOMINATOR;
-    case "Reverse":
-      return GRAPH_STRUCTURE.REVERSE;
-    default: {
-      const _exhaustiveCheck: never = graphStructure;
-      throw new Error(`Unknown graph structure: ${_exhaustiveCheck}`);
-    }
-  }
-}
-
-function traversalTypeToU8(traversalType: TraversalType): number {
-  switch (traversalType) {
-    case "Configured":
-      return TRAVERSAL_TYPE.CONFIGURED;
-    case "Unconfigured":
-      return TRAVERSAL_TYPE.UNCONFIGURED;
-    default: {
-      const _exhaustiveCheck: never = traversalType;
-      throw new Error(`Unknown traversal type: ${_exhaustiveCheck}`);
-    }
   }
 }

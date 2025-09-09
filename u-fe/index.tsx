@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { Explorer } from "./Explorer";
 import type { ExplorerComponentInputGraph } from "./__generated__/ts/ExplorerComponentInputGraph";
 import type { ExplorerComponentInputGraphs } from "./__generated__/ts/ExplorerComponentInputGraphs";
+import { Explorer } from "./Explorer";
 
 const ARRAY_GRAPH_PACKAGE_BASE64_LEFT_ELEMENT_ID =
   "array_graph_package_base64_left";

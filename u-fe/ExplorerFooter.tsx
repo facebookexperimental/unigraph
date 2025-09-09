@@ -18,14 +18,6 @@ import { useEffect, useMemo, useState } from "react";
 import Metric from "./components/Metric";
 import UHoverCard from "./components/UHoverCard";
 import UToggleButton from "./components/UToggleButton";
-
-import {
-  useToggleDominatorTreeView,
-  useToggleFlatListView,
-  useToggleReverseView,
-} from "./GraphStructureHooks";
-import NodeSearch from "./NodeSearch";
-import { H3 } from "./Typography";
 import UTooltip from "./components/UTooltip";
 import { Button } from "./components/ui/button";
 import { useTreeTableRef } from "./context/GlobalElementRefs";
@@ -37,9 +29,16 @@ import { useGraphSettings } from "./context/GraphSettingsContext";
 import { useNativeGraphL, useTwinGraph } from "./context/NativeGraphContext";
 import { useSelectedNodes } from "./context/SelectedNodesContext";
 import { useTVC } from "./context/TraversalConfigContext";
+import {
+  useToggleDominatorTreeView,
+  useToggleFlatListView,
+  useToggleReverseView,
+} from "./GraphStructureHooks";
 import ConjointCostDocs from "./inline_docs/ConjointCost";
 import formatMetric from "./lib/formatMetric";
 import formatNumber from "./lib/formatNumber";
+import NodeSearch from "./NodeSearch";
+import { H3 } from "./Typography";
 
 export default function ExplorerFooter() {
   return (
@@ -611,7 +610,7 @@ function TiersHoverCardContent() {
 
     return (
       <UToggleButton
-        // biome-ignore lint/suspicious/noArrayIndexKey: <explanation>
+        // biome-ignore lint/suspicious/noArrayIndexKey: because
         key={`tier-${tierIDX}`}
         size="sm"
         tooltip={`Only show nodes that are on or below '${tierName}'`}
@@ -723,13 +722,18 @@ function ChangedNodesOnlyToggle() {
       <UToggleButton
         className="cursor-pointer"
         tooltip="Show only changed nodes"
-        selected={graphSettings.ui_settings?.show_changed_nodes_only === true}
+        selected={
+          graphSettings.ui_settings?.show_changed_nodes_only ===
+          "WhenRightGraphPresent"
+        }
         onSelectedChange={(selected) => {
           setGraphSettings({
             ...graphSettings,
             ui_settings: {
               ...graphSettings.ui_settings,
-              show_changed_nodes_only: selected ? true : undefined,
+              show_changed_nodes_only: selected
+                ? "WhenRightGraphPresent"
+                : undefined,
             },
           });
         }}

@@ -1,11 +1,7 @@
-import { H1 } from "../Typography";
 import { Separator } from "../components/ui/separator";
+import { H1 } from "../Typography";
 
-export function SidebarPanel({
-  children,
-}: {
-  children?: React.ReactNode;
-}) {
+export function SidebarPanel({ children }: { children?: React.ReactNode }) {
   return (
     <div className="flex flex-col h-full w-[400px] bg-sidebar border-r overflow-y-auto p-4">
       {children}
@@ -13,11 +9,7 @@ export function SidebarPanel({
   );
 }
 
-export function SidebarPanelHeader({
-  text,
-}: {
-  text: string;
-}) {
+export function SidebarPanelHeader({ text }: { text: string }) {
   return (
     <>
       <H1 text={text} />

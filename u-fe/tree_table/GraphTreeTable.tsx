@@ -1,20 +1,18 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-import type { NodeIDX } from "../types";
-import { TreeTable } from "./TreeTable";
-
 import { useCallback, useMemo } from "react";
 import ErrorBoundary from "../components/ErrorBoundary";
 import { useGraphSettings } from "../context/GraphSettingsContext";
-import { useNativeGraphL, useTwinGraph } from "../context/NativeGraphContext";
+import { useTwinGraph } from "../context/NativeGraphContext";
 import { GRAPH_STRUCTURE } from "../native/NativeGraph";
+import type { NodeIDX } from "../types";
+import { TreeTable } from "./TreeTable";
 import useGraphTreeTableColumns from "./useGraphTreeTableColumns";
 
 export default function GraphTreeTable(props: {
   roots: readonly NodeIDX[];
   focusOnMount?: boolean;
 }) {
-  const nativeGraphL = useNativeGraphL();
   const twinGraph = useTwinGraph();
   const [settings] = useGraphSettings();
 
@@ -23,7 +21,8 @@ export default function GraphTreeTable(props: {
   const treeTableEntryPoints =
     settings.ui_settings?.entry_points ?? "Determine";
   const changedNodesOnly =
-    settings.ui_settings?.show_changed_nodes_only === true;
+    settings.ui_settings?.show_changed_nodes_only === "WhenRightGraphPresent" &&
+    twinGraph.r != null;
 
   const getTwinArrows = useCallback(
     (nodeIDX: NodeIDX) => {
@@ -57,11 +56,12 @@ export default function GraphTreeTable(props: {
 
   const getShortestPath = useCallback(
     (fromNodeIDX: readonly NodeIDX[], toNodeIDX: NodeIDX) => {
-      const configuredPath = nativeGraphL.getShortestPath(
+      const configuredPath = twinGraph.getShortestPath(
         fromNodeIDX,
         toNodeIDX,
         graphStructure,
         "Configured",
+        changedNodesOnly,
       );
 
       // first try to find shortest configured path to the graph to prioritize
@@ -73,16 +73,17 @@ export default function GraphTreeTable(props: {
       // if the are no paths between nodes in the configured graph resort to
       // unconfigured shortest path, which (if exists) will go though
       // excluded edges.
-      const unconfiguredPath = nativeGraphL.getShortestPath(
+      const unconfiguredPath = twinGraph.getShortestPath(
         fromNodeIDX,
         toNodeIDX,
         graphStructure,
         "Unconfigured",
+        changedNodesOnly,
       );
 
       return unconfiguredPath;
     },
-    [nativeGraphL, graphStructure],
+    [twinGraph, graphStructure, changedNodesOnly],
   );
 
   const treeTableGraph = useMemo(() => {

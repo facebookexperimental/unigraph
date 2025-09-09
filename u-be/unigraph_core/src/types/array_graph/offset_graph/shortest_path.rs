@@ -6,7 +6,7 @@ use crate::NodeIDX;
 use crate::types::array_graph::offset_graph::OffsetGraph;
 use crate::types::array_graph::offset_graph::TraversalType;
 
-pub fn shortest_path(
+pub(crate) fn shortest_path(
     offset_graph: &OffsetGraph,
     from: &[NodeIDX],
     to: NodeIDX,

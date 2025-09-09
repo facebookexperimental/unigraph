@@ -1,7 +1,5 @@
 import clsx from "clsx";
 import { useMemo } from "react";
-import { ARROW_POINTS_FROM_NON_EXISTENT } from "../ArrowUtils";
-import { H1, H2, Link, Pre } from "../Typography";
 import type { ColumnType } from "../__generated__/ts/ColumnType";
 import type { GraphSettings } from "../__generated__/ts/GraphSettings";
 import type { GraphTableSort } from "../__generated__/ts/GraphTableSort";
@@ -10,6 +8,7 @@ import type { MetricSettings } from "../__generated__/ts/MetricSettings";
 import type { SortColumn } from "../__generated__/ts/SortColumn";
 import type { SortOrder } from "../__generated__/ts/SortOrder";
 import type { TraversalConfig } from "../__generated__/ts/TraversalConfig";
+import { ARROW_POINTS_FROM_NON_EXISTENT } from "../ArrowUtils";
 import UTooltip from "../components/UTooltip";
 import { useGraphSettings } from "../context/GraphSettingsContext";
 import { useTwinGraph } from "../context/NativeGraphContext";
@@ -18,6 +17,7 @@ import ConjointCostDocs from "../inline_docs/ConjointCost";
 import formatMetric from "../lib/formatMetric";
 import type NativeGraph from "../native/NativeGraph";
 import { GRAPH_SIDE, type GraphSide } from "../native/NativeGraph";
+import { H1, H2, Link, Pre } from "../Typography";
 import type { NodeIDX } from "../types";
 import ContextMenuCell from "./ContextMenuCell";
 import type {
@@ -25,8 +25,8 @@ import type {
   ColumnID,
   NonTreeColumnDefinition,
   NumericValueColumnDefinition,
-  TSortable,
   TreeColumnDefinition,
+  TSortable,
 } from "./TreeTable";
 import type { Row } from "./TreeTableRows";
 
@@ -130,7 +130,10 @@ export default function useGraphTreeTableColumns(): ColumnDefinitions {
 function MetricCell({
   value,
   format,
-}: { value: number; format?: MetricFormat }) {
+}: {
+  value: number;
+  format?: MetricFormat;
+}) {
   return (
     <p className="px-4 text-right tabular-nums w-full whitespace-nowrap">
       {formatMetric(value, format)}
@@ -141,7 +144,10 @@ function MetricCell({
 function WouldBeDeltaMetricCell({
   value,
   format,
-}: { value: number; format?: MetricFormat }) {
+}: {
+  value: number;
+  format?: MetricFormat;
+}) {
   let sign = "";
   if (value < 0) {
     sign = "-";
@@ -877,9 +883,7 @@ class TransitiveTieredMetricColumn implements Column {
 
   isEnabled() {
     const metricSettings = this.ctx.metricSettings(this.metricName);
-    const tierIDX = this.nativeGraph
-      .stats()
-      .tier_names.findIndex((name) => name === this.tierName);
+    const tierIDX = this.nativeGraph.stats().tier_names.indexOf(this.tierName);
 
     if (tierIDX == null) {
       return false;
@@ -1030,9 +1034,7 @@ class ConjointTieredMetricColumn implements Column {
 
   isEnabled() {
     const metricSettings = this.ctx.metricSettings(this.metricName);
-    const tierIDX = this.nativeGraph
-      .stats()
-      .tier_names.findIndex((name) => name === this.tierName);
+    const tierIDX = this.nativeGraph.stats().tier_names.indexOf(this.tierName);
 
     if (tierIDX == null) {
       return false;

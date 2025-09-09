@@ -1,8 +1,8 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
+import { expect, test } from "vitest";
 import type { MetricFormat } from "@/__generated__/ts/MetricFormat";
 import type { SizeConfig } from "@/__generated__/ts/SizeConfig";
-import { expect, test } from "vitest";
 import formatMetric from "../formatMetric";
 
 test("Percent", () => {

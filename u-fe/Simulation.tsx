@@ -7,8 +7,6 @@ import {
   set_event_loop_active,
   set_simulation_params,
 } from "../.build/wasm/unigraph_wasm.js";
-import { IS_DEBUG_MODE } from "./DebugMode.js";
-import { H2 } from "./Typography.js";
 import type { SelectionType } from "./__generated__/ts/SelectionType.js";
 import type { TsVec2 } from "./__generated__/ts/TsVec2.js";
 import ErrorBoundary from "./components/ErrorBoundary.js";
@@ -22,7 +20,9 @@ import { Toggle } from "./components/ui/toggle";
 import { useNativeGraphL } from "./context/NativeGraphContext.js";
 import { useSelectedNodes } from "./context/SelectedNodesContext.js";
 import { useSimulationParams } from "./context/SimulationParamsContext.js";
+import { IS_DEBUG_MODE } from "./DebugMode.js";
 import formatNumber from "./lib/formatNumber.js";
+import { H2 } from "./Typography.js";
 
 const HIDE_IF_TOO_MANY_NODES_THRESHOLD = 50000;
 
@@ -92,7 +92,10 @@ function TooManyNodesDialog({
 function SimulationImpl({
   setParamsVisible,
   paramsVisible,
-}: { setParamsVisible: (visible: boolean) => void; paramsVisible: boolean }) {
+}: {
+  setParamsVisible: (visible: boolean) => void;
+  paramsVisible: boolean;
+}) {
   const [_selectedNodes, setSelectedNodes] = useSelectedNodes();
 
   const [simulationParams, setSimulationParams] = useSimulationParams();
@@ -188,7 +191,10 @@ function SimulationImpl({
 function SimulationParamsToggle({
   selected,
   onSelectedChange,
-}: { selected?: boolean; onSelectedChange?: (selected: boolean) => void }) {
+}: {
+  selected?: boolean;
+  onSelectedChange?: (selected: boolean) => void;
+}) {
   return (
     <Button
       size="icon"
@@ -490,7 +496,7 @@ function SimulationSlider({
           },
           (value: number) => {
             const sign = value < 0 ? -1 : 1;
-            // biome-ignore lint/style/useExponentiationOperator: <explanation>
+            // biome-ignore lint/style/useExponentiationOperator: because
             return sign * Math.pow(10, value / LOG_COEFFICIENT) - 1;
           },
         ];

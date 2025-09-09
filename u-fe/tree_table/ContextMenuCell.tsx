@@ -1,7 +1,7 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-import type { Arrow } from "@/__generated__/ts/Arrow";
 import { Ellipsis } from "lucide-react";
+import type { Arrow } from "@/__generated__/ts/Arrow";
 import { UDropdownMenu } from "../components/UDropdownMenu";
 import {
   DropdownMenuContent,
@@ -16,11 +16,9 @@ import {
   useFlipForceEdgeL,
   useFlipForceExcludeNodeL,
 } from "../context/TraversalConfigContext";
-import { type Row, pathToRow } from "./TreeTableRows";
+import { pathToRow, type Row } from "./TreeTableRows";
 
-export default function ContextMenuCell(props: {
-  row: Row;
-}) {
+export default function ContextMenuCell(props: { row: Row }) {
   return (
     <UDropdownMenu content={<Content row={props.row} />}>
       <Ellipsis className="cursor-pointer hover:bg-primary rounded transition-all p-1" />
@@ -70,13 +68,7 @@ function ExcludeNodeItem({ arrow, row }: { arrow: Arrow; row: Readonly<Row> }) {
   );
 }
 
-function ForceEdgeItem({
-  arrow,
-  row,
-}: {
-  arrow: Arrow;
-  row: Readonly<Row>;
-}) {
+function ForceEdgeItem({ arrow, row }: { arrow: Arrow; row: Readonly<Row> }) {
   const { setSelectedPath } = useSelectedPath();
   const { enabled, forceEdge, action } = useFlipForceEdgeL(arrow);
 

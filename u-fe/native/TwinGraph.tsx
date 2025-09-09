@@ -1,7 +1,10 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
+import type { GraphStructure } from "@/__generated__/ts/GraphStructure";
+import type { TraversalType } from "@/__generated__/ts/TraversalType";
 import {
   get_arrow_pairs,
+  get_shortest_path,
   get_transitive_count_delta,
   node_idx_to_name,
   node_name_to_idx_log,
@@ -11,7 +14,12 @@ import type { TwinArrow } from "../__generated__/ts/TwinArrow";
 import type { NodeIDX } from "../types";
 import { SingleMetricsCache } from "./MetricCaches";
 import type NativeGraph from "./NativeGraph";
-import type { GraphStructureU8, NodeIDXVecSet } from "./NativeGraph";
+import {
+  GRAPH_STRUCTURE,
+  type GraphStructureU8,
+  type NodeIDXVecSet,
+  TRAVERSAL_TYPE,
+} from "./NativeGraph";
 
 /// This is a wrapper class over One or Two Native Graphs (left + ?right)
 export default class TwinGraph {
@@ -81,5 +89,55 @@ export default class TwinGraph {
     );
     const parsed: TwinArrow[] = JSON.parse(arrowsJSON);
     return parsed;
+  }
+
+  getShortestPath(
+    fromNodeIDX: readonly NodeIDX[],
+    toNodeIDX: NodeIDX,
+    graphStructure: GraphStructure,
+    traversalType: TraversalType,
+    changedNodesOnly: boolean,
+  ): NodeIDX[] | null {
+    const path = get_shortest_path(
+      new Uint32Array(fromNodeIDX),
+      toNodeIDX,
+      graphStructureToU8(graphStructure),
+      traversalTypeToU8(traversalType),
+      changedNodesOnly,
+    );
+
+    if (path == null || path.length === 0) {
+      return null;
+    }
+
+    return Array.from(path) as NodeIDX[];
+  }
+}
+
+function graphStructureToU8(graphStructure: GraphStructure): number {
+  switch (graphStructure) {
+    case "Forward":
+      return GRAPH_STRUCTURE.FORWARD;
+    case "Dominator":
+      return GRAPH_STRUCTURE.DOMINATOR;
+    case "Reverse":
+      return GRAPH_STRUCTURE.REVERSE;
+    default: {
+      const _exhaustiveCheck: never = graphStructure;
+      throw new Error(`Unknown graph structure: ${_exhaustiveCheck}`);
+    }
+  }
+}
+
+function traversalTypeToU8(traversalType: TraversalType): number {
+  switch (traversalType) {
+    case "Configured":
+      return TRAVERSAL_TYPE.CONFIGURED;
+    case "Unconfigured":
+      return TRAVERSAL_TYPE.UNCONFIGURED;
+    default: {
+      const _exhaustiveCheck: never = traversalType;
+      throw new Error(`Unknown traversal type: ${_exhaustiveCheck}`);
+    }
   }
 }

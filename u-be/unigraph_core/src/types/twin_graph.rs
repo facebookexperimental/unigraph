@@ -119,6 +119,47 @@ impl TwinGraph {
             Ok(0)
         }
     }
+
+    pub fn shortest_path(
+        &self,
+        from: &[NodeIDX],
+        to: NodeIDX,
+        graph_structure: GraphStructure,
+        traversal_type: crate::types::array_graph::offset_graph::TraversalType,
+        changed_node_only: bool,
+    ) -> Result<Option<Vec<NodeIDX>>> {
+        {
+            if let (Some(changed_nodes), true) = (&self.changed_nodes, changed_node_only) {
+                changed_nodes.shortest_path(self, from, to, graph_structure, traversal_type)
+            } else {
+                if let Some(r) = &self.r {
+                    let left_path = self
+                        .l
+                        .shortest_path(from, to, graph_structure, traversal_type);
+                    let right_path = r.shortest_path(from, to, graph_structure, traversal_type);
+
+                    match (left_path, right_path) {
+                        (Some(l), Some(r)) => {
+                            // if both sides have a path, return the shorter one
+                            if l.len() <= r.len() {
+                                Ok(Some(l))
+                            } else {
+                                Ok(Some(r))
+                            }
+                        }
+                        (None, Some(right_path)) => Ok(Some(right_path)),
+                        (Some(left_path), None) => Ok(Some(left_path)),
+                        (None, None) => Ok(None),
+                    }
+                } else {
+                    Ok(self
+                        .l
+                        .shortest_path(from, to, graph_structure, traversal_type))
+                }
+            }
+        }
+        .context("TwinGraph::shortest_path")
+    }
 }
 
 #[cfg(test)]

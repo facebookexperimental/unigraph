@@ -1,8 +1,8 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
+import { createContext, useCallback, useContext, useMemo } from "react";
 import type { Arrow } from "@/__generated__/ts/Arrow";
 import type { TraversalConfig } from "@/__generated__/ts/TraversalConfig";
-import { createContext, useCallback, useContext, useMemo } from "react";
 import {
   ARROW_POINTS_FROM_NON_EXISTENT,
   useCanEdgeBeForcedL,

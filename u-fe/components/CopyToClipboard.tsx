@@ -24,7 +24,7 @@ export default function CopyToClipboard({
       await navigator.clipboard.writeText(text);
       setCopyState("success");
       setTimeout(() => setCopyState("idle"), 3000);
-    } catch (err) {
+    } catch (_err) {
       setCopyState("error");
       setTimeout(() => setCopyState("idle"), 3000);
     }

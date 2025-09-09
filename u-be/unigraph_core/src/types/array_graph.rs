@@ -35,6 +35,7 @@ use crate::ArrayGraphDebugUtils;
 use crate::ArrayGraphSerializable;
 use crate::GraphBuilder;
 use crate::MapGraph;
+use crate::TraversalType;
 use crate::graph_settings::GraphSettings;
 use crate::graph_settings::GraphStructure;
 use crate::traversal::TraversalConfig;
@@ -59,6 +60,7 @@ use crate::types::array_graph::array_graph_state::ArrayGraphState;
 use crate::types::array_graph::array_graph_stats::ArrayGraphStats;
 use crate::types::array_graph::conjoint_cost::ConjointCost;
 use crate::types::array_graph::offset_graph::lengauer_tarjan_dominator_tree::make_dominator_tree;
+use crate::types::array_graph::offset_graph::shortest_path::shortest_path;
 use crate::types::array_graph::tiers::ALL_TIER_FLAGS;
 use crate::types::array_graph::tiers::TIER_FLAGS;
 
@@ -363,6 +365,21 @@ impl ArrayGraph {
 
     pub fn debug(&self) -> ArrayGraphDebugUtils<'_> {
         ArrayGraphDebugUtils(self)
+    }
+
+    pub fn shortest_path(
+        &self,
+        from: &[NodeIDX],
+        to: NodeIDX,
+        graph_structure: GraphStructure,
+        traversal_type: TraversalType,
+    ) -> Option<Vec<NodeIDX>> {
+        let offset_graph = match graph_structure {
+            GraphStructure::Forward => &self.edges_forward,
+            GraphStructure::Reverse => &self.derived_state.edges_reverse,
+            GraphStructure::Dominator => self.edges_dom(),
+        };
+        shortest_path(offset_graph, from, to, traversal_type)
     }
 }
 

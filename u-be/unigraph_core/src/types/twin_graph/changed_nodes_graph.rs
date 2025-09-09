@@ -11,6 +11,7 @@ use crate::ArrayGraph;
 use crate::Arrow;
 use crate::GraphSide;
 use crate::NodeIDX;
+use crate::TraversalType;
 use crate::TwinGraph;
 use crate::graph_settings::GraphStructure;
 use crate::types::array_graph::edge_to_arrow;
@@ -52,6 +53,47 @@ impl ChangedNodesGraph {
 
         merge_arrows(tg, l, r)
     }
+
+    pub(crate) fn shortest_path(
+        &self,
+        tg: &TwinGraph,
+        from: &[NodeIDX],
+        to: NodeIDX,
+        graph_structure: GraphStructure,
+        traversal_type: TraversalType,
+    ) -> Result<Option<Vec<NodeIDX>>> {
+        let l = self.left.shortest_path(
+            tg,
+            from,
+            to,
+            GraphSide::Left,
+            graph_structure,
+            traversal_type,
+        )?;
+
+        let r = self.right.shortest_path(
+            tg,
+            from,
+            to,
+            GraphSide::Right,
+            graph_structure,
+            traversal_type,
+        )?;
+
+        match (l, r) {
+            // we take the shortest if we have both paths
+            (Some(l_path), Some(r_path)) => {
+                if l_path.len() <= r_path.len() {
+                    Ok(Some(l_path))
+                } else {
+                    Ok(Some(r_path))
+                }
+            }
+            (Some(l_path), None) => Ok(Some(l_path)),
+            (None, Some(r_path)) => Ok(Some(r_path)),
+            (None, None) => Ok(None),
+        }
+    }
 }
 
 struct ChangedNodesGraphOneSide {
@@ -91,7 +133,7 @@ impl ChangedNodesGraphOneSide {
             GraphStructure::Dominator => self.dominator(tg, side)?,
         };
 
-        let ag = match side {
+        let ag: &ArrayGraph = match side {
             GraphSide::Left => &tg.l,
             GraphSide::Right => tg.graph(GraphSide::Right)?,
         };
@@ -114,6 +156,24 @@ impl ChangedNodesGraphOneSide {
         }
 
         Ok(result)
+    }
+
+    pub(crate) fn shortest_path(
+        &self,
+        tg: &TwinGraph,
+        from: &[NodeIDX],
+        to: NodeIDX,
+        side: GraphSide,
+        graph_structure: GraphStructure,
+        traversal_type: TraversalType,
+    ) -> Result<Option<Vec<NodeIDX>>> {
+        let offset_graph = match graph_structure {
+            GraphStructure::Forward => &self.forward(tg, side)?.offset_graph,
+            GraphStructure::Reverse => &self.reverse(tg, side)?.offset_graph,
+            GraphStructure::Dominator => &self.dominator(tg, side)?.offset_graph,
+        };
+
+        Ok(offset_graph.shortest_path(from, to, traversal_type))
     }
 
     fn forward(&self, tg: &TwinGraph, side: GraphSide) -> Result<&ChangedNodesOffsetGraph> {

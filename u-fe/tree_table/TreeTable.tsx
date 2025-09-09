@@ -1,6 +1,6 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-import { type VirtualItem, useVirtualizer } from "@tanstack/react-virtual";
+import { useVirtualizer, type VirtualItem } from "@tanstack/react-virtual";
 import clsx from "clsx";
 import {
   ArrowDown01,
@@ -13,24 +13,23 @@ import {
   TreePalm,
 } from "lucide-react";
 import { useEffect, useMemo, useReducer, useState, useTransition } from "react";
-import { ARROW_POINTS_FROM_NON_EXISTENT } from "../ArrowUtils";
 import type { ArrayGraphUISettingsTreeTableEntryPoints } from "../__generated__/ts/ArrayGraphUISettingsTreeTableEntryPoints";
 import type { GraphStructure } from "../__generated__/ts/GraphStructure";
 import type { SortOrder } from "../__generated__/ts/SortOrder";
+import type { TwinArrow } from "../__generated__/ts/TwinArrow";
+import { ARROW_POINTS_FROM_NON_EXISTENT } from "../ArrowUtils";
+import UHoverCard from "../components/UHoverCard";
 import { Progress } from "../components/ui/progress";
 import { useTreeTableRef } from "../context/GlobalElementRefs";
 import { useSelectedPath } from "../context/SelectedPathContext";
-
-import type { TwinArrow } from "../__generated__/ts/TwinArrow";
-import UHoverCard from "../components/UHoverCard";
 import type { NodeIDX } from "../types";
 import TreeCell from "./TreeCell";
 import {
-  type Row,
-  type SortFn,
   collapseRow,
   expandRow,
   expandToPath,
+  type Row,
+  type SortFn,
   sortRows,
 } from "./TreeTableRows";
 
@@ -136,7 +135,7 @@ export function TreeTable(props: {
   // We mutate it directly and manage the state of the table
   // manually.
   //
-  // biome-ignore lint/correctness/useExhaustiveDependencies: <explanation>
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs once
   const ctx = useMemo(() => {
     const ctx = new TreeTableCtx(
       columns,
@@ -378,7 +377,7 @@ export function TreeTable(props: {
 
     return (
       <div
-        // biome-ignore lint/suspicious/noArrayIndexKey: <explanation>
+        // biome-ignore lint/suspicious/noArrayIndexKey: because
         key={columnIDX}
         style={{
           height: `${rowVirtualizer.getTotalSize() + headerHeight}px`,
@@ -418,7 +417,7 @@ export function TreeTable(props: {
       {/* The scrollable element  */}
       <div
         ref={parentRef}
-        // biome-ignore lint/a11y/noNoninteractiveTabindex: <explanation>
+        // biome-ignore lint/a11y/noNoninteractiveTabindex: because
         tabIndex={0}
         className="overflow-auto h-full w-full outline-0"
         onKeyDown={(e) => {
@@ -691,11 +690,7 @@ class TreeTableCtx {
     if (selectedRow != null) {
       // If we have a selected row we need to find it in the new
       // order and set the selectedRowIDX to it.
-      const newSelectedRowIDX = this.rows.findIndex(
-        // This should be the same object and we compare
-        // by reference.
-        (row) => row === selectedRow,
-      );
+      const newSelectedRowIDX = this.rows.indexOf(selectedRow);
       if (newSelectedRowIDX !== -1) {
         // We reordered the rows and the selected row should remain
         // the same. It should be safe to directly update the selectedRowIDX
