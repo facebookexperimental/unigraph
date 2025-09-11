@@ -16,7 +16,7 @@ header = """
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
  * @oncall unigraph
- * @flow
+ * @flow strict
  * @generated
  * @codegen-command: cd ~/fbsource/fbcode && buck test //unigraph/oss/... -- --env TYPEGEN=1
  */

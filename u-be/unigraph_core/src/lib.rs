@@ -37,6 +37,7 @@ pub use crate::types::array_graph::array_graph_debug_utils::ArrayGraphDebugUtils
 pub use crate::types::array_graph::array_graph_nodes::ArrayGraphNodes;
 pub use crate::types::array_graph::array_graph_nodes::GraphSide;
 pub use crate::types::array_graph::graph_settings;
+pub use crate::types::array_graph::graph_settings::GraphSettings;
 pub use crate::types::array_graph::offset_graph::TraversalType;
 pub use crate::types::array_graph::remap_utils;
 pub use crate::types::map_graph::MapGraph;
