@@ -9,17 +9,17 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { useState } from "react";
-import { useGraphSettings } from "../context/GraphSettingsContext";
 import type { Arrow } from "../__generated__/ts/Arrow";
 import type { TwinArrow } from "../__generated__/ts/TwinArrow";
 import CopyToClipboard from "../components/CopyToClipboard";
 import UHoverCard from "../components/UHoverCard";
 import { Badge } from "../components/ui/badge";
+import { useGraphSettings } from "../context/GraphSettingsContext";
 import { useTwinGraph } from "../context/NativeGraphContext";
 import { useSelectedPath } from "../context/SelectedPathContext";
 import { nodeEdgesChanged, nodeMetricsChanged } from "../native/NodeDiff";
 import type TwinGraph from "../native/TwinGraph";
-import {  H2, P } from "../Typography";
+import { H2, P } from "../Typography";
 import type { Row } from "./TreeTableRows";
 
 type Props = {
@@ -39,32 +39,6 @@ export default function TreeCell(props: Props) {
   const twinGraph = useTwinGraph();
   const twinArrow = props.row.twinArrow;
   const [isHovered, setIsHovered] = useState(false);
-
-  const chevron = (() => {
-    if (props.canExpand) {
-      if (props.row.isCycle) {
-        return <RefreshCw size={16} className="mx-2" />;
-      }
-      return props.row.expanded ? (
-        <ChevronDown
-          size={16}
-          className="mx-2"
-          onClick={() => {
-            props.onToggleExpand(false);
-          }}
-        />
-      ) : (
-        <ChevronRight
-          size={16}
-          className="mx-2"
-          onClick={() => {
-            props.onToggleExpand(true);
-          }}
-        />
-      );
-    }
-    return <span className="mx-2 w-4" />;
-  })();
 
   const padding = [];
   const PaddingComponent = props.paddingComponent;
@@ -91,10 +65,14 @@ export default function TreeCell(props: Props) {
       onMouseLeave={() => setIsHovered(false)}
     >
       {padding}
-      {chevron}
+      <RowChevron
+        canExpand={props.canExpand}
+        row={props.row}
+        onToggleExpand={props.onToggleExpand}
+      />
       <SkippedNodes twinGraph={twinGraph} twinArrow={twinArrow} />
       <ArrowBadge twinArrow={twinArrow} />
-      <p
+      <span
         className={clsx(
           "pe-4 text-ellipsis text-nowrap",
           isExcludedInBoth(twinGraph, twinArrow) && "text-foreground/50",
@@ -102,7 +80,7 @@ export default function TreeCell(props: Props) {
         )}
       >
         {props.nodeName}
-      </p>
+      </span>
       <InfoIcon twinArrow={twinArrow} twinGraph={twinGraph} />
       <NodeDiffBadges twinArrow={twinArrow} />
       {isHovered && <CopyToClipboard text={props.nodeName} className="ml-2" />}
@@ -263,9 +241,9 @@ function getPresence(
     const reachableL = twinGraph.l.isNodeReachable(twinArrow.points_to);
     const reachableR = twinGraph.r.isNodeReachable(twinArrow.points_to);
 
-    if (reachableL && !reachableR) {
+    if (!reachableL && reachableR) {
       return "node_became_reachable";
-    } else if (!reachableL && reachableR) {
+    } else if (reachableL && !reachableR) {
       return "node_became_unreachable";
     } else if (reachableL && reachableR) {
       if (twinArrow.l != null && twinArrow.r != null) {
@@ -475,7 +453,10 @@ function SkippedNodes({
           />
         }
       >
-        <span className="bg-primary text-background text-xs py-0.5 px-3 me-1 rounded-lg cursor-pointer" onClick={onClick} >
+        <span
+          className="bg-primary text-background text-xs py-0.5 px-3 me-1 rounded-lg cursor-pointer"
+          onClick={onClick}
+        >
           {`+${min}`}
         </span>
       </UHoverCard>
@@ -504,7 +485,43 @@ function SkippedNodesHovercardContent({
       <P
         text={`There are ${skipped} nodes between "${fromName}" and "${toName}" that were skipped to reduce clutter.`}
       />
-      <P text={`Clicking on the badge will disable this mode and show the full (shortest) path to "${toName}".`} />
+      <P
+        text={`Clicking on the badge will disable this mode and show the full (shortest) path to "${toName}".`}
+      />
     </div>
   );
+}
+
+function RowChevron({
+  canExpand,
+  row,
+  onToggleExpand,
+}: {
+  canExpand: boolean;
+  row: Row;
+  onToggleExpand: (expanded: boolean) => void;
+}) {
+  if (canExpand) {
+    if (row.isCycle) {
+      return <RefreshCw size={16} className="mx-2" />;
+    }
+    return row.expanded ? (
+      <ChevronDown
+        size={16}
+        className="mx-2"
+        onClick={() => {
+          onToggleExpand(false);
+        }}
+      />
+    ) : (
+      <ChevronRight
+        size={16}
+        className="mx-2"
+        onClick={() => {
+          onToggleExpand(true);
+        }}
+      />
+    );
+  }
+  return <span className="mx-2 w-4" />;
 }
