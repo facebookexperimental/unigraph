@@ -49,9 +49,10 @@ export default function TreeCell(props: Props) {
   }
 
   const color = getPresenceColor(twinGraph, twinArrow);
+  const arrowDiff = getArrowDiff(twinGraph, twinArrow);
 
   let lineThrough = null;
-  switch (getPresence(twinGraph, twinArrow)) {
+  switch (arrowDiff) {
     case "node_became_unreachable":
     case "single_graph_unreachable": {
       lineThrough = "text-foreground/50 line-through";
@@ -60,7 +61,7 @@ export default function TreeCell(props: Props) {
 
   return (
     <div
-      className={clsx("flex items-center w-full h-full", color)}
+      className={clsx("flex items-center w-full h-full gap-2", color)}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
@@ -74,7 +75,7 @@ export default function TreeCell(props: Props) {
       <ArrowBadge twinArrow={twinArrow} />
       <span
         className={clsx(
-          "pe-4 text-ellipsis text-nowrap",
+          "text-ellipsis text-nowrap",
           isExcludedInBoth(twinGraph, twinArrow) && "text-foreground/50",
           lineThrough,
         )}
@@ -82,7 +83,7 @@ export default function TreeCell(props: Props) {
         {props.nodeName}
       </span>
       <InfoIcon twinArrow={twinArrow} twinGraph={twinGraph} />
-      <NodeDiffBadges twinArrow={twinArrow} />
+      <ArrowDiffBadges twinArrow={twinArrow} arrowDiff={arrowDiff} />
       {isHovered && <CopyToClipboard text={props.nodeName} className="ml-2" />}
     </div>
   );
@@ -222,10 +223,7 @@ function isExcludedInBoth(twinGraph: TwinGraph, twinArrow: TwinArrow) {
   }
 }
 
-function getPresence(
-  twinGraph: TwinGraph,
-  twinArrow: TwinArrow,
-):
+type ArrowDiff =
   | "node_became_reachable"
   | "node_became_unreachable"
   | "edge_became_excluded"
@@ -236,7 +234,9 @@ function getPresence(
   | "excluded_edge_was_removed"
   | "single_graph_unreachable"
   | "single_graph_edge_excluded"
-  | "no_change" {
+  | "no_change";
+
+function getArrowDiff(twinGraph: TwinGraph, twinArrow: TwinArrow): ArrowDiff {
   if (twinGraph.r != null) {
     const reachableL = twinGraph.l.isNodeReachable(twinArrow.points_to);
     const reachableR = twinGraph.r.isNodeReachable(twinArrow.points_to);
@@ -284,7 +284,7 @@ function getPresenceColor(
   twinGraph: TwinGraph,
   twinArrow: TwinArrow,
 ): string | null {
-  switch (getPresence(twinGraph, twinArrow)) {
+  switch (getArrowDiff(twinGraph, twinArrow)) {
     case "node_became_reachable":
     case "edge_became_included":
     case "edge_was_added":
@@ -307,13 +307,11 @@ function getBadgeContent(
   twinGraph: TwinGraph,
   twinArrow: TwinArrow,
 ): { content: string; header: string } | null {
-  switch (getPresence(twinGraph, twinArrow)) {
-    case "node_became_reachable": {
-      return {
-        content:
-          "This node does not exist (or not reachable) in the graph on the left but it does exist in the graph on the right.",
-        header: "Node was added to the graph",
-      };
+  switch (getArrowDiff(twinGraph, twinArrow)) {
+    case "node_became_reachable":
+    case "node_became_unreachable": {
+      // these are covered by the "added" and "removed" badges
+      return null;
     }
     case "edge_became_included": {
       return {
@@ -337,13 +335,6 @@ function getBadgeContent(
         header: "Excluded edge was added to the node",
       };
     }
-    case "node_became_unreachable": {
-      return {
-        content:
-          "This node does not exist (or not reachable) in the graph on the right but it does exist in the graph on the left.",
-        header: "Node was removed from the graph",
-      };
-    }
     case "edge_became_excluded": {
       return {
         content:
@@ -354,7 +345,7 @@ function getBadgeContent(
     case "edge_was_removed": {
       return {
         content:
-          "This edge existed in the node on the left graph but it does not exist in the node on the right.",
+          "This edge existed in the node on the left graph but it does not exist in the node on the right. The node is still reachable though other edges.",
         header: "Edge was removed from the node",
       };
     }
@@ -384,31 +375,37 @@ function getBadgeContent(
   }
 }
 
-function NodeDiffBadges({ twinArrow }: { twinArrow: TwinArrow }) {
+function ArrowDiffBadges({
+  twinArrow,
+  arrowDiff,
+}: {
+  twinArrow: TwinArrow;
+  arrowDiff: ArrowDiff;
+}) {
   const diff = twinArrow.node_diff;
 
   const badges = [];
 
-  if (nodeEdgesChanged(diff)) {
+  if (arrowDiff === "node_became_reachable") {
     badges.push(
-      <span
-        key="edges"
-        className="bg-accent text-xs py-0.5 px-2 me-1 rounded-lg"
-      >
-        edges changed
-      </span>,
+      <UHoverCard content="This node was added to the graph.">
+        <RowBadge text="added" className="bg-added" />
+      </UHoverCard>,
+    );
+  } else if (arrowDiff === "node_became_unreachable") {
+    badges.push(
+      <UHoverCard content="This node was removed from the graph.">
+        <RowBadge text="removed" className="bg-removed" />
+      </UHoverCard>,
     );
   }
 
+  if (nodeEdgesChanged(diff)) {
+    badges.push(<RowBadge text="edges changed" className="bg-accent" />);
+  }
+
   if (nodeMetricsChanged(diff)) {
-    badges.push(
-      <span
-        key="metrics"
-        className="bg-accent text-xs py-0.5 px-2 me-1 rounded-lg"
-      >
-        metrics changed
-      </span>,
-    );
+    badges.push(<RowBadge text="metrics changed" className="bg-accent" />);
   }
 
   return badges;
@@ -524,4 +521,18 @@ function RowChevron({
     );
   }
   return <span className="mx-2 w-4" />;
+}
+
+function RowBadge({ text, className }: { text: string; className?: string }) {
+  return (
+    <span
+      key="added"
+      className={clsx(
+        "text-xs py-0.5 px-2 me-1 rounded-lg border border-accent-foreground/50",
+        className,
+      )}
+    >
+      {text}
+    </span>
+  );
 }
