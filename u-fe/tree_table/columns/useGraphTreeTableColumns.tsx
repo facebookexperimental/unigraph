@@ -36,6 +36,7 @@ import {
 import {
   TransitiveCountColumn,
   TransitiveCountDeltaColumn,
+  TransitiveCountRightInDeltaViewColumn,
 } from "./transitiveCounts";
 
 export interface Column {
@@ -258,6 +259,7 @@ class DeltaGraphColumnsBuilder {
 
   makeColumns(): Column[] {
     const columns: Column[] = [
+      new TransitiveCountRightInDeltaViewColumn(this.ctx, this.twinGraph),
       new TransitiveCountDeltaColumn(this.ctx, this.twinGraph),
     ];
     return columns;

@@ -48,12 +48,12 @@ export function DeltaMetricCell({
     <p
       className={clsx(
         "px-4 text-right tabular-nums w-full whitespace-nowrap",
-        isPositive && "text-red-500",
-        isNegative && "text-green-500",
+        isPositive && "font-semibold text-red-600",
+        isNegative && "font-semibold text-green-600",
       )}
     >
       {sign}
-      {formatMetric(value, format)}
+      {value === 0 ? "-" : formatMetric(value, format)}
     </p>
   );
 }

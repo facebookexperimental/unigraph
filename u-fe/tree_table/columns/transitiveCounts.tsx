@@ -1,15 +1,17 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 import type { ColumnType } from "../../__generated__/ts/ColumnType";
+import type { MetricFormat } from "../../__generated__/ts/MetricFormat";
 import type { NodeIDX } from "../../__generated__/ts/NodeIDX";
 import type { SortOrder } from "../../__generated__/ts/SortOrder";
 import { ARROW_POINTS_FROM_NON_EXISTENT } from "../../ArrowUtils";
+import UHoverCard from "../../components/UHoverCard";
+import formatMetric from "../../lib/formatMetric";
 import NativeGraph, {
   GRAPH_SIDE,
   type GraphSide,
 } from "../../native/NativeGraph";
 import type TwinGraph from "../../native/TwinGraph";
-
 import { H1, H2, Link, Pre } from "../../Typography";
 import type { NumericValueColumnDefinition, TSortable } from "../TreeTable";
 import type { Row } from "../TreeTableRows";
@@ -214,6 +216,123 @@ export class TransitiveCountDeltaColumn implements Column {
   }
 }
 
+export class TransitiveCountRightInDeltaViewColumn implements Column {
+  ctx: ColumnsCtx;
+  twinGraph: TwinGraph;
+
+  constructor(ctx: ColumnsCtx, twinGraph: TwinGraph) {
+    this.ctx = ctx;
+    this.twinGraph = twinGraph;
+  }
+
+  isEnabled() {
+    return (
+      this.ctx.showTransitiveCount &&
+      this.ctx.showTransitive &&
+      this.twinGraph.r != null
+    );
+  }
+
+  sortable(): TSortable | null {
+    const columnType: ColumnType = "Right";
+    const sortable: TSortable = {
+      order: null,
+      onSortChange: (order: SortOrder | null) =>
+        this.ctx.onSortChange(order, {
+          TransitiveCount: {
+            t: columnType,
+          },
+        }),
+    };
+
+    const sort = this.ctx.sort();
+    if (
+      sort != null &&
+      "TransitiveCount" in sort.column &&
+      // This column sorta represents both left and right graphs while
+      // only showing the right value. Since left column does not exist
+      // we will take the `Left` sorting as sorting for `Right` as well.
+      (sort.column.TransitiveCount.t === "Right" ||
+        sort.column.TransitiveCount.t === "Left")
+    ) {
+      sortable.order = sort.order;
+    }
+
+    return sortable;
+  }
+
+  getValuesFn(side: GraphSide): (idxs: NodeIDX[]) => Float32Array {
+    const graph = (() => {
+      switch (side) {
+        case GRAPH_SIDE.L:
+          return this.twinGraph.l;
+        case GRAPH_SIDE.R:
+          if (this.twinGraph.r == null) {
+            throw new Error("Right graph is not available");
+          }
+          return this.twinGraph.r;
+      }
+    })();
+
+    if (this.ctx.dominated) {
+      return (idxs: NodeIDX[]) => graph.getTransitiveCountDominated(idxs);
+    } else {
+      return (idxs: NodeIDX[]) => graph.getTransitiveCount(idxs);
+    }
+  }
+
+  getID(): string {
+    return this.ctx.dominated ? "D(count) R" : "T(count) R";
+  }
+
+  definition(): [string, NumericValueColumnDefinition] {
+    const getValues = this.getValuesFn(GRAPH_SIDE.R);
+    const getValuesLeft = this.getValuesFn(GRAPH_SIDE.L);
+    const columnID = this.getID();
+    const r = this.twinGraph.r;
+    if (r == null) {
+      throw new Error("Right graph must be available");
+    }
+
+    const definition: NumericValueColumnDefinition = {
+      t: "numeric_value_column",
+      label: columnID,
+      renderer: (row: Readonly<Row>) => {
+        if (r.isNodeReachable(row.twinArrow.points_to)) {
+          return (
+            <UHoverCard
+              triggerClassname="w-full"
+              content={
+                <MetricDeltaRightHovercard
+                  valueLeft={getValuesLeft([row.twinArrow.points_to])[0] ?? 0}
+                  valueRight={getValues([row.twinArrow.points_to])[0] ?? 0}
+                  format={NO_PRECISION_FORMAT}
+                />
+              }
+            >
+              <MetricCell
+                value={getValues([row.twinArrow.points_to])[0] ?? 0}
+                format={NO_PRECISION_FORMAT}
+              />
+            </UHoverCard>
+          );
+        } else {
+          return <MissingMetric />;
+        }
+      },
+      getNumericValues: getValues,
+      sortable: this.sortable(),
+      isHidden: false,
+      hovercardContent: this.ctx.dominated ? (
+        <TransitiveDominatedCountHovercard />
+      ) : (
+        <TransitiveCountHovercard />
+      ),
+    };
+    return [columnID, definition];
+  }
+}
+
 function TransitiveCountHovercard() {
   return (
     <div className="flex flex-col gap-2 p-2">
@@ -261,6 +380,43 @@ function TransitiveDominatedCountHovercard() {
         In simpler words, dominated count means "how many nodes will become
         unreachable if this node is removed?"
       </div>
+    </div>
+  );
+}
+
+function MetricDeltaRightHovercard({
+  valueLeft,
+  valueRight,
+  format,
+}: {
+  valueLeft: number;
+  valueRight: number;
+  format?: MetricFormat;
+}) {
+  return (
+    <div className="flex flex-col gap-2 p-2">
+      <table className="table-auto w-full">
+        <tbody>
+          <tr>
+            <td className="text-left">Left (before)</td>
+            <td className="text-right">
+              <MetricCell value={valueLeft} format={format} />
+            </td>
+          </tr>
+          <tr>
+            <td className="text-left">Right (after)</td>
+            <td className="text-right">
+              <MetricCell value={valueRight} format={format} />
+            </td>
+          </tr>
+          <tr>
+            <td className="text-left">Delta</td>
+            <td className="text-right font-semibold">
+              <DeltaMetricCell value={valueRight - valueLeft} format={format} />
+            </td>
+          </tr>
+        </tbody>
+      </table>
     </div>
   );
 }
