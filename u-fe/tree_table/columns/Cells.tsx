@@ -33,6 +33,31 @@ export function MetricCell({
   );
 }
 
+export function DeltaMetricCell({
+  value,
+  format,
+}: {
+  value: number;
+  format?: MetricFormat;
+}) {
+  const isPositive = value > 0;
+  const isNegative = value < 0;
+  const sign = isPositive ? "+" : ""; // Negative sign is included in the number itself
+
+  return (
+    <p
+      className={clsx(
+        "px-4 text-right tabular-nums w-full whitespace-nowrap",
+        isPositive && "text-red-500",
+        isNegative && "text-green-500",
+      )}
+    >
+      {sign}
+      {formatMetric(value, format)}
+    </p>
+  );
+}
+
 export function WouldBeDeltaMetricCell({
   value,
   format,

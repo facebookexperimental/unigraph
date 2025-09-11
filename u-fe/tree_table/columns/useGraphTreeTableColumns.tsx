@@ -15,6 +15,7 @@ import { useTVC } from "../../context/TraversalConfigContext";
 import ConjointCostDocs from "../../inline_docs/ConjointCost";
 import type NativeGraph from "../../native/NativeGraph";
 import { GRAPH_SIDE, type GraphSide } from "../../native/NativeGraph";
+import type TwinGraph from "../../native/TwinGraph";
 import type { NodeIDX } from "../../types";
 import ContextMenuCell from "../ContextMenuCell";
 import type {
@@ -32,7 +33,10 @@ import {
   NO_PRECISION_FORMAT,
   WouldBeDeltaMetricCell,
 } from "./Cells";
-import { TransitiveCountColumn } from "./transitiveCounts";
+import {
+  TransitiveCountColumn,
+  TransitiveCountDeltaColumn,
+} from "./transitiveCounts";
 
 export interface Column {
   isEnabled: () => boolean;
@@ -49,7 +53,12 @@ export default function useGraphTreeTableColumns(): ColumnDefinitions {
   return useMemo(() => {
     const builder =
       twinGraph.r !== null
-        ? new DeltaGraphColumnsBuilder()
+        ? new DeltaGraphColumnsBuilder(
+            twinGraph,
+            graphSettings,
+            setGraphSettings,
+            tvc,
+          )
         : new SingleGraphColumnsBuilder(
             l,
             graphSettings,
@@ -234,8 +243,24 @@ class SingleGraphColumnsBuilder {
 }
 
 class DeltaGraphColumnsBuilder {
+  twinGraph: TwinGraph;
+  ctx: ColumnsCtx;
+
+  constructor(
+    twinGraph: TwinGraph,
+    graphSettings: GraphSettings,
+    setGraphSettings: (gs: GraphSettings) => void,
+    tvc: TraversalConfig,
+  ) {
+    this.twinGraph = twinGraph;
+    this.ctx = new ColumnsCtx(graphSettings, setGraphSettings, tvc);
+  }
+
   makeColumns(): Column[] {
-    return [];
+    const columns: Column[] = [
+      new TransitiveCountDeltaColumn(this.ctx, this.twinGraph),
+    ];
+    return columns;
   }
 }
 

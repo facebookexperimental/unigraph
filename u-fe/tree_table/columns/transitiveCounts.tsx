@@ -4,16 +4,17 @@ import type { ColumnType } from "../../__generated__/ts/ColumnType";
 import type { NodeIDX } from "../../__generated__/ts/NodeIDX";
 import type { SortOrder } from "../../__generated__/ts/SortOrder";
 import { ARROW_POINTS_FROM_NON_EXISTENT } from "../../ArrowUtils";
-
 import NativeGraph, {
   GRAPH_SIDE,
   type GraphSide,
 } from "../../native/NativeGraph";
+import type TwinGraph from "../../native/TwinGraph";
 
 import { H1, H2, Link, Pre } from "../../Typography";
 import type { NumericValueColumnDefinition, TSortable } from "../TreeTable";
 import type { Row } from "../TreeTableRows";
 import {
+  DeltaMetricCell,
   MetricCell,
   MissingMetric,
   NO_PRECISION_FORMAT,
@@ -117,6 +118,79 @@ export class TransitiveCountColumn implements Column {
             <MissingMetric />
           );
         }
+      },
+      getNumericValues: getValues,
+      sortable: this.sortable(),
+      isHidden: false,
+      hovercardContent: this.ctx.dominated ? (
+        <TransitiveDominatedCountHovercard />
+      ) : (
+        <TransitiveCountHovercard />
+      ),
+    };
+    return [columnID, definition];
+  }
+}
+
+export class TransitiveCountDeltaColumn implements Column {
+  ctx: ColumnsCtx;
+  twinGraph: TwinGraph;
+
+  constructor(ctx: ColumnsCtx, twinGraph: TwinGraph) {
+    this.ctx = ctx;
+    this.twinGraph = twinGraph;
+  }
+
+  isEnabled() {
+    return this.ctx.showTransitiveCount && this.ctx.showTransitive;
+  }
+
+  sortable(): TSortable | null {
+    const columnType: ColumnType = "Delta";
+    const sortable: TSortable = {
+      order: null,
+      onSortChange: (order: SortOrder | null) =>
+        this.ctx.onSortChange(order, {
+          TransitiveCount: {
+            t: columnType,
+          },
+        }),
+    };
+
+    const sort = this.ctx.sort();
+    if (
+      sort != null &&
+      "TransitiveCount" in sort.column &&
+      sort.column.TransitiveCount.t === columnType
+    ) {
+      sortable.order = sort.order;
+    }
+
+    return sortable;
+  }
+
+  getValuesFn(): (idxs: NodeIDX[]) => Float32Array {
+    return (idxs: NodeIDX[]) => this.twinGraph.getTransitiveCountDelta(idxs);
+  }
+
+  getID(): string {
+    return "∆T(count)";
+  }
+
+  definition(): [string, NumericValueColumnDefinition] {
+    const getValues = this.getValuesFn();
+    const columnID = this.getID();
+
+    const definition: NumericValueColumnDefinition = {
+      t: "numeric_value_column",
+      label: columnID,
+      renderer: (row: Readonly<Row>) => {
+        return (
+          <DeltaMetricCell
+            value={getValues([row.twinArrow.points_to])[0] ?? 0}
+            format={NO_PRECISION_FORMAT}
+          />
+        );
       },
       getNumericValues: getValues,
       sortable: this.sortable(),
