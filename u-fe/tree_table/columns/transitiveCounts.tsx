@@ -173,12 +173,21 @@ export class TransitiveCountDeltaColumn implements Column {
     return (idxs: NodeIDX[]) => this.twinGraph.getTransitiveCountDelta(idxs);
   }
 
+  /// when we sort delta column we want to sort by absolute value
+  /// to see "what changed the most". Sorting it as is will push
+  /// negative values all the way to the bottom below zeros.
+  getValuesFnForSorting(): (idxs: NodeIDX[]) => Float32Array {
+    return (idxs: NodeIDX[]) =>
+      this.twinGraph.getTransitiveCountDelta(idxs).map(Math.abs);
+  }
+
   getID(): string {
     return "∆T(count)";
   }
 
   definition(): [string, NumericValueColumnDefinition] {
     const getValues = this.getValuesFn();
+    const getValuesForSorting = this.getValuesFnForSorting();
     const columnID = this.getID();
 
     const definition: NumericValueColumnDefinition = {
@@ -192,7 +201,7 @@ export class TransitiveCountDeltaColumn implements Column {
           />
         );
       },
-      getNumericValues: getValues,
+      getNumericValues: getValuesForSorting,
       sortable: this.sortable(),
       isHidden: false,
       hovercardContent: this.ctx.dominated ? (
