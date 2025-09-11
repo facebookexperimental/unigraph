@@ -6,8 +6,8 @@ import { useGraphSettings } from "../context/GraphSettingsContext";
 import { useTwinGraph } from "../context/NativeGraphContext";
 import { GRAPH_STRUCTURE } from "../native/NativeGraph";
 import type { NodeIDX } from "../types";
+import useGraphTreeTableColumns from "./columns/useGraphTreeTableColumns";
 import { TreeTable } from "./TreeTable";
-import useGraphTreeTableColumns from "./useGraphTreeTableColumns";
 
 export default function GraphTreeTable(props: {
   roots: readonly NodeIDX[];
