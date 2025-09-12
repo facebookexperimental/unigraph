@@ -6,7 +6,6 @@ import type { NodeIDX } from "../../__generated__/ts/NodeIDX";
 import type { SortOrder } from "../../__generated__/ts/SortOrder";
 import { ARROW_POINTS_FROM_NON_EXISTENT } from "../../ArrowUtils";
 import UHoverCard from "../../components/UHoverCard";
-import formatMetric from "../../lib/formatMetric";
 import NativeGraph, {
   GRAPH_SIDE,
   type GraphSide,
