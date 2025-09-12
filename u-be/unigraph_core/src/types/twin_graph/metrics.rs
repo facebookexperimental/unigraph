@@ -9,8 +9,9 @@ use crate::ArrayGraph;
 use crate::GraphSide;
 use crate::NodeIDX;
 use crate::TwinGraph;
-use crate::types::array_graph::CountChangedNodesForDelta;
-use crate::types::array_graph::ShouldCount;
+use crate::types::array_graph::array_graph_metrics::CountChangedNodesCountsForDelta;
+use crate::types::array_graph::array_graph_metrics::CountChangedNodesMetricsForDelta;
+use crate::types::array_graph::array_graph_metrics::ShouldCount;
 use crate::types::array_graph::get_transitive_tiered_metric_values;
 
 /// Transitive delta value is a difference between transitive sizes of a node
@@ -65,7 +66,7 @@ pub fn get_transitive_count_delta(
         return Ok(0);
     }
 
-    let should_count = CountChangedNodesForDelta { l, r };
+    let should_count = CountChangedNodesCountsForDelta { l, r };
 
     let count_l = if l.node_exists(node_idx) {
         l.edges_forward
@@ -100,7 +101,11 @@ pub fn get_transitive_tiered_delta(
 
         let l = &tg.l;
         let r = tg.graph(GraphSide::Right)?;
-        let should_count = CountChangedNodesForDelta { l, r };
+        let should_count = CountChangedNodesMetricsForDelta {
+            l,
+            r,
+            node_diff: &tg.node_diff,
+        };
         let result_l =
             get_transitive_tiered_metric_values(l, node_idx, metric_name, false, should_count)?;
         let result_r =
@@ -180,10 +185,10 @@ mod tests {
     },
     "Delta:",
     {
-        "T1": 1.0,
-        "T2": 4.0,
-        "T3": 4.0,
-        "T4": 4.0,
+        "T1": 2.0,
+        "T2": 5.0,
+        "T3": 5.0,
+        "T4": 5.0,
     },
 )
 "#

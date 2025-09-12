@@ -7,6 +7,7 @@ use crate::NodeIDX;
 use crate::TieredTraversalConfig;
 use crate::types::MetricName;
 use crate::types::TierName;
+use crate::types::twin_graph::NodeDiff;
 
 /// This struct is used to compute transitive deltas in delta view.
 ///
@@ -60,7 +61,7 @@ pub trait ShouldCount {
 }
 
 #[derive(Clone, Copy)]
-pub struct CountChangedNodesForDelta<'a> {
+pub struct CountChangedNodesCountsForDelta<'a> {
     pub l: &'a ArrayGraph,
     pub r: &'a ArrayGraph,
 }
@@ -74,8 +75,40 @@ impl ShouldCount for CountAllNodes {
     }
 }
 
-impl<'a> ShouldCount for CountChangedNodesForDelta<'a> {
+impl<'a> ShouldCount for CountChangedNodesCountsForDelta<'a> {
     fn should_count(&self, node_idx: NodeIDX) -> bool {
+        match (
+            self.l.is_node_unreachable(node_idx),
+            self.r.is_node_unreachable(node_idx),
+        ) {
+            // was unreachable and is unreachable. not interesting to us. this
+            // technically shouldn't even happen
+            (true, true) => false,
+            // was reachable and is reachable. not interesting to us
+            (false, false) => false,
+
+            // if reachability changed, we do want to count it
+            (true, false) => true,
+            (false, true) => true,
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct CountChangedNodesMetricsForDelta<'a> {
+    pub l: &'a ArrayGraph,
+    pub r: &'a ArrayGraph,
+    pub node_diff: &'a [NodeDiff],
+}
+
+impl<'a> ShouldCount for CountChangedNodesMetricsForDelta<'a> {
+    fn should_count(&self, node_idx: NodeIDX) -> bool {
+        let metric_changed = self.node_diff[node_idx].has_changed_metrics();
+        if metric_changed {
+            // we always want to count nodes that had their metrics changed
+            return true;
+        }
+
         match (
             self.l.is_node_unreachable(node_idx),
             self.r.is_node_unreachable(node_idx),

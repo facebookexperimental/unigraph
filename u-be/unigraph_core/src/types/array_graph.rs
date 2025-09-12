@@ -4,7 +4,7 @@ mod array_graph_arrows;
 pub mod array_graph_debug_utils;
 pub mod array_graph_derived_state;
 mod array_graph_determine_entrypoints;
-mod array_graph_metrics;
+pub(crate) mod array_graph_metrics;
 mod array_graph_name_search;
 pub(crate) mod array_graph_nodes;
 pub mod array_graph_state;
@@ -48,8 +48,6 @@ use crate::types::array_graph::array_graph_derived_state::ArrayGraphDerivedState
 use crate::types::array_graph::array_graph_determine_entrypoints::determine_entrypoints;
 use crate::types::array_graph::array_graph_metrics::CombinedMetricsForNodes;
 use crate::types::array_graph::array_graph_metrics::CountAllNodes;
-pub use crate::types::array_graph::array_graph_metrics::CountChangedNodesForDelta;
-pub use crate::types::array_graph::array_graph_metrics::ShouldCount;
 use crate::types::array_graph::array_graph_metrics::get_combined_metrics_for_entry_points;
 use crate::types::array_graph::array_graph_metrics::get_metrics_sums_for_nodes;
 use crate::types::array_graph::array_graph_metrics::get_metrics_sums_tiered_for_nodes;
