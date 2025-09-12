@@ -8,11 +8,97 @@ use crate::TieredTraversalConfig;
 use crate::types::MetricName;
 use crate::types::TierName;
 
+/// This struct is used to compute transitive deltas in delta view.
+///
+/// # Why do we need this?
+///
+/// Transitive delta value is a difference between transitive sizes of a node
+/// EXCLUDING the nodes that didn't change in the graph.
+///
+/// Displaying delta as a simple difference between transitive sizes of a node
+/// would be much simpler, but it's much less useful. For example, if we have
+/// two graphs GLeft and GRight, and graph B introduces a new node that
+/// already has most of the transitive dependencies from A, the delta would be
+/// big (from no transitive dependencies to a lot of them) and it won't really
+/// tell us much.
+///
+/// If we exclude non-changed nodes, we'll be able to see how much "extra"
+/// stuff that node brought in.
+///
+/// Example of simple transitive delta:
+/// ```text
+/// 
+///            A (t size: 3)                 A (t size: 3)
+///            |                             |   D  (t size: 3)
+///            |                             | /
+///            B (t size: 2)                 B (t size: 2)
+///            |                             |
+///            C (t size: 1)                 C (t size: 1)
+/// ```
+/// In this graph, we added a node D. Node D has almost the same set of
+/// transitive dependencies as A, so the simple transitive delta would be
+///
+/// Simple transitive Delta: 3 (0 on the left, 3 on the right)
+/// This delta may look big, but in practice the node didn't add much to the
+/// size.
+///
+/// Example of transitive delta excluding non-changed nodes:
+/// ```text
+///            A (t size: 3)                 A (t size: 3)
+///            |                             |   D  (t size: 1)
+///            |                             | /
+///            B (t size: 2)                 B (t size: 2)
+///            |                             |
+///            C (t size: 1)                 C (t size: 1)
+/// ```
+/// In this case we exclude nodes B and C from the transitive delta
+/// calculation, because then did not change.
+/// This way the delta for the node D will be:
+/// Delta with exclusion: 1 (0 on the left, 1 on the right, which is its self size)
+pub trait ShouldCount {
+    fn should_count(&self, node_idx: NodeIDX) -> bool;
+}
+
+#[derive(Clone, Copy)]
+pub struct CountChangedNodesForDelta<'a> {
+    pub l: &'a ArrayGraph,
+    pub r: &'a ArrayGraph,
+}
+
+pub struct CountAllNodes;
+
+impl ShouldCount for CountAllNodes {
+    #[inline(always)]
+    fn should_count(&self, _node_idx: NodeIDX) -> bool {
+        true
+    }
+}
+
+impl<'a> ShouldCount for CountChangedNodesForDelta<'a> {
+    fn should_count(&self, node_idx: NodeIDX) -> bool {
+        match (
+            self.l.is_node_unreachable(node_idx),
+            self.r.is_node_unreachable(node_idx),
+        ) {
+            // was unreachable and is unreachable. not interesting to us. this
+            // technically shouldn't even happen
+            (true, true) => false,
+            // was reachable and is reachable. not interesting to us
+            (false, false) => false,
+
+            // if reachability changed, we do want to count it
+            (true, false) => true,
+            (false, true) => true,
+        }
+    }
+}
+
 pub fn get_transitive_tiered_metric_values(
     ag: &ArrayGraph,
     node_idx: NodeIDX,
     metric_name: &str,
     dominated: bool,
+    should_count: impl ShouldCount,
 ) -> Result<BTreeMap<TierName, f32>> {
     let mut result = BTreeMap::new();
 
@@ -39,9 +125,11 @@ pub fn get_transitive_tiered_metric_values(
             };
 
             for node_idx in edges.dfs_configured(&[node_idx]) {
-                let value = metrics[node_idx];
-                let tier_idx = ag.try_node_tier_idx(node_idx)?;
-                tiered_metrics[tier_idx] += value;
+                if should_count.should_count(node_idx) {
+                    let value = metrics[node_idx];
+                    let tier_idx = ag.try_node_tier_idx(node_idx)?;
+                    tiered_metrics[tier_idx] += value;
+                }
             }
             // Make tiered metrics cumulative. meaning that every next tier has
             // its own value plus the previous tier's value combined

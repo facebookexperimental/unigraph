@@ -4,8 +4,11 @@ use anyhow::Result;
 use k9::snapshot;
 
 use crate::ArrayGraph;
+use crate::GraphSide;
 use crate::MapGraph;
+use crate::TraversalConfig;
 use crate::TwinGraph;
+use crate::tests::test_utils::traversal_config_test_trait::TraversalConfigTestTrait;
 
 // https://fburl.com/excalidraw/vgjzlq2q
 const TEST_GRAPH_1: &str = include_str!("./test_graphs/test_graph_1.json");
@@ -33,6 +36,18 @@ pub fn make_twin_graph() -> Result<TwinGraph> {
     let left = MapGraph::from_json(TEST_GRAPH_2)?.to_array_graph_serializable()?;
     let right = MapGraph::from_json(TEST_GRAPH_2_RIGHT)?.to_array_graph_serializable()?;
     TwinGraph::from_two(left, right)
+}
+
+pub fn make_twin_graph_with_tier_config() -> Result<TwinGraph> {
+    let mut tg = make_twin_graph()?;
+    let mut tvc = TraversalConfig::default();
+    tvc.with_tier_config();
+
+    tg.graph_mut(GraphSide::Left)?
+        .apply_traversal_config(tvc.clone())?;
+    tg.graph_mut(GraphSide::Right)?
+        .apply_traversal_config(tvc)?;
+    Ok(tg)
 }
 
 #[test]

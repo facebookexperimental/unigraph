@@ -5,6 +5,7 @@ mod diff;
 pub(crate) mod get_arrows;
 mod merge;
 mod metrics;
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use anyhow::Context;
@@ -16,9 +17,11 @@ use crate::ArrayGraphNodes;
 use crate::ArrayGraphSerializable;
 use crate::NodeIDX;
 use crate::graph_settings::GraphStructure;
+use crate::types::TierName;
 use crate::types::array_graph::array_graph_nodes::GraphSide;
 use crate::types::twin_graph::changed_nodes_graph::ChangedNodesGraph;
 use crate::types::twin_graph::get_arrows::TwinArrow;
+use crate::types::twin_graph::metrics::get_transitive_tiered_delta;
 
 const MISSING_RIGHT_ERROR: &str = "TwinGraph: You are trying to access the right graph, but it is not present. \
      Please ensure that the TwinGraph was initialized with a right graph.";
@@ -39,6 +42,8 @@ pub struct TwinGraph {
     pub l: ArrayGraph,
     pub r: Option<ArrayGraph>,
     changed_nodes: Option<ChangedNodesGraph>,
+    #[readonly]
+    pub metric_names: Vec<String>,
 }
 
 impl TwinGraph {
@@ -47,6 +52,7 @@ impl TwinGraph {
             node_names: Arc::clone(&l.nodes.node_names),
             node_diff: Arc::clone(&l.nodes.node_diff),
             changed_nodes: Some(ChangedNodesGraph::new()),
+            metric_names: l.metrics.keys().cloned().collect(),
             l,
             r: None,
         })
@@ -118,6 +124,14 @@ impl TwinGraph {
         } else {
             Ok(0)
         }
+    }
+
+    pub fn get_transitive_tiered_delta(
+        &self,
+        node_idx: NodeIDX,
+        metric_name: &str,
+    ) -> Result<BTreeMap<TierName, f32>> {
+        get_transitive_tiered_delta(self, node_idx, metric_name)
     }
 
     pub fn shortest_path(

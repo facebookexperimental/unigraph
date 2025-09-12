@@ -281,6 +281,24 @@ pub fn get_transitive_tiered_metrics(
 }
 
 #[wasm_bindgen]
+pub fn get_transitive_tiered_metrics_delta(
+    node_idxs: Vec<u32>,
+    metric_name: &str,
+) -> Result<String, WasmJSError> {
+    let graph_state = GlobalGraphState::graph_state().get();
+    let mut result = Vec::with_capacity(node_idxs.len());
+    let tg = &graph_state.twin_graph;
+    for node_idx in node_idxs {
+        let transitive_value = tg
+            .get_transitive_tiered_delta(NodeIDX::from(node_idx), metric_name)
+            .context("get transitive tiered metrics")?;
+        result.push(transitive_value);
+    }
+    Ok(serde_json::to_string(&result)
+        .context("Failed to serialize transitive tiered delta metrics")?)
+}
+
+#[wasm_bindgen]
 pub fn get_combined_metrics_for_nodes(
     node_idxs: Vec<u32>,
     side: u32,

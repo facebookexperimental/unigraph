@@ -17,7 +17,6 @@ mod super_root;
 mod tarjan_strongly_connected_components;
 pub mod tiers;
 mod to_map_graph;
-
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
@@ -48,11 +47,14 @@ use crate::types::array_graph::array_graph_arrows::get_arrows;
 use crate::types::array_graph::array_graph_derived_state::ArrayGraphDerivedState;
 use crate::types::array_graph::array_graph_determine_entrypoints::determine_entrypoints;
 use crate::types::array_graph::array_graph_metrics::CombinedMetricsForNodes;
+use crate::types::array_graph::array_graph_metrics::CountAllNodes;
+pub use crate::types::array_graph::array_graph_metrics::CountChangedNodesForDelta;
+pub use crate::types::array_graph::array_graph_metrics::ShouldCount;
 use crate::types::array_graph::array_graph_metrics::get_combined_metrics_for_entry_points;
 use crate::types::array_graph::array_graph_metrics::get_metrics_sums_for_nodes;
 use crate::types::array_graph::array_graph_metrics::get_metrics_sums_tiered_for_nodes;
 use crate::types::array_graph::array_graph_metrics::get_transitive_metric_value;
-use crate::types::array_graph::array_graph_metrics::get_transitive_tiered_metric_values;
+pub use crate::types::array_graph::array_graph_metrics::get_transitive_tiered_metric_values;
 use crate::types::array_graph::array_graph_metrics::parents_len_configured;
 use crate::types::array_graph::array_graph_nodes::ArrayGraphNodesForGraphSide;
 use crate::types::array_graph::array_graph_nodes::NodeIDXsArcIter;
@@ -265,15 +267,14 @@ impl ArrayGraph {
         metric_name: &str,
         dominated: bool,
     ) -> Result<BTreeMap<TierName, f32>> {
-        get_transitive_tiered_metric_values(self, node_idx, metric_name, dominated).with_context(
-            || {
+        get_transitive_tiered_metric_values(self, node_idx, metric_name, dominated, CountAllNodes)
+            .with_context(|| {
                 format!(
                     "ag:get_transitive_tiered_metric_values for node_idx: `{}`, node_name: `{}`",
                     node_idx,
                     self.idx_to_name(node_idx)
                 )
-            },
-        )
+            })
     }
 
     pub fn parents_len_configured(&self, node_idx: NodeIDX) -> usize {

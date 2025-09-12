@@ -80,9 +80,19 @@ pub fn merge_into_twin(
     let mut right = remapped_right.into_array_graph();
     right.nodes = shared_node_names_r;
 
+    let metric_names = left
+        .metrics
+        .keys()
+        .chain(right.metrics.keys())
+        .cloned()
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect();
+
     Ok(TwinGraph {
         node_names,
         node_diff: Arc::clone(&node_diff),
+        metric_names,
         l: left,
         r: Some(right),
         changed_nodes: Some(ChangedNodesGraph::new()),

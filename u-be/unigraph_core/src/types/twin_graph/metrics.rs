@@ -1,9 +1,17 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
+use std::collections::BTreeMap;
+
+use anyhow::Context;
 use anyhow::Result;
 
 use crate::ArrayGraph;
+use crate::GraphSide;
 use crate::NodeIDX;
+use crate::TwinGraph;
+use crate::types::array_graph::CountChangedNodesForDelta;
+use crate::types::array_graph::ShouldCount;
+use crate::types::array_graph::get_transitive_tiered_metric_values;
 
 /// Transitive delta value is a difference between transitive sizes of a node
 /// EXCLUDING the nodes that didn't change in the graph.
@@ -57,27 +65,12 @@ pub fn get_transitive_count_delta(
         return Ok(0);
     }
 
-    let should_count = |node_idx: &NodeIDX| {
-        match (
-            l.is_node_unreachable(*node_idx),
-            r.is_node_unreachable(*node_idx),
-        ) {
-            // was unreachable and is unreachable. not interesting to us. this
-            // technically shouldn't even happen
-            (true, true) => false,
-            // was reachable and is reachable. not interesting to us
-            (false, false) => false,
-
-            // if reachability changed, we do want to count it
-            (true, false) => true,
-            (false, true) => true,
-        }
-    };
+    let should_count = CountChangedNodesForDelta { l, r };
 
     let count_l = if l.node_exists(node_idx) {
         l.edges_forward
             .dfs_configured(&[node_idx])
-            .filter(should_count)
+            .filter(|node_idx| should_count.should_count(*node_idx))
             .count()
     } else {
         0
@@ -86,22 +79,59 @@ pub fn get_transitive_count_delta(
     let count_r = if r.node_exists(node_idx) {
         r.edges_forward
             .dfs_configured(&[node_idx])
-            .filter(should_count)
+            .filter(|node_idx| should_count.should_count(*node_idx))
             .count()
     } else {
         0
     };
 
-    dbg!(&count_l, &count_r);
     Ok(count_r as i32 - count_l as i32)
+}
+
+pub fn get_transitive_tiered_delta(
+    tg: &TwinGraph,
+    node_idx: NodeIDX,
+    metric_name: &str,
+) -> Result<BTreeMap<String, f32>> {
+    {
+        if tg.r.is_none() {
+            return Ok(BTreeMap::new());
+        }
+
+        let l = &tg.l;
+        let r = tg.graph(GraphSide::Right)?;
+        let should_count = CountChangedNodesForDelta { l, r };
+        let result_l =
+            get_transitive_tiered_metric_values(l, node_idx, metric_name, false, should_count)?;
+        let result_r =
+            get_transitive_tiered_metric_values(r, node_idx, metric_name, false, should_count)?;
+
+        // comparing two graphs with different tiers is probably tricky.
+        // for now we'll just take tiers from the right graph.
+        let tiers = &r.state.tiers;
+
+        anyhow::Ok(
+            tiers
+                .iter()
+                .map(|(tier_name, _idx)| {
+                    let l_value = *result_l.get(tier_name).unwrap_or(&0.0);
+                    let r_value = *result_r.get(tier_name).unwrap_or(&0.0);
+                    (tier_name.clone(), r_value - l_value)
+                })
+                .collect::<BTreeMap<_, _>>(),
+        )
+    }
+    .context("get_transitive_tiered_delta")
 }
 
 #[cfg(test)]
 mod tests {
     use k9::assert_equal;
+    use k9::snapshot;
 
     use super::*;
     use crate::tests::test_graphs::make_twin_graph;
+    use crate::tests::test_graphs::make_twin_graph_with_tier_config;
 
     #[test]
     fn test_get_transitive_count_delta() -> Result<()> {
@@ -115,6 +145,79 @@ mod tests {
         assert_equal!(t_left, 0);
         assert_equal!(t_right, 8);
         assert_equal!(t_delta, 1); // this is 1 (!!!), not 8. Because only one node was added with 7 existing deps
+        Ok(())
+    }
+
+    #[test]
+    fn test_get_transitive_tiered_delta() -> Result<()> {
+        let tg = make_twin_graph_with_tier_config()?;
+        let l = tg.graph(GraphSide::Left)?;
+        let r = tg.graph(GraphSide::Right)?;
+        let m = "size";
+
+        let a_idx = tg.node_names.name_to_idx_log("A").unwrap();
+        let value_l = l.get_transitive_tiered_metric_values(a_idx, m, false)?;
+        let value_r = r.get_transitive_tiered_metric_values(a_idx, m, false)?;
+        let delta = tg.get_transitive_tiered_delta(a_idx, m)?;
+
+        snapshot!(
+            ("Left:", value_l, "Right:", value_r, "Delta:", delta),
+            r#"
+(
+    "Left:",
+    {
+        "T1": 7.0,
+        "T2": 9.0,
+        "T3": 10.0,
+        "T4": 11.0,
+    },
+    "Right:",
+    {
+        "T1": 9.0,
+        "T2": 15.0,
+        "T3": 15.0,
+        "T4": 16.0,
+    },
+    "Delta:",
+    {
+        "T1": 1.0,
+        "T2": 4.0,
+        "T3": 4.0,
+        "T4": 4.0,
+    },
+)
+"#
+        );
+
+        let t_idx = tg.node_names.name_to_idx_log("T").unwrap();
+        let value_l = l.get_transitive_tiered_metric_values(t_idx, m, false)?;
+        let value_r = r.get_transitive_tiered_metric_values(t_idx, m, false)?;
+        let delta = tg.get_transitive_tiered_delta(t_idx, m)?;
+
+        snapshot!(
+            ("Left:", value_l, "Right:", value_r, "Delta:", delta),
+            r#"
+(
+    "Left:",
+    {},
+    "Right:",
+    {
+        "T1": 6.0,
+        "T2": 8.0,
+        "T3": 8.0,
+        "T4": 8.0,
+    },
+    "Delta:",
+    {
+        "T1": 1.0,
+        "T2": 1.0,
+        "T3": 1.0,
+        "T4": 1.0,
+    },
+)
+"#
+        );
+
         Ok(())
     }
 }
