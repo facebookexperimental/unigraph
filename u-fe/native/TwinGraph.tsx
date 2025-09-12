@@ -4,17 +4,21 @@ import type { GraphStructure } from "@/__generated__/ts/GraphStructure";
 import type { TraversalType } from "@/__generated__/ts/TraversalType";
 import {
   get_arrow_pairs,
+  get_graph_node_count,
   get_shortest_path,
   get_transitive_count_delta,
+  get_transitive_tiered_metrics_delta,
   node_idx_to_name,
   node_name_to_idx_log,
   search_node_name_fuzzy,
 } from "../../.build/wasm/unigraph_wasm";
 import type { TwinArrow } from "../__generated__/ts/TwinArrow";
 import type { NodeIDX } from "../types";
-import { SingleMetricsCache } from "./MetricCaches";
+import type { KeyedMetrics } from "./MetricCaches";
+import { KeyedMetricsCache, SingleMetricsCache } from "./MetricCaches";
 import type NativeGraph from "./NativeGraph";
 import {
+  GRAPH_SIDE,
   GRAPH_STRUCTURE,
   type GraphStructureU8,
   type NodeIDXVecSet,
@@ -23,19 +27,23 @@ import {
 
 /// This is a wrapper class over One or Two Native Graphs (left + ?right)
 export default class TwinGraph {
+  readonly nodeCount: number;
   readonly l: NativeGraph;
   readonly r: NativeGraph | null;
   private entrypointsCache: NodeIDXVecSet | null = null;
   private transitiveCountDeltaCache: SingleMetricsCache;
+  private transitiveTieredDeltaCache: Map<string, KeyedMetricsCache>;
 
   constructor(l: NativeGraph, r: NativeGraph | null) {
     this.l = l;
     this.r = r;
+    this.nodeCount = get_graph_node_count(GRAPH_SIDE.L);
     this.transitiveCountDeltaCache = new SingleMetricsCache(
       l.nodeCount,
       (nodeIDXs: NodeIDX[]) =>
         new Float32Array(get_transitive_count_delta(new Uint32Array(nodeIDXs))),
     );
+    this.transitiveTieredDeltaCache = new Map<string, KeyedMetricsCache>();
   }
 
   isDeltaGraph(): boolean {
@@ -118,6 +126,35 @@ export default class TwinGraph {
     }
 
     return Array.from(path) as NodeIDX[];
+  }
+
+  getTieredTransitiveMetricsDeltaBatched(
+    nodeIDXs: NodeIDX[],
+    metricName: string,
+  ): KeyedMetrics[] {
+    return this.getOrInitForTransitiveTieredDelta(metricName).getForIDXs(
+      nodeIDXs,
+    );
+  }
+
+  private getOrInitForTransitiveTieredDelta(
+    metricName: string,
+  ): KeyedMetricsCache {
+    if (this.transitiveTieredDeltaCache.has(metricName)) {
+      return this.transitiveTieredDeltaCache.get(
+        metricName,
+      ) as KeyedMetricsCache;
+    }
+    const getMetrics = (nodeIDXs: NodeIDX[]) => {
+      const metricsJSON = get_transitive_tiered_metrics_delta(
+        new Uint32Array(nodeIDXs),
+        metricName,
+      );
+      return JSON.parse(metricsJSON) as Array<KeyedMetrics>;
+    };
+    const metricsCache = new KeyedMetricsCache(this.nodeCount, getMetrics);
+    this.transitiveTieredDeltaCache.set(metricName, metricsCache);
+    return metricsCache;
   }
 }
 

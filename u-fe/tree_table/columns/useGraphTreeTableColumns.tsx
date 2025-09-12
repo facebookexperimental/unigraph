@@ -33,6 +33,7 @@ import {
   MetricRightInDeltaViewColumn,
   TransitiveMetricColumn,
   TransitiveTieredMetricColumn,
+  TransitiveTieredMetricDeltaColumn,
 } from "./metrics";
 import {
   TransitiveCountColumn,
@@ -265,8 +266,21 @@ class DeltaGraphColumnsBuilder {
       new TransitiveCountDeltaColumn(this.ctx, this.twinGraph),
     ];
     for (const metric of r.metricNames) {
-      columns.push(new MetricRightInDeltaViewColumn(this.ctx, this.twinGraph, metric));
+      columns.push(
+        new MetricRightInDeltaViewColumn(this.ctx, this.twinGraph, metric),
+      );
       columns.push(new MetricDeltaViewColumn(this.ctx, this.twinGraph, metric));
+
+      for (const tier of r.stats().tier_names) {
+        columns.push(
+          new TransitiveTieredMetricDeltaColumn(
+            this.ctx,
+            this.twinGraph,
+            metric,
+            tier,
+          ),
+        );
+      }
     }
     return columns;
   }

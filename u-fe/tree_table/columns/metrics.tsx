@@ -238,25 +238,8 @@ export class TransitiveTieredMetricColumn implements Column {
   }
 
   isEnabled() {
-    const metricSettings = this.ctx.metricSettings(this.metricName);
     const tierIDX = this.nativeGraph.stats().tier_names.indexOf(this.tierName);
-
-    if (tierIDX == null) {
-      return false;
-    }
-
-    const maxTier = this.ctx.tvc.tiered_traversal?.AscendingTiers.max_tier;
-
-    if (metricSettings?.column_show_tiered == null && maxTier != null) {
-      if (tierIDX > maxTier) {
-        return false;
-      }
-    }
-
-    if (metricSettings?.column_show_tiered?.[this.tierName] === "Never") {
-      return false;
-    }
-    return this.ctx.graphSettings.ui_settings?.columns?.show_tiered === true;
+    return isTierEnabled(this.ctx, this.metricName, this.tierName, tierIDX);
   }
 
   getID(): string {
@@ -359,6 +342,112 @@ export class TransitiveTieredMetricColumn implements Column {
       getNumericValues: (idxs: NodeIDX[]) => {
         return new Float32Array(getValues(idxs));
       },
+      sortable: this.sortable(),
+      isHidden: false,
+    };
+
+    return [columnID, definition];
+  }
+}
+
+export class TransitiveTieredMetricDeltaColumn implements Column {
+  ctx: ColumnsCtx;
+  twinGraph: TwinGraph;
+  metricName: string;
+  tierName: string;
+
+  constructor(
+    ctx: ColumnsCtx,
+    twinGraph: TwinGraph,
+    metricName: string,
+    tierName: string,
+  ) {
+    this.ctx = ctx;
+    this.twinGraph = twinGraph;
+    this.metricName = metricName;
+    this.tierName = tierName;
+  }
+
+  isEnabled() {
+    if (this.twinGraph.r == null) {
+      return false;
+    }
+    const tierIDX = this.twinGraph.r.stats().tier_names.indexOf(this.tierName);
+    return isTierEnabled(this.ctx, this.metricName, this.tierName, tierIDX);
+  }
+
+  getID(): string {
+    const graphHasMoreThanOneMetric = this.twinGraph.l.metricNames.length > 1;
+
+    const base = graphHasMoreThanOneMetric
+      ? `∆ ${this.tierName} ${this.metricName}`
+      : `∆ ${this.tierName}`;
+
+    if (this.ctx.dominated) {
+      return `D(${base})`;
+    }
+    return base;
+  }
+
+  sortable() {
+    const columnType: ColumnType = "Delta";
+    const sortable: TSortable = {
+      order: null,
+      onSortChange: (order: SortOrder | null) =>
+        this.ctx.onSortChange(order, {
+          TieredTransitiveMetric: {
+            t: columnType,
+            name: this.metricName,
+            tier: this.tierName,
+          },
+        }),
+    };
+
+    const sort = this.ctx.sort();
+    if (
+      sort != null &&
+      "TieredTransitiveMetric" in sort.column &&
+      sort.column.TieredTransitiveMetric.t === columnType &&
+      sort.column.TieredTransitiveMetric.name === this.metricName &&
+      sort.column.TieredTransitiveMetric.tier === this.tierName
+    ) {
+      sortable.order = sort.order;
+    }
+
+    return sortable;
+  }
+
+  getValuesFn(): (idxs: NodeIDX[]) => number[] {
+    return (idxs: NodeIDX[]) => {
+      return this.twinGraph
+        .getTieredTransitiveMetricsDeltaBatched(idxs, this.metricName)
+        .map((m) => m[this.tierName] ?? 0);
+    };
+  }
+
+  getValuesFnForSorting(): (idxs: NodeIDX[]) => Float32Array {
+    return (idxs: NodeIDX[]) =>
+      Float32Array.from(this.getValuesFn()(idxs).map((n) => Math.abs(n)));
+  }
+
+  definition(): [string, NumericValueColumnDefinition] {
+    const columnID = this.getID();
+    const getValues = this.getValuesFn();
+    const getValuesFnForSorting = this.getValuesFnForSorting();
+    const format = this.ctx.metricSettings(this.metricName)?.format;
+
+    const definition: NumericValueColumnDefinition = {
+      t: "numeric_value_column",
+      label: columnID,
+      renderer: (row: Readonly<Row>) => {
+        return (
+          <DeltaMetricCell
+            value={getValues([row.twinArrow.points_to])[0] as number}
+            format={format}
+          />
+        );
+      },
+      getNumericValues: getValuesFnForSorting,
       sortable: this.sortable(),
       isHidden: false,
     };
@@ -567,4 +656,30 @@ export class MetricDeltaViewColumn implements Column {
 
     return [columnID, definition];
   }
+}
+
+function isTierEnabled(
+  ctx: ColumnsCtx,
+  metricName: string,
+  tierName: string,
+  tierIDX: number,
+) {
+  const metricSettings = ctx.metricSettings(metricName);
+
+  if (tierIDX == null) {
+    return false;
+  }
+
+  const maxTier = ctx.tvc.tiered_traversal?.AscendingTiers.max_tier;
+
+  if (metricSettings?.column_show_tiered == null && maxTier != null) {
+    if (tierIDX > maxTier) {
+      return false;
+    }
+  }
+
+  if (metricSettings?.column_show_tiered?.[tierName] === "Never") {
+    return false;
+  }
+  return ctx.graphSettings.ui_settings?.columns?.show_tiered === true;
 }
