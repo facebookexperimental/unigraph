@@ -29,6 +29,8 @@ import type { Row } from "../TreeTableRows";
 import { MetricCell, MissingMetric, NO_PRECISION_FORMAT } from "./Cells";
 import {
   MetricColumn,
+  MetricDeltaViewColumn,
+  MetricRightInDeltaViewColumn,
   TransitiveMetricColumn,
   TransitiveTieredMetricColumn,
 } from "./metrics";
@@ -257,10 +259,15 @@ class DeltaGraphColumnsBuilder {
   }
 
   makeColumns(): Column[] {
+    const r = this.twinGraph.rightGraphX();
     const columns: Column[] = [
       new TransitiveCountRightInDeltaViewColumn(this.ctx, this.twinGraph),
       new TransitiveCountDeltaColumn(this.ctx, this.twinGraph),
     ];
+    for (const metric of r.metricNames) {
+      columns.push(new MetricRightInDeltaViewColumn(this.ctx, this.twinGraph, metric));
+      columns.push(new MetricDeltaViewColumn(this.ctx, this.twinGraph, metric));
+    }
     return columns;
   }
 }

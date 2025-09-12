@@ -1,7 +1,6 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 import type { ColumnType } from "../../__generated__/ts/ColumnType";
-import type { MetricFormat } from "../../__generated__/ts/MetricFormat";
 import type { NodeIDX } from "../../__generated__/ts/NodeIDX";
 import type { SortOrder } from "../../__generated__/ts/SortOrder";
 import { ARROW_POINTS_FROM_NON_EXISTENT } from "../../ArrowUtils";
@@ -21,6 +20,7 @@ import {
   NO_PRECISION_FORMAT,
   WouldBeDeltaMetricCell,
 } from "./Cells";
+import { MetricDeltaRightHovercard } from "./hovercards";
 import type { Column, ColumnsCtx } from "./useGraphTreeTableColumns";
 
 export class TransitiveCountColumn implements Column {
@@ -379,43 +379,6 @@ function TransitiveDominatedCountHovercard() {
         In simpler words, dominated count means "how many nodes will become
         unreachable if this node is removed?"
       </div>
-    </div>
-  );
-}
-
-function MetricDeltaRightHovercard({
-  valueLeft,
-  valueRight,
-  format,
-}: {
-  valueLeft: number;
-  valueRight: number;
-  format?: MetricFormat;
-}) {
-  return (
-    <div className="flex flex-col gap-2 p-2">
-      <table className="table-auto w-full">
-        <tbody>
-          <tr>
-            <td className="text-left">Left (before)</td>
-            <td className="text-right">
-              <MetricCell value={valueLeft} format={format} />
-            </td>
-          </tr>
-          <tr>
-            <td className="text-left">Right (after)</td>
-            <td className="text-right">
-              <MetricCell value={valueRight} format={format} />
-            </td>
-          </tr>
-          <tr>
-            <td className="text-left">Delta</td>
-            <td className="text-right font-semibold">
-              <DeltaMetricCell value={valueRight - valueLeft} format={format} />
-            </td>
-          </tr>
-        </tbody>
-      </table>
     </div>
   );
 }

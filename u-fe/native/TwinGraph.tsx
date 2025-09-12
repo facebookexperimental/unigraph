@@ -42,6 +42,13 @@ export default class TwinGraph {
     return this.r != null;
   }
 
+  rightGraphX(): NativeGraph {
+    if (this.r == null) {
+      throw new Error("twin graph does not have a graph on the right side.");
+    }
+    return this.r;
+  }
+
   determineEntrypoints() {
     if (this.entrypointsCache == null) {
       if (this.r == null) {

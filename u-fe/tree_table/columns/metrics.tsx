@@ -4,11 +4,19 @@ import type { ColumnType } from "../../__generated__/ts/ColumnType";
 import type { NodeIDX } from "../../__generated__/ts/NodeIDX";
 import type { SortOrder } from "../../__generated__/ts/SortOrder";
 import { ARROW_POINTS_FROM_NON_EXISTENT } from "../../ArrowUtils";
+import UHoverCard from "../../components/UHoverCard";
 import type NativeGraph from "../../native/NativeGraph";
 import { GRAPH_SIDE, type GraphSide } from "../../native/NativeGraph";
+import type TwinGraph from "../../native/TwinGraph";
 import type { NumericValueColumnDefinition, TSortable } from "../TreeTable";
 import type { Row } from "../TreeTableRows";
-import { MetricCell, MissingMetric, WouldBeDeltaMetricCell } from "./Cells";
+import {
+  DeltaMetricCell,
+  MetricCell,
+  MissingMetric,
+  WouldBeDeltaMetricCell,
+} from "./Cells";
+import { MetricDeltaRightHovercard } from "./hovercards";
 import type { Column, ColumnsCtx } from "./useGraphTreeTableColumns";
 
 export class MetricColumn implements Column {
@@ -351,6 +359,208 @@ export class TransitiveTieredMetricColumn implements Column {
       getNumericValues: (idxs: NodeIDX[]) => {
         return new Float32Array(getValues(idxs));
       },
+      sortable: this.sortable(),
+      isHidden: false,
+    };
+
+    return [columnID, definition];
+  }
+}
+
+export class MetricRightInDeltaViewColumn implements Column {
+  ctx: ColumnsCtx;
+  twinGraph: TwinGraph;
+  metricName: string;
+
+  constructor(ctx: ColumnsCtx, twinGraph: TwinGraph, metricName: string) {
+    this.ctx = ctx;
+    this.twinGraph = twinGraph;
+    this.metricName = metricName;
+  }
+
+  isEnabled() {
+    if (this.twinGraph.r == null) {
+      return false;
+    }
+    return (
+      this.ctx.showMetrics &&
+      this.ctx.metricSettings(this.metricName)?.column_hide_self !== true
+    );
+  }
+
+  getID(): string {
+    return `${this.metricName} R`;
+  }
+
+  sortable() {
+    const columnType: ColumnType = "Right";
+    const sortable: TSortable = {
+      order: null,
+      onSortChange: (order: SortOrder | null) =>
+        this.ctx.onSortChange(order, {
+          Metric: {
+            t: columnType,
+            name: this.metricName,
+          },
+        }),
+    };
+
+    const sort = this.ctx.sort();
+    if (
+      sort != null &&
+      "Metric" in sort.column &&
+      (sort.column.Metric.t === "Left" || sort.column.Metric.t === "Right") &&
+      sort.column.Metric.name === this.metricName
+    ) {
+      sortable.order = sort.order;
+    }
+
+    return sortable;
+  }
+
+  definition(): [string, NumericValueColumnDefinition] {
+    const r = this.twinGraph.rightGraphX();
+    const columnID = this.getID();
+    const getValuesL = (idxs: NodeIDX[]) =>
+      this.twinGraph.l.getNodeMetricBatched(idxs, this.metricName);
+    const getValuesR = (idxs: NodeIDX[]) =>
+      r.getNodeMetricBatched(idxs, this.metricName);
+    const metricSettings = this.ctx.metricSettings(this.metricName);
+    const format = metricSettings?.format;
+
+    const definition: NumericValueColumnDefinition = {
+      t: "numeric_value_column",
+      label: columnID,
+      renderer: (row: Readonly<Row>) => {
+        if (r.isNodeReachable(row.twinArrow.points_to)) {
+          return (
+            <UHoverCard
+              triggerClassname="w-full"
+              content={
+                <MetricDeltaRightHovercard
+                  valueLeft={getValuesL([row.twinArrow.points_to])[0] ?? 0}
+                  valueRight={getValuesR([row.twinArrow.points_to])[0] ?? 0}
+                  format={format}
+                />
+              }
+            >
+              <MetricCell
+                value={r.getNodeMetric(
+                  row.twinArrow.points_to,
+                  this.metricName,
+                )}
+                format={format}
+              />
+            </UHoverCard>
+          );
+        } else {
+          return <MissingMetric />;
+        }
+      },
+      getNumericValues: (idxs: NodeIDX[]) =>
+        r.getNodeMetricBatched(idxs, this.metricName),
+      sortable: this.sortable(),
+      isHidden: false,
+    };
+
+    return [columnID, definition];
+  }
+}
+
+export class MetricDeltaViewColumn implements Column {
+  ctx: ColumnsCtx;
+  twinGraph: TwinGraph;
+  metricName: string;
+
+  constructor(ctx: ColumnsCtx, twinGraph: TwinGraph, metricName: string) {
+    this.ctx = ctx;
+    this.twinGraph = twinGraph;
+    this.metricName = metricName;
+  }
+
+  isEnabled() {
+    if (this.twinGraph.r == null) {
+      return false;
+    }
+    return (
+      this.ctx.showMetrics &&
+      this.ctx.metricSettings(this.metricName)?.column_hide_self !== true
+    );
+  }
+
+  getID(): string {
+    return `∆(${this.metricName})`;
+  }
+
+  sortable() {
+    const columnType: ColumnType = "Delta";
+    const sortable: TSortable = {
+      order: null,
+      onSortChange: (order: SortOrder | null) =>
+        this.ctx.onSortChange(order, {
+          Metric: {
+            t: columnType,
+            name: this.metricName,
+          },
+        }),
+    };
+
+    const sort = this.ctx.sort();
+    if (
+      sort != null &&
+      "Metric" in sort.column &&
+      sort.column.Metric.t === columnType &&
+      sort.column.Metric.name === this.metricName
+    ) {
+      sortable.order = sort.order;
+    }
+
+    return sortable;
+  }
+
+  getValuesFn(): (idxs: NodeIDX[]) => Float32Array {
+    const r = this.twinGraph.rightGraphX();
+    const l = this.twinGraph.l;
+    return (idxs: NodeIDX[]) => {
+      const valuesL = l.getNodeMetricBatched(idxs, this.metricName);
+      const valuesR = r.getNodeMetricBatched(idxs, this.metricName);
+
+      const deltas = new Float32Array(idxs.length);
+      for (let i = 0; i < idxs.length; i++) {
+        deltas[i] = (valuesR[i] ?? 0) - (valuesL[i] ?? 0);
+      }
+
+      return deltas;
+    };
+  }
+
+  getValuesFnForSorting(): (idxs: NodeIDX[]) => Float32Array {
+    return (idxs: NodeIDX[]) =>
+      this.getValuesFn()(idxs).map((n) => Math.abs(n));
+  }
+
+  definition(): [string, NumericValueColumnDefinition] {
+    const r = this.twinGraph.rightGraphX();
+    const columnID = this.getID();
+    const metricSettings = this.ctx.metricSettings(this.metricName);
+    const getValues = this.getValuesFn();
+
+    const definition: NumericValueColumnDefinition = {
+      t: "numeric_value_column",
+      label: columnID,
+      renderer: (row: Readonly<Row>) => {
+        if (r.isNodeReachable(row.twinArrow.points_to)) {
+          return (
+            <DeltaMetricCell
+              value={getValues([row.twinArrow.points_to])[0] ?? 0}
+              format={metricSettings?.format}
+            />
+          );
+        } else {
+          return <MissingMetric />;
+        }
+      },
+      getNumericValues: this.getValuesFnForSorting(),
       sortable: this.sortable(),
       isHidden: false,
     };
