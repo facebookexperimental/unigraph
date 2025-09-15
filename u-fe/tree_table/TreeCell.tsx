@@ -388,24 +388,42 @@ function ArrowDiffBadges({
 
   if (arrowDiff === "node_became_reachable") {
     badges.push(
-      <UHoverCard content="This node was added to the graph.">
+      <UHoverCard
+        key="node_became_reachable"
+        content="This node was added to the graph."
+      >
         <RowBadge text="added" className="bg-added" />
       </UHoverCard>,
     );
   } else if (arrowDiff === "node_became_unreachable") {
     badges.push(
-      <UHoverCard content="This node was removed from the graph.">
+      <UHoverCard
+        key="node_became_unreachable"
+        content="This node was removed from the graph."
+      >
         <RowBadge text="removed" className="bg-removed" />
       </UHoverCard>,
     );
   }
 
   if (nodeEdgesChanged(diff)) {
-    badges.push(<RowBadge text="edges changed" className="bg-accent" />);
+    badges.push(
+      <RowBadge
+        key="edges_changed"
+        text="edges changed"
+        className="bg-accent"
+      />,
+    );
   }
 
   if (nodeMetricsChanged(diff)) {
-    badges.push(<RowBadge text="metrics changed" className="bg-accent" />);
+    badges.push(
+      <RowBadge
+        key="metrics_changed"
+        text="metrics changed"
+        className="bg-accent"
+      />,
+    );
   }
 
   return badges;
