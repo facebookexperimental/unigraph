@@ -139,7 +139,7 @@ pub fn set_graphs(explorer_component_input_graphs_json: String) -> Result<(), Wa
         }
         None => {
             let array_graph: ArrayGraph = left.into();
-            let twin_graph = TwinGraph::from_one(array_graph.append_super_root()?)?;
+            let twin_graph = TwinGraph::from_one(array_graph.append_super_root(false)?)?;
             GlobalGraphState::graph_state().replace_graph(twin_graph)?;
         }
     }

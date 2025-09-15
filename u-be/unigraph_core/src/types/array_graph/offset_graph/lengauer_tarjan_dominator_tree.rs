@@ -184,7 +184,7 @@ mod tests {
 
     #[test]
     fn test_dominator_tree() -> Result<()> {
-        let ag = make_test_array_graph_2()?.append_super_root()?;
+        let ag = make_test_array_graph_2()?.append_super_root(false)?;
 
         snapshot!(
             ag.debug().to_dom_edges_string()?,

@@ -18,7 +18,24 @@ pub fn merge_into_twin(
     left: ArrayGraphSerializable,
     right: ArrayGraphSerializable,
 ) -> Result<TwinGraph> {
-    // let (node_names, ctx_l, ctx_r) =
+    let mut ag_l = left.into_array_graph();
+    let mut ag_r = right.into_array_graph();
+
+    let entrypoints_left = ag_l.determine_entrypoints();
+    let entrypoints_right = ag_r.determine_entrypoints();
+
+    // there can be a case where both graphs have only a single root node
+    // and don't need to add a super root, but this root node is different
+    // between the two graphs. In this case we need to add a super root
+    // to make sure that the root node is the same between the two graphs.
+    if entrypoints_left != entrypoints_right {
+        ag_l = ag_l.append_super_root(true)?;
+        ag_r = ag_r.append_super_root(true)?;
+    }
+
+    let left = ag_l.into_serializable();
+    let right = ag_r.into_serializable();
+
     let (node_names, ctx_l, ctx_r) = left.node_names_ordered.merge(&right.node_names_ordered);
 
     let node_names = Arc::new(node_names);

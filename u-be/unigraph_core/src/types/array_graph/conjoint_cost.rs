@@ -359,7 +359,7 @@ mod tests {
 
     #[test]
     fn test_conjoint_cost() -> Result<()> {
-        let ag = make_test_array_graph_2()?.append_super_root()?;
+        let ag = make_test_array_graph_2()?.append_super_root(false)?;
 
         snapshot!(
             print_conj_cost(&ag),
@@ -441,7 +441,7 @@ P
 
     #[test]
     fn conj_cost_with_tiers() -> Result<()> {
-        let mut ag = make_test_array_graph_2()?.append_super_root()?;
+        let mut ag = make_test_array_graph_2()?.append_super_root(false)?;
         let mut tvc = TraversalConfig::default();
         tvc.with_tier_config();
 

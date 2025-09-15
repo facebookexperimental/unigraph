@@ -158,8 +158,8 @@ impl ArrayGraph {
         self.into()
     }
 
-    pub fn append_super_root(self) -> Result<ArrayGraph> {
-        super_root::append_super_root(self).context("Failed to append super root")
+    pub fn append_super_root(self, force: bool) -> Result<ArrayGraph> {
+        super_root::append_super_root(self, force).context("Failed to append super root")
     }
 
     pub fn to_map_graph(&self) -> Result<MapGraph> {

@@ -29,10 +29,14 @@ const HIGHEST_UNICODE_CODEPOINT: u32 = 0x10FFFF;
 /// so that it is always the last node in the ordered list of node names. It is not guaranteed
 /// but should probably work in most cases, unless someone actually used these characters in the actual
 /// graph node names.
-pub fn append_super_root(ag: ArrayGraph) -> Result<ArrayGraph> {
+pub fn append_super_root(
+    ag: ArrayGraph,
+    // force super root creation even if there's only one entrypoint
+    force: bool,
+) -> Result<ArrayGraph> {
     let entrypoints = ag.determine_entrypoints();
 
-    if entrypoints.len() < 2 {
+    if entrypoints.len() < 2 && !force {
         return Ok(ag); // No need to add super root if there's only one entrypoint
     }
 
