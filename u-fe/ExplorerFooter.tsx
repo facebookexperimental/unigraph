@@ -38,7 +38,7 @@ import ConjointCostDocs from "./inline_docs/ConjointCost";
 import formatMetric from "./lib/formatMetric";
 import formatNumber from "./lib/formatNumber";
 import NodeSearch from "./NodeSearch";
-import { H3 } from "./Typography";
+import { H2, H3 } from "./Typography";
 
 export default function ExplorerFooter() {
   return (
@@ -678,11 +678,36 @@ function TiersHoverCardContent() {
     );
   });
 
+  const showTierColumnToggle = (
+    <UToggleButton
+      key={`show-tier-column`}
+      size="sm"
+      tooltip={`Show a column displaying node's tier`}
+      selected={graphSettings?.ui_settings?.columns?.show_tier_column === true}
+      onSelectedChange={(selected) => {
+        setGraphSettings({
+          ...graphSettings,
+          ui_settings: {
+            ...graphSettings.ui_settings,
+            columns: {
+              ...graphSettings.ui_settings?.columns,
+              show_tier_column: selected ? true : undefined,
+            },
+          },
+        });
+      }}
+    >
+      <span className="text-sm">Node Tier Column</span>
+    </UToggleButton>
+  );
+
   return (
     <div className="flex flex-col gap-2">
-      <H3 text="Tiered Metric Columns" />
+      <H2 text="Tier Settings" />
+      {showTierColumnToggle}
+      <H2 text="Tiered Metric Columns" />
       <div className="flex flex-col gap-2">{tieredmetricCards}</div>
-      <H3 text="Max Tier" />
+      <H2 text="Max Tier" />
       <div className="flex flex-wrap gap-2">{tierSwitches}</div>
     </div>
   );

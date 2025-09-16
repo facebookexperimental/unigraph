@@ -321,6 +321,10 @@ pub struct ColumnSettings {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub show_conjoint: Option<bool>,
 
+    /// Show a column that displays the tier each node
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub show_tier_column: Option<bool>,
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metric_settings: Option<BTreeMap<String, MetricSettings>>,
 }

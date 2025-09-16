@@ -36,7 +36,7 @@ import {
   KeyedMetricsCache,
   SingleMetricsCache,
 } from "./MetricCaches";
-import { isNodeUnreachable } from "./NodeFlags";
+import { isNodeUnreachable, type TierIDX, tierIdx } from "./NodeFlags";
 
 export type GraphSide = 1 | 2;
 export const GRAPH_SIDE = {
@@ -196,6 +196,20 @@ export default class NativeGraph {
       };
     }
     return this.allReachableNodeIDXsCache;
+  }
+
+  getNodeTierIDX(nodeIDX: NodeIDX): TierIDX | null {
+    const flags = this.getOrInitNodeFlagsCache();
+    const bits = flags[nodeIDX] as number;
+    return tierIdx(bits);
+  }
+
+  getNodeTierName(nodeIDX: NodeIDX): [string, TierIDX] | null {
+    const tierIdx = this.getNodeTierIDX(nodeIDX);
+    if (tierIdx == null) return null;
+    const tierName = this.stats().tier_names[tierIdx];
+    if (tierName == null) return null;
+    return [tierName, tierIdx];
   }
 
   isNodeReachable(nodeIDX: NodeIDX): boolean {

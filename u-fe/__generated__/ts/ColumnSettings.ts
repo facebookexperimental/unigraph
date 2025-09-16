@@ -42,5 +42,7 @@ export interface ColumnSettings {
    * their individual settings.
    */
   show_conjoint?: boolean | undefined;
+  /** Show a column that displays the tier each node */
+  show_tier_column?: boolean | undefined;
   metric_settings?: { [key: string]: MetricSettings } | undefined;
 }

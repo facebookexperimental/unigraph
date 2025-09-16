@@ -387,7 +387,7 @@ export function TreeTable(props: {
         <div
           style={{ height: `${headerHeight}px` }}
           className={clsx(
-            "sticky top-0 border-b px-4 flex items-center whitespace-nowrap",
+            "sticky top-0 border-b px-4 flex w-full items-center whitespace-nowrap",
             SelectedSortOrder != null
               ? "bg-primary text-background"
               : "bg-accent",

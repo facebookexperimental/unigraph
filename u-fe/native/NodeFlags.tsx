@@ -14,7 +14,7 @@ export const TIER_FLAGS = [
   0b1000_0000, // Tier idx 3
 ] as const;
 
-export type TierIdx = 0 | 1 | 2 | 3;
+export type TierIDX = 0 | 1 | 2 | 3;
 
 /** Bit masks equivalent to Rust's NodeFlags */
 export const NODE_FLAGS = {
@@ -33,7 +33,7 @@ export function isNodeUnreachable(flags: NodeFlags): boolean {
 }
 
 /** Returns the single tier index if exactly one tier bit is set, else null */
-export function tierIdx(flags: NodeFlags): TierIdx | null {
+export function tierIdx(flags: NodeFlags): TierIDX | null {
   const tierBits = flags & NODE_FLAGS.ALL_TIERS;
   switch (tierBits) {
     case NODE_FLAGS.TIER_IDX_0:

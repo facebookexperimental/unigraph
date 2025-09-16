@@ -36,6 +36,7 @@ import {
   TransitiveTieredMetricDeltaColumn,
   TransitiveTieredMetricRightDeltaColumn,
 } from "./metrics";
+import { NodeTierColumn } from "./tiers";
 import {
   TransitiveCountColumn,
   TransitiveCountDeltaColumn,
@@ -64,7 +65,7 @@ export default function useGraphTreeTableColumns(): ColumnDefinitions {
             tvc,
           )
         : new SingleGraphColumnsBuilder(
-            l,
+            twinGraph,
             graphSettings,
             setGraphSettings,
             tvc,
@@ -208,7 +209,7 @@ export class ColumnsCtx {
 }
 
 class SingleGraphColumnsBuilder {
-  nativeGraph: NativeGraph;
+  twinGraph: TwinGraph;
   graphSettings: GraphSettings;
   setGraphSettings: (gs: GraphSettings) => void;
   tvc: TraversalConfig;
@@ -216,12 +217,12 @@ class SingleGraphColumnsBuilder {
   columns: Column[] = [];
 
   constructor(
-    nativeGraph: NativeGraph,
+    twinGraph: TwinGraph,
     graphSettings: GraphSettings,
     setGraphSettings: (gs: GraphSettings) => void,
     tvc: TraversalConfig,
   ) {
-    this.nativeGraph = nativeGraph;
+    this.twinGraph = twinGraph;
     this.graphSettings = graphSettings;
     this.setGraphSettings = setGraphSettings;
     this.tvc = tvc;
@@ -230,19 +231,21 @@ class SingleGraphColumnsBuilder {
   }
 
   makeColumns(): Column[] {
-    const { ctx, nativeGraph: g } = this;
+    const { ctx, twinGraph } = this;
+    const g = twinGraph.l;
     const columns: Column[] = [
+      new NodeTierColumn(this.ctx, this.twinGraph),
       new TransitiveCountColumn(ctx, g),
       new ConjointCountColumn(ctx, g),
       new ParentsCountColumn(ctx, g),
     ];
 
-    for (const metric of this.nativeGraph.metricNames) {
+    for (const metric of g.metricNames) {
       columns.push(new MetricColumn(ctx, g, metric));
       columns.push(new TransitiveMetricColumn(ctx, g, metric));
       columns.push(new ConjointMetricColumn(ctx, g, metric));
 
-      for (const tier of this.nativeGraph.stats().tier_names) {
+      for (const tier of g.stats().tier_names) {
         columns.push(new TransitiveTieredMetricColumn(ctx, g, metric, tier));
         columns.push(new ConjointTieredMetricColumn(ctx, g, metric, tier));
       }
@@ -269,6 +272,7 @@ class DeltaGraphColumnsBuilder {
   makeColumns(): Column[] {
     const r = this.twinGraph.rightGraphX();
     const columns: Column[] = [
+      new NodeTierColumn(this.ctx, this.twinGraph),
       new TransitiveCountRightInDeltaViewColumn(this.ctx, this.twinGraph),
       new TransitiveCountDeltaColumn(this.ctx, this.twinGraph),
     ];
