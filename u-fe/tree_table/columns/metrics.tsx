@@ -456,6 +456,136 @@ export class TransitiveTieredMetricDeltaColumn implements Column {
   }
 }
 
+export class TransitiveTieredMetricRightDeltaColumn implements Column {
+  ctx: ColumnsCtx;
+  twinGraph: TwinGraph;
+  metricName: string;
+  tierName: string;
+
+  constructor(
+    ctx: ColumnsCtx,
+    twinGraph: TwinGraph,
+    metricName: string,
+    tierName: string,
+  ) {
+    this.ctx = ctx;
+    this.twinGraph = twinGraph;
+    this.metricName = metricName;
+    this.tierName = tierName;
+  }
+
+  isEnabled() {
+    if (this.twinGraph.r == null) {
+      return false;
+    }
+    const tierIDX = this.twinGraph.r.stats().tier_names.indexOf(this.tierName);
+    return isTierEnabled(this.ctx, this.metricName, this.tierName, tierIDX);
+  }
+
+  getID(): string {
+    const graphHasMoreThanOneMetric = this.twinGraph.l.metricNames.length > 1;
+
+    const base = graphHasMoreThanOneMetric
+      ? `${this.tierName} ${this.metricName}`
+      : this.tierName;
+
+    if (this.ctx.dominated) {
+      return `D(${base})`;
+    }
+    return base;
+  }
+
+  sortable() {
+    const columnType: ColumnType = "Right";
+    const sortable: TSortable = {
+      order: null,
+      onSortChange: (order: SortOrder | null) =>
+        this.ctx.onSortChange(order, {
+          TieredTransitiveMetric: {
+            t: columnType,
+            name: this.metricName,
+            tier: this.tierName,
+          },
+        }),
+    };
+
+    const sort = this.ctx.sort();
+    if (
+      sort != null &&
+      "TieredTransitiveMetric" in sort.column &&
+      (sort.column.TieredTransitiveMetric.t === "Right" ||
+        sort.column.TieredTransitiveMetric.t === "Left") &&
+      sort.column.TieredTransitiveMetric.name === this.metricName &&
+      sort.column.TieredTransitiveMetric.tier === this.tierName
+    ) {
+      sortable.order = sort.order;
+    }
+
+    return sortable;
+  }
+
+  getValuesFn(side: GraphSide): (idxs: NodeIDX[]) => number[] {
+    const g =
+      side === GRAPH_SIDE.L ? this.twinGraph.l : this.twinGraph.rightGraphX();
+    if (this.ctx.dominated) {
+      return (idxs: NodeIDX[]) => {
+        return g
+          .getTieredTransitiveMetricsDominatedBatched(idxs, this.metricName)
+          .map((m) => m[this.tierName] ?? 0);
+      };
+    } else {
+      return (idxs: NodeIDX[]) => {
+        return g
+          .getTieredTransitiveMetricsBatched(idxs, this.metricName)
+          .map((m) => m[this.tierName] ?? 0);
+      };
+    }
+  }
+
+  definition(): [string, NumericValueColumnDefinition] {
+    const columnID = this.getID();
+    const getValuesL = this.getValuesFn(GRAPH_SIDE.L);
+    const getValuesR = this.getValuesFn(GRAPH_SIDE.R);
+    const format = this.ctx.metricSettings(this.metricName)?.format;
+    const r = this.twinGraph.rightGraphX();
+
+    const definition: NumericValueColumnDefinition = {
+      t: "numeric_value_column",
+      label: columnID,
+      renderer: (row: Readonly<Row>) => {
+        return (
+          <UHoverCard
+            triggerClassname="w-full"
+            content={
+              <MetricDeltaRightHovercard
+                valueLeft={getValuesL([row.twinArrow.points_to])[0] ?? 0}
+                valueRight={getValuesR([row.twinArrow.points_to])[0] ?? 0}
+                format={format}
+              />
+            }
+          >
+            {r.isNodeReachable(row.twinArrow.points_to) ? (
+              <MetricCell
+                value={getValuesR([row.twinArrow.points_to])[0] as number}
+                format={format}
+              />
+            ) : (
+              <MissingMetric />
+            )}
+          </UHoverCard>
+        );
+      },
+      getNumericValues: (idxs: NodeIDX[]) => {
+        return new Float32Array(getValuesR(idxs));
+      },
+      sortable: this.sortable(),
+      isHidden: false,
+    };
+
+    return [columnID, definition];
+  }
+}
+
 export class MetricRightInDeltaViewColumn implements Column {
   ctx: ColumnsCtx;
   twinGraph: TwinGraph;
