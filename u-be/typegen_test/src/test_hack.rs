@@ -29,7 +29,7 @@ type HackTypeAddress = shape(
   'coordinates' => vec<float>,
   'typegen_as' => int,
   'string_list' => vec<string>,
-  'maybe_flag' => ?bool,
+  ?'maybe_flag' => ?bool,
   'tags' => keyset<string>,
 );
 
@@ -54,7 +54,7 @@ type HackTypePerson = shape(
 type HackTypeUser = shape(
   'id' => int,
   'email' => string,
-  'profile' => ?string,
+  ?'profile' => ?string,
   'verified' => bool,
   'tags' => dict<string, string>,
   'metadata' => dict<string, bool>,

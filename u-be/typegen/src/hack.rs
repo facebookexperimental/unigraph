@@ -78,7 +78,14 @@ impl<'a> HackGenerator<'a> {
 
             result.push_str(&render_docs(&field.docs, DocFormat::TwoSlash, 2));
 
-            result.push_str(&format!("  '{}' => {},\n", field.field_name, field_type));
+            let question_mark = matches!(field.type_ref, TypeRef::Option(_))
+                .then(|| "?")
+                .unwrap_or_default();
+
+            result.push_str(&format!(
+                "  {}'{}' => {},\n",
+                question_mark, field.field_name, field_type
+            ));
         }
 
         result.push_str(");\n");
