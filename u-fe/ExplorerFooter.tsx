@@ -28,7 +28,7 @@ import {
 import { useGraphSettings } from "./context/GraphSettingsContext";
 import { useNativeGraphL, useTwinGraph } from "./context/NativeGraphContext";
 import { useSelectedNodes } from "./context/SelectedNodesContext";
-import { useTVCLeft } from "./context/TraversalConfigContext";
+import { useTVC } from "./context/TraversalConfigContext";
 import {
   useToggleDominatorTreeView,
   useToggleFlatListView,
@@ -558,7 +558,7 @@ function TiersHoverCardContent() {
   const [graphSettings, setGraphSettings] = useGraphSettings();
   const nativeGraph = useNativeGraphL();
   const allTiers = nativeGraph.stats().tier_names;
-  const { tvcL: tvc, setTvcL: setTvc } = useTVCLeft();
+  const { tvcL, setTvcL, tvcR, setTvcR } = useTVC();
 
   const tieredmetricCards = nativeGraph.metricNames.map((metricName) => {
     const metricSettings =
@@ -606,7 +606,8 @@ function TiersHoverCardContent() {
   });
 
   const tierSwitches = allTiers.map((tierName, tierIDX) => {
-    const selected = tvc.tiered_traversal?.AscendingTiers?.max_tier === tierIDX;
+    const selected =
+      tvcL.tiered_traversal?.AscendingTiers?.max_tier === tierIDX;
 
     return (
       <UToggleButton
@@ -652,11 +653,20 @@ function TiersHoverCardContent() {
           }
 
           setGraphSettings(newGraphSettings);
-          setTvc({
-            ...tvc,
+          setTvcL({
+            ...tvcL,
             tiered_traversal: {
               AscendingTiers: {
-                tiers: tvc.tiered_traversal?.AscendingTiers?.tiers ?? [],
+                tiers: tvcL.tiered_traversal?.AscendingTiers?.tiers ?? [],
+                max_tier: selected ? tierIDX : undefined,
+              },
+            },
+          });
+          setTvcR({
+            ...tvcR,
+            tiered_traversal: {
+              AscendingTiers: {
+                tiers: tvcR?.tiered_traversal?.AscendingTiers?.tiers ?? [],
                 max_tier: selected ? tierIDX : undefined,
               },
             },

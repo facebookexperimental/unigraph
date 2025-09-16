@@ -10,7 +10,7 @@ import type { SortOrder } from "../../__generated__/ts/SortOrder";
 import type { TraversalConfig } from "../../__generated__/ts/TraversalConfig";
 import { useGraphSettings } from "../../context/GraphSettingsContext";
 import { useTwinGraph } from "../../context/NativeGraphContext";
-import { useTVCLeft } from "../../context/TraversalConfigContext";
+import { useTVC } from "../../context/TraversalConfigContext";
 import ConjointCostDocs from "../../inline_docs/ConjointCost";
 import type NativeGraph from "../../native/NativeGraph";
 import { GRAPH_SIDE, type GraphSide } from "../../native/NativeGraph";
@@ -52,7 +52,7 @@ export default function useGraphTreeTableColumns(): ColumnDefinitions {
   const twinGraph = useTwinGraph();
   const l = twinGraph.l;
   const [graphSettings, setGraphSettings] = useGraphSettings();
-  const { tvcL: tvc } = useTVCLeft();
+  const { tvcL: tvc } = useTVC();
 
   return useMemo(() => {
     const builder =

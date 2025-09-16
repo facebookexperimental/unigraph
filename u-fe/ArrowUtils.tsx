@@ -3,7 +3,7 @@
 import type { Arrow } from "@/__generated__/ts/Arrow";
 import { useGraphSettings } from "./context/GraphSettingsContext";
 import { useNativeGraphL } from "./context/NativeGraphContext";
-import { useTVCLeft } from "./context/TraversalConfigContext";
+import { useTVC } from "./context/TraversalConfigContext";
 
 // JS indexes are not u32 so -1 is a valid value.
 // We're going to abuse it to represent the root arrows that technically
@@ -53,7 +53,7 @@ export function useIsExclusionEnabledForGraphStructure(): boolean {
 
 export function useCanNodeBeForceExcludedL(arrow: Arrow | null): boolean {
   const nativeGraph = useNativeGraphL();
-  const { tvcL: tvc } = useTVCLeft();
+  const { tvcL: tvc } = useTVC();
 
   const isExclusionEnabledForGraphStructure =
     useIsExclusionEnabledForGraphStructure();

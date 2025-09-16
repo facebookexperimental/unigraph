@@ -47,7 +47,7 @@ export function Explorer(props: ExplorerProps) {
     traversal_config_l,
     on_traversal_config_change_l,
     traversal_config_r,
-    on_traversal_config_change_r: _onTraversalConfigChangeR,
+    on_traversal_config_change_r,
     graph_settings,
     on_graph_settings_change,
   } = props;
@@ -69,7 +69,7 @@ export function Explorer(props: ExplorerProps) {
     return [tvc, nativeGraphNoTVCL.getApplyTraversalConfig(tvc)];
   }, [traversal_config_l, nativeGraphNoTVCL]);
 
-  const [_tvcR, nativeGraphR] = useMemo(() => {
+  const [tvcR, nativeGraphR] = useMemo(() => {
     if (nativeGraphNoTVCR == null) {
       return [null, null];
     }
@@ -87,7 +87,7 @@ export function Explorer(props: ExplorerProps) {
       : JSON.parse(from_zstd_base64_url_safe_no_pad(graph_settings));
   }, [graph_settings, nativeGraphNoTVCL]);
 
-  const setTvcCb = useCallback(
+  const setTvcLCb = useCallback(
     (tvc: TraversalConfig) => {
       const traversal_config_zstd_base64_url_safe_no_padding =
         to_zstd_base64_url_safe_no_pad(JSON.stringify(tvc));
@@ -97,6 +97,21 @@ export function Explorer(props: ExplorerProps) {
       );
     },
     [on_traversal_config_change_l],
+  );
+
+  const setTvcRCb = useCallback(
+    (tvc: TraversalConfig) => {
+      if (nativeGraphR == null) {
+        return;
+      }
+      const traversal_config_zstd_base64_url_safe_no_padding =
+        to_zstd_base64_url_safe_no_pad(JSON.stringify(tvc));
+
+      on_traversal_config_change_r?.(
+        traversal_config_zstd_base64_url_safe_no_padding,
+      );
+    },
+    [on_traversal_config_change_r, nativeGraphR],
   );
 
   const setSettingsCb = useCallback(
@@ -115,7 +130,12 @@ export function Explorer(props: ExplorerProps) {
             nativeGraphL={nativeGraphL}
             nativeGraphR={nativeGraphR}
           >
-            <TraversalConfigContextProvider tvcL={tvcL} setTvcL={setTvcCb}>
+            <TraversalConfigContextProvider
+              tvcL={tvcL}
+              setTvcL={setTvcLCb}
+              tvcR={tvcR}
+              setTvcR={setTvcRCb}
+            >
               <SimulationParamsContextProvider>
                 <SelectedNodesContextProvider>
                   <GraphSettingsContextProvider
