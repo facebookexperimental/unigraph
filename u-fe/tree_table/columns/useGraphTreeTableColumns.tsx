@@ -121,13 +121,19 @@ export default function useGraphTreeTableColumns(): ColumnDefinitions {
       },
     };
 
-    nonTreeColumns.context_menu = {
-      t: "non_sortable_column",
-      label: "More Menu",
-      renderer: (row: Readonly<Row>) => <ContextMenuCell row={row} />,
-      isHidden: false,
-      isLabelHidden: true,
-    };
+    if (twinGraph.r === null) {
+      // only add the `...` column when it's a single graph.
+      // We should have something eventually for delta graph, but
+      // it'll require some thought on what actually goes there.
+      // and which graph these actions should apply to.
+      nonTreeColumns.context_menu = {
+        t: "non_sortable_column",
+        label: "More Menu",
+        renderer: (row: Readonly<Row>) => <ContextMenuCell row={row} />,
+        isHidden: false,
+        isLabelHidden: true,
+      };
+    }
 
     return {
       treeColumn,

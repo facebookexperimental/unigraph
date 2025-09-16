@@ -27,9 +27,9 @@ export function MetricCell({
   format?: MetricFormat;
 }) {
   return (
-    <p className="px-4 text-right tabular-nums w-full whitespace-nowrap">
+    <div className="px-4 text-right tabular-nums w-full whitespace-nowrap">
       {formatMetric(value, format)}
-    </p>
+    </div>
   );
 }
 

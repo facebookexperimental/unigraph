@@ -556,6 +556,7 @@ export class TransitiveTieredMetricRightDeltaColumn implements Column {
         return (
           <UHoverCard
             triggerClassname="w-full"
+            asChild
             content={
               <MetricDeltaRightHovercard
                 valueLeft={getValuesL([row.twinArrow.points_to])[0] ?? 0}
@@ -655,6 +656,7 @@ export class MetricRightInDeltaViewColumn implements Column {
           return (
             <UHoverCard
               triggerClassname="w-full"
+              asChild
               content={
                 <MetricDeltaRightHovercard
                   valueLeft={getValuesL([row.twinArrow.points_to])[0] ?? 0}
