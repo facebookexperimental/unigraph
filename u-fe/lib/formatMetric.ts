@@ -1,7 +1,7 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-import type { MetricFormat } from "@/__generated__/ts/MetricFormat";
-import type { SizeConfig } from "@/__generated__/ts/SizeConfig";
+import type { MetricFormat } from "../__generated__/ts/MetricFormat";
+import type { SizeFormatConfig } from "../__generated__/ts/SizeFormatConfig";
 import formatNumber from "./formatNumber";
 
 const DEFAULT_METRIC_FORMAT: MetricFormat = {
@@ -22,13 +22,8 @@ export default function formatMetric(
       pctValue = value * 100;
     }
     return formatNumber(pctValue, 0, 2, true) + "%";
-  } else if ("SizeBytes" in format) {
-    const sizeConfig = format.SizeBytes.config;
-    if (sizeConfig == null) {
-      return formatNumber(value, 0, 0, true) + " bytes";
-    } else {
-      return formatSizeBytes(value, sizeConfig);
-    }
+  } else if ("Size" in format) {
+    return formatSizeBytes(value, format.Size);
   } else if ("NumericBoolean" in format) {
     switch (value) {
       case 0:
@@ -53,37 +48,87 @@ export default function formatMetric(
 }
 
 const UNITS = ["bytes", "kB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
-export function formatSizeBytes(value: number, sizeConfig: SizeConfig): string {
-  const [scaledValue, unit, decimals] = (() => {
-    if ("VariableUnits" in sizeConfig) {
-      if (value === 1) {
-        return [1, "byte", 0];
+export function formatSizeBytes(
+  inputValue: number,
+  sizeFormatConfig: SizeFormatConfig,
+): string {
+  const { input_units, output_units } = sizeFormatConfig;
+  const bytesValue = (() => {
+    switch (input_units) {
+      case "Bytes":
+        return inputValue;
+      default: {
+        const _exhaustive: never = input_units;
+        throw new Error(
+          `Unhandled size input units: ${JSON.stringify(_exhaustive)}`,
+        );
       }
-      const absBytes = Math.abs(value);
-      const i = Math.min(
-        UNITS.length - 1,
-        Math.max(0, Math.floor(Math.log10(absBytes) / 3)),
-      );
-
-      const decimals = i === 0 ? 0 : 2;
-      return [value / 1000 ** i, UNITS[i], decimals];
-    } else if ("ForcekB" in sizeConfig) {
-      return [value / 1000, "kB", 2];
-    } else if ("ForceMB" in sizeConfig) {
-      return [value / (1000 * 1000), "MB", 2];
-    } else if ("ForceGB" in sizeConfig) {
-      return [value / (1000 * 1000 * 1000), "GB", 2];
-    } else if ("ForceKiB" in sizeConfig) {
-      return [value / 1024, "KiB", 2];
-    } else if ("ForceMiB" in sizeConfig) {
-      return [value / (1024 * 1024), "MiB", 2];
-    } else if ("ForceGiB" in sizeConfig) {
-      return [value / (1024 * 1024 * 1024), "GiB", 2];
-    } else {
-      const _exhaustive: never = sizeConfig;
-      throw new Error(`Unhandled size config: ${JSON.stringify(_exhaustive)}`);
     }
   })();
 
-  return formatNumber(scaledValue, decimals, decimals, true) + " " + unit;
+  const [scaledValue, unit, decimals] = (() => {
+    switch (output_units) {
+      case "VariableUnits": {
+        if (bytesValue === 1) {
+          return [1, "byte", 0];
+        }
+        const absBytes = Math.abs(bytesValue);
+        const i = Math.min(
+          UNITS.length - 1,
+          Math.max(0, Math.floor(Math.log10(absBytes) / 3)),
+        );
+
+        const decimals = i === 0 ? 0 : 2;
+        return [bytesValue / 1000 ** i, UNITS[i], decimals];
+      }
+      case "KB": {
+        return [bytesValue / 1000, "kB", 2];
+      }
+      case "MB": {
+        return [bytesValue / (1000 * 1000), "MB", 2];
+      }
+      case "GB": {
+        return [bytesValue / (1000 * 1000 * 1000), "GB", 2];
+      }
+      case "KiB": {
+        return [bytesValue / 1024, "KiB", 2];
+      }
+      case "MiB": {
+        return [bytesValue / (1024 * 1024), "MiB", 2];
+      }
+      case "GiB": {
+        return [bytesValue / (1024 * 1024 * 1024), "GiB", 2];
+      }
+      default: {
+        const _exhaustive: never = output_units;
+        throw new Error(
+          `Unhandled size output units: ${JSON.stringify(_exhaustive)}`,
+        );
+      }
+    }
+  })();
+
+  const [min_precision, max_precision] = (() => {
+    if (
+      sizeFormatConfig.min_precision != null &&
+      sizeFormatConfig.max_precision != null
+    ) {
+      return [
+        sizeFormatConfig.min_precision ?? 0,
+        sizeFormatConfig.max_precision ?? sizeFormatConfig.max_precision ?? 0,
+      ];
+    }
+    return [decimals, decimals];
+  })();
+
+  return (
+    formatNumber(
+      scaledValue,
+      min_precision,
+      max_precision,
+      sizeFormatConfig.use_delimiter ?? true,
+    ) +
+    " " +
+    unit
+  );
 }

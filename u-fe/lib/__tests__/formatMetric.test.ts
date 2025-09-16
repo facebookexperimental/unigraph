@@ -1,8 +1,8 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 import { expect, test } from "vitest";
-import type { MetricFormat } from "@/__generated__/ts/MetricFormat";
-import type { SizeConfig } from "@/__generated__/ts/SizeConfig";
+import type { MetricFormat } from "../../__generated__/ts/MetricFormat";
+import type { SizeFormatConfig } from "../../__generated__/ts/SizeFormatConfig";
 import formatMetric from "../formatMetric";
 
 test("Percent", () => {
@@ -31,9 +31,9 @@ test("Percent", () => {
   expect(formatMetric(1000, format)).toBe("100,000%");
 });
 
-const size: [SizeConfig, { [expected: number]: string }][] = [
+const size: [SizeFormatConfig, { [expected: number]: string }][] = [
   [
-    { ForcekB: {} },
+    { input_units: "Bytes", output_units: "KB" },
     {
       1: "0.00 kB",
       10: "0.01 kB",
@@ -45,7 +45,7 @@ const size: [SizeConfig, { [expected: number]: string }][] = [
     },
   ],
   [
-    { ForceMB: {} },
+    { input_units: "Bytes", output_units: "MB" },
     {
       1: "0.00 MB",
       10: "0.00 MB",
@@ -58,7 +58,7 @@ const size: [SizeConfig, { [expected: number]: string }][] = [
     },
   ],
   [
-    { ForceGB: {} },
+    { input_units: "Bytes", output_units: "GB" },
     {
       1: "0.00 GB",
       10000000000: "10.00 GB",
@@ -66,26 +66,26 @@ const size: [SizeConfig, { [expected: number]: string }][] = [
     },
   ],
   [
-    { ForceKiB: {} },
+    { input_units: "Bytes", output_units: "KiB" },
     {
       1000: "0.98 KiB",
       1024: "1.00 KiB",
     },
   ],
   [
-    { ForceMiB: {} },
+    { input_units: "Bytes", output_units: "MiB" },
     {
       1000000: "0.95 MiB",
     },
   ],
   [
-    { ForceGiB: {} },
+    { input_units: "Bytes", output_units: "GiB" },
     {
       1000000000000: "931.32 GiB",
     },
   ],
   [
-    { VariableUnits: {} },
+    { input_units: "Bytes", output_units: "VariableUnits" },
     {
       1: "1 byte",
       2: "2 bytes",
@@ -107,9 +107,7 @@ for (const [config, data] of size) {
     const value = Number.parseFloat(valueS);
     test(`SizeConfig: ${key}. value: "${value}". expected: "${expected}"`, () => {
       const format: MetricFormat = {
-        SizeBytes: {
-          config,
-        },
+        Size: config,
       };
       expect(formatMetric(value, format)).toBe(expected);
     });

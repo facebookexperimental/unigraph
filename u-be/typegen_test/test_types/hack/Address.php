@@ -7,6 +7,6 @@ type Address = shape(
   'coordinates' => vec<float>,
   'typegen_as' => int,
   'string_list' => vec<string>,
-  'maybe_flag' => ?bool,
+  ?'maybe_flag' => ?bool,
   'tags' => keyset<string>,
 );

@@ -60,10 +60,7 @@ pub enum MetricFormat {
         scaled_percentage: Option<bool>,
     },
     /// Given a value of bytes, format it as a size (e.g. 1.4MB, 2kB, etc)
-    SizeBytes {
-        /// Configures the unit format for the size metric, units can be variable or forced (kB/MB/GB)
-        config: Option<SizeConfig>,
-    },
+    Size(SizeFormatConfig),
     /// Given a value of 0 or 1, format it as a boolean
     NumericBoolean {},
     /// 1       -> {min:    2, max: 4, delimiter: true}  -> "1.00"
@@ -82,6 +79,30 @@ pub enum MetricFormat {
     },
 }
 
+#[derive(Debug, serde::Serialize, serde::Deserialize, typegen::TypeGen, Clone)]
+pub struct SizeFormatConfig {
+    /// What is the unit of the input value that will be formatted
+    pub input_units: SizeInputUnits,
+    /// Configures the unit format for the size metric, units can be variable or forced (kB/MB/GB)
+    pub output_units: SizeOutputUnits,
+
+    pub min_precision: Option<usize>,
+    pub max_precision: Option<usize>,
+    pub use_delimiter: Option<bool>,
+}
+
+#[derive(
+    Debug,
+    serde::Serialize,
+    serde::Deserialize,
+    typegen::TypeGen,
+    Clone,
+    Copy
+)]
+pub enum SizeInputUnits {
+    Bytes,
+}
+
 #[derive(
     Debug,
     serde::Serialize,
@@ -91,24 +112,24 @@ pub enum MetricFormat {
     Copy
 )]
 /// Configuration for size formatting
-pub enum SizeConfig {
+pub enum SizeOutputUnits {
     /// Flexible units to display readable sizes, but will units will be inconsistent across sizes with variation
-    VariableUnits {},
+    VariableUnits,
     /// Forces the units to be in Kilobytes, not to be confused with Kibibytes
-    ForcekB {},
+    KB,
     /// Forces the units to be in Megabytes, not to be confused with Mebibytes
-    ForceMB {},
+    MB,
     /// Forces the units to be in Gigabytes, not to be confused with Gibibytes
-    ForceGB {},
+    GB,
     /// Forces the units to be in Kibibytes. Please consider using ForceKB instead
     /// https://fburl.com/workplace/2bl6qcmn
-    ForceKiB {},
+    KiB,
     /// Forces the units to be in Mebibytes. Please consider using ForceMB instead
     /// https://fburl.com/workplace/2bl6qcmn
-    ForceMiB {},
+    MiB,
     /// Forces the units to be in Gigibytes. Please consider using ForceGB instead
     /// https://fburl.com/workplace/2bl6qcmn
-    ForceGiB {},
+    GiB,
 }
 
 #[derive(
