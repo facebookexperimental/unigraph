@@ -490,15 +490,17 @@ pub fn get_transitive_count_dominated(
     Ok(result)
 }
 
-// TODO: need to combine with both graphs.
 #[wasm_bindgen]
-pub fn get_all_reachable_node_idxs(side: u32) -> Result<Vec<u32>, WasmJSError> {
+pub fn get_node_flags(side: u32) -> Result<Vec<u32>, WasmJSError> {
     let graph_state = GlobalGraphState::graph_state().get();
-    let reachable_nodes = graph_state
+    let flags = graph_state
         .twin_graph
         .graph_u32(side)?
-        .all_reachable_node_idxs();
-    Ok(reachable_nodes.iter().map(|idx| idx.0).collect())
+        .node_flags
+        .iter()
+        .map(|f| f.bits())
+        .collect();
+    Ok(flags)
 }
 
 #[wasm_bindgen]

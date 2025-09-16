@@ -5,7 +5,6 @@
 import {
   apply_traversal_config,
   determine_entrypoints,
-  get_all_reachable_node_idxs,
   get_array_graph_stats,
   get_combined_metrics_for_entrypoints_with_force_include,
   get_combined_metrics_for_nodes,
@@ -14,6 +13,7 @@ import {
   get_graph_settings,
   get_graph_traversal_config,
   get_metric_names,
+  get_node_flags,
   get_node_metrics,
   get_reverse_edges_len,
   get_transitive_count,
@@ -36,6 +36,7 @@ import {
   KeyedMetricsCache,
   SingleMetricsCache,
 } from "./MetricCaches";
+import { isNodeUnreachable } from "./NodeFlags";
 
 export type GraphSide = 1 | 2;
 export const GRAPH_SIDE = {
@@ -86,7 +87,8 @@ export default class NativeGraph {
 
   private entrypointsCache: NodeIDXVecSet | null = null;
 
-  private allReacahableNodeIDXsCache: NodeIDXVecSet | null = null;
+  private nodeFlagsCache: Uint32Array | null = null;
+  private allReachableNodeIDXsCache: NodeIDXVecSet | null = null;
 
   private combinedMetricsCache: CombinedMetricsCache | null = null;
 
@@ -178,14 +180,22 @@ export default class NativeGraph {
   }
 
   getAllReachableNodeIDXs(): NodeIDXVecSet {
-    if (this.allReacahableNodeIDXsCache == null) {
-      const result = get_all_reachable_node_idxs(this.side);
-      this.allReacahableNodeIDXsCache = {
-        vec: Array.from(result),
-        set: new Set(result),
+    if (this.allReachableNodeIDXsCache == null) {
+      const flags = this.getOrInitNodeFlagsCache();
+      const allReachable = [];
+      for (let i = 0; i < flags.length; i++) {
+        const bits = flags[i] as number;
+        if (isNodeUnreachable(bits)) {
+          continue;
+        }
+        allReachable.push(i as NodeIDX);
+      }
+      this.allReachableNodeIDXsCache = {
+        vec: Array.from(allReachable),
+        set: new Set(allReachable),
       };
     }
-    return this.allReacahableNodeIDXsCache;
+    return this.allReachableNodeIDXsCache;
   }
 
   isNodeReachable(nodeIDX: NodeIDX): boolean {
@@ -332,6 +342,13 @@ export default class NativeGraph {
       this.conjointCostCache = JSON.parse(json) as ConjointCost;
     }
     return this.conjointCostCache;
+  }
+
+  private getOrInitNodeFlagsCache(): Uint32Array {
+    if (this.nodeFlagsCache == null) {
+      this.nodeFlagsCache = get_node_flags(this.side);
+    }
+    return this.nodeFlagsCache;
   }
 }
 
