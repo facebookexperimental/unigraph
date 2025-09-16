@@ -5,12 +5,12 @@ import { useMemo, useState } from "react";
 import UAlertDialog from "../components/UAlertDialog";
 import { AlertDialogTitle } from "../components/ui/alert-dialog";
 import { Button } from "../components/ui/button";
-import { useTVC } from "../context/TraversalConfigContext";
+import { useTVCLeft } from "../context/TraversalConfigContext";
 import { Pre } from "../Typography";
 
 export default function TraversalConfigInspector() {
   const [isOpen, setIsOpen] = useState(false);
-  const { tvc } = useTVC();
+  const { tvcL: tvc } = useTVCLeft();
 
   const json = useMemo(() => {
     return JSON.stringify(tvc, null, 2);

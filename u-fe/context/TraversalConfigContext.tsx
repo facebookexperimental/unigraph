@@ -11,8 +11,8 @@ import {
 import { useNativeGraphL } from "./NativeGraphContext";
 
 export type TraversalConfigContextType = {
-  tvc: TraversalConfig;
-  setTvc: (tvc: TraversalConfig) => void;
+  tvcL: TraversalConfig;
+  setTvcL: (tvc: TraversalConfig) => void;
 };
 
 const TraversalConfigContext = createContext<TraversalConfigContextType | null>(
@@ -21,14 +21,14 @@ const TraversalConfigContext = createContext<TraversalConfigContextType | null>(
 
 export function TraversalConfigContextProvider({
   children,
-  tvc,
-  setTvc,
+  tvcL,
+  setTvcL,
 }: {
   children: React.ReactNode;
-  tvc: TraversalConfig;
-  setTvc: (tvc: TraversalConfig) => void;
+  tvcL: TraversalConfig;
+  setTvcL: (tvc: TraversalConfig) => void;
 }) {
-  const value = useMemo(() => ({ tvc, setTvc }), [tvc, setTvc]);
+  const value = useMemo(() => ({ tvcL, setTvcL }), [tvcL, setTvcL]);
   return (
     <TraversalConfigContext.Provider value={value}>
       {children}
@@ -36,7 +36,7 @@ export function TraversalConfigContextProvider({
   );
 }
 
-export function useTVC(): TraversalConfigContextType {
+export function useTVCLeft(): TraversalConfigContextType {
   const context = useContext(TraversalConfigContext);
 
   if (context == null) {
@@ -50,7 +50,7 @@ export function useFlipForceEdgeL(arrow: Arrow | null): {
   forceEdge: () => void;
   action: "Include" | "Exclude";
 } {
-  const { tvc, setTvc } = useTVC();
+  const { tvcL: tvc, setTvcL: setTvc } = useTVCLeft();
   const nativeGraph = useNativeGraphL();
 
   const pointsTo = arrow?.points_to ?? null;
@@ -104,7 +104,7 @@ export function useFlipForceExcludeNodeL(arrow: Arrow | null): {
   action: "Include" | "Exclude";
   forceExcludeNode: () => void;
 } {
-  const { tvc, setTvc } = useTVC();
+  const { tvcL: tvc, setTvcL: setTvc } = useTVCLeft();
   const nativeGraph = useNativeGraphL();
   const enabled = useCanNodeBeForceExcludedL(arrow);
 

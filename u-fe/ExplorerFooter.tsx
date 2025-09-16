@@ -28,7 +28,7 @@ import {
 import { useGraphSettings } from "./context/GraphSettingsContext";
 import { useNativeGraphL, useTwinGraph } from "./context/NativeGraphContext";
 import { useSelectedNodes } from "./context/SelectedNodesContext";
-import { useTVC } from "./context/TraversalConfigContext";
+import { useTVCLeft } from "./context/TraversalConfigContext";
 import {
   useToggleDominatorTreeView,
   useToggleFlatListView,
@@ -558,7 +558,7 @@ function TiersHoverCardContent() {
   const [graphSettings, setGraphSettings] = useGraphSettings();
   const nativeGraph = useNativeGraphL();
   const allTiers = nativeGraph.stats().tier_names;
-  const { tvc, setTvc } = useTVC();
+  const { tvcL: tvc, setTvcL: setTvc } = useTVCLeft();
 
   const tieredmetricCards = nativeGraph.metricNames.map((metricName) => {
     const metricSettings =

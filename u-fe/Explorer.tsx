@@ -115,7 +115,7 @@ export function Explorer(props: ExplorerProps) {
             nativeGraphL={nativeGraphL}
             nativeGraphR={nativeGraphR}
           >
-            <TraversalConfigContextProvider tvc={tvcL} setTvc={setTvcCb}>
+            <TraversalConfigContextProvider tvcL={tvcL} setTvcL={setTvcCb}>
               <SimulationParamsContextProvider>
                 <SelectedNodesContextProvider>
                   <GraphSettingsContextProvider
