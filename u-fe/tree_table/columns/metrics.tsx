@@ -8,7 +8,7 @@ import UHoverCard from "../../components/UHoverCard";
 import type NativeGraph from "../../native/NativeGraph";
 import { GRAPH_SIDE, type GraphSide } from "../../native/NativeGraph";
 import type TwinGraph from "../../native/TwinGraph";
-import type { NumericValueColumnDefinition, TSortable } from "../TreeTable";
+import type { NumericValueColumnDefinition, TSortable } from "../columns";
 import type { Row } from "../TreeTableRows";
 import {
   DeltaMetricCell,

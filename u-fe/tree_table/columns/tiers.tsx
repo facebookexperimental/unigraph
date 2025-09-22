@@ -3,9 +3,9 @@
 import clsx from "clsx";
 import type { TierIDX } from "../../native/NodeFlags";
 import type TwinGraph from "../../native/TwinGraph";
-import type { NonSortableColumnDefinition } from "../TreeTable";
 import type { Row } from "../TreeTableRows";
 import type { Column, ColumnsCtx } from "./useGraphTreeTableColumns";
+import { NonSortableColumnDefinition } from "../columns";
 
 export class NodeTierColumn implements Column {
   ctx: ColumnsCtx;

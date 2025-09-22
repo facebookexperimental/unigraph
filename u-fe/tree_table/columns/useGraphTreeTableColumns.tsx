@@ -24,7 +24,7 @@ import type {
   NumericValueColumnDefinition,
   TreeColumnDefinition,
   TSortable,
-} from "../TreeTable";
+} from "../columns";
 import type { Row } from "../TreeTableRows";
 import { MetricCell, MissingMetric, NO_PRECISION_FORMAT } from "./Cells";
 import {

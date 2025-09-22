@@ -2,7 +2,7 @@
 
 import type { TwinArrow } from "../__generated__/ts/TwinArrow";
 import type { NodeIDX } from "../types";
-import type { SortState } from "./TreeTable";
+import type { SortState } from "./TreeTableCtx";
 
 export type RowIDX = number;
 export type Row = {

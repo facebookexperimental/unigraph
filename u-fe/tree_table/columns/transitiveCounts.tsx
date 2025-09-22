@@ -11,7 +11,7 @@ import NativeGraph, {
 } from "../../native/NativeGraph";
 import type TwinGraph from "../../native/TwinGraph";
 import { H1, H2, Link, Pre } from "../../Typography";
-import type { NumericValueColumnDefinition, TSortable } from "../TreeTable";
+import type { NumericValueColumnDefinition, TSortable } from "../columns";
 import type { Row } from "../TreeTableRows";
 import {
   DeltaMetricCell,
