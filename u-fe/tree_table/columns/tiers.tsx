@@ -44,6 +44,9 @@ export class NodeTierColumn implements Column {
         const tierR = right?.getNodeTierName(row.twinArrow.points_to) ?? null;
 
         if (right == null || tierL?.[1] === tierR?.[1]) {
+          if (tierL == null) {
+            return null;
+          }
           return (
             <div className="flex justify-center w-full">
               <TierBadge tier={tierL} />
@@ -76,16 +79,16 @@ function TierBadge({
   let bgColor = "border-accent-foreground/50";
   switch (tier?.[1] ?? null) {
     case 0:
-      bgColor = "bg-yellow-500/20";
+      bgColor = "bg-yellow-500/35";
       break;
     case 1:
-      bgColor = "bg-blue-500/20";
+      bgColor = "bg-blue-500/35";
       break;
     case 2:
-      bgColor = "bg-green-500/20";
+      bgColor = "bg-green-500/35";
       break;
     case 3:
-      bgColor = "bg-purple-500/20";
+      bgColor = "bg-purple-500/35";
       break;
     case null:
       bgColor = "bg-graph-500/50";
