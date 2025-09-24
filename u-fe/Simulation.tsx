@@ -17,10 +17,10 @@ import { Label } from "./components/ui/label";
 import { Separator } from "./components/ui/separator.js";
 import { Slider } from "./components/ui/slider";
 import { Toggle } from "./components/ui/toggle";
+import { useDebugMode } from "./context/DebugModeContext.js";
 import { useNativeGraphL } from "./context/NativeGraphContext.js";
 import { useSelectedNodes } from "./context/SelectedNodesContext.js";
 import { useSimulationParams } from "./context/SimulationParamsContext.js";
-import { IS_DEBUG_MODE } from "./DebugMode.js";
 import formatNumber from "./lib/formatNumber.js";
 import { H2 } from "./Typography.js";
 
@@ -214,6 +214,7 @@ function SimulationParamsToggle({
 function ParamsPanel() {
   const [simulationParams, setSimulationParams] = useSimulationParams();
 
+  const [debugMode] = useDebugMode();
   return (
     <div className="px-6 py-4 flex flex-col gap-4 w-52 bg-card">
       <div className="flex gap-4">
@@ -295,7 +296,7 @@ function ParamsPanel() {
           }}
         />
 
-        {IS_DEBUG_MODE && (
+        {debugMode && (
           <SimulationSlider
             label="ln(1 + len * x)"
             value={simulationParams.edge_force_b}
@@ -341,7 +342,7 @@ function ParamsPanel() {
 
         <Separator />
 
-        {IS_DEBUG_MODE && (
+        {debugMode && (
           <SimulationSlider
             label="Total Force multiplier"
             value={simulationParams.total_force_multiplier}
@@ -388,7 +389,7 @@ function ParamsPanel() {
           }}
         />
 
-        {IS_DEBUG_MODE && (
+        {debugMode && (
           <SimulationSlider
             label="Frames / Compute"
             value={simulationParams.compute_forces_every_n_frames}

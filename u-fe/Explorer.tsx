@@ -10,6 +10,7 @@ import type { ExplorerProps } from "./__generated__/ts/ExplorerProps";
 import type { GraphSettings } from "./__generated__/ts/GraphSettings";
 import type { TraversalConfig } from "./__generated__/ts/TraversalConfig";
 import ErrorBoundary from "./components/ErrorBoundary";
+import { DebugModeContextProvider } from "./context/DebugModeContext";
 import {
   GlobalElementRefsContextProvider,
   usePortalContainer,
@@ -124,34 +125,36 @@ export function Explorer(props: ExplorerProps) {
 
   return (
     <div className="h-screen flex flex-col unigraph-explorer bg-background">
-      <GlobalElementRefsContextProvider>
-        <ErrorBoundary>
-          <NativeGraphContextProvider
-            nativeGraphL={nativeGraphL}
-            nativeGraphR={nativeGraphR}
-          >
-            <TraversalConfigContextProvider
-              tvcL={tvcL}
-              setTvcL={setTvcLCb}
-              tvcR={tvcR}
-              setTvcR={setTvcRCb}
+      <DebugModeContextProvider>
+        <GlobalElementRefsContextProvider>
+          <ErrorBoundary>
+            <NativeGraphContextProvider
+              nativeGraphL={nativeGraphL}
+              nativeGraphR={nativeGraphR}
             >
-              <SimulationParamsContextProvider>
-                <SelectedNodesContextProvider>
-                  <GraphSettingsContextProvider
-                    settings={settings}
-                    setSettings={setSettingsCb}
-                  >
-                    <SelectedPathContextProvider syncToURL={true}>
-                      <Page />
-                    </SelectedPathContextProvider>
-                  </GraphSettingsContextProvider>
-                </SelectedNodesContextProvider>
-              </SimulationParamsContextProvider>
-            </TraversalConfigContextProvider>
-          </NativeGraphContextProvider>
-        </ErrorBoundary>
-      </GlobalElementRefsContextProvider>
+              <TraversalConfigContextProvider
+                tvcL={tvcL}
+                setTvcL={setTvcLCb}
+                tvcR={tvcR}
+                setTvcR={setTvcRCb}
+              >
+                <SimulationParamsContextProvider>
+                  <SelectedNodesContextProvider>
+                    <GraphSettingsContextProvider
+                      settings={settings}
+                      setSettings={setSettingsCb}
+                    >
+                      <SelectedPathContextProvider syncToURL={true}>
+                        <Page />
+                      </SelectedPathContextProvider>
+                    </GraphSettingsContextProvider>
+                  </SelectedNodesContextProvider>
+                </SimulationParamsContextProvider>
+              </TraversalConfigContextProvider>
+            </NativeGraphContextProvider>
+          </ErrorBoundary>
+        </GlobalElementRefsContextProvider>
+      </DebugModeContextProvider>
     </div>
   );
 }

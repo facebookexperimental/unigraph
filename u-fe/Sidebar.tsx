@@ -1,10 +1,12 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-import { Info, Waypoints } from "lucide-react";
+import { Info, Waypoints, Wrench } from "lucide-react";
 import type { SidebarPanel } from "./__generated__/ts/SidebarPanel";
+import UTooltip from "./components/UTooltip";
 import { Button } from "./components/ui/button";
+import { useDebugMode } from "./context/DebugModeContext";
 import { useGraphSettings } from "./context/GraphSettingsContext";
-import { IS_DEBUG_MODE } from "./DebugMode";
+import { useTwinGraph } from "./context/NativeGraphContext";
 import TraversalConfigInspector from "./sidebar_panels/TraversalConfigInspector";
 
 export default function Sidebar({
@@ -12,15 +14,34 @@ export default function Sidebar({
 }: {
   selectedPanelTab: SidebarPanel;
 }) {
+  const [debugMode, setDebugMode] = useDebugMode();
+  const tg = useTwinGraph();
   return (
-    <div className="flex h-full flex-col items-center gap-2 py-4 px-2 bg-sidebar border-r">
-      <TabSelector tabName="Simulation" selectedPanelTab={selectedPanelTab}>
-        <Waypoints />
-      </TabSelector>
-      <TabSelector tabName="GraphInfo" selectedPanelTab={selectedPanelTab}>
-        <Info />
-      </TabSelector>
-      {IS_DEBUG_MODE && <TraversalConfigInspector />}
+    <div className="flex h-full flex-col px-2 bg-sidebar pt-4 pb-3 border-r justify-between">
+      <div className="flex flex-col items-center gap-2">
+        <TabSelector tabName="Simulation" selectedPanelTab={selectedPanelTab}>
+          <Waypoints />
+        </TabSelector>
+        <TabSelector tabName="GraphInfo" selectedPanelTab={selectedPanelTab}>
+          <Info />
+        </TabSelector>
+        {debugMode && <TraversalConfigInspector />}
+      </div>
+      <UTooltip tooltip="Toggle debug mode that shows additional info">
+        <Button
+          size="icon"
+          className="cursor-pointer"
+          variant={debugMode ? "outline" : "ghost"}
+          onClick={() => {
+            const c = console;
+            // biome-ignore lint/complexity/useLiteralKeys: just making sure it doen't get minified out
+            c["log"](tg);
+            setDebugMode(!debugMode);
+          }}
+        >
+          <Wrench color={debugMode ? undefined : "#a7a3a4"} />
+        </Button>
+      </UTooltip>
     </div>
   );
 }
