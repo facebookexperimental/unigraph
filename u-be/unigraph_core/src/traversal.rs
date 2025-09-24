@@ -160,14 +160,28 @@ impl TraversalConfig {
             .force_dynamic
             .iter()
             .flatten()
-            .map(|dynamic| ForceDynamicIDX {
-                from_node: dynamic
-                    .from_node
-                    .as_ref()
-                    .and_then(|name| array_graph.nodes.name_to_idx_log(name)),
-                match_properties: dynamic.match_properties.clone(),
-                branch: dynamic.branch.clone(),
-                decision: dynamic.decision.clone(),
+            .filter_map(|dynamic| {
+                let from_node = dynamic.from_node.as_ref();
+
+                let from_node_idx =
+                    from_node.and_then(|name| array_graph.nodes.name_to_idx_log(name));
+
+                if from_node.is_some() && from_node_idx.is_none() {
+                    // if we can't find the from_node idx by its name that means it doesn't exist
+                    // in the graph and it will never match. We should be able to safely yeet it
+                    // from the config
+                    return None;
+                }
+
+                Some(ForceDynamicIDX {
+                    from_node: dynamic
+                        .from_node
+                        .as_ref()
+                        .and_then(|name| array_graph.nodes.name_to_idx_log(name)),
+                    match_properties: dynamic.match_properties.clone(),
+                    branch: dynamic.branch.clone(),
+                    decision: dynamic.decision.clone(),
+                })
             })
             .collect();
 

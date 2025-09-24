@@ -87,9 +87,7 @@ export default function TreeCell(props: Props) {
       </span>
       <InfoIcon twinArrow={twinArrow} twinGraph={twinGraph} />
       <ArrowDiffBadges twinArrow={twinArrow} arrowDiff={arrowDiff} />
-      {debugMode && (
-        <NodeDebugInfo twinGraph={twinGraph} twinArrow={twinArrow} />
-      )}
+      {debugMode && <NodeDebugInfo twinArrow={twinArrow} />}
       {isHovered && <CopyToClipboard text={props.nodeName} className="ml-2" />}
     </div>
   );
@@ -561,13 +559,7 @@ function RowBadge({ text, className }: { text: string; className?: string }) {
   );
 }
 
-function NodeDebugInfo({
-  twinGraph,
-  twinArrow,
-}: {
-  twinGraph: TwinGraph;
-  twinArrow: TwinArrow;
-}) {
+function NodeDebugInfo({ twinArrow }: { twinArrow: TwinArrow }) {
   return (
     <UHoverCard
       content={
