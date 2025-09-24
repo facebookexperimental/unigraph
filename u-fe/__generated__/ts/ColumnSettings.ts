@@ -35,6 +35,14 @@ export interface ColumnSettings {
   /** Global setting for showing conjoint values for tiered metrics */
   show_conjoint_tiered_metrics?: boolean | undefined;
   /**
+   * Global setting for showing dominated metric values.
+   * Individual columns will be enabled/disabled based on
+   * their individual settings.
+   * defaults to showing because individual values default
+   * to only whowing when in Dominator mode
+   */
+  hide_dominated_tiered_metrics?: boolean | undefined;
+  /**
    * Global setting for showing columns related to
    * node counts, like transitive counts, parents counts,
    * or conjoint cost for node counts.
@@ -42,12 +50,6 @@ export interface ColumnSettings {
    * their individual settings.
    */
   show_counts?: boolean | undefined;
-  /**
-   * Global setting for showing dominated cost values.
-   * Individual columns will be enabled/disabled based on
-   * their individual settings.
-   */
-  show_dominated?: boolean | undefined;
   /** Show a column that displays the tier each node */
   show_tier_column?: boolean | undefined;
   metric_settings?: { [key: string]: MetricSettings } | undefined;

@@ -5,6 +5,7 @@
  */
 
 
+import type { IndividualDominatedOptionEnabled } from './IndividualDominatedOptionEnabled.ts';
 import type { IndividualOptionEnabled } from './IndividualOptionEnabled.ts';
 import type { MetricFormat } from './MetricFormat.ts';
 
@@ -17,4 +18,6 @@ export interface MetricSettings {
   column_show_transitive?: IndividualOptionEnabled | undefined;
   column_show_tiered?: { [key: string]: IndividualOptionEnabled } | undefined;
   show_conjoint_tiered?: { [key: string]: IndividualOptionEnabled } | undefined;
+  show_dominated?: IndividualDominatedOptionEnabled | undefined;
+  show_dominated_tiered?: { [key: string]: IndividualDominatedOptionEnabled } | undefined;
 }

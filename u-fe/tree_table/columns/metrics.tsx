@@ -16,6 +16,7 @@ import {
   MissingMetric,
   WouldBeDeltaMetricCell,
 } from "./Cells";
+import { isEnabledForGraphStructure } from "./ColumnUtils";
 import { MetricDeltaRightHovercard } from "./hovercards";
 import type { Column, ColumnsCtx } from "./useGraphTreeTableColumns";
 
@@ -129,15 +130,14 @@ export class TransitiveMetricColumn implements Column {
 
   isEnabled() {
     return (
+      this.ctx.showMetrics &&
       this.ctx.metricSettings(this.metricName)?.column_show_transitive ===
-      "WhenEnabledGlobally"
+        "WhenEnabledGlobally"
     );
   }
 
   getID(): string {
-    const base = this.ctx.dominated
-      ? `D(${this.metricName})`
-      : `T(${this.metricName})`;
+    const base = `T(${this.metricName})`;
 
     if (this.side === GRAPH_SIDE.L) {
       return `${base} L`;
@@ -175,16 +175,110 @@ export class TransitiveMetricColumn implements Column {
   }
 
   getValuesFn(): (idxs: NodeIDX[]) => Float32Array {
-    if (this.ctx.dominated) {
-      return (idxs: NodeIDX[]) =>
-        this.nativeGraph.getTransitiveDominatedMetricsBatched(
-          idxs,
-          this.metricName,
-        );
-    } else {
-      return (idxs: NodeIDX[]) =>
-        this.nativeGraph.getTransitiveMetricsBatched(idxs, this.metricName);
+    return (idxs: NodeIDX[]) =>
+      this.nativeGraph.getTransitiveMetricsBatched(idxs, this.metricName);
+  }
+
+  definition(): [string, NumericValueColumnDefinition] {
+    const columnID = this.getID();
+    const getValues = this.getValuesFn();
+    const format = this.ctx.metricSettings(this.metricName)?.format;
+
+    const definition: NumericValueColumnDefinition = {
+      t: "numeric_value_column",
+      label: columnID,
+      renderer: (row: Readonly<Row>) => {
+        if (this.nativeGraph.isNodeReachable(row.twinArrow.points_to)) {
+          return (
+            <MetricCell
+              value={getValues([row.twinArrow.points_to])[0] as number}
+              format={format}
+            />
+          );
+        } else {
+          return <MissingMetric />;
+        }
+      },
+      getNumericValues: getValues,
+      sortable: this.sortable(),
+      isHidden: false,
+    };
+    return [columnID, definition];
+  }
+}
+
+export class DominatedMetricColumn implements Column {
+  ctx: ColumnsCtx;
+  nativeGraph: NativeGraph;
+  metricName: string;
+  side: GraphSide | null;
+
+  constructor(
+    ctx: ColumnsCtx,
+    nativeGraph: NativeGraph,
+    metricName: string,
+    side?: GraphSide,
+  ) {
+    this.ctx = ctx;
+    this.nativeGraph = nativeGraph;
+    this.metricName = metricName;
+    this.side = side ?? null;
+  }
+
+  isEnabled() {
+    return (
+      this.ctx.showMetrics &&
+      isEnabledForGraphStructure(
+        this.ctx.graphStructure,
+        this.ctx.metricSettings(this.metricName)?.show_dominated,
+      )
+    );
+  }
+
+  getID(): string {
+    const base = `D(${this.metricName})`;
+
+    if (this.side === GRAPH_SIDE.L) {
+      return `${base} L`;
+    } else if (this.side === GRAPH_SIDE.R) {
+      return `${base} R`;
     }
+    return base;
+  }
+
+  sortable() {
+    const columnType: ColumnType =
+      this.side === GRAPH_SIDE.R ? "Right" : "Left";
+    const sortable: TSortable = {
+      order: null,
+      onSortChange: (order: SortOrder | null) =>
+        this.ctx.onSortChange(order, {
+          DominatedMetric: {
+            t: columnType,
+            name: this.metricName,
+          },
+        }),
+    };
+
+    const sort = this.ctx.sort();
+    if (
+      sort != null &&
+      "DominatedMetric" in sort.column &&
+      sort.column.DominatedMetric.t === columnType &&
+      sort.column.DominatedMetric.name === this.metricName
+    ) {
+      sortable.order = sort.order;
+    }
+
+    return sortable;
+  }
+
+  getValuesFn(): (idxs: NodeIDX[]) => Float32Array {
+    return (idxs: NodeIDX[]) =>
+      this.nativeGraph.getTransitiveDominatedMetricsBatched(
+        idxs,
+        this.metricName,
+      );
   }
 
   definition(): [string, NumericValueColumnDefinition] {
@@ -255,9 +349,6 @@ export class TransitiveTieredMetricColumn implements Column {
       ? `${this.tierName} ${this.metricName}`
       : this.tierName;
 
-    if (this.ctx.dominated) {
-      return `D(${base})`;
-    }
     return base;
   }
 
@@ -291,19 +382,11 @@ export class TransitiveTieredMetricColumn implements Column {
   }
 
   getValuesFn(): (idxs: NodeIDX[]) => number[] {
-    if (this.ctx.dominated) {
-      return (idxs: NodeIDX[]) => {
-        return this.nativeGraph
-          .getTieredTransitiveMetricsDominatedBatched(idxs, this.metricName)
-          .map((m) => m[this.tierName] ?? 0);
-      };
-    } else {
-      return (idxs: NodeIDX[]) => {
-        return this.nativeGraph
-          .getTieredTransitiveMetricsBatched(idxs, this.metricName)
-          .map((m) => m[this.tierName] ?? 0);
-      };
-    }
+    return (idxs: NodeIDX[]) => {
+      return this.nativeGraph
+        .getTieredTransitiveMetricsBatched(idxs, this.metricName)
+        .map((m) => m[this.tierName] ?? 0);
+    };
   }
 
   definition(): [string, NumericValueColumnDefinition] {
@@ -343,6 +426,123 @@ export class TransitiveTieredMetricColumn implements Column {
               format={format}
             />
           );
+        }
+      },
+      getNumericValues: (idxs: NodeIDX[]) => {
+        return new Float32Array(getValues(idxs));
+      },
+      sortable: this.sortable(),
+      isHidden: false,
+    };
+
+    return [columnID, definition];
+  }
+}
+
+export class TieredDominatedMetricColumn implements Column {
+  ctx: ColumnsCtx;
+  nativeGraph: NativeGraph;
+  metricName: string;
+  tierName: string;
+  side: GraphSide | null;
+
+  constructor(
+    ctx: ColumnsCtx,
+    nativeGraph: NativeGraph,
+    metricName: string,
+    tierName: string,
+    side?: GraphSide,
+  ) {
+    this.ctx = ctx;
+    this.nativeGraph = nativeGraph;
+    this.metricName = metricName;
+    this.tierName = tierName;
+    this.side = side ?? null;
+  }
+
+  isEnabled() {
+    const tierIDX = this.nativeGraph.stats().tier_names.indexOf(this.tierName);
+
+    const enabledForStructure = isEnabledForGraphStructure(
+      this.ctx.graphStructure,
+      this.ctx.metricSettings(this.metricName)?.show_dominated_tiered?.[
+        this.tierName
+      ],
+    );
+
+    return (
+      this.ctx.showMetrics &&
+      !this.ctx.hideDominatedTieredMetrics &&
+      enabledForStructure &&
+      isBelowMaxTier(this.ctx, tierIDX)
+    );
+  }
+
+  getID(): string {
+    const graphHasMoreThanOneMetric = this.nativeGraph.metricNames.length > 1;
+
+    const base = graphHasMoreThanOneMetric
+      ? `${this.tierName} ${this.metricName}`
+      : this.tierName;
+
+    return `D(${base})`;
+  }
+
+  sortable() {
+    const columnType: ColumnType =
+      this.side === GRAPH_SIDE.R ? "Right" : "Left";
+    const sortable: TSortable = {
+      order: null,
+      onSortChange: (order: SortOrder | null) =>
+        this.ctx.onSortChange(order, {
+          DominatedTieredMetric: {
+            t: columnType,
+            name: this.metricName,
+            tier: this.tierName,
+          },
+        }),
+    };
+
+    const sort = this.ctx.sort();
+    if (
+      sort != null &&
+      "DominatedTieredMetric" in sort.column &&
+      sort.column.DominatedTieredMetric.t === columnType &&
+      sort.column.DominatedTieredMetric.name === this.metricName &&
+      sort.column.DominatedTieredMetric.tier === this.tierName
+    ) {
+      sortable.order = sort.order;
+    }
+
+    return sortable;
+  }
+
+  getValuesFn(): (idxs: NodeIDX[]) => number[] {
+    return (idxs: NodeIDX[]) => {
+      return this.nativeGraph
+        .getTieredTransitiveMetricsDominatedBatched(idxs, this.metricName)
+        .map((m) => m[this.tierName] ?? 0);
+    };
+  }
+
+  definition(): [string, NumericValueColumnDefinition] {
+    const columnID = this.getID();
+    const getValues = this.getValuesFn();
+    const format = this.ctx.metricSettings(this.metricName)?.format;
+
+    const definition: NumericValueColumnDefinition = {
+      t: "numeric_value_column",
+      label: columnID,
+      renderer: (row: Readonly<Row>) => {
+        if (this.nativeGraph.isNodeReachable(row.twinArrow.points_to)) {
+          return (
+            <MetricCell
+              value={getValues([row.twinArrow.points_to])[0] as number}
+              format={format}
+            />
+          );
+        } else {
+          return <MissingMetric />;
         }
       },
       getNumericValues: (idxs: NodeIDX[]) => {
@@ -397,9 +597,6 @@ export class TransitiveTieredMetricDeltaColumn implements Column {
       ? `∆ ${this.tierName} ${this.metricName}`
       : `∆ ${this.tierName}`;
 
-    if (this.ctx.dominated) {
-      return `D(${base})`;
-    }
     return base;
   }
 
@@ -511,9 +708,6 @@ export class TransitiveTieredMetricRightDeltaColumn implements Column {
       ? `${this.tierName} ${this.metricName}`
       : this.tierName;
 
-    if (this.ctx.dominated) {
-      return `D(${base})`;
-    }
     return base;
   }
 
@@ -549,19 +743,12 @@ export class TransitiveTieredMetricRightDeltaColumn implements Column {
   getValuesFn(side: GraphSide): (idxs: NodeIDX[]) => number[] {
     const g =
       side === GRAPH_SIDE.L ? this.twinGraph.l : this.twinGraph.rightGraphX();
-    if (this.ctx.dominated) {
-      return (idxs: NodeIDX[]) => {
-        return g
-          .getTieredTransitiveMetricsDominatedBatched(idxs, this.metricName)
-          .map((m) => m[this.tierName] ?? 0);
-      };
-    } else {
-      return (idxs: NodeIDX[]) => {
-        return g
-          .getTieredTransitiveMetricsBatched(idxs, this.metricName)
-          .map((m) => m[this.tierName] ?? 0);
-      };
-    }
+
+    return (idxs: NodeIDX[]) => {
+      return g
+        .getTieredTransitiveMetricsBatched(idxs, this.metricName)
+        .map((m) => m[this.tierName] ?? 0);
+    };
   }
 
   definition(): [string, NumericValueColumnDefinition] {

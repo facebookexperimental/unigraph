@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import type { GraphSettings } from "../../__generated__/ts/GraphSettings";
+import type { GraphStructure } from "../../__generated__/ts/GraphStructure";
 import type { GraphTableSort } from "../../__generated__/ts/GraphTableSort";
 import type { MetricSettings } from "../../__generated__/ts/MetricSettings";
 import type { SortColumn } from "../../__generated__/ts/SortColumn";
@@ -23,6 +24,7 @@ import type {
 import type { Row } from "../TreeTableRows";
 import {
   ConjointCountColumn,
+  DominatedCountColumn,
   ParentsCountColumn,
   TransitiveCountColumn,
   TransitiveCountDeltaColumn,
@@ -30,9 +32,11 @@ import {
 } from "./counts";
 import {
   ConjointTieredMetricColumn,
+  DominatedMetricColumn,
   MetricColumn,
   MetricDeltaViewColumn,
   MetricRightInDeltaViewColumn,
+  TieredDominatedMetricColumn,
   TransitiveMetricColumn,
   TransitiveTieredMetricColumn,
   TransitiveTieredMetricDeltaColumn,
@@ -148,12 +152,13 @@ export class ColumnsCtx {
   tvc: TraversalConfig;
   showTransitiveCount: boolean;
   showParentsCount: boolean;
-  dominated: boolean;
   showMetrics: boolean;
   showTieredMetrics: boolean;
   showConjointTieredMetrics: boolean;
+  hideDominatedTieredMetrics: boolean;
   showConjointCount: boolean;
   showCounts: boolean;
+  graphStructure: GraphStructure;
 
   constructor(
     graphSettings: GraphSettings,
@@ -169,7 +174,6 @@ export class ColumnsCtx {
     this.showParentsCount =
       graphSettings.ui_settings?.columns?.show_parents_count ===
       "WhenEnabledGlobally";
-    this.dominated = graphSettings.ui_settings?.graph_structure === "Dominator";
     this.showMetrics =
       graphSettings.ui_settings?.columns?.hide_metrics !== true;
     this.showTieredMetrics =
@@ -180,7 +184,12 @@ export class ColumnsCtx {
     this.showConjointCount =
       graphSettings.ui_settings?.columns?.show_conjoint_count ===
       "WhenEnabledGlobally";
+    this.hideDominatedTieredMetrics =
+      graphSettings.ui_settings?.columns?.hide_dominated_tiered_metrics ===
+      true;
     this.showCounts = graphSettings.ui_settings?.columns?.show_counts === true;
+    this.graphStructure =
+      graphSettings.ui_settings?.graph_structure ?? "Forward";
   }
 
   metricSettings(metricName: string): MetricSettings | null {
@@ -236,6 +245,7 @@ class SingleGraphColumnsBuilder {
     const columns: Column[] = [
       new NodeTierColumn(this.ctx, this.twinGraph),
       new TransitiveCountColumn(ctx, g),
+      new DominatedCountColumn(ctx, g),
       new ConjointCountColumn(ctx, g),
       new ParentsCountColumn(ctx, g),
     ];
@@ -243,9 +253,11 @@ class SingleGraphColumnsBuilder {
     for (const metric of g.metricNames) {
       columns.push(new MetricColumn(ctx, g, metric));
       columns.push(new TransitiveMetricColumn(ctx, g, metric));
+      columns.push(new DominatedMetricColumn(ctx, g, metric));
 
       for (const tier of g.stats().tier_names) {
         columns.push(new TransitiveTieredMetricColumn(ctx, g, metric, tier));
+        columns.push(new TieredDominatedMetricColumn(ctx, g, metric, tier));
         columns.push(new ConjointTieredMetricColumn(ctx, g, metric, tier));
       }
     }

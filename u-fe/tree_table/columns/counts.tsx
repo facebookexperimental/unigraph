@@ -22,6 +22,7 @@ import {
   NO_PRECISION_FORMAT,
   WouldBeDeltaMetricCell,
 } from "./Cells";
+import { isEnabledForGraphStructure } from "./ColumnUtils";
 import { MetricDeltaRightHovercard } from "./hovercards";
 import type { Column, ColumnsCtx } from "./useGraphTreeTableColumns";
 
@@ -67,16 +68,11 @@ export class TransitiveCountColumn implements Column {
   }
 
   getValuesFn(): (idxs: NodeIDX[]) => Float32Array {
-    if (this.ctx.dominated) {
-      return (idxs: NodeIDX[]) =>
-        this.nativeGraph.getTransitiveCountDominated(idxs);
-    } else {
-      return (idxs: NodeIDX[]) => this.nativeGraph.getTransitiveCount(idxs);
-    }
+    return (idxs: NodeIDX[]) => this.nativeGraph.getTransitiveCount(idxs);
   }
 
   getID(): string {
-    const base = this.ctx.dominated ? "D(count)" : "T(count)";
+    const base = "T(count)";
     if (this.side == null) {
       return base;
     }
@@ -125,11 +121,94 @@ export class TransitiveCountColumn implements Column {
       getNumericValues: getValues,
       sortable: this.sortable(),
       isHidden: false,
-      hovercardContent: this.ctx.dominated ? (
-        <TransitiveDominatedCountHovercard />
-      ) : (
-        <TransitiveCountHovercard />
-      ),
+      hovercardContent: <TransitiveCountHovercard />,
+    };
+    return [columnID, definition];
+  }
+}
+
+export class DominatedCountColumn implements Column {
+  ctx: ColumnsCtx;
+  nativeGraph: NativeGraph;
+  side: GraphSide | null;
+
+  constructor(ctx: ColumnsCtx, nativeGraph: NativeGraph, side?: GraphSide) {
+    this.ctx = ctx;
+    this.nativeGraph = nativeGraph;
+    this.side = side ?? null;
+  }
+
+  isEnabled() {
+    return (
+      this.ctx.showCounts &&
+      isEnabledForGraphStructure(
+        this.ctx.graphStructure,
+        this.ctx.graphSettings.ui_settings?.columns?.show_dominated_count,
+      )
+    );
+  }
+
+  sortable(): TSortable | null {
+    const columnType: ColumnType =
+      this.side === GRAPH_SIDE.R ? "Right" : "Left";
+    const sortable: TSortable = {
+      order: null,
+      onSortChange: (order: SortOrder | null) =>
+        this.ctx.onSortChange(order, {
+          DominatedCount: {
+            t: columnType,
+          },
+        }),
+    };
+
+    const sort = this.ctx.sort();
+    if (
+      sort != null &&
+      "DominatedCount" in sort.column &&
+      sort.column.DominatedCount.t === columnType
+    ) {
+      sortable.order = sort.order;
+    }
+
+    return sortable;
+  }
+
+  getValuesFn(): (idxs: NodeIDX[]) => Float32Array {
+    return (idxs: NodeIDX[]) =>
+      this.nativeGraph.getTransitiveCountDominated(idxs);
+  }
+
+  getID(): string {
+    const base = "D(count)";
+    if (this.side == null) {
+      return base;
+    }
+    return `${base} ${this.side === GRAPH_SIDE.L ? "L" : "R"}`;
+  }
+
+  definition(): [string, NumericValueColumnDefinition] {
+    const getValues = this.getValuesFn();
+    const columnID = this.getID();
+
+    const definition: NumericValueColumnDefinition = {
+      t: "numeric_value_column",
+      label: columnID,
+      renderer: (row: Readonly<Row>) => {
+        if (this.nativeGraph.isNodeReachable(row.twinArrow.points_to)) {
+          return (
+            <MetricCell
+              value={getValues([row.twinArrow.points_to])[0] ?? 0}
+              format={NO_PRECISION_FORMAT}
+            />
+          );
+        } else {
+          return <MissingMetric />;
+        }
+      },
+      getNumericValues: getValues,
+      sortable: this.sortable(),
+      isHidden: false,
+      hovercardContent: <TransitiveDominatedCountHovercard />,
     };
     return [columnID, definition];
   }
@@ -207,11 +286,7 @@ export class TransitiveCountDeltaColumn implements Column {
       getNumericValues: getValuesForSorting,
       sortable: this.sortable(),
       isHidden: false,
-      hovercardContent: this.ctx.dominated ? (
-        <TransitiveDominatedCountHovercard />
-      ) : (
-        <TransitiveCountHovercard />
-      ),
+      hovercardContent: <TransitiveCountHovercard />,
     };
     return [columnID, definition];
   }
@@ -275,15 +350,11 @@ export class TransitiveCountRightInDeltaViewColumn implements Column {
       }
     })();
 
-    if (this.ctx.dominated) {
-      return (idxs: NodeIDX[]) => graph.getTransitiveCountDominated(idxs);
-    } else {
-      return (idxs: NodeIDX[]) => graph.getTransitiveCount(idxs);
-    }
+    return (idxs: NodeIDX[]) => graph.getTransitiveCount(idxs);
   }
 
   getID(): string {
-    return this.ctx.dominated ? "D(count) R" : "T(count) R";
+    return "T(count) R";
   }
 
   definition(): [string, NumericValueColumnDefinition] {
@@ -324,11 +395,7 @@ export class TransitiveCountRightInDeltaViewColumn implements Column {
       getNumericValues: getValues,
       sortable: this.sortable(),
       isHidden: false,
-      hovercardContent: this.ctx.dominated ? (
-        <TransitiveDominatedCountHovercard />
-      ) : (
-        <TransitiveCountHovercard />
-      ),
+      hovercardContent: <TransitiveCountHovercard />,
     };
     return [columnID, definition];
   }

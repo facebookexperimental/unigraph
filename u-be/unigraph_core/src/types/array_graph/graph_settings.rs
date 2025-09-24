@@ -42,6 +42,12 @@ pub struct MetricSettings {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub show_conjoint_tiered: Option<BTreeMap<TierName, IndividualOptionEnabled>>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub show_dominated: Option<IndividualDominatedOptionEnabled>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub show_dominated_tiered: Option<BTreeMap<TierName, IndividualDominatedOptionEnabled>>,
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize, typegen::TypeGen, Clone)]
@@ -334,6 +340,14 @@ pub struct ColumnSettings {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub show_conjoint_tiered_metrics: Option<bool>,
 
+    /// Global setting for showing dominated metric values.
+    /// Individual columns will be enabled/disabled based on
+    /// their individual settings.
+    /// defaults to showing because individual values default
+    /// to only whowing when in Dominator mode
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hide_dominated_tiered_metrics: Option<bool>,
+
     /// Global setting for showing columns related to
     /// node counts, like transitive counts, parents counts,
     /// or conjoint cost for node counts.
@@ -341,12 +355,6 @@ pub struct ColumnSettings {
     /// their individual settings.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub show_counts: Option<bool>,
-
-    /// Global setting for showing dominated cost values.
-    /// Individual columns will be enabled/disabled based on
-    /// their individual settings.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub show_dominated: Option<bool>,
 
     /// Show a column that displays the tier each node
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -419,6 +427,9 @@ pub enum SortColumn {
     /// Transitive count column
     TransitiveCount { t: ColumnType },
 
+    /// Transitive dominated count column
+    DominatedCount { t: ColumnType },
+
     /// Number of parents for each node
     ParentsCount { t: ColumnType },
 
@@ -428,6 +439,9 @@ pub enum SortColumn {
 
     /// Transitive metric column for specified metric
     TransitiveMetric { t: ColumnType, name: String },
+
+    /// Dominated metric column for specified metric
+    DominatedMetric { t: ColumnType, name: String },
 
     /// Tiered transitive metric column for specified metric
     TieredTransitiveMetric {
@@ -439,11 +453,15 @@ pub enum SortColumn {
     /// Conjoint count
     ConjointCount { t: ColumnType },
 
-    /// Conjoint metric
-    ConjointMetric { t: ColumnType, name: String },
-
     /// Conjoint tiered metric
     ConjointTieredMetric {
+        t: ColumnType,
+        name: String,
+        tier: String,
+    },
+
+    /// Conjoint tiered metric
+    DominatedTieredMetric {
         t: ColumnType,
         name: String,
         tier: String,

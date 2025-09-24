@@ -9,6 +9,7 @@ import {
   FileDiff,
   Layers,
   List,
+  Network,
   Tally5,
   ToggleLeft,
   ToggleRight,
@@ -40,6 +41,7 @@ import formatMetric from "./lib/formatMetric";
 import formatNumber from "./lib/formatNumber";
 import NodeSearch from "./NodeSearch";
 import { H2, H3 } from "./Typography";
+import { isEnabledForGraphStructure } from "./tree_table/columns/ColumnUtils";
 
 export default function ExplorerFooter() {
   return (
@@ -304,6 +306,32 @@ function CountsHovercardContent() {
               <ArrowUpNarrowWide />
             </UToggleButton>
 
+            <UToggleButton
+              tooltip="Show dominated nodes counts"
+              size="sm"
+              selected={
+                graphSettings.ui_settings?.columns?.show_dominated_count ===
+                "WhenEnabledGlobally"
+              }
+              onSelectedChange={(checked) => {
+                setGraphSettings({
+                  ...graphSettings,
+                  ui_settings: {
+                    ...graphSettings.ui_settings,
+                    columns: {
+                      ...graphSettings.ui_settings?.columns,
+                      show_counts: true,
+                      show_dominated_count: checked
+                        ? "WhenEnabledGlobally"
+                        : "Never",
+                    },
+                  },
+                });
+              }}
+            >
+              <TreePalm />
+            </UToggleButton>
+
             <UHoverCard content={<ConjointCostDocs />}>
               <UToggleButton
                 size="sm"
@@ -351,28 +379,32 @@ function MetricsHovercardContent() {
 
   return (
     <div className="flex flex-col gap-2">
-      <H3 text="Tier Column" />
-      <UToggleButton
-        key={`show-tier-column`}
-        size="sm"
-        tooltip={`Show a column displaying node's tier`}
-        selected={tierColumnSelected}
-        onSelectedChange={(selected) => {
-          setGraphSettings({
-            ...graphSettings,
-            ui_settings: {
-              ...graphSettings.ui_settings,
-              columns: {
-                ...graphSettings.ui_settings?.columns,
-                show_tier_column: selected ? true : undefined,
-              },
-            },
-          });
-        }}
-      >
-        {"Enable"}
-        {tierColumnSelected ? <ToggleRight /> : <ToggleLeft />}
-      </UToggleButton>
+      {hasTiers && (
+        <>
+          <H3 text="Tier Column" />
+          <UToggleButton
+            key={`show-tier-column`}
+            size="sm"
+            tooltip={`Show a column displaying node's tier`}
+            selected={tierColumnSelected}
+            onSelectedChange={(selected) => {
+              setGraphSettings({
+                ...graphSettings,
+                ui_settings: {
+                  ...graphSettings.ui_settings,
+                  columns: {
+                    ...graphSettings.ui_settings?.columns,
+                    show_tier_column: selected ? true : undefined,
+                  },
+                },
+              });
+            }}
+          >
+            {"Enable"}
+            {tierColumnSelected ? <ToggleRight /> : <ToggleLeft />}
+          </UToggleButton>
+        </>
+      )}
       <H3 text="Metric Columns" />
       <div className="flex flex-wrap gap-2">{metricCards}</div>
       {hasTiers && <MaxTierSelector />}
@@ -473,12 +505,12 @@ function MaxTierSelector() {
 }
 
 function MetricCard({ metricName }: { metricName: string }) {
-  const [graphSettings, setGraphSettings] = useGraphSettings();
   const nativeGraph = useNativeGraphL();
   const twinGraph = useTwinGraph();
   const singleGraph = twinGraph.r == null;
 
   const allTiers = nativeGraph.stats().tier_names;
+  const hasTiers = allTiers.length > 0;
 
   const tiers = allTiers.map((tierName) => (
     <ToggleTierForMetric
@@ -488,7 +520,15 @@ function MetricCard({ metricName }: { metricName: string }) {
     />
   ));
 
-  const conjoint = allTiers.map((tierName) => (
+  const dominatedTiered = allTiers.map((tierName) => (
+    <DominatedForTierForMetric
+      key={`${metricName}-dominated-${tierName}`}
+      tierName={tierName}
+      metricName={metricName}
+    />
+  ));
+
+  const conjointTiered = allTiers.map((tierName) => (
     <ToggleConjointForTierForMetric
       key={`conjoint-${metricName}-${tierName}`}
       tierName={tierName}
@@ -501,45 +541,32 @@ function MetricCard({ metricName }: { metricName: string }) {
       <SeparatorHorizontal />
       <H2 text={`${metricName}`} />
       <div className="flex flex-col gap-2 flex-wrap">
-        <EnableSelfMetricToggle metricName={metricName} />
-        <H3 text="Tiers" />
-        <div className="flex gap-2 flex-wrap">
-          <EnableTieredMetricsToggle />
-          {tiers}
+        <div className="flex  gap-2 flex-wrap">
+          <EnableSelfMetricToggle metricName={metricName} />
+          <EnableTransitiveMetricToggle metricName={metricName} />
+          {singleGraph && (
+            <EnableDominatedMetricToggle metricName={metricName} />
+          )}
         </div>
-
-        {singleGraph && (
+        {hasTiers && (
           <>
-            <H3 text="Conjoint" />
+            <H3 text="Tiers" />
             <div className="flex gap-2 flex-wrap">
-              <UToggleButton
-                key={`${metricName}`}
-                size="sm"
-                tooltip={`Show conjoint tiered metric columns`}
-                selected={
-                  graphSettings?.ui_settings?.columns
-                    ?.show_conjoint_tiered_metrics === true
-                }
-                onSelectedChange={(selected) => {
-                  setGraphSettings({
-                    ...graphSettings,
-                    ui_settings: {
-                      ...graphSettings.ui_settings,
-                      columns: {
-                        ...graphSettings.ui_settings?.columns,
-                        // if we select something under the metrics card
-                        // we probably want to show these automatically to avoid
-                        // "why is it not doing anything??" confusion
-                        hide_metrics: false,
-                        show_conjoint_tiered_metrics: selected,
-                      },
-                    },
-                  });
-                }}
-              >
-                <CircleDollarSign />
-              </UToggleButton>
-              {conjoint}
+              <EnableTieredMetricsToggle />
+              {tiers}
+            </div>
+          </>
+        )}
+
+        {singleGraph && hasTiers && (
+          <>
+            <div className="flex gap-2 flex-wrap">
+              <DominatedTieredToggle />
+              {dominatedTiered}
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              <ConjointTieredToggle />
+              {conjointTiered}
             </div>
           </>
         )}
@@ -629,6 +656,56 @@ function ToggleConjointForTierForMetric({
                   ...metricSettings,
                   show_conjoint_tiered: {
                     ...metricSettings?.show_conjoint_tiered,
+                    [tierName]: selected ? "WhenEnabledGlobally" : "Never",
+                  },
+                },
+              },
+            },
+          },
+        });
+      }}
+    >
+      {tierName}
+    </UToggleButton>
+  );
+}
+function DominatedForTierForMetric({
+  tierName,
+  metricName,
+}: {
+  tierName: string;
+  metricName: string;
+}) {
+  const [graphSettings, setGraphSettings] = useGraphSettings();
+  const metricSettings =
+    graphSettings?.ui_settings?.columns?.metric_settings?.[metricName] ?? {};
+
+  const selected = isEnabledForGraphStructure(
+    graphSettings?.ui_settings?.graph_structure,
+    metricSettings?.show_dominated_tiered?.[tierName],
+  );
+
+  return (
+    <UToggleButton
+      key={`dominated-tiered-${metricName}-${tierName}`}
+      size="sm"
+      tooltip={`Dominated value for'${metricName}' metric for ${tierName} tier`}
+      selected={selected}
+      onSelectedChange={(selected) => {
+        setGraphSettings({
+          ...graphSettings,
+          ui_settings: {
+            ...graphSettings.ui_settings,
+            columns: {
+              ...graphSettings.ui_settings?.columns,
+              hide_metrics: false,
+              hide_dominated_tiered_metrics: false,
+              metric_settings: {
+                ...graphSettings?.ui_settings?.columns?.metric_settings,
+                [metricName]: {
+                  ...metricSettings,
+                  show_dominated_tiered: {
+                    ...metricSettings?.show_dominated_tiered,
                     [tierName]: selected ? "WhenEnabledGlobally" : "Never",
                   },
                 },
@@ -744,8 +821,159 @@ function EnableSelfMetricToggle({ metricName }: { metricName: string }) {
         });
       }}
     >
-      {"Enable"}
       {selected ? <ToggleRight /> : <ToggleLeft />}
+    </UToggleButton>
+  );
+}
+
+function EnableTransitiveMetricToggle({ metricName }: { metricName: string }) {
+  const [graphSettings, setGraphSettings] = useGraphSettings();
+  const metricSettings =
+    graphSettings?.ui_settings?.columns?.metric_settings?.[metricName] ?? {};
+  const selected =
+    metricSettings?.column_show_transitive === "WhenEnabledGlobally";
+
+  return (
+    <UToggleButton
+      key={`${metricName}`}
+      size="sm"
+      tooltip={`Show a column with transitive values of '${metricName}' metric`}
+      selected={selected}
+      onSelectedChange={(selected) => {
+        setGraphSettings({
+          ...graphSettings,
+          ui_settings: {
+            ...graphSettings.ui_settings,
+            columns: {
+              ...graphSettings.ui_settings?.columns,
+              // if we select something under the metrics card
+              // we probably want to show these automatically to avoid
+              // "why is it not doing anything??" confusion
+              hide_metrics: false,
+              metric_settings: {
+                ...graphSettings?.ui_settings?.columns?.metric_settings,
+                [metricName]: {
+                  ...metricSettings,
+                  column_show_transitive: selected
+                    ? "WhenEnabledGlobally"
+                    : "Never",
+                },
+              },
+            },
+          },
+        });
+      }}
+    >
+      <Network />
+    </UToggleButton>
+  );
+}
+
+function EnableDominatedMetricToggle({ metricName }: { metricName: string }) {
+  const [graphSettings, setGraphSettings] = useGraphSettings();
+  const metricSettings =
+    graphSettings?.ui_settings?.columns?.metric_settings?.[metricName] ?? {};
+  const selected = isEnabledForGraphStructure(
+    graphSettings?.ui_settings?.graph_structure,
+    metricSettings?.show_dominated,
+  );
+
+  return (
+    <UToggleButton
+      key={`${metricName}`}
+      size="sm"
+      tooltip={`Show a column with dominated values for '${metricName}' metric`}
+      selected={selected}
+      onSelectedChange={(selected) => {
+        setGraphSettings({
+          ...graphSettings,
+          ui_settings: {
+            ...graphSettings.ui_settings,
+            columns: {
+              ...graphSettings.ui_settings?.columns,
+              // if we select something under the metrics card
+              // we probably want to show these automatically to avoid
+              // "why is it not doing anything??" confusion
+              hide_metrics: false,
+              metric_settings: {
+                ...graphSettings?.ui_settings?.columns?.metric_settings,
+                [metricName]: {
+                  ...metricSettings,
+                  show_dominated: selected ? "WhenEnabledGlobally" : "Never",
+                },
+              },
+            },
+          },
+        });
+      }}
+    >
+      <TreePalm />
+    </UToggleButton>
+  );
+}
+
+function ConjointTieredToggle() {
+  const [graphSettings, setGraphSettings] = useGraphSettings();
+
+  return (
+    <UToggleButton
+      size="sm"
+      tooltip={`Show conjoint tiered metric columns`}
+      selected={
+        graphSettings?.ui_settings?.columns?.show_conjoint_tiered_metrics ===
+        true
+      }
+      onSelectedChange={(selected) => {
+        setGraphSettings({
+          ...graphSettings,
+          ui_settings: {
+            ...graphSettings.ui_settings,
+            columns: {
+              ...graphSettings.ui_settings?.columns,
+              // if we select something under the metrics card
+              // we probably want to show these automatically to avoid
+              // "why is it not doing anything??" confusion
+              hide_metrics: false,
+              show_conjoint_tiered_metrics: selected,
+            },
+          },
+        });
+      }}
+    >
+      <CircleDollarSign />
+    </UToggleButton>
+  );
+}
+
+function DominatedTieredToggle() {
+  const [graphSettings, setGraphSettings] = useGraphSettings();
+
+  const selected =
+    (graphSettings?.ui_settings?.columns?.hide_dominated_tiered_metrics ??
+      false) === false;
+  return (
+    <UToggleButton
+      size="sm"
+      tooltip={`Show dominated metric columns`}
+      selected={selected}
+      onSelectedChange={(selected) => {
+        setGraphSettings({
+          ...graphSettings,
+          ui_settings: {
+            ...graphSettings.ui_settings,
+            columns: {
+              ...graphSettings.ui_settings?.columns,
+              // if we select something under the metrics card
+              // we probably want to show these automatically to avoid
+              // "why is it not doing anything??" confusion
+              hide_metrics: false,
+              hide_dominated_tiered_metrics: !selected,
+            },
+          },
+        });
+      }}
+    >
+      <TreePalm />
     </UToggleButton>
   );
 }
