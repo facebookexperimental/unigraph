@@ -199,8 +199,7 @@ mod tests {
             idx_to_names(l, entrypoints_l),
             r#"
 [
-    "A",
-    "L",
+    "\u{10ffff}__root__\u{10ffff}",
 ]
 "#
         );
@@ -208,14 +207,13 @@ mod tests {
             idx_to_names(r, entrypoints_r),
             r#"
 [
-    "A",
-    "L",
+    "\u{10ffff}__root__\u{10ffff}",
 ]
 "#
         );
 
-        assert_equal!(l.all_reachable_node_idxs().len(), 16);
-        assert_equal!(r.all_reachable_node_idxs().len(), 20);
+        assert_equal!(l.all_reachable_node_idxs().len(), 17);
+        assert_equal!(r.all_reachable_node_idxs().len(), 21);
         Ok(())
     }
 }

@@ -28,7 +28,7 @@ pub fn merge_into_twin(
     // and don't need to add a super root, but this root node is different
     // between the two graphs. In this case we need to add a super root
     // to make sure that the root node is the same between the two graphs.
-    if entrypoints_left != entrypoints_right {
+    if (entrypoints_left != entrypoints_right) || (entrypoints_left.len() > 1) {
         ag_l = ag_l.append_super_root(true)?;
         ag_r = ag_r.append_super_root(true)?;
     }
@@ -250,7 +250,7 @@ mod tests {
 
         snapshot!(
             result.join("\n"),
-            "
+            r#"
 A: EDGES_CHANGED | METRICS_CHANGED
 B: EDGES_CHANGED
 C:
@@ -271,7 +271,8 @@ Q: ADDED
 R: ADDED
 S: ADDED
 T: ADDED
-"
+\u{10ffff}__root__\u{10ffff}:
+"#
         );
         Ok(())
     }
