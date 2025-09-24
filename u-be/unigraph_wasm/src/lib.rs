@@ -97,6 +97,7 @@ async fn run(event_loop: EventLoop<UserEvent>) {
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen(start))]
 pub fn this_will_run_automatically() -> Result<(), WasmJSError> {
     std::panic::set_hook(Box::new(console_error_panic_hook::hook));
+    tracing_wasm::set_as_global_default();
     console_log::init_with_level(log::Level::Trace).expect("Could't initialize logger");
     GlobalState::init();
     GlobalGraphState::init();
