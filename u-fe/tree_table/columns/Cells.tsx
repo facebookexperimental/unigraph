@@ -15,7 +15,9 @@ export const NO_PRECISION_FORMAT: MetricFormat = {
 
 export function MissingMetric() {
   return (
-    <p className="px-4 text-right tabular-nums w-full whitespace-nowrap">-</p>
+    <span className="px-4 text-right tabular-nums w-full whitespace-nowrap">
+      -
+    </span>
   );
 }
 
@@ -27,9 +29,9 @@ export function MetricCell({
   format?: MetricFormat;
 }) {
   return (
-    <div className="px-4 text-right tabular-nums w-full whitespace-nowrap">
+    <span className="px-4 text-right tabular-nums w-full whitespace-nowrap">
       {formatMetric(value, format)}
-    </div>
+    </span>
   );
 }
 
@@ -45,7 +47,7 @@ export function DeltaMetricCell({
   const sign = isPositive ? "+" : ""; // Negative sign is included in the number itself
 
   return (
-    <p
+    <span
       className={clsx(
         "px-4 text-right tabular-nums w-full whitespace-nowrap",
         isPositive && "font-semibold text-red-600",
@@ -54,7 +56,7 @@ export function DeltaMetricCell({
     >
       {sign}
       {value === 0 ? "-" : formatMetric(value, format)}
-    </p>
+    </span>
   );
 }
 
@@ -78,7 +80,7 @@ export function WouldBeDeltaMetricCell({
         "This node is not reachable in the current graph. This value represents how much the value for the whole graph would change if this edge was included."
       }
     >
-      <p
+      <span
         className={clsx(
           "px-2 mx-2 py-1 text-right tabular-nums w-full whitespace-nowrap",
           {
@@ -89,7 +91,7 @@ export function WouldBeDeltaMetricCell({
       >
         {sign}
         {formatMetric(value, format)}
-      </p>
+      </span>
     </UTooltip>
   );
 }
