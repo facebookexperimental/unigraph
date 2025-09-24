@@ -7,6 +7,7 @@ import {
   ChevronDown,
   ChevronRight,
   RefreshCw,
+  Wrench,
 } from "lucide-react";
 import { useState } from "react";
 import type { Arrow } from "../__generated__/ts/Arrow";
@@ -14,6 +15,7 @@ import type { TwinArrow } from "../__generated__/ts/TwinArrow";
 import CopyToClipboard from "../components/CopyToClipboard";
 import UHoverCard from "../components/UHoverCard";
 import { Badge } from "../components/ui/badge";
+import { useDebugMode } from "../context/DebugModeContext";
 import { useGraphSettings } from "../context/GraphSettingsContext";
 import { useTwinGraph } from "../context/NativeGraphContext";
 import { useSelectedPath } from "../context/SelectedPathContext";
@@ -36,6 +38,7 @@ type Props = {
 };
 
 export default function TreeCell(props: Props) {
+  const [debugMode] = useDebugMode();
   const twinGraph = useTwinGraph();
   const twinArrow = props.row.twinArrow;
   const [isHovered, setIsHovered] = useState(false);
@@ -84,6 +87,9 @@ export default function TreeCell(props: Props) {
       </span>
       <InfoIcon twinArrow={twinArrow} twinGraph={twinGraph} />
       <ArrowDiffBadges twinArrow={twinArrow} arrowDiff={arrowDiff} />
+      {debugMode && (
+        <NodeDebugInfo twinGraph={twinGraph} twinArrow={twinArrow} />
+      )}
       {isHovered && <CopyToClipboard text={props.nodeName} className="ml-2" />}
     </div>
   );
@@ -552,5 +558,26 @@ function RowBadge({ text, className }: { text: string; className?: string }) {
     >
       {text}
     </span>
+  );
+}
+
+function NodeDebugInfo({
+  twinGraph,
+  twinArrow,
+}: {
+  twinGraph: TwinGraph;
+  twinArrow: TwinArrow;
+}) {
+  return (
+    <UHoverCard
+      content={
+        <div className="flex flex-col gap-2">
+          <H2 text="Debug Info" />
+          <P text={`Node ID: ${twinArrow.points_to}`} />
+        </div>
+      }
+    >
+      <Wrench size={16} />
+    </UHoverCard>
   );
 }
