@@ -1,7 +1,6 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 import { useMemo } from "react";
-import type { ColumnType } from "../../__generated__/ts/ColumnType";
 import type { GraphSettings } from "../../__generated__/ts/GraphSettings";
 import type { GraphTableSort } from "../../__generated__/ts/GraphTableSort";
 import type { MetricSettings } from "../../__generated__/ts/MetricSettings";
@@ -11,9 +10,6 @@ import type { TraversalConfig } from "../../__generated__/ts/TraversalConfig";
 import { useGraphSettings } from "../../context/GraphSettingsContext";
 import { useTwinGraph } from "../../context/NativeGraphContext";
 import { useTVC } from "../../context/TraversalConfigContext";
-import ConjointCostDocs from "../../inline_docs/ConjointCost";
-import type NativeGraph from "../../native/NativeGraph";
-import { GRAPH_SIDE, type GraphSide } from "../../native/NativeGraph";
 import type TwinGraph from "../../native/TwinGraph";
 import type { NodeIDX } from "../../types";
 import ContextMenuCell from "../ContextMenuCell";
@@ -21,13 +17,19 @@ import type {
   ColumnDefinitions,
   ColumnID,
   NonTreeColumnDefinition,
-  NumericValueColumnDefinition,
   TreeColumnDefinition,
   TSortable,
 } from "../columns";
 import type { Row } from "../TreeTableRows";
-import { MetricCell, MissingMetric, NO_PRECISION_FORMAT } from "./Cells";
 import {
+  ConjointCountColumn,
+  ParentsCountColumn,
+  TransitiveCountColumn,
+  TransitiveCountDeltaColumn,
+  TransitiveCountRightInDeltaViewColumn,
+} from "./counts";
+import {
+  ConjointTieredMetricColumn,
   MetricColumn,
   MetricDeltaViewColumn,
   MetricRightInDeltaViewColumn,
@@ -37,11 +39,6 @@ import {
   TransitiveTieredMetricRightDeltaColumn,
 } from "./metrics";
 import { NodeTierColumn } from "./tiers";
-import {
-  TransitiveCountColumn,
-  TransitiveCountDeltaColumn,
-  TransitiveCountRightInDeltaViewColumn,
-} from "./transitiveCounts";
 
 export interface Column {
   isEnabled: () => boolean;
@@ -149,14 +146,14 @@ export class ColumnsCtx {
   graphSettings: GraphSettings;
   setGraphSettings: (gs: GraphSettings) => void;
   tvc: TraversalConfig;
-  showTransitive: boolean;
   showTransitiveCount: boolean;
   showParentsCount: boolean;
   dominated: boolean;
   showMetrics: boolean;
-  showTiered: boolean;
-  showConjoint: boolean;
+  showTieredMetrics: boolean;
+  showConjointTieredMetrics: boolean;
   showConjointCount: boolean;
+  showCounts: boolean;
 
   constructor(
     graphSettings: GraphSettings,
@@ -167,20 +164,23 @@ export class ColumnsCtx {
     this.setGraphSettings = setGraphSettings;
     this.tvc = tvc;
 
-    this.showTransitive =
-      graphSettings.ui_settings?.columns?.show_transitive ?? false;
     this.showTransitiveCount =
       graphSettings.ui_settings?.columns?.show_transitive_count !== "Never";
     this.showParentsCount =
-      graphSettings.ui_settings?.columns?.show_parents_count === true;
+      graphSettings.ui_settings?.columns?.show_parents_count ===
+      "WhenEnabledGlobally";
     this.dominated = graphSettings.ui_settings?.graph_structure === "Dominator";
     this.showMetrics =
       graphSettings.ui_settings?.columns?.hide_metrics !== true;
-    this.showTiered = graphSettings.ui_settings?.columns?.show_tiered === true;
-    this.showConjoint =
-      graphSettings.ui_settings?.columns?.show_conjoint ?? false;
+    this.showTieredMetrics =
+      graphSettings.ui_settings?.columns?.show_tiered_metrics === true;
+    this.showConjointTieredMetrics =
+      graphSettings.ui_settings?.columns?.show_conjoint_tiered_metrics === true;
+
     this.showConjointCount =
-      graphSettings.ui_settings?.columns?.show_conjoint_count !== "Never";
+      graphSettings.ui_settings?.columns?.show_conjoint_count ===
+      "WhenEnabledGlobally";
+    this.showCounts = graphSettings.ui_settings?.columns?.show_counts === true;
   }
 
   metricSettings(metricName: string): MetricSettings | null {
@@ -243,7 +243,6 @@ class SingleGraphColumnsBuilder {
     for (const metric of g.metricNames) {
       columns.push(new MetricColumn(ctx, g, metric));
       columns.push(new TransitiveMetricColumn(ctx, g, metric));
-      columns.push(new ConjointMetricColumn(ctx, g, metric));
 
       for (const tier of g.stats().tier_names) {
         columns.push(new TransitiveTieredMetricColumn(ctx, g, metric, tier));
@@ -302,376 +301,5 @@ class DeltaGraphColumnsBuilder {
       }
     }
     return columns;
-  }
-}
-
-class ConjointCountColumn implements Column {
-  ctx: ColumnsCtx;
-  nativeGraph: NativeGraph;
-  side: GraphSide | null;
-  showWouldBe = false;
-
-  constructor(ctx: ColumnsCtx, nativeGraph: NativeGraph, side?: GraphSide) {
-    this.ctx = ctx;
-    this.nativeGraph = nativeGraph;
-    this.side = side ?? null;
-  }
-
-  isEnabled() {
-    return this.ctx.showConjointCount && this.ctx.showConjoint;
-  }
-
-  getID(): string {
-    if (this.side == null) {
-      return "C(count)";
-    }
-    return `C(count)${this.side === GRAPH_SIDE.L ? "L" : "R"}`;
-  }
-
-  sortable() {
-    const columnType: ColumnType =
-      this.side === GRAPH_SIDE.R ? "Right" : "Left";
-    const sortable: TSortable = {
-      order: null,
-      onSortChange: (order: SortOrder | null) =>
-        this.ctx.onSortChange(order, {
-          ConjointCount: {
-            t: columnType,
-          },
-        }),
-    };
-
-    const sort = this.ctx.sort();
-    if (
-      sort != null &&
-      "ConjointCount" in sort.column &&
-      sort.column.ConjointCount.t === columnType
-    ) {
-      sortable.order = sort.order;
-    }
-
-    return sortable;
-  }
-
-  definition(): [string, NumericValueColumnDefinition] {
-    const columnID = this.getID();
-    const definition: NumericValueColumnDefinition = {
-      t: "numeric_value_column",
-      label: columnID,
-      renderer: (row: Readonly<Row>) => {
-        if (this.nativeGraph.isNodeReachable(row.twinArrow.points_to)) {
-          return (
-            <MetricCell
-              value={
-                this.nativeGraph.getConjointCost().count[
-                  row.twinArrow.points_to
-                ] ?? 0
-              }
-              format={NO_PRECISION_FORMAT}
-            />
-          );
-        } else {
-          return <MissingMetric />;
-        }
-      },
-      getNumericValues: (idxs: NodeIDX[]) => {
-        const count = this.nativeGraph.getConjointCost().count;
-        return new Float32Array(idxs.map((idx) => count[idx] ?? 0));
-      },
-      sortable: this.sortable(),
-      isHidden: false,
-      hovercardContent: <ConjointCostDocs />,
-    };
-    return [columnID, definition];
-  }
-}
-
-class ParentsCountColumn implements Column {
-  ctx: ColumnsCtx;
-  nativeGraph: NativeGraph;
-  side: GraphSide | null;
-
-  constructor(ctx: ColumnsCtx, nativeGraph: NativeGraph, side?: GraphSide) {
-    this.ctx = ctx;
-    this.nativeGraph = nativeGraph;
-    this.side = side ?? null;
-  }
-
-  isEnabled() {
-    return this.ctx.showParentsCount;
-  }
-
-  getID(): string {
-    if (this.side == null) {
-      return "Parents #";
-    }
-    return `Parents # ${this.side === GRAPH_SIDE.L ? "L" : "R"}`;
-  }
-
-  sortable() {
-    const columnType: ColumnType =
-      this.side === GRAPH_SIDE.R ? "Right" : "Left";
-    const sortable: TSortable = {
-      order: null,
-      onSortChange: (order: SortOrder | null) =>
-        this.ctx.onSortChange(order, {
-          ParentsCount: {
-            t: columnType,
-          },
-        }),
-    };
-
-    const sort = this.ctx.sort();
-    if (
-      sort != null &&
-      "ParentsCount" in sort.column &&
-      sort.column.ParentsCount.t === columnType
-    ) {
-      sortable.order = sort.order;
-    }
-
-    return sortable;
-  }
-
-  definition(): [string, NumericValueColumnDefinition] {
-    const columnID = this.getID();
-    const definition: NumericValueColumnDefinition = {
-      t: "numeric_value_column",
-      label: columnID,
-      renderer: (row: Readonly<Row>) => {
-        if (this.nativeGraph.isNodeReachable(row.twinArrow.points_to)) {
-          return (
-            <MetricCell
-              value={
-                this.nativeGraph.getParentsCount([
-                  row.twinArrow.points_to,
-                ])[0] ?? 0
-              }
-              format={NO_PRECISION_FORMAT}
-            />
-          );
-        } else {
-          return <MissingMetric />;
-        }
-      },
-      getNumericValues: (idxs: NodeIDX[]) => {
-        return this.nativeGraph.getParentsCount(idxs);
-      },
-      sortable: this.sortable(),
-      isHidden: false,
-    };
-    return [columnID, definition];
-  }
-}
-
-class ConjointMetricColumn implements Column {
-  ctx: ColumnsCtx;
-  nativeGraph: NativeGraph;
-  metricName: string;
-  side: GraphSide | null;
-
-  constructor(
-    ctx: ColumnsCtx,
-    nativeGraph: NativeGraph,
-    metricName: string,
-    side?: GraphSide,
-  ) {
-    this.ctx = ctx;
-    this.nativeGraph = nativeGraph;
-    this.metricName = metricName;
-    this.side = side ?? null;
-  }
-
-  isEnabled() {
-    return (
-      this.ctx.showConjoint &&
-      this.ctx.metricSettings(this.metricName)?.show_conjoint_self ===
-        "WhenEnabledGlobally"
-    );
-  }
-
-  getID(): string {
-    const base = `C(${this.metricName})`;
-    if (this.side == null) {
-      return base;
-    }
-    return `${base} ${this.side === GRAPH_SIDE.L ? "L" : "R"}`;
-  }
-
-  sortable() {
-    const columnType: ColumnType =
-      this.side === GRAPH_SIDE.R ? "Right" : "Left";
-    const sortable: TSortable = {
-      order: null,
-      onSortChange: (order: SortOrder | null) =>
-        this.ctx.onSortChange(order, {
-          ConjointMetric: {
-            t: columnType,
-            name: this.metricName,
-          },
-        }),
-    };
-
-    const sort = this.ctx.sort();
-    if (
-      sort != null &&
-      "ConjointMetric" in sort.column &&
-      sort.column.ConjointMetric.t === columnType &&
-      sort.column.ConjointMetric.name === this.metricName
-    ) {
-      sortable.order = sort.order;
-    }
-
-    return sortable;
-  }
-
-  definition(): [string, NumericValueColumnDefinition] {
-    const columnID = this.getID();
-    const values =
-      this.nativeGraph.getConjointCost().metrics?.[this.metricName] ?? null;
-    const getValues = (idxs: NodeIDX[]) =>
-      idxs.map((idx) => values?.[idx] ?? 0);
-    const format = this.ctx.metricSettings(this.metricName)?.format;
-
-    const definition: NumericValueColumnDefinition = {
-      t: "numeric_value_column",
-      label: columnID,
-      renderer: (row: Readonly<Row>) => {
-        if (this.nativeGraph.isNodeReachable(row.twinArrow.points_to)) {
-          return (
-            <MetricCell
-              value={getValues([row.twinArrow.points_to])[0] as number}
-              format={format}
-            />
-          );
-        } else {
-          return <MissingMetric />;
-        }
-      },
-      getNumericValues: (idxs: NodeIDX[]) => {
-        return new Float32Array(getValues(idxs));
-      },
-      sortable: this.sortable(),
-      isHidden: false,
-    };
-
-    return [columnID, definition];
-  }
-}
-
-class ConjointTieredMetricColumn implements Column {
-  ctx: ColumnsCtx;
-  nativeGraph: NativeGraph;
-  metricName: string;
-  tierName: string;
-  side: GraphSide | null;
-
-  constructor(
-    ctx: ColumnsCtx,
-    nativeGraph: NativeGraph,
-    metricName: string,
-    tierName: string,
-    side?: GraphSide,
-  ) {
-    this.ctx = ctx;
-    this.nativeGraph = nativeGraph;
-    this.metricName = metricName;
-    this.tierName = tierName;
-    this.side = side ?? null;
-  }
-
-  isEnabled() {
-    const metricSettings = this.ctx.metricSettings(this.metricName);
-    const tierIDX = this.nativeGraph.stats().tier_names.indexOf(this.tierName);
-
-    if (tierIDX == null) {
-      return false;
-    }
-
-    const maxTier = this.ctx.tvc.tiered_traversal?.AscendingTiers.max_tier;
-
-    if (metricSettings?.column_show_tiered == null && maxTier != null) {
-      if (tierIDX > maxTier) {
-        return false;
-      }
-    }
-
-    if (metricSettings?.show_conjoint_tiered?.[this.tierName] === "Never") {
-      return false;
-    }
-    return this.ctx.graphSettings.ui_settings?.columns?.show_conjoint === true;
-  }
-
-  getID(): string {
-    const graphHasMoreThanOneMetric = this.nativeGraph.metricNames.length > 1;
-
-    const base = graphHasMoreThanOneMetric
-      ? `${this.tierName} ${this.metricName}`
-      : this.tierName;
-
-    return `C(${base})`;
-  }
-
-  sortable() {
-    const columnType: ColumnType =
-      this.side === GRAPH_SIDE.R ? "Right" : "Left";
-    const sortable: TSortable = {
-      order: null,
-      onSortChange: (order: SortOrder | null) =>
-        this.ctx.onSortChange(order, {
-          ConjointTieredMetric: {
-            t: columnType,
-            name: this.metricName,
-            tier: this.tierName,
-          },
-        }),
-    };
-
-    const sort = this.ctx.sort();
-    if (
-      sort != null &&
-      "ConjointTieredMetric" in sort.column &&
-      sort.column.ConjointTieredMetric.t === columnType &&
-      sort.column.ConjointTieredMetric.name === this.metricName &&
-      sort.column.ConjointTieredMetric.tier === this.tierName
-    ) {
-      sortable.order = sort.order;
-    }
-
-    return sortable;
-  }
-
-  definition(): [string, NumericValueColumnDefinition] {
-    const columnID = this.getID();
-    const values =
-      this.nativeGraph.getConjointCost().tiered_metric?.[this.metricName]?.[
-        this.tierName
-      ];
-    const getValues = (idxs: NodeIDX[]) =>
-      idxs.map((idx) => values?.[idx] ?? 0);
-    const format = this.ctx.metricSettings(this.metricName)?.format;
-    const definition: NumericValueColumnDefinition = {
-      t: "numeric_value_column",
-      label: columnID,
-      renderer: (row: Readonly<Row>) => {
-        if (this.nativeGraph.isNodeReachable(row.twinArrow.points_to)) {
-          return (
-            <MetricCell
-              value={getValues([row.twinArrow.points_to])[0] as number}
-              format={format}
-            />
-          );
-        } else {
-          return <MissingMetric />;
-        }
-      },
-      getNumericValues: (idxs: NodeIDX[]) => {
-        return new Float32Array(getValues(idxs));
-      },
-      sortable: this.sortable(),
-      isHidden: false,
-    };
-
-    return [columnID, definition];
   }
 }

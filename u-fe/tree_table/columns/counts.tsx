@@ -5,10 +5,12 @@ import type { NodeIDX } from "../../__generated__/ts/NodeIDX";
 import type { SortOrder } from "../../__generated__/ts/SortOrder";
 import { ARROW_POINTS_FROM_NON_EXISTENT } from "../../ArrowUtils";
 import UHoverCard from "../../components/UHoverCard";
+import ConjointCostDocs from "../../inline_docs/ConjointCost";
 import NativeGraph, {
   GRAPH_SIDE,
   type GraphSide,
 } from "../../native/NativeGraph";
+
 import type TwinGraph from "../../native/TwinGraph";
 import { H1, H2, Link, Pre } from "../../Typography";
 import type { NumericValueColumnDefinition, TSortable } from "../columns";
@@ -36,7 +38,7 @@ export class TransitiveCountColumn implements Column {
   }
 
   isEnabled() {
-    return this.ctx.showTransitiveCount && this.ctx.showTransitive;
+    return this.ctx.showTransitiveCount && this.ctx.showCounts;
   }
 
   sortable(): TSortable | null {
@@ -143,7 +145,7 @@ export class TransitiveCountDeltaColumn implements Column {
   }
 
   isEnabled() {
-    return this.ctx.showTransitiveCount && this.ctx.showTransitive;
+    return this.ctx.showTransitiveCount && this.ctx.showCounts;
   }
 
   sortable(): TSortable | null {
@@ -227,7 +229,7 @@ export class TransitiveCountRightInDeltaViewColumn implements Column {
   isEnabled() {
     return (
       this.ctx.showTransitiveCount &&
-      this.ctx.showTransitive &&
+      this.ctx.showCounts &&
       this.twinGraph.r != null
     );
   }
@@ -381,4 +383,162 @@ function TransitiveDominatedCountHovercard() {
       </div>
     </div>
   );
+}
+
+export class ParentsCountColumn implements Column {
+  ctx: ColumnsCtx;
+  nativeGraph: NativeGraph;
+  side: GraphSide | null;
+
+  constructor(ctx: ColumnsCtx, nativeGraph: NativeGraph, side?: GraphSide) {
+    this.ctx = ctx;
+    this.nativeGraph = nativeGraph;
+    this.side = side ?? null;
+  }
+
+  isEnabled() {
+    return this.ctx.showParentsCount && this.ctx.showCounts;
+  }
+
+  getID(): string {
+    if (this.side == null) {
+      return "Parents #";
+    }
+    return `Parents # ${this.side === GRAPH_SIDE.L ? "L" : "R"}`;
+  }
+
+  sortable() {
+    const columnType: ColumnType =
+      this.side === GRAPH_SIDE.R ? "Right" : "Left";
+    const sortable: TSortable = {
+      order: null,
+      onSortChange: (order: SortOrder | null) =>
+        this.ctx.onSortChange(order, {
+          ParentsCount: {
+            t: columnType,
+          },
+        }),
+    };
+
+    const sort = this.ctx.sort();
+    if (
+      sort != null &&
+      "ParentsCount" in sort.column &&
+      sort.column.ParentsCount.t === columnType
+    ) {
+      sortable.order = sort.order;
+    }
+
+    return sortable;
+  }
+
+  definition(): [string, NumericValueColumnDefinition] {
+    const columnID = this.getID();
+    const definition: NumericValueColumnDefinition = {
+      t: "numeric_value_column",
+      label: columnID,
+      renderer: (row: Readonly<Row>) => {
+        if (this.nativeGraph.isNodeReachable(row.twinArrow.points_to)) {
+          return (
+            <MetricCell
+              value={
+                this.nativeGraph.getParentsCount([
+                  row.twinArrow.points_to,
+                ])[0] ?? 0
+              }
+              format={NO_PRECISION_FORMAT}
+            />
+          );
+        } else {
+          return <MissingMetric />;
+        }
+      },
+      getNumericValues: (idxs: NodeIDX[]) => {
+        return this.nativeGraph.getParentsCount(idxs);
+      },
+      sortable: this.sortable(),
+      isHidden: false,
+    };
+    return [columnID, definition];
+  }
+}
+
+export class ConjointCountColumn implements Column {
+  ctx: ColumnsCtx;
+  nativeGraph: NativeGraph;
+  side: GraphSide | null;
+
+  constructor(ctx: ColumnsCtx, nativeGraph: NativeGraph, side?: GraphSide) {
+    this.ctx = ctx;
+    this.nativeGraph = nativeGraph;
+    this.side = side ?? null;
+  }
+
+  isEnabled() {
+    return this.ctx.showConjointCount && this.ctx.showCounts;
+  }
+
+  getID(): string {
+    if (this.side == null) {
+      return "C(count)";
+    }
+    return `C(count)${this.side === GRAPH_SIDE.L ? "L" : "R"}`;
+  }
+
+  sortable() {
+    const columnType: ColumnType =
+      this.side === GRAPH_SIDE.R ? "Right" : "Left";
+    const sortable: TSortable = {
+      order: null,
+      onSortChange: (order: SortOrder | null) =>
+        this.ctx.onSortChange(order, {
+          ConjointCount: {
+            t: columnType,
+          },
+        }),
+    };
+
+    const sort = this.ctx.sort();
+    if (
+      sort != null &&
+      "ConjointCount" in sort.column &&
+      sort.column.ConjointCount.t === columnType
+    ) {
+      sortable.order = sort.order;
+    }
+
+    return sortable;
+  }
+
+  definition(): [string, NumericValueColumnDefinition] {
+    const columnID = this.getID();
+    const definition: NumericValueColumnDefinition = {
+      t: "numeric_value_column",
+      label: columnID,
+      renderer: (row: Readonly<Row>) => {
+        if (this.nativeGraph.isNodeReachable(row.twinArrow.points_to)) {
+          return (
+            <MetricCell
+              value={
+                this.nativeGraph.getConjointCost().count[
+                  row.twinArrow.points_to
+                ] ?? 0
+              }
+              format={NO_PRECISION_FORMAT}
+            />
+          );
+        } else {
+          return <MissingMetric />;
+        }
+      },
+      getNumericValues: (idxs: NodeIDX[]) => {
+        const count = this.nativeGraph.getConjointCost().count;
+        return new Float32Array(idxs.map((idx) => count[idx] ?? 0));
+      },
+      sortable: this.sortable(),
+      isHidden: false,
+      hovercardContent: <ConjointCostDocs />,
+    };
+    return [columnID, definition];
+  }
 }

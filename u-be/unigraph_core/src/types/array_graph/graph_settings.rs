@@ -41,9 +41,6 @@ pub struct MetricSettings {
     pub column_show_tiered: Option<BTreeMap<TierName, IndividualOptionEnabled>>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub show_conjoint_self: Option<IndividualOptionEnabled>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub show_conjoint_tiered: Option<BTreeMap<TierName, IndividualOptionEnabled>>,
 }
 
@@ -310,13 +307,16 @@ pub struct ColumnSettings {
     pub graph_table_sort: Option<GraphTableSort>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub show_parents_count: Option<bool>,
+    pub show_parents_count: Option<IndividualOptionEnabled>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub show_transitive_count: Option<IndividualOptionEnabled>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub show_conjoint_count: Option<IndividualOptionEnabled>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub show_dominated_count: Option<IndividualDominatedOptionEnabled>,
 
     /// Global setting for showing metric values
     /// (if tiers are defined)
@@ -328,19 +328,25 @@ pub struct ColumnSettings {
     /// (if tiers are defined)
     /// It is hidden by default, but can be endabled
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub show_tiered: Option<bool>,
+    pub show_tiered_metrics: Option<bool>,
 
-    /// Global setting for showing transitive values.
+    /// Global setting for showing conjoint values for tiered metrics
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub show_conjoint_tiered_metrics: Option<bool>,
+
+    /// Global setting for showing columns related to
+    /// node counts, like transitive counts, parents counts,
+    /// or conjoint cost for node counts.
     /// Individual columns will be enabled/disabled based on
     /// their individual settings.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub show_transitive: Option<bool>,
+    pub show_counts: Option<bool>,
 
-    /// Global setting for showing conjoint cost values.
+    /// Global setting for showing dominated cost values.
     /// Individual columns will be enabled/disabled based on
     /// their individual settings.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub show_conjoint: Option<bool>,
+    pub show_dominated: Option<bool>,
 
     /// Show a column that displays the tier each node
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -371,6 +377,23 @@ pub struct ColumnSettings {
 )]
 pub enum IndividualOptionEnabled {
     #[default]
+    WhenEnabledGlobally,
+    Never,
+}
+
+#[derive(
+    Debug,
+    serde::Serialize,
+    serde::Deserialize,
+    typegen::TypeGen,
+    Clone,
+    Copy,
+    Default
+)]
+pub enum IndividualDominatedOptionEnabled {
+    // This will only show when global flag is enabled and we're in dominator mode.
+    #[default]
+    WhenEnabledGloballyAndInDominatorMode,
     WhenEnabledGlobally,
     Never,
 }

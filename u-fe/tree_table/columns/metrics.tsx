@@ -129,9 +129,8 @@ export class TransitiveMetricColumn implements Column {
 
   isEnabled() {
     return (
-      this.ctx.showTransitive &&
       this.ctx.metricSettings(this.metricName)?.column_show_transitive ===
-        "WhenEnabledGlobally"
+      "WhenEnabledGlobally"
     );
   }
 
@@ -239,7 +238,14 @@ export class TransitiveTieredMetricColumn implements Column {
 
   isEnabled() {
     const tierIDX = this.nativeGraph.stats().tier_names.indexOf(this.tierName);
-    return isTierEnabled(this.ctx, this.metricName, this.tierName, tierIDX);
+    return (
+      this.ctx.showMetrics &&
+      this.ctx.showTieredMetrics &&
+      this.ctx.metricSettings(this.metricName)?.column_show_tiered?.[
+        this.tierName
+      ] === "WhenEnabledGlobally" &&
+      isBelowMaxTier(this.ctx, tierIDX)
+    );
   }
 
   getID(): string {
@@ -373,7 +379,15 @@ export class TransitiveTieredMetricDeltaColumn implements Column {
       return false;
     }
     const tierIDX = this.twinGraph.r.stats().tier_names.indexOf(this.tierName);
-    return isTierEnabled(this.ctx, this.metricName, this.tierName, tierIDX);
+
+    return (
+      this.ctx.showMetrics &&
+      this.ctx.showTieredMetrics &&
+      this.ctx.metricSettings(this.metricName)?.column_show_tiered?.[
+        this.tierName
+      ] === "WhenEnabledGlobally" &&
+      isBelowMaxTier(this.ctx, tierIDX)
+    );
   }
 
   getID(): string {
@@ -479,7 +493,15 @@ export class TransitiveTieredMetricRightDeltaColumn implements Column {
       return false;
     }
     const tierIDX = this.twinGraph.r.stats().tier_names.indexOf(this.tierName);
-    return isTierEnabled(this.ctx, this.metricName, this.tierName, tierIDX);
+
+    return (
+      this.ctx.showMetrics &&
+      this.ctx.showTieredMetrics &&
+      this.ctx.metricSettings(this.metricName)?.column_show_tiered?.[
+        this.tierName
+      ] === "WhenEnabledGlobally" &&
+      isBelowMaxTier(this.ctx, tierIDX)
+    );
   }
 
   getID(): string {
@@ -790,28 +812,125 @@ export class MetricDeltaViewColumn implements Column {
   }
 }
 
-function isTierEnabled(
-  ctx: ColumnsCtx,
-  metricName: string,
-  tierName: string,
-  tierIDX: number,
-) {
-  const metricSettings = ctx.metricSettings(metricName);
+export class ConjointTieredMetricColumn implements Column {
+  ctx: ColumnsCtx;
+  nativeGraph: NativeGraph;
+  metricName: string;
+  tierName: string;
+  side: GraphSide | null;
 
+  constructor(
+    ctx: ColumnsCtx,
+    nativeGraph: NativeGraph,
+    metricName: string,
+    tierName: string,
+    side?: GraphSide,
+  ) {
+    this.ctx = ctx;
+    this.nativeGraph = nativeGraph;
+    this.metricName = metricName;
+    this.tierName = tierName;
+    this.side = side ?? null;
+  }
+
+  isEnabled() {
+    const metricSettings = this.ctx.metricSettings(this.metricName);
+    const tierIDX = this.nativeGraph.stats().tier_names.indexOf(this.tierName);
+    return (
+      this.ctx.showMetrics &&
+      this.ctx.showConjointTieredMetrics &&
+      metricSettings?.show_conjoint_tiered?.[this.tierName] ===
+        "WhenEnabledGlobally" &&
+      isBelowMaxTier(this.ctx, tierIDX)
+    );
+  }
+
+  getID(): string {
+    const graphHasMoreThanOneMetric = this.nativeGraph.metricNames.length > 1;
+
+    const base = graphHasMoreThanOneMetric
+      ? `${this.tierName} ${this.metricName}`
+      : this.tierName;
+
+    return `C(${base})`;
+  }
+
+  sortable() {
+    const columnType: ColumnType =
+      this.side === GRAPH_SIDE.R ? "Right" : "Left";
+    const sortable: TSortable = {
+      order: null,
+      onSortChange: (order: SortOrder | null) =>
+        this.ctx.onSortChange(order, {
+          ConjointTieredMetric: {
+            t: columnType,
+            name: this.metricName,
+            tier: this.tierName,
+          },
+        }),
+    };
+
+    const sort = this.ctx.sort();
+    if (
+      sort != null &&
+      "ConjointTieredMetric" in sort.column &&
+      sort.column.ConjointTieredMetric.t === columnType &&
+      sort.column.ConjointTieredMetric.name === this.metricName &&
+      sort.column.ConjointTieredMetric.tier === this.tierName
+    ) {
+      sortable.order = sort.order;
+    }
+
+    return sortable;
+  }
+
+  definition(): [string, NumericValueColumnDefinition] {
+    const columnID = this.getID();
+    const values =
+      this.nativeGraph.getConjointCost().tiered_metric?.[this.metricName]?.[
+        this.tierName
+      ];
+    const getValues = (idxs: NodeIDX[]) =>
+      idxs.map((idx) => values?.[idx] ?? 0);
+    const format = this.ctx.metricSettings(this.metricName)?.format;
+    const definition: NumericValueColumnDefinition = {
+      t: "numeric_value_column",
+      label: columnID,
+      renderer: (row: Readonly<Row>) => {
+        if (this.nativeGraph.isNodeReachable(row.twinArrow.points_to)) {
+          return (
+            <MetricCell
+              value={getValues([row.twinArrow.points_to])[0] as number}
+              format={format}
+            />
+          );
+        } else {
+          return <MissingMetric />;
+        }
+      },
+      getNumericValues: (idxs: NodeIDX[]) => {
+        return new Float32Array(getValues(idxs));
+      },
+      sortable: this.sortable(),
+      isHidden: false,
+    };
+
+    return [columnID, definition];
+  }
+}
+
+function isBelowMaxTier(ctx: ColumnsCtx, tierIDX: number): boolean {
   if (tierIDX == null) {
-    return false;
+    return true;
   }
 
   const maxTier = ctx.tvc.tiered_traversal?.AscendingTiers.max_tier;
-
-  if (metricSettings?.column_show_tiered == null && maxTier != null) {
-    if (tierIDX > maxTier) {
-      return false;
-    }
+  if (maxTier == null) {
+    return true;
   }
 
-  if (metricSettings?.column_show_tiered?.[tierName] === "Never") {
+  if (tierIDX > maxTier) {
     return false;
   }
-  return ctx.graphSettings.ui_settings?.columns?.show_tiered === true;
+  return true;
 }
