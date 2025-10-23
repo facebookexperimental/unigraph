@@ -184,7 +184,11 @@ impl ArrayGraphNodesForGraphSide {
         node_diff: Arc<Vec<NodeDiff>>,
         side: GraphSide,
     ) -> Self {
-        let nodes_len = node_names.combined_nodes_len();
+        let nodes_len = node_names
+            .combined_node_idx_iter()
+            .filter(|&idx| !node_diff[idx].does_not_exist_in(side))
+            .count();
+
         Self {
             node_names,
             node_diff,
