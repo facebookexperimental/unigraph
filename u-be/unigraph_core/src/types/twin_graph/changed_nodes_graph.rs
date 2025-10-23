@@ -208,30 +208,10 @@ fn make_offset_graph(
     let left_g = &tg.l;
     let right_g = tg.graph(GraphSide::Right)?;
 
-    let entrypoints = target_graph
-        .determine_entrypoints()
-        .into_iter()
-        .collect::<HashSet<_>>();
-
     let mut edges_map: HashMap<NodeIDX, Vec<(Edge, NonDirectedEdgeMetadata, usize)>> =
         HashMap::new();
 
     for node_idx in tg.node_names.combined_node_idx_iter() {
-        let exists = target_graph.node_exists(node_idx);
-        let is_entrypoint = entrypoints.contains(&node_idx);
-        let is_reachable = !target_graph.node_flags[node_idx].is_node_unreachable();
-        let has_changed_edges = &tg.node_diff[node_idx].has_changed_edgses();
-        let has_changed_metrics = &tg.node_diff[node_idx].has_changed_metrics();
-
-        if !is_entrypoint {
-            if !exists || !is_reachable || (!has_changed_edges && !has_changed_metrics) {
-                // for non-entrypoints we only care about nodes that changed really.
-                // we don't want to build edges for the nodes in between with no changes
-                // because it's going to be a LOT of work and we'll never show them anyway
-                continue;
-            }
-        }
-
         let closest_changed_children = get_edges_changed_nodes_only(
             &tg.node_diff,
             left_g,
