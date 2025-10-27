@@ -18,7 +18,7 @@ serde_json = { version = "1.0.140", features = ["alloc", "float_roundtrip", "raw
 tracing = { version = "0.1.41", features = ["attributes", "valuable"] }
 typegen = { path = "../typegen" }
 unigraph_serialization = { path = "../unigraph_serialization" }
-xxhash-rust = { version = "0.8.15", features = ["xxh3"] }
+xxhash-rust = { version = "0.8.15", features = ["xxh3", "xxh64"] }
 
 [dev-dependencies]
 k9 = { version = "0.12.0", features = ["custom_comparison_formatters", "regex"] }
