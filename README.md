@@ -32,21 +32,17 @@ set -x AR /opt/homebrew/opt/llvm/bin/llvm-ar
 
 see https://github.com/gyscos/zstd-rs/issues/93#issuecomment-2110684816
 
-## Build wasm target
+## Build wasm target (this will create a wasm artifact)
 > ./bin/build_wasm
 
 ## instal node_modules
 > pnpm i
 
-## Bundle JS and start a web server
-> pnpm run serve
+## Run tailwind + rollup watcher that will build JS bundles
+> pnpm run dev
 
-
-## Export rust types to TypeScript
-> cargo test export_bindings
-
-## To sync Rust<->TS types
-> cargo test export_bindings
+## Run rust webserver that will pring the localhost URL
+> cargo run serve
 
 ## License
 Unigraph is MIT licensed, as found in the LICENSE file.
