@@ -1,0 +1,171 @@
+{
+	"nodes": {
+		"app/index.ts": {
+			"edges": {
+				"directed": [
+					"app/router.ts",
+					"app/store/index.ts",
+					"app/components/Nav.tsx",
+					"app/pages/Home.tsx",
+					"app/pages/About.tsx",
+					"styles/theme.ts",
+					"utils/log.ts"
+				]
+			},
+			"metrics": { "size": 4512 }
+		},
+		"app/router.ts": {
+			"edges": { "directed": ["config/routes.ts", "utils/object.ts"] },
+			"metrics": { "size": 3020 }
+		},
+		"app/store/index.ts": {
+			"edges": { "directed": ["app/store/actions.ts", "app/store/reducer.ts", "vendor/zustand.ts"] },
+			"metrics": { "size": 3890 }
+		},
+		"app/store/actions.ts": {
+			"edges": { "directed": ["services/api.ts", "services/auth.ts", "utils/http.ts", "lib/eventBus.ts"] },
+			"metrics": { "size": 5120 }
+		},
+		"app/store/reducer.ts": {
+			"edges": { "directed": ["utils/object.ts"] },
+			"metrics": { "size": 4310 }
+		},
+		"app/components/Button.tsx": {
+			"edges": { "directed": ["styles/colors.ts", "utils/object.ts"] },
+			"metrics": { "size": 1980 }
+		},
+		"app/components/Modal.tsx": {
+			"edges": { "directed": ["app/components/Button.tsx", "styles/theme.ts"] },
+			"metrics": { "size": 2760 }
+		},
+		"app/components/Nav.tsx": {
+			"edges": { "directed": ["app/components/Button.tsx", "config/routes.ts", "utils/string.ts"] },
+			"metrics": { "size": 2430 }
+		},
+		"app/components/Footer.tsx": {
+			"edges": { "directed": ["utils/date.ts"] },
+			"metrics": { "size": 1870 }
+		},
+		"app/components/Header.tsx": {
+			"edges": { "directed": ["app/components/Nav.tsx", "utils/date.ts"] },
+			"metrics": { "size": 2100 }
+		},
+		"app/components/Card.tsx": {
+			"edges": { "directed": ["utils/object.ts", "styles/theme.ts"] },
+			"metrics": { "size": 2650 }
+		},
+		"app/pages/Home.tsx": {
+			"edges": { "directed": ["app/components/Card.tsx", "services/featureFlags.ts", "hooks/useFetch.ts", "lib/cache.ts"] },
+			"metrics": { "size": 3580 }
+		},
+		"app/pages/About.tsx": {
+			"edges": { "directed": ["app/components/Card.tsx", "app/components/Footer.tsx"] },
+			"metrics": { "size": 2200 }
+		},
+		"app/pages/Settings.tsx": {
+			"edges": { "directed": ["app/components/Modal.tsx", "hooks/useToggle.ts", "services/featureFlags.ts"] },
+			"metrics": { "size": 3300 }
+		},
+		"app/pages/Help.tsx": {
+			"edges": { "directed": ["app/components/Modal.tsx", "utils/string.ts", "hooks/useDebounce.ts"] },
+			"metrics": { "size": 2950 }
+		},
+		"app/pages/Profile.tsx": {
+			"edges": { "directed": ["services/api.ts", "hooks/useFetch.ts", "app/components/Card.tsx"] },
+			"metrics": { "size": 3420 }
+		},
+		"utils/array.ts": {
+			"edges": { "directed": ["vendor/lodash.ts"] },
+			"metrics": { "size": 1400 }
+		},
+		"utils/object.ts": {
+			"edges": { "directed": ["vendor/lodash.ts"] },
+			"metrics": { "size": 1680 }
+		},
+		"utils/math.ts": {
+			"edges": { "directed": ["vendor/lodash.ts"] },
+			"metrics": { "size": 1460 }
+		},
+		"utils/string.ts": {
+			"edges": { "directed": ["vendor/lodash.ts"] },
+			"metrics": { "size": 1520 }
+		},
+		"utils/date.ts": {
+			"edges": { "directed": ["vendor/lodash.ts"] },
+			"metrics": { "size": 1600 }
+		},
+		"utils/http.ts": {
+			"edges": { "directed": ["utils/object.ts", "utils/string.ts", "config/env.ts"] },
+			"metrics": { "size": 2840 }
+		},
+		"utils/log.ts": {
+			"edges": { "directed": ["lib/uuid.ts"] },
+			"metrics": { "size": 1200 }
+		},
+		"hooks/useFetch.ts": {
+			"edges": { "directed": ["utils/http.ts", "utils/object.ts", "vendor/react.ts"] },
+			"metrics": { "size": 2360 }
+		},
+		"hooks/useDebounce.ts": {
+			"edges": { "directed": ["vendor/react.ts", "utils/math.ts"] },
+			"metrics": { "size": 1750 }
+		},
+		"hooks/useToggle.ts": {
+			"edges": { "directed": ["vendor/react.ts"] },
+			"metrics": { "size": 1500 }
+		},
+		"services/api.ts": {
+			"edges": { "directed": ["utils/http.ts", "config/env.ts"] },
+			"metrics": { "size": 2600 }
+		},
+		"services/auth.ts": {
+			"edges": { "directed": ["services/api.ts", "utils/object.ts"] },
+			"metrics": { "size": 2400 }
+		},
+		"services/featureFlags.ts": {
+			"edges": { "directed": ["config/env.ts", "utils/object.ts", "lib/cache.ts"] },
+			"metrics": { "size": 2000 }
+		},
+		"config/env.ts": {
+			"edges": { "directed": ["types/index.d.ts"] },
+			"metrics": { "size": 900 }
+		},
+		"config/routes.ts": {
+			"edges": { "directed": ["types/index.d.ts"] },
+			"metrics": { "size": 980 }
+		},
+		"lib/uuid.ts": {
+			"edges": { "directed": ["vendor/lodash.ts"] },
+			"metrics": { "size": 840 }
+		},
+		"lib/cache.ts": {
+			"edges": { "directed": ["utils/object.ts"] },
+			"metrics": { "size": 1100 }
+		},
+		"lib/eventBus.ts": {
+			"edges": { "directed": ["utils/object.ts"] },
+			"metrics": { "size": 1000 }
+		},
+		"vendor/lodash.ts": {
+			"metrics": { "size": 50000 }
+		},
+		"vendor/react.ts": {
+			"metrics": { "size": 40000 }
+		},
+		"vendor/zustand.ts": {
+			"edges": { "directed": ["vendor/react.ts"] },
+			"metrics": { "size": 25000 }
+		},
+		"types/index.d.ts": {
+			"metrics": { "size": 800 }
+		},
+		"styles/theme.ts": {
+			"edges": { "directed": ["styles/colors.ts", "utils/object.ts"] },
+			"metrics": { "size": 1600 }
+		},
+		"styles/colors.ts": {
+			"metrics": { "size": 950 }
+		}
+	},
+	"entry_points": ["app/index.ts"]
+}
