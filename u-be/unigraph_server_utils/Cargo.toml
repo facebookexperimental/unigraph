@@ -9,7 +9,7 @@ license = "MIT"
 
 [dependencies]
 anyhow = "1.0.98"
-lru = { version = "=0.12.4", default-features = false }
+lru = { version = "0.12.4", default-features = false }
 paste = "1.0.14"
 rayon = "1.11.0"
 serde_json = { version = "1.0.140", features = ["alloc", "float_roundtrip", "raw_value", "unbounded_depth"] }
