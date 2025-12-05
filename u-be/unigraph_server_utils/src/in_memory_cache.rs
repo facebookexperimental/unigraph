@@ -143,7 +143,7 @@ mod tests {
         // Create a cache that doubles the input number after a small delay
         let cache = InMemoryCache::new(
             std::num::NonZero::new(2).unwrap(),
-            Duration::from_secs(60),
+            Duration::from_mins(1),
             |key: &i32| {
                 let key = *key; // Copy the value to avoid lifetime issues
                 async move {
@@ -175,7 +175,7 @@ mod tests {
     async fn test_cache_error_handling() -> anyhow::Result<()> {
         let cache = InMemoryCache::new(
             std::num::NonZero::new(1).unwrap(),
-            Duration::from_secs(60),
+            Duration::from_mins(1),
             |key: &i32| {
                 let key = *key; // Copy the value
                 async move {
@@ -203,7 +203,7 @@ mod tests {
     async fn test_cache_capacity_limit() -> anyhow::Result<()> {
         let cache = InMemoryCache::new(
             std::num::NonZero::new(2).unwrap(), // Only 2 items
-            Duration::from_secs(60),
+            Duration::from_mins(1),
             |key: String| async move { Ok(key.len()) },
         );
 
@@ -235,7 +235,7 @@ mod tests {
 
         let cache = InMemoryCache::new(
             std::num::NonZero::new(10).unwrap(),
-            Duration::from_secs(60),
+            Duration::from_mins(1),
             {
                 let counter = StdArc::clone(&computation_counter);
                 move |key: i32| {
@@ -388,7 +388,7 @@ mod tests {
 
         let cache = InMemoryCache::new(
             std::num::NonZero::new(10).unwrap(),
-            Duration::from_secs(60),
+            Duration::from_mins(1),
             {
                 let counter = StdArc::clone(&computation_counter);
                 move |key: i32| {
