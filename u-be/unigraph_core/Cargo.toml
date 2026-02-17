@@ -8,13 +8,13 @@ edition = "2024"
 license = "MIT"
 
 [dependencies]
-anyhow = "1.0.98"
+anyhow = "1.0.100"
 bitflags = { version = "2.9", features = ["serde", "std"], default-features = false }
 bytemuck = { version = "1.24", features = ["const_zeroed", "derive", "min_const_generics", "must_cast", "nightly_portable_simd", "nightly_stdsimd"] }
 readonly = "0.2.13"
 regex = "1.12.2"
 serde = { version = "1.0.219", features = ["derive", "rc"] }
-serde_json = { version = "1.0.140", features = ["alloc", "float_roundtrip", "raw_value", "unbounded_depth"] }
+serde_json = { version = "1.0.145", features = ["alloc", "float_roundtrip", "raw_value", "unbounded_depth"] }
 tracing = { version = "0.1.41", features = ["attributes", "valuable"] }
 typegen = { path = "../typegen" }
 unigraph_serialization = { path = "../unigraph_serialization" }
