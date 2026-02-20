@@ -8,7 +8,7 @@ edition = "2024"
 license = "MIT"
 
 [dependencies]
-anyhow = "1.0.98"
+anyhow = "1.0.101"
 bitflags = { version = "2.9", features = ["serde", "std"], default-features = false }
 bytemuck = { version = "1.24", features = ["const_zeroed", "derive", "min_const_generics", "must_cast", "nightly_portable_simd", "nightly_stdsimd"] }
 readonly = "0.2.13"
