@@ -14,7 +14,7 @@ serde = { version = "1.0.219", features = ["derive", "rc"] }
 serde_json = { version = "1.0.140", features = ["alloc", "float_roundtrip", "raw_value", "unbounded_depth"] }
 serde_path_to_error = "0.1.20"
 typegen = { path = "../typegen" }
-zstd = "0.13"
+zstd = "0.13.3"
 
 [dev-dependencies]
 k9 = { version = "0.12.0", features = ["custom_comparison_formatters", "regex"] }
