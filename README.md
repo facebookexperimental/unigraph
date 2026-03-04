@@ -14,6 +14,9 @@ feel free to nuke the whole thing
 ## install wasm-bindgen
 > cargo install wasm-bindgen-cli
 
+## install uv
+> cargo install uv
+
 ## install llvm
 by default on macs wasm won't be able to build `zstd`. to fix it you can install llvm
 > brew install llvm

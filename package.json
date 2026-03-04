@@ -6,7 +6,7 @@
     "tailwind": "tailwindcss -i ./input.css -o ../.build/output.css --watch --cwd u-fe",
     "build-js": "rolldown -c ./rolldown.config.ts",
     "ts": "tsc --noEmit --project ./tsconfig.json",
-    "lint": "biome check",
+    "lint": "oxlint -c .oxlintrc.json u-fe/ && oxfmt --check u-fe/",
     "test": "vitest",
     "dev": "concurrently 'pnpm run tailwind' 'pnpm run build-js -w'"
   },
@@ -14,7 +14,8 @@
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "@biomejs/biome": "2.2.3",
+    "oxlint": "1.51.0",
+    "oxfmt": "0.36.0",
     "@tailwindcss/cli": "4.1.4",
     "@types/node": "^22.15.21",
     "@types/react": "19.1.2",

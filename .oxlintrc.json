@@ -1,0 +1,18 @@
+{
+  "rules": {
+    "no-unused-vars": "off",
+    "unicorn/no-new-array": "off",
+    "unicorn/no-empty-file": "off"
+  },
+  "ignorePatterns": [
+    "wasm_build",
+    "node_modules",
+    "target",
+    "dist",
+    ".build",
+    "*.tera*",
+    "u-be/**/bindings/*",
+    "*/__generated__/*",
+    "*/test_types/ts/*.ts"
+  ]
+}
