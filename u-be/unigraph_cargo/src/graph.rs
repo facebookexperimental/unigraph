@@ -1,0 +1,207 @@
+// Copyright (c) Meta Platforms, Inc. and affiliates.
+
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
+
+use unigraph_core::MapGraph;
+use unigraph_core::graph_settings::ArrayGraphUISettings;
+use unigraph_core::graph_settings::ColumnSettings;
+use unigraph_core::graph_settings::GraphSettings;
+use unigraph_core::graph_settings::MetricFormat;
+use unigraph_core::graph_settings::MetricSettings;
+use unigraph_core::graph_settings::SizeFormatConfig;
+use unigraph_core::graph_settings::SizeInputUnits;
+use unigraph_core::graph_settings::SizeOutputUnits;
+use unigraph_core::types::map_graph::GraphNode;
+use unigraph_core::types::map_graph::MapGraphEdges;
+
+use crate::metadata::CargoGraph;
+use crate::timings;
+
+pub fn build_map_graph(
+    cargo_graph: &CargoGraph,
+    timings: Option<&BTreeMap<String, timings::UnitTiming>>,
+    rlib_sizes: Option<&BTreeMap<String, f32>>,
+) -> MapGraph {
+    let mut nodes = BTreeMap::new();
+
+    for (name, info) in &cargo_graph.crates {
+        // Build directed edges (normal deps).
+        let directed = if info.normal_deps.is_empty() {
+            None
+        } else {
+            Some(info.normal_deps.iter().cloned().collect::<BTreeSet<_>>())
+        };
+
+        // Build tagged edges (dev + build deps).
+        let mut tagged: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+        if !info.dev_deps.is_empty() {
+            tagged.insert("dev".to_string(), info.dev_deps.iter().cloned().collect());
+        }
+        if !info.build_deps.is_empty() {
+            tagged.insert(
+                "build".to_string(),
+                info.build_deps.iter().cloned().collect(),
+            );
+        }
+        let tagged = if tagged.is_empty() {
+            None
+        } else {
+            Some(tagged)
+        };
+
+        // Build metrics.
+        let mut metrics = BTreeMap::new();
+        metrics.insert(
+            "direct_dep_count".to_string(),
+            (info.normal_deps.len() + info.dev_deps.len() + info.build_deps.len()) as f32,
+        );
+
+        // Merge timing metrics if available.
+        if let Some(timing_map) = timings {
+            // Try matching by crate name (without version).
+            let crate_base_name = info.name.split(" v").next().unwrap_or(&info.name);
+            if let Some(timing) = timing_map.get(crate_base_name) {
+                metrics.insert("build_time".to_string(), timing.duration);
+                metrics.insert("rmeta_time".to_string(), timing.rmeta_time);
+                metrics.insert("codegen_time".to_string(), timing.codegen_time);
+            }
+        }
+
+        // Merge rlib size if available.
+        if let Some(size_map) = rlib_sizes {
+            let crate_base_name = info.name.split(" v").next().unwrap_or(&info.name);
+            if let Some(&size) = size_map.get(crate_base_name) {
+                metrics.insert("rlib_size".to_string(), size);
+            }
+        }
+
+        // Build extra fields.
+        let mut extra_fields = BTreeMap::new();
+        extra_fields.insert("version".to_string(), info.version.clone());
+        extra_fields.insert("source".to_string(), info.source.clone());
+        extra_fields.insert("crate_type".to_string(), info.crate_type.clone());
+        extra_fields.insert("manifest_path".to_string(), info.manifest_path.clone());
+
+        let node = GraphNode {
+            edges: MapGraphEdges {
+                directed,
+                tagged,
+                dynamic: None,
+            },
+            extra_fields: Some(extra_fields),
+            tag_sets: None,
+            metrics: if metrics.is_empty() {
+                None
+            } else {
+                Some(metrics)
+            },
+        };
+
+        nodes.insert(name.clone(), node);
+    }
+
+    let entry_points = if cargo_graph.workspace_members.is_empty() {
+        None
+    } else {
+        Some(
+            cargo_graph
+                .workspace_members
+                .iter()
+                .cloned()
+                .collect::<BTreeSet<_>>(),
+        )
+    };
+
+    // Configure metric display formats.
+    let mut metric_settings = BTreeMap::new();
+    metric_settings.insert(
+        "rlib_size".to_string(),
+        MetricSettings {
+            description: Some("Compiled .rlib artifact size".to_string()),
+            format: Some(MetricFormat::Size(SizeFormatConfig {
+                input_units: SizeInputUnits::Bytes,
+                output_units: SizeOutputUnits::MB,
+                min_precision: None,
+                max_precision: Some(2),
+                use_delimiter: None,
+            })),
+            column_hide_self: None,
+            column_show_transitive: None,
+            column_show_tiered: None,
+            show_conjoint_tiered: None,
+            show_dominated: None,
+            show_dominated_tiered: None,
+        },
+    );
+    metric_settings.insert(
+        "build_time".to_string(),
+        MetricSettings {
+            description: Some("Wall-clock build duration".to_string()),
+            format: Some(MetricFormat::NumberWithVariablePrecision {
+                min_precision: Some(1),
+                max_precision: Some(2),
+                use_delimiter: None,
+            }),
+            column_hide_self: None,
+            column_show_transitive: None,
+            column_show_tiered: None,
+            show_conjoint_tiered: None,
+            show_dominated: None,
+            show_dominated_tiered: None,
+        },
+    );
+    metric_settings.insert(
+        "rmeta_time".to_string(),
+        MetricSettings {
+            description: Some(
+                "Time to produce rmeta (enables downstream crates to start building)".to_string(),
+            ),
+            format: Some(MetricFormat::NumberWithVariablePrecision {
+                min_precision: Some(1),
+                max_precision: Some(2),
+                use_delimiter: None,
+            }),
+            column_hide_self: None,
+            column_show_transitive: None,
+            column_show_tiered: None,
+            show_conjoint_tiered: None,
+            show_dominated: None,
+            show_dominated_tiered: None,
+        },
+    );
+    metric_settings.insert(
+        "codegen_time".to_string(),
+        MetricSettings {
+            description: Some("Time spent in codegen phase".to_string()),
+            format: Some(MetricFormat::NumberWithVariablePrecision {
+                min_precision: Some(1),
+                max_precision: Some(2),
+                use_delimiter: None,
+            }),
+            column_hide_self: None,
+            column_show_transitive: None,
+            column_show_tiered: None,
+            show_conjoint_tiered: None,
+            show_dominated: None,
+            show_dominated_tiered: None,
+        },
+    );
+
+    let graph_settings = Some(GraphSettings {
+        ui_settings: Some(ArrayGraphUISettings {
+            columns: Some(ColumnSettings {
+                metric_settings: Some(metric_settings),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }),
+    });
+
+    MapGraph {
+        nodes,
+        traversal_config: None,
+        graph_settings,
+        entry_points,
+    }
+}
