@@ -1,0 +1,6 @@
+#!/bin/bash
+# Shortcut for tasks/task.py (unigraph task runner).
+# Add this directory to your PATH to use `ut` from anywhere:
+#   export PATH="$PATH:/path/to/oss/bin"
+# Then: ut build wasm, ut check js, ut test rust -u, etc.
+exec "$(dirname "$0")/../tasks/task.py" "$@"
