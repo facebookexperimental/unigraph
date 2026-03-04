@@ -28,7 +28,7 @@ pub type MessageID = String;
 /// Template literals:
 ///     %points_from%   - name of the node the edge is coming from
 ///     %points_to%     - name of the node the edge is pointing to
-#[derive(Clone, serde::Serialize, serde::Deserialize, Debug)]
+#[derive(Clone, serde::Serialize, serde::Deserialize, Debug, PartialEq)]
 #[derive(typegen::TypeGen)]
 pub struct Message(pub String);
 

@@ -20,7 +20,7 @@ use crate::types::TagSetName;
 use crate::types::TierIDX;
 use crate::types::TierName;
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 #[derive(serde::Serialize, serde::Deserialize, Debug, typegen::TypeGen)]
 pub struct Decision {
     pub include: bool,
@@ -49,7 +49,8 @@ impl Decision {
     Debug,
     Default,
     Clone,
-    typegen::TypeGen
+    typegen::TypeGen,
+    PartialEq
 )]
 pub struct TraversalConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -92,7 +93,14 @@ pub struct TraversalConfigIDX {
     pub messages: BTreeMap<MessageID, Message>,
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize, Clone, typegen::TypeGen)]
+#[derive(
+    Debug,
+    serde::Serialize,
+    serde::Deserialize,
+    Clone,
+    typegen::TypeGen,
+    PartialEq
+)]
 pub struct ForceDynamic {
     pub from_node: Option<NodeName>,
     pub match_properties: BTreeMap<String, String>,
@@ -127,7 +135,14 @@ pub struct ForceDynamicIDX {
 ///    { tag_set_name: "disallow_route", tag_name: "homepage", contains: true, decision: { include: false } },
 ///    { tag_set_name: "disallow_route", tag_name: "homepage", contains: false, decision: { include: true } },
 /// ]
-#[derive(Debug, serde::Serialize, serde::Deserialize, Clone, typegen::TypeGen)]
+#[derive(
+    Debug,
+    serde::Serialize,
+    serde::Deserialize,
+    Clone,
+    typegen::TypeGen,
+    PartialEq
+)]
 pub struct NodeTagSetsPredicate {
     pub tag_set_name: TagSetName,
     pub tag_name: Tag,

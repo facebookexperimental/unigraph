@@ -1,5 +1,6 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
+pub mod delta;
 pub(crate) mod package;
 
 use std::collections::BTreeMap;

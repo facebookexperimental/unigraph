@@ -134,6 +134,7 @@ impl NodeFlags {
     serde::Deserialize,
     serde::Serialize,
     Debug,
+    Clone,
     typegen::TypeGen,
     PartialEq,
     Eq,

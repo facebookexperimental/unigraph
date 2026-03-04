@@ -14,14 +14,22 @@ use crate::types::TierName;
     serde::Deserialize,
     typegen::TypeGen,
     Clone,
-    Default
+    Default,
+    PartialEq
 )]
 pub struct GraphSettings {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ui_settings: Option<ArrayGraphUISettings>,
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize, typegen::TypeGen, Clone)]
+#[derive(
+    Debug,
+    serde::Serialize,
+    serde::Deserialize,
+    typegen::TypeGen,
+    Clone,
+    PartialEq
+)]
 pub struct MetricSettings {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
@@ -50,7 +58,14 @@ pub struct MetricSettings {
     pub show_dominated_tiered: Option<BTreeMap<TierName, IndividualDominatedOptionEnabled>>,
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize, typegen::TypeGen, Clone)]
+#[derive(
+    Debug,
+    serde::Serialize,
+    serde::Deserialize,
+    typegen::TypeGen,
+    Clone,
+    PartialEq
+)]
 /// Value that defines how to format metric values (in the UI or CLI output)
 /// This value is cross platform enum type which is represented as an object/shape
 /// with all keys/properties optional and expected to have exactly ONE key/property
@@ -82,7 +97,14 @@ pub enum MetricFormat {
     },
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize, typegen::TypeGen, Clone)]
+#[derive(
+    Debug,
+    serde::Serialize,
+    serde::Deserialize,
+    typegen::TypeGen,
+    Clone,
+    PartialEq
+)]
 pub struct SizeFormatConfig {
     /// What is the unit of the input value that will be formatted
     pub input_units: SizeInputUnits,
@@ -100,7 +122,8 @@ pub struct SizeFormatConfig {
     serde::Deserialize,
     typegen::TypeGen,
     Clone,
-    Copy
+    Copy,
+    PartialEq
 )]
 pub enum SizeInputUnits {
     Bytes,
@@ -112,7 +135,8 @@ pub enum SizeInputUnits {
     serde::Deserialize,
     typegen::TypeGen,
     Clone,
-    Copy
+    Copy,
+    PartialEq
 )]
 /// Configuration for size formatting
 pub enum SizeOutputUnits {
@@ -141,7 +165,8 @@ pub enum SizeOutputUnits {
     serde::Deserialize,
     typegen::TypeGen,
     Clone,
-    Copy
+    Copy,
+    PartialEq
 )]
 pub enum SortOrder {
     Asc,
@@ -154,7 +179,8 @@ pub enum SortOrder {
     serde::Deserialize,
     typegen::TypeGen,
     Clone,
-    Copy
+    Copy,
+    PartialEq
 )]
 pub enum SidebarPanel {
     None,
@@ -175,7 +201,8 @@ pub enum SidebarPanel {
     typegen::TypeGen,
     Clone,
     Copy,
-    Default
+    Default,
+    PartialEq
 )]
 pub enum OptionEnabledDependingOnRightGraph {
     WhenRightGraphPresent,
@@ -189,7 +216,8 @@ pub enum OptionEnabledDependingOnRightGraph {
     serde::Deserialize,
     typegen::TypeGen,
     Clone,
-    Default
+    Default,
+    PartialEq
 )]
 pub struct ArrayGraphUISettings {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -255,7 +283,8 @@ pub struct ArrayGraphUISettings {
     typegen::TypeGen,
     Clone,
     Copy,
-    Default
+    Default,
+    PartialEq
 )]
 #[repr(u8)]
 pub enum GraphStructure {
@@ -289,7 +318,8 @@ impl GraphStructure {
     serde::Deserialize,
     typegen::TypeGen,
     Clone,
-    Default
+    Default,
+    PartialEq
 )]
 pub enum ArrayGraphUISettingsTreeTableEntryPoints {
     #[default]
@@ -304,7 +334,8 @@ pub enum ArrayGraphUISettingsTreeTableEntryPoints {
     serde::Deserialize,
     typegen::TypeGen,
     Clone,
-    Default
+    Default,
+    PartialEq
 )]
 pub struct ColumnSettings {
     /// Graph table in UI will be sorted using provided column
@@ -381,7 +412,8 @@ pub struct ColumnSettings {
     typegen::TypeGen,
     Clone,
     Copy,
-    Default
+    Default,
+    PartialEq
 )]
 pub enum IndividualOptionEnabled {
     #[default]
@@ -396,7 +428,8 @@ pub enum IndividualOptionEnabled {
     typegen::TypeGen,
     Clone,
     Copy,
-    Default
+    Default,
+    PartialEq
 )]
 pub enum IndividualDominatedOptionEnabled {
     // This will only show when global flag is enabled and we're in dominator mode.
@@ -406,20 +439,41 @@ pub enum IndividualDominatedOptionEnabled {
     Never,
 }
 
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, typegen::TypeGen)]
+#[derive(
+    Clone,
+    Debug,
+    serde::Serialize,
+    serde::Deserialize,
+    typegen::TypeGen,
+    PartialEq
+)]
 pub struct GraphTableSort {
     pub column: SortColumn,
     pub order: SortOrder,
 }
 
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, typegen::TypeGen)]
+#[derive(
+    Clone,
+    Debug,
+    serde::Serialize,
+    serde::Deserialize,
+    typegen::TypeGen,
+    PartialEq
+)]
 pub enum ColumnType {
     Left,
     Right,
     Delta,
 }
 
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, typegen::TypeGen)]
+#[derive(
+    Clone,
+    Debug,
+    serde::Serialize,
+    serde::Deserialize,
+    typegen::TypeGen,
+    PartialEq
+)]
 pub enum SortColumn {
     /// Sort by node name (tree column)
     NodeName {},

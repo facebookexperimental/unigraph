@@ -19,7 +19,7 @@ use crate::types::array_graph::tiers::tier_idx_to_flags;
 /// When we traverse the graph we look at the tagged edges. If the edge has a tag
 /// we look at the node's current tier and then we look at the new tier this node
 /// is supposed to transition to and record that.
-#[derive(Debug, typegen::TypeGen)]
+#[derive(Debug, typegen::TypeGen, PartialEq)]
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
 pub enum TieredTraversalConfig {
     // Simple ascending tiers configuration.
@@ -31,7 +31,7 @@ pub enum TieredTraversalConfig {
     AscendingTiers(AscendingTiersConfig),
 }
 
-#[derive(Debug, typegen::TypeGen)]
+#[derive(Debug, typegen::TypeGen, PartialEq)]
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
 pub struct AscendingTiersConfig {
     pub tiers: Vec<AscendingTier>,
@@ -40,7 +40,7 @@ pub struct AscendingTiersConfig {
     pub max_tier: Option<usize>,
 }
 
-#[derive(Debug, typegen::TypeGen)]
+#[derive(Debug, typegen::TypeGen, PartialEq)]
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
 pub struct AscendingTier {
     pub name: TierName,
