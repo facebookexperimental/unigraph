@@ -36,5 +36,5 @@
     "jsx": "react-jsx"
   },
   "include": ["u-fe/**/*.ts", "u-fe/**/*.tsx"],
-  "exclude": ["node_modules", "build"]
+  "exclude": ["node_modules", "build", "u-fe/app"]
 }

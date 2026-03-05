@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use clap::Parser;
 use clap::Subcommand;
-use clap::command;
+use unigraph_web_service::ServeMode;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -19,13 +19,6 @@ enum Commands {
 }
 
 #[derive(Parser)]
-struct Start {
-    /// Path to the graph file to visualize
-    #[arg(short, long)]
-    file_path: Option<PathBuf>,
-}
-
-#[derive(Parser)]
 struct Serve {
     /// Path to the graph file to visualize
     #[arg(short, long)]
@@ -35,11 +28,20 @@ struct Serve {
     /// to compare (delta view) with the main graph
     #[arg(short, long)]
     right: Option<PathBuf>,
+
+    /// Serve pre-built static files instead of proxying to Vite dev server
+    #[arg(long)]
+    release: bool,
 }
 
 impl Serve {
     async fn run(&self) {
-        unigraph_web_service::start(&self.file_path, &self.right)
+        let mode = if self.release {
+            ServeMode::Release
+        } else {
+            ServeMode::Dev
+        };
+        unigraph_web_service::start(&self.file_path, &self.right, mode)
             .await
             .unwrap();
     }

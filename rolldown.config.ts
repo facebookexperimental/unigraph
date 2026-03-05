@@ -3,12 +3,6 @@ import { defineConfig } from "rolldown";
 
 export default defineConfig([
   {
-    input: "u-fe/index.tsx",
-    output: {
-      file: ".build/index.js",
-    },
-  },
-  {
     input: "u-fe/Explorer.tsx",
     external: ["react", "react-dom", "react/jsx-runtime"],
     define: { "process.env.NODE_ENV": "'production'" },

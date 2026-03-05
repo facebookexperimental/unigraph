@@ -142,10 +142,42 @@ def build_haste() -> None:
     haste_build.write_text(content)
 
 
+@build_app.command("react-router")
+def build_react_router() -> None:
+    """Build the React Router SPA for production."""
+    run([str(BIN / "react-router"), "build"])
+
+
 @build_app.command("all")
 def build_all() -> None:
     """Build everything."""
     build_haste()
+
+
+@app.command()
+def serve(
+    file_path: Annotated[
+        str | None,
+        typer.Option("-f", "--file-path", help="Path to graph file."),
+    ] = None,
+    right: Annotated[
+        str | None,
+        typer.Option("-r", "--right", help="Path to comparison graph file."),
+    ] = None,
+    release: Annotated[
+        bool,
+        typer.Option("--release", help="Serve pre-built static files."),
+    ] = False,
+) -> None:
+    """Start Unigraph server (dev mode with HMR, or release mode with static files)."""
+    args = ["cargo", "run", "-p", "unigraph_cli", "--", "serve"]
+    if release:
+        args.append("--release")
+    if file_path:
+        args.extend(["--file-path", file_path])
+    if right:
+        args.extend(["--right", right])
+    run(args)
 
 
 @app.command()

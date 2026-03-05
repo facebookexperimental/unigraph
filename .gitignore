@@ -3,3 +3,5 @@
 .parcel-cache/
 .build/
 dist/
+build/
+.react-router/

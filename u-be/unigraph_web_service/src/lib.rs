@@ -3,28 +3,56 @@
 use std::any::type_name;
 use std::path::Path;
 use std::path::PathBuf;
+use std::process::Child;
+use std::process::Command;
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::Context;
 use anyhow::Result;
 use anyhow::bail;
 use axum::Router;
-use axum::response::Html;
+use axum::body::Body;
+use axum::extract::State;
+use axum::http;
+use axum::response::IntoResponse;
 use axum::routing::get;
-use tera::Tera;
+use tower_http::services::ServeDir;
+use tower_http::services::ServeFile;
+use tower_http::trace::TraceLayer;
+use tracing::Span;
+use tracing::info;
 use unigraph_core::ArrayGraphSerializablePackage;
 use unigraph_core::ArrayGraphSerializablePackageConfig;
 use unigraph_core::MapGraph;
 use unigraph_core::ui_types::ExplorerComponentInputGraph;
 use unigraph_serialization::SerializationFormat;
 
-const HTML_TEMLPATE_PATH: &str = "../../u-fe/index.html.tera";
 const THIS_FILES_DIR: &str = env!("CARGO_MANIFEST_DIR");
+
+pub enum ServeMode {
+    /// Proxy frontend requests to Vite dev server (React Router + HMR)
+    Dev,
+    /// Serve pre-built static files from React Router build output
+    Release,
+}
+
+#[derive(Clone)]
+struct AppState {
+    left_graph: Arc<String>,
+    right_graph: Arc<Option<String>>,
+}
 
 pub async fn start(
     graphite_graph_json_file_path_left: &Option<PathBuf>,
     graphite_graph_json_file_path_right: &Option<PathBuf>,
+    mode: ServeMode,
 ) -> Result<()> {
+    tracing_subscriber::fmt()
+        .compact()
+        .with_target(false)
+        .init();
+
     let (left_graph, right_graph) = match (
         &graphite_graph_json_file_path_left,
         &graphite_graph_json_file_path_right,
@@ -40,57 +68,133 @@ pub async fn start(
         }
     };
 
-    let left_graph = Arc::new(left_graph);
-    let right_graph = Arc::new(right_graph);
+    let state = AppState {
+        left_graph: Arc::new(left_graph),
+        right_graph: Arc::new(right_graph),
+    };
 
-    // build our application with a single route
-    let app = Router::new().route(
-        "/",
-        get(move || {
-            let left_graph = Arc::clone(&left_graph);
-            let right_graph = Arc::clone(&right_graph);
-            async move { Html(html(&left_graph, &right_graph).unwrap()) }
-        }),
-    );
+    let api = Router::new()
+        .route("/api/graphs", get(api_graphs))
+        .with_state(state);
+
+    let project_root = PathBuf::from(THIS_FILES_DIR).join("../..");
+
+    let app = match mode {
+        ServeMode::Dev => {
+            let vite = start_vite(&project_root)?;
+            wait_for_vite(5173).await?;
+            info!("Vite dev server is ready");
+
+            // Keep the vite process alive as long as the server runs.
+            // The Drop impl kills it on shutdown.
+            let vite_guard = Arc::new(vite);
+
+            let app = api.fallback(proxy_to_vite);
+
+            // Spawn a task to keep the guard alive until ctrl-c
+            let guard = vite_guard.clone();
+            tokio::spawn(async move {
+                tokio::signal::ctrl_c().await.ok();
+                drop(guard);
+            });
+
+            app
+        }
+        ServeMode::Release => {
+            let build_dir = project_root.join("build/client");
+            if !build_dir.exists() {
+                bail!(
+                    "Build directory not found at {}. Run `npx react-router build` first.",
+                    build_dir.display()
+                );
+            }
+
+            let index_html = build_dir.join("index.html");
+            let serve_dir = ServeDir::new(&build_dir).fallback(ServeFile::new(&index_html));
+
+            api.fallback_service(serve_dir)
+        }
+    };
 
     // NOTE: it has to be `localhost` otherwise wgpu will blow up because of the unsecure
     // context.
-    // Error looks like:
-    //      Failed to find an appropriate adapter: NotFound { active_backends: Backends(BROWSER_WEBGPU),
-    //      requested_backends: Backends(NOOP | VULKAN | GL | METAL | DX12 | BROWSER_WEBGPU),
-    //      supported_backends: Backends(BROWSER_WEBGPU), no_fallback_backends: Backends(0x0),
-    //      no_adapter_backends: Backends(BROWSER_WEBGPU), incompatible_surface_backends: Backends(0x0) }
     let addr = "localhost:3000";
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    println!("Listening on http://{addr}");
-    axum::serve(listener, app).await?;
+    info!("Listening on http://{addr}");
+    let trace_layer = TraceLayer::new_for_http()
+        .make_span_with(|req: &http::Request<Body>| {
+            tracing::info_span!("req", method = %req.method(), uri = %req.uri())
+        })
+        .on_response(|resp: &http::Response<Body>, latency: Duration, _span: &Span| {
+            info!(status = resp.status().as_u16(), latency_ms = latency.as_millis(), "done");
+        });
+
+    axum::serve(listener, app.layer(trace_layer)).await?;
     Ok(())
 }
 
-fn html(left_json: &str, right_json: &Option<String>) -> Result<String> {
-    let html_path = format!("{THIS_FILES_DIR}/{HTML_TEMLPATE_PATH}");
-
-    let js_path = format!("{}/{}", THIS_FILES_DIR, "../../.build/index.js");
-    let css_path = format!("{}/{}", THIS_FILES_DIR, "../../.build/output.css");
-
-    let css = read_str(&css_path)?;
-    let html_template = read_str(&html_path)?;
-    let js = read_str(&js_path)?;
-
-    let empty_json = "".to_string();
-    let right_json = right_json.as_ref().unwrap_or(&empty_json);
-
-    let mut context = tera::Context::new();
-    context.insert("css", &css);
-    context.insert("js", &js.replace("</script>", "<\\/script>"));
-    context.insert("array_graph_package_base64_left", &left_json);
-    context.insert("array_graph_package_base64_right", &right_json);
-    Tera::one_off(&html_template, &context, false).context("Failed to render HTML template")
+async fn api_graphs(State(state): State<AppState>) -> impl IntoResponse {
+    let mut body = format!(r#"{{"left":{}"#, *state.left_graph);
+    if let Some(ref right) = *state.right_graph {
+        body.push_str(&format!(r#","right":{right}"#));
+    }
+    body.push('}');
+    ([(http::header::CONTENT_TYPE, "application/json")], body)
 }
 
-fn read_str(path: &str) -> Result<String> {
-    std::fs::read_to_string(path).with_context(|| format!("Failed to read file at `{path}`"))
+async fn proxy_to_vite(req: axum::extract::Request) -> Result<impl IntoResponse, http::StatusCode> {
+    use hyper_util::client::legacy::Client;
+    use hyper_util::rt::TokioExecutor;
+
+    let client = Client::builder(TokioExecutor::new()).build_http::<Body>();
+
+    let uri = format!("http://localhost:5173{}", req.uri());
+    let uri: http::Uri = uri.parse().map_err(|_| http::StatusCode::BAD_REQUEST)?;
+
+    let (parts, body) = req.into_parts();
+    let mut proxy_req = http::Request::from_parts(parts, body);
+    *proxy_req.uri_mut() = uri;
+    // Remove the Host header so hyper can set it correctly for the upstream
+    proxy_req.headers_mut().remove(http::header::HOST);
+
+    let resp = client
+        .request(proxy_req)
+        .await
+        .map_err(|_| http::StatusCode::BAD_GATEWAY)?;
+
+    let (parts, body) = resp.into_parts();
+    Ok(axum::response::Response::from_parts(parts, Body::new(body)))
+}
+
+struct ViteProcess(Child);
+
+impl Drop for ViteProcess {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
+fn start_vite(project_root: &Path) -> Result<ViteProcess> {
+    let vite_bin = project_root.join("node_modules/.bin/vite");
+    info!("Starting Vite dev server...");
+    let child = Command::new(&vite_bin)
+        .current_dir(project_root)
+        .spawn()
+        .with_context(|| format!("Failed to start Vite at {}", vite_bin.display()))?;
+    Ok(ViteProcess(child))
+}
+
+async fn wait_for_vite(port: u16) -> Result<()> {
+    let addr = format!("localhost:{port}");
+    for _ in 0..200 {
+        if tokio::net::TcpStream::connect(&addr).await.is_ok() {
+            return Ok(());
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    bail!("Vite dev server did not start within 20 seconds")
 }
 
 fn to_serialized_str_json(map_graph: &MapGraph) -> Result<String> {

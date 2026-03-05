@@ -7,11 +7,13 @@ version = "0.0.0"
 [dependencies]
 anyhow = "1.0.98"
 axum = "0.8.3"
-base64 = { version = "0.21", features = ["alloc"] }
-unigraph_core = { path = "../unigraph_core" }
-unigraph_server_utils = { path = "../unigraph_server_utils" }
-unigraph_serialization = { path = "../unigraph_serialization" }
-rayon = "1.9.0"
+hyper = "1"
+hyper-util = { version = "0.1", features = ["client-legacy", "http1", "tokio"] }
+http-body-util = "0.1"
+serde_json = "1"
 tokio = { workspace = true }
-tera = "1.20.0"
-zstd = "0.13"
+tower-http = { version = "0.6", features = ["fs", "trace"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+unigraph_core = { path = "../unigraph_core" }
+unigraph_serialization = { path = "../unigraph_serialization" }
