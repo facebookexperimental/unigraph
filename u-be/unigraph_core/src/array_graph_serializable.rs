@@ -13,6 +13,7 @@
 //!   storage and transport (see [`ArrayGraphSerializablePackage`]).
 
 pub mod delta;
+pub mod error_package;
 pub(crate) mod package;
 
 use std::collections::BTreeMap;

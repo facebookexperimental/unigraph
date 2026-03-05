@@ -2,6 +2,7 @@
 
 mod apply;
 mod derive;
+pub mod package;
 #[cfg(test)]
 mod tests;
 
