@@ -1,5 +1,22 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
+//! Chunked, compressed blob packaging for [`ArrayGraphSerializable`].
+//!
+//! A graph is serialized by converting each field (node names, edges, metrics,
+//! etc.) to JSON, compressing with ZSTD, and splitting into fixed-size chunks.
+//! The result is a set of content-addressed blobs plus a [`ArrayGraphSerializableManifest`]
+//! that records which blobs belong to which field.
+//!
+//! ## Pack / Unpack
+//!
+//! - [`pack`] — serialize a graph into blobs + manifest.
+//! - [`unpack`] — reconstruct a graph from blobs + manifest.
+//!
+//! ## Base64
+//!
+//! [`ArrayGraphSerializablePackageBase64`] provides a JSON-friendly encoding
+//! where each blob is base64-encoded instead of stored as raw bytes.
+
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
@@ -18,9 +35,17 @@ use crate::ArrayGraphSerializableEdges;
 use crate::ArrayGraphSerializableNodeMetadata;
 use crate::graph_settings::GraphSettings;
 
+/// Default maximum size of each blob chunk before splitting (2 MB).
 const DEFAULT_BYTES_PER_BLOB_CHUNK: usize = 2_000_000; // 2 MB
+
+/// Default ZSTD compression level used when packing graphs.
 const DEFAULT_COMPRESSION_LEVEL: ZSTDCompressionLevel = ZSTDCompressionLevel::Normal;
 
+/// Unique identifier for a blob within a graph package.
+///
+/// Each blob holds a compressed chunk of serialized graph data (e.g. node names,
+/// edges, metrics). The ID is typically derived from the field name and a hash
+/// of the blob contents (e.g. `"directed_1506826171969472540"`).
 #[derive(
     Debug,
     Clone,
@@ -35,60 +60,90 @@ const DEFAULT_COMPRESSION_LEVEL: ZSTDCompressionLevel = ZSTDCompressionLevel::No
 )]
 pub struct BlobID(pub String);
 
-/// ArrayGraphSerializable can be serialized and chunked into multiple compressed blobs
-/// This manifest provides all the necessary metadata to locate and deserialize these blobs
-/// back into the initial graph.
+/// Metadata about the blob layout of a serialized graph.
+///
+/// When an [`ArrayGraphSerializable`] is packed via [`pack`], it is split into
+/// individually compressed blobs. This manifest records which [`BlobID`]s
+/// correspond to which graph fields, along with size statistics, so that the
+/// graph can later be reassembled from blob storage without loading the
+/// entire dataset at once.
 #[derive(Debug, typegen::TypeGen, serde::Serialize, serde::Deserialize)]
 pub struct ArrayGraphSerializableManifest {
-    /// Blob ID for the manifest itself serialized as JSON
+    /// [`BlobID`] that points to the JSON-serialized manifest itself, so the
+    /// manifest can be stored alongside the other blobs in the same store.
     pub self_reference: BlobID,
+    /// Aggregate statistics about the package (total size, blob count, etc.).
     pub stats: ManifestStats,
+    /// Per-field blob references that map each graph component to its blob(s).
     pub blobs: ManifestBlobs,
 
+    /// Optional graph-level settings (e.g. display configuration).
     pub graph_settings: Option<GraphSettings>,
 }
 
-/// Contains references to all individual blobs
+/// Maps each logical field of the graph to the [`BlobID`](s) that hold its
+/// compressed data. A field may span multiple blobs if it exceeds the
+/// configured chunk size.
 #[derive(Debug, typegen::TypeGen, serde::Serialize, serde::Deserialize)]
 pub struct ManifestBlobs {
+    /// Concatenated UTF-8 node name bytes.
     pub node_names: Vec<BlobID>,
+    /// Offsets into the `node_names` byte array (one per node).
     pub node_names_offsets: Vec<BlobID>,
 
     /* EDGES */
+    /// Flat list of directed-edge target indices (paired with `directed_offsets`).
     pub directed: Vec<BlobID>,
+    /// CSR-style offsets into `directed` (one per source node + 1 sentinel).
     pub directed_offsets: Vec<BlobID>,
+    /// Tagged edges (node → tag → set of target nodes).
     pub tagged: Vec<BlobID>,
+    /// Dynamic edges with runtime-defined branch labels.
     pub dynamic: Vec<BlobID>,
 
     /* METADATA */
+    /// Per-metric float vectors (one `f32` per node for each named metric).
     pub metrics: Vec<BlobID>,
+    /// Per-node tag-set maps (node → tag-set-name → tags).
     pub tag_sets: Vec<BlobID>,
 
+    /// Optional traversal configuration (entry points, tier rules, etc.).
     pub traversal_config: Vec<BlobID>,
+    /// Explicit graph entry points, if set.
     pub entry_points: Vec<BlobID>,
 }
 
+/// Summary statistics recorded at pack time.
 #[derive(Debug, typegen::TypeGen, serde::Serialize, serde::Deserialize)]
 pub struct ManifestStats {
+    /// Total number of data blobs (excludes the manifest blob itself).
     pub total_blobs: u32,
+    /// Sum of all blob sizes in bytes (compressed).
     pub total_size_bytes: u32,
+    /// Per-blob compressed size map.
     pub blob_sizes_bytes: BTreeMap<BlobID, u32>,
+    /// Number of nodes in the graph.
     pub node_count: u32,
+    /// Number of directed edges in the graph.
     pub directed_edge_count: u32,
 }
 
+/// A fully self-contained graph package: the manifest plus all blob data.
+///
+/// Blobs are stored as raw `Vec<u8>` (ZSTD-compressed). This representation
+/// is suitable for in-memory use or binary serialization.
 #[derive(Debug, typegen::TypeGen, serde::Serialize, serde::Deserialize)]
 pub struct ArrayGraphSerializablePackage {
     pub manifest: ArrayGraphSerializableManifest,
     pub blobs: BTreeMap<BlobID, Vec<u8>>,
 }
 
-/// Base64 Version of the package, where the blobs are Base64 encoded.
-/// This is intended for browser use or JSON encoding of the package itself
-/// for passing between servers/clients.
-/// If Vec<u8> is double serialized into JSON it will be represented as
-///     [1, 19, 113, 48, ...]
-/// which is very inefficient
+/// Base64-encoded variant of [`ArrayGraphSerializablePackage`].
+///
+/// JSON-serializing raw `Vec<u8>` produces a verbose integer array
+/// (`[1, 19, 113, ...]`). This variant stores each blob as a base64
+/// string instead, making it much more compact for JSON transport
+/// between servers and browsers.
 #[derive(Debug, typegen::TypeGen, serde::Serialize, serde::Deserialize)]
 pub struct ArrayGraphSerializablePackageBase64 {
     pub manifest: ArrayGraphSerializableManifest,
@@ -96,6 +151,8 @@ pub struct ArrayGraphSerializablePackageBase64 {
 }
 
 impl ManifestBlobs {
+    /// Returns a flat list of every [`BlobID`] referenced by this manifest,
+    /// across all fields, in a deterministic order.
     pub fn get_all_blob_ids(&self) -> Vec<BlobID> {
         let Self {
             node_names,
@@ -148,6 +205,7 @@ impl From<BlobID> for String {
 }
 
 impl ManifestStats {
+    /// Computes statistics from the current set of blobs and the source graph.
     pub fn from_blobs(blobs: &BTreeMap<BlobID, Vec<u8>>, graph: &ArrayGraphSerializable) -> Self {
         let total_blobs = blobs.len() as u32;
         let total_size_bytes = blobs.values().map(|b| b.len()).sum::<usize>() as u32;
@@ -165,30 +223,40 @@ impl ManifestStats {
     }
 }
 
+/// Callback type used to transform blob IDs before they are stored.
+///
+/// This decouples the packing logic from the storage layer — for example,
+/// in Manifold-backed storage the callback can prepend a namespace and
+/// graph ID prefix to each raw blob ID.
 type ModifyBlobID = Option<Arc<dyn Fn(&str) -> BlobID + Send + Sync>>;
 
+/// Configuration for [`pack`] controlling chunking, compression, and blob ID
+/// generation.
 #[derive(Default, Clone)]
 pub struct ArrayGraphSerializablePackageConfig {
+    /// Maximum number of bytes per blob chunk. Larger fields are split into
+    /// multiple blobs at this boundary. Defaults to [`DEFAULT_BYTES_PER_BLOB_CHUNK`] (2 MB).
     pub bytes_per_blob_chunk: Option<usize>,
 
-    /// ZSTD compression level
+    /// ZSTD compression level applied to each blob.
+    /// Defaults to [`DEFAULT_COMPRESSION_LEVEL`].
     pub compression_level: Option<ZSTDCompressionLevel>,
 
-    /// A function that generates an ID for the blob.
-    /// This is here to decouple the logic of preparing the graph
-    /// for storage from the blobstorage implementation.
-    /// e.g. in Manifold we're likely gonna store graphs
-    /// under a certain namespace and a GraphID folder, which
-    /// should not be a concern of the logic in this file.
+    /// Optional callback that transforms blob IDs before they are stored.
+    ///
+    /// This decouples packing logic from the storage backend — for example,
+    /// prepending a namespace or graph ID prefix for Manifold storage.
     pub modify_blob_id: ModifyBlobID,
 }
 
 impl ArrayGraphSerializablePackageConfig {
+    /// Returns the configured chunk size or the default (2 MB).
     pub fn bytes_per_chunk(&self) -> usize {
         self.bytes_per_blob_chunk
             .unwrap_or(DEFAULT_BYTES_PER_BLOB_CHUNK)
     }
 
+    /// Returns the configured compression level or the default.
     pub fn compression_level(&self) -> ZSTDCompressionLevel {
         self.compression_level.unwrap_or(DEFAULT_COMPRESSION_LEVEL)
     }
@@ -352,6 +420,11 @@ pub fn unpack(package: &ArrayGraphSerializablePackage) -> Result<ArrayGraphSeria
     })
 }
 
+/// Reconstructs a single graph field from one or more compressed blobs.
+///
+/// The blobs are concatenated in order, ZSTD-decompressed, and then
+/// deserialized from JSON back into `T`. Returns `T::default()` implicitly
+/// through deserialization if the data is empty.
 fn from_blobs_field<T: serde::de::DeserializeOwned + Default>(
     blob_ids: &[BlobID],
     all_blobs: &BTreeMap<BlobID, Vec<u8>>,
@@ -383,6 +456,13 @@ fn from_blobs_field<T: serde::de::DeserializeOwned + Default>(
     })
 }
 
+/// Serializes a single graph field into one or more compressed blobs.
+///
+/// The value is JSON-serialized, ZSTD-compressed, and then split into chunks
+/// of at most `cfg.bytes_per_chunk()` bytes. Each chunk is assigned a
+/// [`BlobID`] derived from the field `name` and an xxHash of its contents.
+/// The blobs are inserted into `all_blobs` and the corresponding IDs are
+/// returned in order.
 pub fn into_blobs<T: serde::Serialize>(
     value: &T,
     name: &str,
@@ -418,6 +498,9 @@ pub fn into_blobs<T: serde::Serialize>(
     Ok(ids)
 }
 
+/// Splits `blob` into sequential chunks of at most `chunk_size_bytes`.
+/// The last chunk may be smaller. Always returns at least one chunk (even if
+/// `blob` is empty).
 fn into_chunks(blob: Vec<u8>, chunk_size_bytes: usize) -> Vec<Vec<u8>> {
     let mut chunks = Vec::new();
     let mut remaining = blob;
@@ -433,6 +516,7 @@ fn into_chunks(blob: Vec<u8>, chunk_size_bytes: usize) -> Vec<Vec<u8>> {
 }
 
 impl ArrayGraphSerializablePackage {
+    /// Converts all blobs to base64 strings for JSON-friendly transport.
     pub fn into_base_64(self) -> ArrayGraphSerializablePackageBase64 {
         let ArrayGraphSerializablePackage { manifest, blobs } = self;
         let blobs_base_64 = blobs
@@ -446,6 +530,7 @@ impl ArrayGraphSerializablePackage {
         }
     }
 
+    /// Constructs a package from a base64-encoded variant by decoding each blob.
     pub fn from_base64(package_base_64: ArrayGraphSerializablePackageBase64) -> Result<Self> {
         let ArrayGraphSerializablePackageBase64 {
             manifest,
