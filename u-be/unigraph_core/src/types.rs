@@ -21,6 +21,8 @@ pub type MetricName = String;
 pub type TagSetName = String;
 pub type Tag = String;
 pub type DynamicBranchName = String;
+pub type DynamicTypeKey = String;
+pub type DynamicEdgeName = String;
 pub type TierName = String;
 pub type TierIDX = usize;
 

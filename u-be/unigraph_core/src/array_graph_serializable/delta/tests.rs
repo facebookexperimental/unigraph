@@ -78,31 +78,24 @@ fn format_graph(g: &ArrayGraphSerializable) -> String {
     // Dynamic edges
     if !g.edges.dynamic.is_empty() {
         out.push_str("Dynamic edges:\n");
-        for (src_idx, dyn_edges) in &g.edges.dynamic {
+        for (src_idx, type_map) in &g.edges.dynamic {
             let from = g.node_names_ordered.idx_to_name(*src_idx);
-            for edge in dyn_edges {
-                let props: Vec<String> = edge
-                    .properties
-                    .iter()
-                    .map(|(k, v)| format!("{}={}", k, v))
-                    .collect();
-                let props_str = if props.is_empty() {
-                    String::new()
-                } else {
-                    format!(" ({})", props.join(", "))
-                };
-                for (branch, targets) in &edge.branches {
-                    let target_names: Vec<&str> = targets
-                        .iter()
-                        .map(|&idx| g.node_names_ordered.idx_to_name(idx))
-                        .collect();
-                    out.push_str(&format!(
-                        "  {} -[{}]-> {}{}\n",
-                        from,
-                        branch,
-                        target_names.join(", "),
-                        props_str
-                    ));
+            for (type_key, edge_map) in type_map {
+                for (edge_name, edge) in edge_map {
+                    for (branch, targets) in &edge.branches {
+                        let target_names: Vec<&str> = targets
+                            .iter()
+                            .map(|&idx| g.node_names_ordered.idx_to_name(idx))
+                            .collect();
+                        out.push_str(&format!(
+                            "  {} -[{}]-> {} ({}:{})\n",
+                            from,
+                            branch,
+                            target_names.join(", "),
+                            type_key,
+                            edge_name,
+                        ));
+                    }
                 }
             }
         }
@@ -194,26 +187,19 @@ fn format_delta(d: &GraphDelta) -> String {
                 if dyn_delta.replacement.is_empty() {
                     out.push_str(&format!("  {} dynamic: <cleared>\n", name));
                 } else {
-                    for de in &dyn_delta.replacement {
-                        let props: Vec<String> = de
-                            .properties
-                            .iter()
-                            .map(|(k, v)| format!("{}={}", k, v))
-                            .collect();
-                        let props_str = if props.is_empty() {
-                            String::new()
-                        } else {
-                            format!(" ({})", props.join(", "))
-                        };
-                        for (branch, targets) in &de.branches {
-                            let tgts: Vec<&str> = targets.iter().map(|s| s.as_str()).collect();
-                            out.push_str(&format!(
-                                "  {} dynamic [{}]: {}{}\n",
-                                name,
-                                branch,
-                                tgts.join(", "),
-                                props_str
-                            ));
+                    for (type_key, edge_map) in &dyn_delta.replacement {
+                        for (edge_name, de) in edge_map {
+                            for (branch, targets) in &de.branches {
+                                let tgts: Vec<&str> = targets.iter().map(|s| s.as_str()).collect();
+                                out.push_str(&format!(
+                                    "  {} dynamic [{}]: {} ({}:{})\n",
+                                    name,
+                                    branch,
+                                    tgts.join(", "),
+                                    type_key,
+                                    edge_name,
+                                ));
+                            }
                         }
                     }
                 }
@@ -294,31 +280,30 @@ fn empty_delta() -> GraphDelta {
 
 const GRAPH_ABC: &str = r#"{
     "nodes": {
-        "A": { "edges": { "directed": ["B", "C"] }, "metrics": { "size": 1 } },
-        "B": { "edges": { "directed": ["C"] }, "metrics": { "size": 2 } },
-        "C": { "edges": {}, "metrics": { "size": 3 } }
+        "A": { "edges_directed": ["B", "C"], "metrics": { "size": 1 } },
+        "B": { "edges_directed": ["C"], "metrics": { "size": 2 } },
+        "C": { "metrics": { "size": 3 } }
     }
 }"#;
 
 const GRAPH_ABCD: &str = r#"{
     "nodes": {
-        "A": { "edges": { "directed": ["B", "C"] }, "metrics": { "size": 1 } },
-        "B": { "edges": { "directed": ["C"] }, "metrics": { "size": 2 } },
-        "C": { "edges": { "directed": ["D"] }, "metrics": { "size": 3 } },
-        "D": { "edges": {}, "metrics": { "size": 4 } }
+        "A": { "edges_directed": ["B", "C"], "metrics": { "size": 1 } },
+        "B": { "edges_directed": ["C"], "metrics": { "size": 2 } },
+        "C": { "edges_directed": ["D"], "metrics": { "size": 3 } },
+        "D": { "metrics": { "size": 4 } }
     }
 }"#;
 
 const GRAPH_WITH_TAGS: &str = r#"{
     "nodes": {
         "A": {
-            "edges": { "directed": ["B"], "tagged": { "lazy": ["C"] } },
+            "edges_directed": ["B"], "edges_tagged": { "lazy": ["C"] },
             "metrics": { "size": 1 }
         },
-        "B": { "edges": {}, "metrics": { "size": 2 } },
+        "B": { "metrics": { "size": 2 } },
         "C": {
-            "edges": {},
-            "tag_sets": { "categories": ["web", "mobile"] },
+            "labels": { "categories": ["web", "mobile"] },
             "metrics": { "size": 3 }
         }
     }
@@ -327,34 +312,35 @@ const GRAPH_WITH_TAGS: &str = r#"{
 const GRAPH_WITH_DYNAMIC: &str = r#"{
     "nodes": {
         "A": {
-            "edges": {
-                "directed": ["B"],
-                "dynamic": [{
-                    "properties": { "platform": "ios" },
-                    "branches": { "main": ["C"], "fallback": ["D"] }
-                }]
+            "edges_directed": ["B"],
+            "edges_dynamic": {
+                "ios_platform": {
+                    "ios_1": {
+                        "branches": { "main": ["C"], "fallback": ["D"] }
+                    }
+                }
             },
             "metrics": { "size": 10 }
         },
-        "B": { "edges": {}, "metrics": { "size": 20 } },
-        "C": { "edges": {}, "metrics": { "size": 30 } },
-        "D": { "edges": {}, "metrics": { "size": 40 } }
+        "B": { "metrics": { "size": 20 } },
+        "C": { "metrics": { "size": 30 } },
+        "D": { "metrics": { "size": 40 } }
     }
 }"#;
 
 // The full-featured test graph from test_graphs/test_graph_1.json
 const GRAPH_FULL: &str = r#"{
     "nodes": {
-        "A": { "edges": { "directed": ["B", "D"] }, "metrics": { "size": 1 } },
-        "B": { "edges": { "tagged": { "BL": ["C"], "RD": ["J"] } }, "metrics": { "size": 1 } },
-        "C": { "edges": {}, "tag_sets": { "disallow_tags": ["b", "c"] }, "metrics": { "size": 1 } },
-        "D": { "edges": { "directed": ["F"], "tagged": { "RDFD": ["E"] } }, "metrics": { "size": 1 } },
-        "E": { "edges": {}, "metrics": { "size": 1 } },
-        "F": { "edges": { "dynamic": [{ "properties": { "type": "DDD" }, "branches": { "b1": ["G", "H"], "b2": ["I"] } }] }, "metrics": { "size": 1 } },
-        "G": { "edges": {}, "metrics": { "size": 1 } },
-        "H": { "edges": {}, "metrics": { "size": 1 } },
-        "I": { "edges": {}, "metrics": { "size": 1 } },
-        "J": { "edges": {}, "tag_sets": { "assert_tags": ["a", "b"] }, "metrics": { "size": 1 } }
+        "A": { "edges_directed": ["B", "D"], "metrics": { "size": 1 } },
+        "B": { "edges_tagged": { "BL": ["C"], "RD": ["J"] }, "metrics": { "size": 1 } },
+        "C": { "labels": { "disallow_tags": ["b", "c"] }, "metrics": { "size": 1 } },
+        "D": { "edges_directed": ["F"], "edges_tagged": { "RDFD": ["E"] }, "metrics": { "size": 1 } },
+        "E": { "metrics": { "size": 1 } },
+        "F": { "edges_dynamic": { "ddd": { "ddd_1": { "branches": { "b1": ["G", "H"], "b2": ["I"] } } } }, "metrics": { "size": 1 } },
+        "G": { "metrics": { "size": 1 } },
+        "H": { "metrics": { "size": 1 } },
+        "I": { "metrics": { "size": 1 } },
+        "J": { "labels": { "assert_tags": ["a", "b"] }, "metrics": { "size": 1 } }
     }
 }"#;
 
@@ -380,11 +366,11 @@ fn test_add_nodes_only() -> Result<()> {
     let target = make_graph(
         r#"{
         "nodes": {
-            "A": { "edges": { "directed": ["B", "C"] }, "metrics": { "size": 1 } },
-            "B": { "edges": { "directed": ["C"] }, "metrics": { "size": 2 } },
-            "C": { "edges": {}, "metrics": { "size": 3 } },
-            "D": { "edges": {}, "metrics": { "size": 4 } },
-            "E": { "edges": {}, "metrics": { "size": 5 } }
+            "A": { "edges_directed": ["B", "C"], "metrics": { "size": 1 } },
+            "B": { "edges_directed": ["C"], "metrics": { "size": 2 } },
+            "C": { "metrics": { "size": 3 } },
+            "D": { "metrics": { "size": 4 } },
+            "E": { "metrics": { "size": 5 } }
         }
     }"#,
     )?;
@@ -429,9 +415,9 @@ fn test_add_directed_edges() -> Result<()> {
     let base = make_graph(
         r#"{
         "nodes": {
-            "A": { "edges": { "directed": ["B"] }, "metrics": { "size": 1 } },
-            "B": { "edges": {}, "metrics": { "size": 2 } },
-            "C": { "edges": {}, "metrics": { "size": 3 } }
+            "A": { "edges_directed": ["B"], "metrics": { "size": 1 } },
+            "B": { "metrics": { "size": 2 } },
+            "C": { "metrics": { "size": 3 } }
         }
     }"#,
     )?;
@@ -458,9 +444,9 @@ fn test_remove_directed_edges() -> Result<()> {
     let target = make_graph(
         r#"{
         "nodes": {
-            "A": { "edges": { "directed": ["B"] }, "metrics": { "size": 1 } },
-            "B": { "edges": {}, "metrics": { "size": 2 } },
-            "C": { "edges": {}, "metrics": { "size": 3 } }
+            "A": { "edges_directed": ["B"], "metrics": { "size": 1 } },
+            "B": { "metrics": { "size": 2 } },
+            "C": { "metrics": { "size": 3 } }
         }
     }"#,
     )?;
@@ -487,13 +473,12 @@ fn test_tagged_edge_changes() -> Result<()> {
         r#"{
         "nodes": {
             "A": {
-                "edges": { "directed": ["B"], "tagged": { "async": ["B"] } },
+                "edges_directed": ["B"], "edges_tagged": { "async": ["B"] },
                 "metrics": { "size": 1 }
             },
-            "B": { "edges": {}, "metrics": { "size": 2 } },
+            "B": { "metrics": { "size": 2 } },
             "C": {
-                "edges": {},
-                "tag_sets": { "categories": ["web", "mobile"] },
+                "labels": { "categories": ["web", "mobile"] },
                 "metrics": { "size": 3 }
             }
         }
@@ -523,18 +508,19 @@ fn test_dynamic_edge_changes() -> Result<()> {
         r#"{
         "nodes": {
             "A": {
-                "edges": {
-                    "directed": ["B"],
-                    "dynamic": [{
-                        "properties": { "platform": "android" },
-                        "branches": { "primary": ["D"] }
-                    }]
+                "edges_directed": ["B"],
+                "edges_dynamic": {
+                    "android_platform": {
+                        "android_1": {
+                            "branches": { "primary": ["D"] }
+                        }
+                    }
                 },
                 "metrics": { "size": 10 }
             },
-            "B": { "edges": {}, "metrics": { "size": 20 } },
-            "C": { "edges": {}, "metrics": { "size": 30 } },
-            "D": { "edges": {}, "metrics": { "size": 40 } }
+            "B": { "metrics": { "size": 20 } },
+            "C": { "metrics": { "size": 30 } },
+            "D": { "metrics": { "size": 40 } }
         }
     }"#,
     )?;
@@ -544,7 +530,7 @@ fn test_dynamic_edge_changes() -> Result<()> {
         format_delta(&delta),
         "
 Edge changes:
-  A dynamic [primary]: D (platform=android)
+  A dynamic [primary]: D (android_platform:android_1)
 "
     );
 
@@ -559,9 +545,9 @@ fn test_metric_changes() -> Result<()> {
     let target = make_graph(
         r#"{
         "nodes": {
-            "A": { "edges": { "directed": ["B", "C"] }, "metrics": { "size": 10, "weight": 5 } },
-            "B": { "edges": { "directed": ["C"] }, "metrics": { "size": 2, "weight": 3 } },
-            "C": { "edges": {}, "metrics": { "size": 3 } }
+            "A": { "edges_directed": ["B", "C"], "metrics": { "size": 10, "weight": 5 } },
+            "B": { "edges_directed": ["C"], "metrics": { "size": 2, "weight": 3 } },
+            "C": { "metrics": { "size": 3 } }
         }
     }"#,
     )?;
@@ -588,13 +574,12 @@ fn test_tag_set_changes() -> Result<()> {
         r#"{
         "nodes": {
             "A": {
-                "edges": { "directed": ["B"], "tagged": { "lazy": ["C"] } },
+                "edges_directed": ["B"], "edges_tagged": { "lazy": ["C"] },
                 "metrics": { "size": 1 }
             },
-            "B": { "edges": {}, "metrics": { "size": 2 } },
+            "B": { "metrics": { "size": 2 } },
             "C": {
-                "edges": {},
-                "tag_sets": { "categories": ["web", "desktop"], "priority": ["high"] },
+                "labels": { "categories": ["web", "desktop"], "priority": ["high"] },
                 "metrics": { "size": 3 }
             }
         }
@@ -637,17 +622,17 @@ fn test_combined_changes() -> Result<()> {
     let target = make_graph(
         r#"{
         "nodes": {
-            "A": { "edges": { "directed": ["B", "D", "K"] }, "metrics": { "size": 5 } },
-            "B": { "edges": { "tagged": { "BL": ["C"], "RDFD": ["J"] } }, "metrics": { "size": 1 } },
-            "C": { "edges": {}, "tag_sets": { "disallow_tags": ["c", "d"] }, "metrics": { "size": 1 } },
-            "D": { "edges": { "directed": ["F"], "tagged": { "RDFD": ["E"] } }, "metrics": { "size": 1 } },
-            "E": { "edges": {}, "metrics": { "size": 1 } },
-            "F": { "edges": { "dynamic": [{ "properties": { "type": "DDD" }, "branches": { "b1": ["G", "H"], "b2": ["I"] } }] }, "metrics": { "size": 1 } },
-            "G": { "edges": {}, "metrics": { "size": 1 } },
-            "H": { "edges": {}, "metrics": { "size": 1 } },
-            "I": { "edges": {}, "metrics": { "size": 1 } },
-            "J": { "edges": {}, "tag_sets": { "assert_tags": ["a", "b"] }, "metrics": { "size": 1 } },
-            "K": { "edges": { "directed": ["B"] }, "metrics": { "size": 7 } }
+            "A": { "edges_directed": ["B", "D", "K"], "metrics": { "size": 5 } },
+            "B": { "edges_tagged": { "BL": ["C"], "RDFD": ["J"] }, "metrics": { "size": 1 } },
+            "C": { "labels": { "disallow_tags": ["c", "d"] }, "metrics": { "size": 1 } },
+            "D": { "edges_directed": ["F"], "edges_tagged": { "RDFD": ["E"] }, "metrics": { "size": 1 } },
+            "E": { "metrics": { "size": 1 } },
+            "F": { "edges_dynamic": { "ddd": { "ddd_1": { "branches": { "b1": ["G", "H"], "b2": ["I"] } } } }, "metrics": { "size": 1 } },
+            "G": { "metrics": { "size": 1 } },
+            "H": { "metrics": { "size": 1 } },
+            "I": { "metrics": { "size": 1 } },
+            "J": { "labels": { "assert_tags": ["a", "b"] }, "metrics": { "size": 1 } },
+            "K": { "edges_directed": ["B"], "metrics": { "size": 7 } }
         }
     }"#,
     )?;
@@ -681,16 +666,16 @@ fn test_round_trip_full_graph() -> Result<()> {
     let target = make_graph(
         r#"{
         "nodes": {
-            "A": { "edges": { "directed": ["B", "D"] }, "metrics": { "size": 2 } },
-            "B": { "edges": { "tagged": { "BL": ["C"], "RDFD": ["J"] } }, "metrics": { "size": 1 } },
-            "C": { "edges": {}, "tag_sets": { "disallow_tags": ["b", "c"] }, "metrics": { "size": 1 } },
-            "D": { "edges": { "directed": ["F", "H"], "tagged": { "RDFD": ["E"] } }, "metrics": { "size": 1 } },
-            "E": { "edges": {}, "metrics": { "size": 1 } },
-            "F": { "edges": { "directed": ["G"], "dynamic": [{ "properties": { "type": "DDD" }, "branches": { "b2": ["I"] } }] }, "metrics": { "size": 1 } },
-            "G": { "edges": {}, "metrics": { "size": 1 } },
-            "I": { "edges": {}, "metrics": { "size": 1 } },
-            "J": { "edges": {}, "tag_sets": { "assert_tags": ["a", "b"] }, "metrics": { "size": 1 } },
-            "T": { "edges": { "directed": ["A"] }, "metrics": { "size": 10 } }
+            "A": { "edges_directed": ["B", "D"], "metrics": { "size": 2 } },
+            "B": { "edges_tagged": { "BL": ["C"], "RDFD": ["J"] }, "metrics": { "size": 1 } },
+            "C": { "labels": { "disallow_tags": ["b", "c"] }, "metrics": { "size": 1 } },
+            "D": { "edges_directed": ["F", "H"], "edges_tagged": { "RDFD": ["E"] }, "metrics": { "size": 1 } },
+            "E": { "metrics": { "size": 1 } },
+            "F": { "edges_directed": ["G"], "edges_dynamic": { "ddd": { "ddd_1": { "branches": { "b2": ["I"] } } } }, "metrics": { "size": 1 } },
+            "G": { "metrics": { "size": 1 } },
+            "I": { "metrics": { "size": 1 } },
+            "J": { "labels": { "assert_tags": ["a", "b"] }, "metrics": { "size": 1 } },
+            "T": { "edges_directed": ["A"], "metrics": { "size": 10 } }
         }
     }"#,
     )?;
@@ -707,10 +692,10 @@ fn test_add_node_with_edges() -> Result<()> {
     let target = make_graph(
         r#"{
         "nodes": {
-            "A": { "edges": { "directed": ["B", "C", "X"] }, "metrics": { "size": 1 } },
-            "B": { "edges": { "directed": ["C"] }, "metrics": { "size": 2 } },
-            "C": { "edges": {}, "metrics": { "size": 3 } },
-            "X": { "edges": { "directed": ["B"] }, "metrics": { "size": 99 } }
+            "A": { "edges_directed": ["B", "C", "X"], "metrics": { "size": 1 } },
+            "B": { "edges_directed": ["C"], "metrics": { "size": 2 } },
+            "C": { "metrics": { "size": 3 } },
+            "X": { "edges_directed": ["B"], "metrics": { "size": 99 } }
         }
     }"#,
     )?;
@@ -740,8 +725,8 @@ fn test_remove_node_cascades_edges() -> Result<()> {
     let target = make_graph(
         r#"{
         "nodes": {
-            "A": { "edges": { "directed": ["B"] }, "metrics": { "size": 1 } },
-            "B": { "edges": {}, "metrics": { "size": 2 } }
+            "A": { "edges_directed": ["B"], "metrics": { "size": 1 } },
+            "B": { "metrics": { "size": 2 } }
         }
     }"#,
     )?;
@@ -769,29 +754,29 @@ fn test_apply_deltas_sequential_equivalence() -> Result<()> {
     let g2 = make_graph(
         r#"{
         "nodes": {
-            "A": { "edges": { "directed": ["B", "C", "D"] }, "metrics": { "size": 1 } },
-            "B": { "edges": { "directed": ["C"] }, "metrics": { "size": 2 } },
-            "C": { "edges": {}, "metrics": { "size": 3 } },
-            "D": { "edges": {}, "metrics": { "size": 4 } }
+            "A": { "edges_directed": ["B", "C", "D"], "metrics": { "size": 1 } },
+            "B": { "edges_directed": ["C"], "metrics": { "size": 2 } },
+            "C": { "metrics": { "size": 3 } },
+            "D": { "metrics": { "size": 4 } }
         }
     }"#,
     )?;
     let g3 = make_graph(
         r#"{
         "nodes": {
-            "A": { "edges": { "directed": ["B", "D"] }, "metrics": { "size": 10 } },
-            "B": { "edges": {}, "metrics": { "size": 2 } },
-            "D": { "edges": { "directed": ["B"] }, "metrics": { "size": 4 } }
+            "A": { "edges_directed": ["B", "D"], "metrics": { "size": 10 } },
+            "B": { "metrics": { "size": 2 } },
+            "D": { "edges_directed": ["B"], "metrics": { "size": 4 } }
         }
     }"#,
     )?;
     let g4 = make_graph(
         r#"{
         "nodes": {
-            "A": { "edges": { "directed": ["B", "D", "E"] }, "metrics": { "size": 10 } },
-            "B": { "edges": {}, "metrics": { "size": 2 } },
-            "D": { "edges": { "directed": ["B"] }, "metrics": { "size": 4 } },
-            "E": { "edges": { "directed": ["A"] }, "metrics": { "size": 7 } }
+            "A": { "edges_directed": ["B", "D", "E"], "metrics": { "size": 10 } },
+            "B": { "metrics": { "size": 2 } },
+            "D": { "edges_directed": ["B"], "metrics": { "size": 4 } },
+            "E": { "edges_directed": ["A"], "metrics": { "size": 7 } }
         }
     }"#,
     )?;
@@ -906,8 +891,8 @@ fn test_apply_deltas_edge_add_then_remove() -> Result<()> {
     let base = make_graph(
         r#"{
         "nodes": {
-            "A": { "edges": {}, "metrics": { "size": 1 } },
-            "B": { "edges": {}, "metrics": { "size": 2 } }
+            "A": { "metrics": { "size": 1 } },
+            "B": { "metrics": { "size": 2 } }
         }
     }"#,
     )?;
@@ -1038,7 +1023,7 @@ fn test_large_batch() -> Result<()> {
     let base = make_graph(
         r#"{
         "nodes": {
-            "root": { "edges": {}, "metrics": { "size": 1 } }
+            "root": { "metrics": { "size": 1 } }
         }
     }"#,
     )?;
@@ -1100,10 +1085,10 @@ fn test_dynamic_edge_removal() -> Result<()> {
     let target = make_graph(
         r#"{
         "nodes": {
-            "A": { "edges": { "directed": ["B"] }, "metrics": { "size": 10 } },
-            "B": { "edges": {}, "metrics": { "size": 20 } },
-            "C": { "edges": {}, "metrics": { "size": 30 } },
-            "D": { "edges": {}, "metrics": { "size": 40 } }
+            "A": { "edges_directed": ["B"], "metrics": { "size": 10 } },
+            "B": { "metrics": { "size": 20 } },
+            "C": { "metrics": { "size": 30 } },
+            "D": { "metrics": { "size": 40 } }
         }
     }"#,
     )?;
@@ -1130,11 +1115,11 @@ fn test_tag_set_removal() -> Result<()> {
         r#"{
         "nodes": {
             "A": {
-                "edges": { "directed": ["B"], "tagged": { "lazy": ["C"] } },
+                "edges_directed": ["B"], "edges_tagged": { "lazy": ["C"] },
                 "metrics": { "size": 1 }
             },
-            "B": { "edges": {}, "metrics": { "size": 2 } },
-            "C": { "edges": {}, "metrics": { "size": 3 } }
+            "B": { "metrics": { "size": 2 } },
+            "C": { "metrics": { "size": 3 } }
         }
     }"#,
     )?;
@@ -1162,17 +1147,17 @@ fn test_apply_deltas_with_all_edge_types() -> Result<()> {
     let g2 = make_graph(
         r#"{
         "nodes": {
-            "A": { "edges": { "directed": ["B", "D"] }, "metrics": { "size": 1 } },
-            "B": { "edges": { "tagged": { "BL": ["C", "K"], "RD": ["J"] } }, "metrics": { "size": 1 } },
-            "C": { "edges": {}, "tag_sets": { "disallow_tags": ["b", "c"] }, "metrics": { "size": 1 } },
-            "D": { "edges": { "directed": ["F"], "tagged": { "RDFD": ["E"] } }, "metrics": { "size": 1 } },
-            "E": { "edges": {}, "metrics": { "size": 1 } },
-            "F": { "edges": { "dynamic": [{ "properties": { "type": "DDD" }, "branches": { "b1": ["G", "H"], "b2": ["I"] } }] }, "metrics": { "size": 1 } },
-            "G": { "edges": {}, "metrics": { "size": 1 } },
-            "H": { "edges": {}, "metrics": { "size": 1 } },
-            "I": { "edges": {}, "metrics": { "size": 1 } },
-            "J": { "edges": {}, "tag_sets": { "assert_tags": ["a", "b"] }, "metrics": { "size": 1 } },
-            "K": { "edges": {}, "metrics": { "size": 5 } }
+            "A": { "edges_directed": ["B", "D"], "metrics": { "size": 1 } },
+            "B": { "edges_tagged": { "BL": ["C", "K"], "RD": ["J"] }, "metrics": { "size": 1 } },
+            "C": { "labels": { "disallow_tags": ["b", "c"] }, "metrics": { "size": 1 } },
+            "D": { "edges_directed": ["F"], "edges_tagged": { "RDFD": ["E"] }, "metrics": { "size": 1 } },
+            "E": { "metrics": { "size": 1 } },
+            "F": { "edges_dynamic": { "ddd": { "ddd_1": { "branches": { "b1": ["G", "H"], "b2": ["I"] } } } }, "metrics": { "size": 1 } },
+            "G": { "metrics": { "size": 1 } },
+            "H": { "metrics": { "size": 1 } },
+            "I": { "metrics": { "size": 1 } },
+            "J": { "labels": { "assert_tags": ["a", "b"] }, "metrics": { "size": 1 } },
+            "K": { "metrics": { "size": 5 } }
         }
     }"#,
     )?;
@@ -1181,17 +1166,17 @@ fn test_apply_deltas_with_all_edge_types() -> Result<()> {
     let g3 = make_graph(
         r#"{
         "nodes": {
-            "A": { "edges": { "directed": ["B", "D"] }, "metrics": { "size": 1 } },
-            "B": { "edges": { "tagged": { "BL": ["C", "K"], "RD": ["J"] } }, "metrics": { "size": 1 } },
-            "C": { "edges": {}, "tag_sets": { "disallow_tags": ["b", "c"] }, "metrics": { "size": 1 } },
-            "D": { "edges": { "directed": ["F"], "tagged": { "RDFD": ["E"] } }, "metrics": { "size": 1 } },
-            "E": { "edges": {}, "metrics": { "size": 1 } },
-            "F": { "edges": { "dynamic": [{ "properties": { "type": "EEE" }, "branches": { "b1": ["G"] } }] }, "metrics": { "size": 1 } },
-            "G": { "edges": {}, "metrics": { "size": 1 } },
-            "H": { "edges": {}, "metrics": { "size": 1 } },
-            "I": { "edges": {}, "metrics": { "size": 1 } },
-            "J": { "edges": {}, "tag_sets": { "assert_tags": ["a", "b"] }, "metrics": { "size": 1 } },
-            "K": { "edges": {}, "metrics": { "size": 5 } }
+            "A": { "edges_directed": ["B", "D"], "metrics": { "size": 1 } },
+            "B": { "edges_tagged": { "BL": ["C", "K"], "RD": ["J"] }, "metrics": { "size": 1 } },
+            "C": { "labels": { "disallow_tags": ["b", "c"] }, "metrics": { "size": 1 } },
+            "D": { "edges_directed": ["F"], "edges_tagged": { "RDFD": ["E"] }, "metrics": { "size": 1 } },
+            "E": { "metrics": { "size": 1 } },
+            "F": { "edges_dynamic": { "eee": { "eee_1": { "branches": { "b1": ["G"] } } } }, "metrics": { "size": 1 } },
+            "G": { "metrics": { "size": 1 } },
+            "H": { "metrics": { "size": 1 } },
+            "I": { "metrics": { "size": 1 } },
+            "J": { "labels": { "assert_tags": ["a", "b"] }, "metrics": { "size": 1 } },
+            "K": { "metrics": { "size": 5 } }
         }
     }"#,
     )?;

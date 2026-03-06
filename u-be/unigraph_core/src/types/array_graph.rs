@@ -26,6 +26,8 @@ use offset_graph::Edge;
 use offset_graph::OffsetGraph;
 
 use super::DynamicBranchName;
+use super::DynamicEdgeName;
+use super::DynamicTypeKey;
 use super::MetricName;
 use super::NodeIDX;
 use super::Tag;
@@ -74,7 +76,10 @@ pub struct ArrayGraph {
     pub state: ArrayGraphState,
 
     pub edges_tagged: BTreeMap<NodeIDX, BTreeMap<Tag, BTreeSet<NodeIDX>>>,
-    pub edges_dynamic: BTreeMap<NodeIDX, Vec<ArrayGraphDynamicEdge>>,
+    pub edges_dynamic: BTreeMap<
+        NodeIDX,
+        BTreeMap<DynamicTypeKey, BTreeMap<DynamicEdgeName, ArrayGraphDynamicEdge>>,
+    >,
 
     pub metrics: BTreeMap<MetricName, Vec<f32>>,
     pub tag_sets: BTreeMap<NodeIDX, BTreeMap<TagSetName, BTreeSet<Tag>>>,
@@ -143,7 +148,8 @@ impl NodeFlags {
 )]
 pub struct ArrayGraphDynamicEdge {
     pub branches: BTreeMap<DynamicBranchName, BTreeSet<NodeIDX>>,
-    pub properties: BTreeMap<String, String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<BTreeMap<String, String>>,
 }
 
 impl ArrayGraph {
@@ -383,6 +389,17 @@ impl ArrayGraph {
     }
 }
 
+/// Dynamic-edge-only fields. None for directed/tagged edges.
+/// Shared between Arrow (ArrayGraph level) and NamedArrow (MapGraph level).
+#[derive(serde::Deserialize, serde::Serialize, typegen::TypeGen, Clone)]
+pub struct DynamicEdgeInfo {
+    pub type_key: DynamicTypeKey,
+    pub edge_name: DynamicEdgeName,
+    pub branch: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<BTreeMap<String, String>>,
+}
+
 /// This is a more heavyweight struct describing an edge in the graph.
 /// This can represent any edge (directed/tagged/dynamic).
 /// This is meant to be used for more sparce operations, like rendering
@@ -392,8 +409,7 @@ impl ArrayGraph {
 #[derive(serde::Deserialize, serde::Serialize, typegen::TypeGen)]
 pub struct Arrow {
     pub tag: Option<String>,
-    pub branch: Option<String>,
-    pub properties: Option<BTreeMap<String, String>>,
+    pub dynamic: Option<DynamicEdgeInfo>,
     pub points_from: NodeIDX,
     pub points_to: NodeIDX,
     pub excluded: bool,

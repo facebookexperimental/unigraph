@@ -128,28 +128,39 @@ pub fn apply_deltas(
                 if dyn_delta.replacement.is_empty() {
                     dynamic.remove(&src_idx);
                 } else {
-                    let edges: Vec<ArrayGraphDynamicEdge> = dyn_delta
+                    let type_map = dyn_delta
                         .replacement
                         .iter()
-                        .map(|de| {
-                            let branches = de
-                                .branches
+                        .map(|(type_key, edge_map)| {
+                            let inner = edge_map
                                 .iter()
-                                .map(|(branch, names)| {
-                                    let idxs: BTreeSet<NodeIDX> = names
+                                .map(|(edge_name, de)| {
+                                    let branches = de
+                                        .branches
                                         .iter()
-                                        .filter_map(|name| final_nodes.name_to_idx_log(name))
+                                        .map(|(branch, names)| {
+                                            let idxs: BTreeSet<NodeIDX> = names
+                                                .iter()
+                                                .filter_map(|name| {
+                                                    final_nodes.name_to_idx_log(name)
+                                                })
+                                                .collect();
+                                            (branch.clone(), idxs)
+                                        })
                                         .collect();
-                                    (branch.clone(), idxs)
+                                    (
+                                        edge_name.clone(),
+                                        ArrayGraphDynamicEdge {
+                                            branches,
+                                            metadata: de.metadata.clone(),
+                                        },
+                                    )
                                 })
                                 .collect();
-                            ArrayGraphDynamicEdge {
-                                branches,
-                                properties: de.properties.clone(),
-                            }
+                            (type_key.clone(), inner)
                         })
                         .collect();
-                    dynamic.insert(src_idx, edges);
+                    dynamic.insert(src_idx, type_map);
                 }
             }
         }

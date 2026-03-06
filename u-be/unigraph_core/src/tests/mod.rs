@@ -22,8 +22,9 @@ use crate::tests::test_graphs::make_test_array_graph_2;
 use crate::tests::test_utils::print_arrows;
 use crate::tests::test_utils::traversal_config_test_trait::TraversalConfigTestTrait;
 use crate::traversal::Decision;
-use crate::traversal::ForceDynamic;
-use crate::traversal::NodeTagSetsPredicate;
+use crate::traversal::DefaultBranches;
+use crate::traversal::DynamicTypeConfig;
+use crate::traversal::NodeLabelPredicate;
 use crate::traversal::TraversalConfig;
 use crate::types::array_graph::NodeFlags;
 
@@ -88,12 +89,20 @@ fn test_arrows() -> Result<()> {
         let node_name = g.idx_to_name(node_idx);
         result.push_str(&format!("{node_name}:\n"));
         for arrow in g.get_arrows_forward(node_idx)? {
+            let dynamic_str = match &arrow.dynamic {
+                Some(d) => format!(
+                    "({}, {{\"type_key\":\"{}\",\"edge_name\":\"{}\"}})",
+                    serde_json::to_string(&d.branch)?,
+                    d.type_key,
+                    d.edge_name,
+                ),
+                None => "(null, null)".to_string(),
+            };
             result.push_str(
                 format!(
-                    "({}, {}, {}) -> {}\n",
+                    "({}, {}) -> {}\n",
                     serde_json::to_string(&arrow.tag)?,
-                    serde_json::to_string(&arrow.branch)?,
-                    serde_json::to_string(&arrow.properties)?,
+                    dynamic_str,
                     g.idx_to_name(arrow.points_to)
                 )
                 .as_str(),
@@ -107,25 +116,25 @@ fn test_arrows() -> Result<()> {
         result,
         r#"
 A:
-(null, null, null) -> B
-(null, null, null) -> D
+(null, (null, null)) -> B
+(null, (null, null)) -> D
 ---------------------------------------------
 B:
-("BL", null, null) -> C
-("RD", null, null) -> J
+("BL", (null, null)) -> C
+("RD", (null, null)) -> J
 ---------------------------------------------
 C:
 ---------------------------------------------
 D:
-(null, null, null) -> F
-("RDFD", null, null) -> E
+(null, (null, null)) -> F
+("RDFD", (null, null)) -> E
 ---------------------------------------------
 E:
 ---------------------------------------------
 F:
-(null, "b1", {"type":"DDD"}) -> G
-(null, "b1", {"type":"DDD"}) -> H
-(null, "b2", {"type":"DDD"}) -> I
+(null, ("b1", {"type_key":"ddd","edge_name":"ddd_1"})) -> G
+(null, ("b1", {"type_key":"ddd","edge_name":"ddd_1"})) -> H
+(null, ("b2", {"type_key":"ddd","edge_name":"ddd_1"})) -> I
 ---------------------------------------------
 G:
 ---------------------------------------------
@@ -176,13 +185,13 @@ D -> E
    tag: RDFD
 F -> G
    branch: b1
-   properties: {"type": "DDD"}
+   properties: {"type_key": "ddd", "edge_name": "ddd_1"}
 F -> H
    branch: b1
-   properties: {"type": "DDD"}
+   properties: {"type_key": "ddd", "edge_name": "ddd_1"}
 F -> I
    branch: b2
-   properties: {"type": "DDD"}
+   properties: {"type_key": "ddd", "edge_name": "ddd_1"}
 "#
     );
 
@@ -195,9 +204,9 @@ B -> C: 0000_0000_0000_0001 (Tagged { tag: "BL" })
 B -> J: 0000_0000_0000_0001 (Tagged { tag: "RD" })
 D -> F: 0000_0000_0000_0000 (Directed)
 D -> E: 0000_0000_0000_0001 (Tagged { tag: "RDFD" })
-F -> G: 0000_0000_0000_0010 (Dynamic { properties: {"type": "DDD"}, branch: "b1" })
-F -> H: 0000_0000_0000_0010 (Dynamic { properties: {"type": "DDD"}, branch: "b1" })
-F -> I: 0000_0000_0000_0010 (Dynamic { properties: {"type": "DDD"}, branch: "b2" })
+F -> G: 0000_0000_0000_0010 (Dynamic { type_key: "ddd", edge_name: "ddd_1", branch: "b1" })
+F -> H: 0000_0000_0000_0010 (Dynamic { type_key: "ddd", edge_name: "ddd_1", branch: "b1" })
+F -> I: 0000_0000_0000_0010 (Dynamic { type_key: "ddd", edge_name: "ddd_1", branch: "b2" })
 "#
     );
 
@@ -217,9 +226,9 @@ B -> C: 0000_0000_0000_0001 (Tagged { tag: "BL" })
 B -> J: 0000_0000_0000_0001 (Tagged { tag: "RD" })
 D -> F: 0000_0000_0000_0000 (Directed)
 D -> E: 0000_0000_0000_0001 (Tagged { tag: "RDFD" })
-F -> G: 0000_0000_0000_0010 (Dynamic { properties: {"type": "DDD"}, branch: "b1" })
-F -> H: 0000_0000_0000_0010 (Dynamic { properties: {"type": "DDD"}, branch: "b1" })
-F -> I: 0000_1100_0000_0110 (Dynamic { properties: {"type": "DDD"}, branch: "b2" })
+F -> G: 0000_0000_0000_0010 (Dynamic { type_key: "ddd", edge_name: "ddd_1", branch: "b1" })
+F -> H: 0000_0000_0000_0010 (Dynamic { type_key: "ddd", edge_name: "ddd_1", branch: "b1" })
+F -> I: 0000_1100_0000_0110 (Dynamic { type_key: "ddd", edge_name: "ddd_1", branch: "b2" })
 "#
     );
 
@@ -239,9 +248,9 @@ B -> C: 0000_1000_0000_0101 (Tagged { tag: "BL" })
 B -> J: 0000_0000_0000_0001 (Tagged { tag: "RD" })
 D -> F: 0000_0000_0000_0000 (Directed)
 D -> E: 0000_0000_0000_0001 (Tagged { tag: "RDFD" })
-F -> G: 0000_0000_0000_0010 (Dynamic { properties: {"type": "DDD"}, branch: "b1" })
-F -> H: 0000_0000_0000_0010 (Dynamic { properties: {"type": "DDD"}, branch: "b1" })
-F -> I: 0000_1100_0000_0010 (Dynamic { properties: {"type": "DDD"}, branch: "b2" })
+F -> G: 0000_0000_0000_0010 (Dynamic { type_key: "ddd", edge_name: "ddd_1", branch: "b1" })
+F -> H: 0000_0000_0000_0010 (Dynamic { type_key: "ddd", edge_name: "ddd_1", branch: "b1" })
+F -> I: 0000_1100_0000_0010 (Dynamic { type_key: "ddd", edge_name: "ddd_1", branch: "b2" })
 "#
     );
     Ok(())
@@ -292,67 +301,46 @@ fn test_dfs_with_traversal_config_on_dynamic_edges() -> Result<()> {
     g.apply_traversal_config(traversal_config.clone())?;
     snapshot!(dfs_configured(&g), "A B C D E F G H I J");
 
-    traversal_config.force_dynamic = Some(vec![ForceDynamic {
-        from_node: Some("F".into()),
-        match_properties: btreemap! { "type".into() => "DDD".into() },
-        branch: Some("b1".into()),
-        decision: Decision {
-            include: false,
-            message_id: None,
-        },
-    }]);
+    // Exclude b1 branch for ddd type:
+    traversal_config.force_dynamic = Some(btreemap! {
+        "ddd".into() => DynamicTypeConfig {
+            default_branches: Some(DefaultBranches::Exclude(vec!["b1".into()])),
+            overrides: None,
+        }
+    });
 
     g.apply_traversal_config(traversal_config.clone())?;
     snapshot!(dfs_configured(&g), "A B C D E F I J");
 
-    traversal_config.force_dynamic = Some(vec![ForceDynamic {
-        from_node: None,
-        match_properties: btreemap! { "type".into() => "DDD".into() },
-        branch: Some("b2".into()),
-        decision: Decision {
-            include: false,
-            message_id: None,
-        },
-    }]);
+    // Exclude b2 branch for ddd type:
+    traversal_config.force_dynamic = Some(btreemap! {
+        "ddd".into() => DynamicTypeConfig {
+            default_branches: Some(DefaultBranches::Exclude(vec!["b2".into()])),
+            overrides: None,
+        }
+    });
 
     g.apply_traversal_config(traversal_config.clone())?;
     snapshot!(dfs_configured(&g), "A B C D E F G H J");
 
-    // Set a default branch to follow for DDD
-    traversal_config.force_dynamic = Some(vec![
-        ForceDynamic {
-            from_node: None,
-            match_properties: btreemap! { "type".into() => "DDD".into() },
-            branch: Some("b2".into()),
-            decision: Decision {
-                include: true,
-                message_id: None,
-            },
-        },
-        ForceDynamic {
-            from_node: None,
-            match_properties: btreemap! { "type".into() => "DDD".into() },
-            branch: None,
-            decision: Decision {
-                include: false,
-                message_id: None,
-            },
-        },
-    ]);
+    // Include only b2 branch for ddd type:
+    traversal_config.force_dynamic = Some(btreemap! {
+        "ddd".into() => DynamicTypeConfig {
+            default_branches: Some(DefaultBranches::Include(vec!["b2".into()])),
+            overrides: None,
+        }
+    });
 
     g.apply_traversal_config(traversal_config.clone())?;
     snapshot!(dfs_configured(&g), "A B C D E F I J");
 
-    // follow nothing
-    traversal_config.force_dynamic = Some(vec![ForceDynamic {
-        from_node: None,
-        match_properties: btreemap! {},
-        branch: None,
-        decision: Decision {
-            include: false,
-            message_id: None,
-        },
-    }]);
+    // Exclude all branches (empty include list):
+    traversal_config.force_dynamic = Some(btreemap! {
+        "ddd".into() => DynamicTypeConfig {
+            default_branches: Some(DefaultBranches::Include(vec![])),
+            overrides: None,
+        }
+    });
 
     g.apply_traversal_config(traversal_config)?;
     snapshot!(dfs_configured(&g), "A B C D E F J");
@@ -366,26 +354,26 @@ fn test_dfs_with_traversal_config_tag_sets() -> Result<()> {
     let mut traversal_config = TraversalConfig::default();
 
     let set_global_value = |tc: &mut TraversalConfig, value: &str| {
-        tc.tag_sets = Some(vec![
-            NodeTagSetsPredicate {
+        tc.label_predicates = Some(vec![
+            NodeLabelPredicate {
                 tag_set_name: "assert_tags".into(),
                 tag_name: value.into(),
                 contains: false,
                 decision: Decision::exclude(),
             },
-            NodeTagSetsPredicate {
+            NodeLabelPredicate {
                 tag_set_name: "assert_tags".into(),
                 tag_name: value.into(),
                 contains: true,
                 decision: Decision::include(),
             },
-            NodeTagSetsPredicate {
+            NodeLabelPredicate {
                 tag_set_name: "disallow_tags".into(),
                 tag_name: value.into(),
                 contains: true,
                 decision: Decision::exclude(),
             },
-            NodeTagSetsPredicate {
+            NodeLabelPredicate {
                 tag_set_name: "disallow_tags".into(),
                 tag_name: value.into(),
                 contains: false,

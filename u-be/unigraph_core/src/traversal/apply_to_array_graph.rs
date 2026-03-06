@@ -8,13 +8,15 @@ use anyhow::Result;
 use crate::ArrayGraph;
 use crate::Decision;
 use crate::NodeIDX;
-use crate::NodeTagSetsPredicate;
+use crate::NodeLabelPredicate;
 use crate::TraversalConfig;
-use crate::traversal::ForceDynamicIDX;
+use crate::traversal::DefaultBranches;
+use crate::traversal::DynamicTypeConfig;
 use crate::traversal::TraversalConfigIDX;
 use crate::traversal::messages::BuiltInMessages;
 use crate::traversal::messages::IndexedMessages;
 use crate::traversal::tiered_traversal::TieredTraversalConfig;
+use crate::types::DynamicTypeKey;
 use crate::types::Tag;
 use crate::types::TierName;
 use crate::types::array_graph::NodeFlags;
@@ -42,7 +44,7 @@ pub fn apply_traversal_config_to_array_graph(
         force_nodes,
         force_edges,
         force_tagged,
-        tag_sets,
+        label_predicates,
         force_dynamic,
         tiered_traversal,
         messages: _,
@@ -58,7 +60,7 @@ pub fn apply_traversal_config_to_array_graph(
         match_dynamic_edges(force_dynamic, parent_idx, edge, md, &m)?;
         match_tagged(force_tagged, &exclude_tags, edge, md, &tag_to_tier, &m)?;
         if let Some(tag_sets_for_node) = ag.tag_sets.get(&edge.points_to) {
-            match_tag_sets(tag_sets, edge, tag_sets_for_node, &m)?;
+            match_label_predicates(label_predicates, edge, tag_sets_for_node, &m)?;
         }
         match_force_edges(force_edges, parent_idx, edge, &m)?;
         match_force_nodes(force_nodes, edge, &m)?;
@@ -192,27 +194,27 @@ fn match_force_edges(
     Ok(())
 }
 
-fn match_tag_sets(
-    tag_sets: &[NodeTagSetsPredicate],
+fn match_label_predicates(
+    label_predicates: &[NodeLabelPredicate],
     edge: &mut Edge,
     tag_sets_for_node: &std::collections::BTreeMap<String, std::collections::BTreeSet<String>>,
     indexed_messages: &IndexedMessages,
 ) -> Result<()> {
-    for tag_set_predicate in tag_sets {
+    for predicate in label_predicates {
         #[allow(clippy::collapsible_if)]
-        if let Some(tags) = tag_sets_for_node.get(&tag_set_predicate.tag_set_name) {
-            if tags.contains(&tag_set_predicate.tag_name) == tag_set_predicate.contains {
-                match tag_set_predicate.decision.include {
+        if let Some(tags) = tag_sets_for_node.get(&predicate.tag_set_name) {
+            if tags.contains(&predicate.tag_name) == predicate.contains {
+                match predicate.decision.include {
                     true => edge
                         .flags
                         .include_with_message(indexed_messages.get_or_default(
-                            &tag_set_predicate.decision.message_id,
+                            &predicate.decision.message_id,
                             BuiltInMessages::FORCE_TAG_SETS_INCLUDED_ID,
                         ))?,
                     false => edge
                         .flags
                         .exclude_with_message(indexed_messages.get_or_default(
-                            &tag_set_predicate.decision.message_id,
+                            &predicate.decision.message_id,
                             BuiltInMessages::FORCE_TAG_SETS_EXCLUDED_ID,
                         ))?,
                 }
@@ -224,33 +226,87 @@ fn match_tag_sets(
 }
 
 fn match_dynamic_edges(
-    force_dynamic: &[ForceDynamicIDX],
-    parent_idx: crate::NodeIDX,
+    force_dynamic: &BTreeMap<DynamicTypeKey, DynamicTypeConfig>,
+    _parent_idx: crate::NodeIDX,
     edge: &mut Edge,
     metadata: &mut NonDirectedEdgeMetadata,
     indexed_messages: &IndexedMessages,
 ) -> Result<()> {
-    if let NonDirectedEdgeMetadata::Dynamic { properties, branch } = metadata {
-        if let Some(decision) = match_dynamic_edge(force_dynamic, properties, parent_idx, branch) {
-            match decision.include {
-                true => edge
-                    .flags
-                    .include_with_message(indexed_messages.get_or_default(
-                        &decision.message_id,
-                        BuiltInMessages::FORCE_DYNAMIC_INCLUDED_ID,
-                    ))?,
-                false => edge
-                    .flags
-                    .exclude_with_message(indexed_messages.get_or_default(
-                        &decision.message_id,
-                        BuiltInMessages::FORCE_DYNAMIC_EXCLUDED_ID,
-                    ))?,
+    if let NonDirectedEdgeMetadata::Dynamic {
+        type_key,
+        edge_name,
+        branch,
+    } = metadata
+    {
+        if let Some(type_config) = force_dynamic.get(type_key) {
+            // Check edge-specific override first
+            if let Some(overrides) = &type_config.overrides {
+                if let Some(edge_override) = overrides.get(edge_name) {
+                    if let Some(decision) = &edge_override.decision {
+                        apply_dynamic_decision(edge, decision, indexed_messages)?;
+                        return Ok(());
+                    }
+                    if let Some(branches) = &edge_override.branches {
+                        apply_branch_filter(edge, branch, branches, indexed_messages)?;
+                        return Ok(());
+                    }
+                }
+            }
+            // Fall through to type-level default_branches
+            if let Some(default_branches) = &type_config.default_branches {
+                apply_branch_filter(edge, branch, default_branches, indexed_messages)?;
             }
         }
     }
 
     Ok(())
 }
+
+fn apply_dynamic_decision(
+    edge: &mut Edge,
+    decision: &Decision,
+    indexed_messages: &IndexedMessages,
+) -> Result<()> {
+    match decision.include {
+        true => edge
+            .flags
+            .include_with_message(indexed_messages.get_or_default(
+                &decision.message_id,
+                BuiltInMessages::FORCE_DYNAMIC_INCLUDED_ID,
+            ))?,
+        false => edge
+            .flags
+            .exclude_with_message(indexed_messages.get_or_default(
+                &decision.message_id,
+                BuiltInMessages::FORCE_DYNAMIC_EXCLUDED_ID,
+            ))?,
+    }
+    Ok(())
+}
+
+fn apply_branch_filter(
+    edge: &mut Edge,
+    branch: &str,
+    branches: &DefaultBranches,
+    indexed_messages: &IndexedMessages,
+) -> Result<()> {
+    let should_include = match branches {
+        DefaultBranches::Include(list) => list.iter().any(|b| b == branch),
+        DefaultBranches::Exclude(list) => !list.iter().any(|b| b == branch),
+    };
+
+    if should_include {
+        edge.flags.include_with_message(
+            indexed_messages.get(BuiltInMessages::FORCE_DYNAMIC_INCLUDED_ID),
+        )?;
+    } else {
+        edge.flags.exclude_with_message(
+            indexed_messages.get(BuiltInMessages::FORCE_DYNAMIC_EXCLUDED_ID),
+        )?;
+    }
+    Ok(())
+}
+
 fn match_tagged(
     force_tagged: &BTreeMap<Tag, Decision>,
     exclude_tags: &Option<BTreeSet<Tag>>,
@@ -295,39 +351,4 @@ fn match_tagged(
         }
     }
     Ok(())
-}
-
-pub fn match_dynamic_edge(
-    force_dynamic: &[ForceDynamicIDX],
-    properties: &BTreeMap<String, String>,
-    from_node: NodeIDX,
-    branch: &str,
-) -> Option<Decision> {
-    for dynamic_predicate in force_dynamic {
-        if let Some(from_node_idx_predicate) = dynamic_predicate.from_node {
-            // if parent node is specified and it does not match the current node,
-            // skip this whole predicate
-            if from_node_idx_predicate != from_node {
-                continue;
-            }
-        }
-
-        if let Some(branch_predicate) = &dynamic_predicate.branch {
-            // if branch is specified and it does not match the current branch,
-            // skip this whole predicate
-            if branch_predicate != branch {
-                continue;
-            }
-        }
-
-        if dynamic_predicate
-            .match_properties
-            .iter()
-            .all(|(key, value)| properties.get(key) == Some(value))
-        {
-            return Some(dynamic_predicate.decision.clone());
-        }
-    }
-
-    None
 }

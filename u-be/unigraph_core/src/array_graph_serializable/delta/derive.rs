@@ -20,6 +20,8 @@ use crate::ArrayGraphDynamicEdge;
 use crate::ArrayGraphNodes;
 use crate::ArrayGraphSerializable;
 use crate::NodeIDX;
+use crate::types::DynamicEdgeName;
+use crate::types::DynamicTypeKey;
 use crate::types::MetricName;
 use crate::types::NodeName;
 use crate::types::Tag;
@@ -172,7 +174,10 @@ fn collect_all_edges_as_added(
     directed: &[NodeIDX],
     directed_offsets: &[usize],
     tagged: &BTreeMap<NodeIDX, BTreeMap<Tag, BTreeSet<NodeIDX>>>,
-    dynamic: &BTreeMap<NodeIDX, Vec<ArrayGraphDynamicEdge>>,
+    dynamic: &BTreeMap<
+        NodeIDX,
+        BTreeMap<DynamicTypeKey, BTreeMap<DynamicEdgeName, ArrayGraphDynamicEdge>>,
+    >,
     nodes: &ArrayGraphNodes,
 ) -> Option<NodeEdgeDelta> {
     let dir_delta = {
@@ -234,11 +239,17 @@ fn diff_edges(
     base_directed: &[NodeIDX],
     base_directed_offsets: &[usize],
     base_tagged: &BTreeMap<NodeIDX, BTreeMap<Tag, BTreeSet<NodeIDX>>>,
-    base_dynamic: &BTreeMap<NodeIDX, Vec<ArrayGraphDynamicEdge>>,
+    base_dynamic: &BTreeMap<
+        NodeIDX,
+        BTreeMap<DynamicTypeKey, BTreeMap<DynamicEdgeName, ArrayGraphDynamicEdge>>,
+    >,
     target_directed: &[NodeIDX],
     target_directed_offsets: &[usize],
     target_tagged: &BTreeMap<NodeIDX, BTreeMap<Tag, BTreeSet<NodeIDX>>>,
-    target_dynamic: &BTreeMap<NodeIDX, Vec<ArrayGraphDynamicEdge>>,
+    target_dynamic: &BTreeMap<
+        NodeIDX,
+        BTreeMap<DynamicTypeKey, BTreeMap<DynamicEdgeName, ArrayGraphDynamicEdge>>,
+    >,
     nodes: &ArrayGraphNodes,
 ) -> Option<NodeEdgeDelta> {
     let dir_delta = diff_directed_edges(
@@ -422,8 +433,14 @@ fn diff_tagged_edges(
 
 fn diff_dynamic_edges(
     node_idx: NodeIDX,
-    base_dynamic: &BTreeMap<NodeIDX, Vec<ArrayGraphDynamicEdge>>,
-    target_dynamic: &BTreeMap<NodeIDX, Vec<ArrayGraphDynamicEdge>>,
+    base_dynamic: &BTreeMap<
+        NodeIDX,
+        BTreeMap<DynamicTypeKey, BTreeMap<DynamicEdgeName, ArrayGraphDynamicEdge>>,
+    >,
+    target_dynamic: &BTreeMap<
+        NodeIDX,
+        BTreeMap<DynamicTypeKey, BTreeMap<DynamicEdgeName, ArrayGraphDynamicEdge>>,
+    >,
     nodes: &ArrayGraphNodes,
 ) -> Option<DynamicEdgeDelta> {
     let base_edges = base_dynamic.get(&node_idx);
@@ -433,19 +450,14 @@ fn diff_dynamic_edges(
         (None, None) => None,
         (None, Some(target)) => Some(dynamic_edges_to_serialized(target, nodes)),
         (Some(_), None) => {
-            // Dynamic edges removed — replacement with empty vec
+            // Dynamic edges removed — replacement with empty map
             Some(DynamicEdgeDelta {
-                replacement: Vec::new(),
+                replacement: BTreeMap::new(),
             })
         }
         (Some(base), Some(target)) => {
-            // Compare: sort and compare. If different, full replacement.
-            let mut base_sorted = base.clone();
-            let mut target_sorted = target.clone();
-            base_sorted.sort_by(cmp_dynamic_edges);
-            target_sorted.sort_by(cmp_dynamic_edges);
-
-            if base_sorted == target_sorted {
+            // BTreeMap has deterministic order, direct equality works
+            if base == target {
                 None
             } else {
                 Some(dynamic_edges_to_serialized(target, nodes))
@@ -454,34 +466,37 @@ fn diff_dynamic_edges(
     }
 }
 
-fn cmp_dynamic_edges(a: &ArrayGraphDynamicEdge, b: &ArrayGraphDynamicEdge) -> std::cmp::Ordering {
-    a.properties
-        .cmp(&b.properties)
-        .then_with(|| a.branches.cmp(&b.branches))
-}
-
 fn dynamic_edges_to_serialized(
-    edges: &[ArrayGraphDynamicEdge],
+    type_map: &BTreeMap<DynamicTypeKey, BTreeMap<DynamicEdgeName, ArrayGraphDynamicEdge>>,
     nodes: &ArrayGraphNodes,
 ) -> DynamicEdgeDelta {
-    let replacement = edges
+    let replacement = type_map
         .iter()
-        .map(|edge| {
-            let branches = edge
-                .branches
+        .map(|(type_key, edge_map)| {
+            let inner = edge_map
                 .iter()
-                .map(|(branch, idxs)| {
-                    let names: BTreeSet<NodeName> = idxs
+                .map(|(edge_name, edge)| {
+                    let branches = edge
+                        .branches
                         .iter()
-                        .map(|&idx| nodes.idx_to_name(idx).to_string())
+                        .map(|(branch, idxs)| {
+                            let names: BTreeSet<NodeName> = idxs
+                                .iter()
+                                .map(|&idx| nodes.idx_to_name(idx).to_string())
+                                .collect();
+                            (branch.clone(), names)
+                        })
                         .collect();
-                    (branch.clone(), names)
+                    (
+                        edge_name.clone(),
+                        DynamicEdgeSerialized {
+                            branches,
+                            metadata: edge.metadata.clone(),
+                        },
+                    )
                 })
                 .collect();
-            DynamicEdgeSerialized {
-                branches,
-                properties: edge.properties.clone(),
-            }
+            (type_key.clone(), inner)
         })
         .collect();
     DynamicEdgeDelta { replacement }

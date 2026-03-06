@@ -4,7 +4,6 @@ pub mod edge_flags;
 pub(super) mod lengauer_tarjan_dominator_tree;
 mod offset_graph_traversal;
 pub(super) mod shortest_path;
-use std::collections::BTreeMap;
 use std::collections::HashMap;
 
 use anyhow::Result;
@@ -13,6 +12,9 @@ use offset_graph_traversal::OffsetGraphDFSConfigured;
 
 use crate::AscendingTier;
 use crate::traversal::tiered_traversal::TieredTraversalIter;
+use crate::types::DynamicBranchName;
+use crate::types::DynamicEdgeName;
+use crate::types::DynamicTypeKey;
 use crate::types::NodeIDX;
 use crate::types::array_graph::offset_graph::edge_flags::EdgeFlags;
 use crate::types::array_graph::offset_graph::offset_graph_traversal::EdgesIter;
@@ -55,8 +57,9 @@ pub enum NonDirectedEdgeMetadata {
         tag: String,
     },
     Dynamic {
-        properties: BTreeMap<String, String>,
-        branch: String,
+        type_key: DynamicTypeKey,
+        edge_name: DynamicEdgeName,
+        branch: DynamicBranchName,
     },
 }
 

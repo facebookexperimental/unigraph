@@ -98,12 +98,12 @@ pub fn print_arrow(array_graph: &ArrayGraph, arrow: &Arrow) -> String {
     if let Some(tag) = &arrow.tag {
         result.push_str(&format!("\n   tag: {tag}"));
     }
-    if let Some(branch) = &arrow.branch {
-        result.push_str(&format!("\n   branch: {branch}"));
-    }
-
-    if let Some(properties) = &arrow.properties {
-        result.push_str(&format!("\n   properties: {properties:?}"));
+    if let Some(dynamic) = &arrow.dynamic {
+        result.push_str(&format!("\n   branch: {}", dynamic.branch));
+        result.push_str(&format!(
+            "\n   properties: {{\"type_key\": \"{}\", \"edge_name\": \"{}\"}}",
+            dynamic.type_key, dynamic.edge_name
+        ));
     }
 
     if let Some(message) = &arrow.message {

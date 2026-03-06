@@ -16,6 +16,8 @@ pub use derive::derive_delta;
 use crate::TraversalConfig;
 use crate::graph_settings::GraphSettings;
 use crate::types::DynamicBranchName;
+use crate::types::DynamicEdgeName;
+use crate::types::DynamicTypeKey;
 use crate::types::MetricName;
 use crate::types::NodeName;
 use crate::types::Tag;
@@ -100,11 +102,11 @@ pub struct TaggedEdgeTagDelta {
 }
 
 /// Full replacement of dynamic edges for a source node.
-/// Dynamic edges have complex structure (branches + properties) with
+/// Dynamic edges have complex structure (branches + metadata) with
 /// no stable identity, so we replace the entire set per source node.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct DynamicEdgeDelta {
-    pub replacement: Vec<DynamicEdgeSerialized>,
+    pub replacement: BTreeMap<DynamicTypeKey, BTreeMap<DynamicEdgeName, DynamicEdgeSerialized>>,
 }
 
 /// A dynamic edge using node names instead of NodeIDX.
@@ -120,7 +122,8 @@ pub struct DynamicEdgeDelta {
 )]
 pub struct DynamicEdgeSerialized {
     pub branches: BTreeMap<DynamicBranchName, BTreeSet<NodeName>>,
-    pub properties: BTreeMap<String, String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<BTreeMap<String, String>>,
 }
 
 /// A single node's metric value change for a specific metric.

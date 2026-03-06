@@ -9,7 +9,6 @@ use crate::ArrayGraph;
 use crate::MapGraph;
 use crate::types::map_graph::DynamicEdge;
 use crate::types::map_graph::GraphNode;
-use crate::types::map_graph::MapGraphEdges;
 
 pub fn to_map_graph(graph: &ArrayGraph) -> Result<MapGraph> {
     let mut result = MapGraph {
@@ -42,39 +41,39 @@ pub fn to_map_graph(graph: &ArrayGraph) -> Result<MapGraph> {
                 .collect()
         });
 
-        let dynamic = graph.edges_dynamic.get(&node_idx).map(|edges| {
-            edges
+        let dynamic = graph.edges_dynamic.get(&node_idx).map(|type_map| {
+            type_map
                 .iter()
-                .map(|edge| DynamicEdge {
-                    properties: edge.properties.clone(),
-                    branches: edge
-                        .branches
+                .map(|(type_key, edge_map)| {
+                    let inner = edge_map
                         .iter()
-                        .map(|(branch, points_to_set)| {
+                        .map(|(edge_name, edge)| {
                             (
-                                branch.clone(),
-                                points_to_set
-                                    .iter()
-                                    .map(|points_to| graph.idx_to_name(*points_to).to_string())
-                                    .collect::<Vec<_>>(),
+                                edge_name.clone(),
+                                DynamicEdge {
+                                    branches: edge
+                                        .branches
+                                        .iter()
+                                        .map(|(branch, pts)| {
+                                            (
+                                                branch.clone(),
+                                                pts.iter()
+                                                    .map(|pt| graph.idx_to_name(*pt).to_string())
+                                                    .collect(),
+                                            )
+                                        })
+                                        .collect(),
+                                    metadata: edge.metadata.clone(),
+                                },
                             )
                         })
-                        .collect::<BTreeMap<_, _>>(),
+                        .collect::<BTreeMap<_, _>>();
+                    (type_key.clone(), inner)
                 })
-                .collect::<Vec<_>>()
+                .collect::<BTreeMap<_, _>>()
         });
 
-        let edges = MapGraphEdges {
-            directed: if directed.is_empty() {
-                None
-            } else {
-                Some(directed)
-            },
-            tagged,
-            dynamic,
-        };
-
-        let tag_sets = graph.tag_sets.get(&node_idx).cloned().unwrap_or_default();
+        let labels = graph.tag_sets.get(&node_idx).cloned().unwrap_or_default();
 
         let metrics = graph
             .metrics
@@ -83,14 +82,20 @@ pub fn to_map_graph(graph: &ArrayGraph) -> Result<MapGraph> {
             .collect::<BTreeMap<_, _>>();
 
         let map_node = GraphNode {
-            edges,
-            extra_fields: Default::default(), // TODO: we need to do this when we add extra fields support
-            tag_sets: if tag_sets.is_empty() {
+            properties: None,
+            labels: if labels.is_empty() {
                 None
             } else {
-                Some(tag_sets)
+                Some(labels)
             },
             metrics: Some(metrics),
+            edges_directed: if directed.is_empty() {
+                None
+            } else {
+                Some(directed)
+            },
+            edges_tagged: tagged,
+            edges_dynamic: dynamic,
         };
         result
             .nodes
@@ -130,34 +135,29 @@ mod tests {
 {
   "nodes": {
     "A": {
-      "edges": {
-        "directed": [
-          "B",
-          "D"
-        ]
-      },
       "metrics": {
         "size": 1.0
-      }
+      },
+      "edges_directed": [
+        "B",
+        "D"
+      ]
     },
     "B": {
-      "edges": {
-        "tagged": {
-          "BL": [
-            "C"
-          ],
-          "RD": [
-            "J"
-          ]
-        }
-      },
       "metrics": {
         "size": 1.0
+      },
+      "edges_tagged": {
+        "BL": [
+          "C"
+        ],
+        "RD": [
+          "J"
+        ]
       }
     },
     "C": {
-      "edges": {},
-      "tag_sets": {
+      "labels": {
         "disallow_tags": [
           "b",
           "c"
@@ -168,33 +168,30 @@ mod tests {
       }
     },
     "D": {
-      "edges": {
-        "directed": [
-          "F"
-        ],
-        "tagged": {
-          "RDFD": [
-            "E"
-          ]
-        }
-      },
       "metrics": {
         "size": 1.0
+      },
+      "edges_directed": [
+        "F"
+      ],
+      "edges_tagged": {
+        "RDFD": [
+          "E"
+        ]
       }
     },
     "E": {
-      "edges": {},
       "metrics": {
         "size": 1.0
       }
     },
     "F": {
-      "edges": {
-        "dynamic": [
-          {
-            "properties": {
-              "type": "DDD"
-            },
+      "metrics": {
+        "size": 1.0
+      },
+      "edges_dynamic": {
+        "ddd": {
+          "ddd_1": {
             "branches": {
               "b1": [
                 "G",
@@ -205,33 +202,26 @@ mod tests {
               ]
             }
           }
-        ]
-      },
-      "metrics": {
-        "size": 1.0
+        }
       }
     },
     "G": {
-      "edges": {},
       "metrics": {
         "size": 1.0
       }
     },
     "H": {
-      "edges": {},
       "metrics": {
         "size": 1.0
       }
     },
     "I": {
-      "edges": {},
       "metrics": {
         "size": 1.0
       }
     },
     "J": {
-      "edges": {},
-      "tag_sets": {
+      "labels": {
         "assert_tags": [
           "a",
           "b"

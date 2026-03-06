@@ -7,6 +7,7 @@ use crate::ArrayGraph;
 use crate::NodeIDX;
 use crate::graph_settings::GraphStructure;
 use crate::types::array_graph::Arrow;
+use crate::types::array_graph::DynamicEdgeInfo;
 use crate::types::array_graph::offset_graph::Edge;
 use crate::types::array_graph::offset_graph::NonDirectedEdgeMetadata;
 
@@ -61,8 +62,7 @@ pub fn edge_to_arrow(
     if !edge.flags.is_tagged_or_dynamic() {
         Ok(Arrow {
             tag: None,
-            branch: None,
-            properties: None,
+            dynamic: None,
             points_from,
             points_to: edge.points_to,
             excluded,
@@ -76,18 +76,25 @@ pub fn edge_to_arrow(
             }
             NonDirectedEdgeMetadata::Tagged { tag } => Ok(Arrow {
                 tag: Some(tag.clone()),
-                branch: None,
-                properties: None,
+                dynamic: None,
                 points_from,
                 points_to: edge.points_to,
                 excluded,
                 message: render_message(ag, edge, metadata, points_from)?,
                 skipped: 0,
             }),
-            NonDirectedEdgeMetadata::Dynamic { properties, branch } => Ok(Arrow {
+            NonDirectedEdgeMetadata::Dynamic {
+                type_key,
+                edge_name,
+                branch,
+            } => Ok(Arrow {
                 tag: None,
-                branch: Some(branch.clone()),
-                properties: Some(properties.clone()),
+                dynamic: Some(DynamicEdgeInfo {
+                    type_key: type_key.clone(),
+                    edge_name: edge_name.clone(),
+                    branch: branch.clone(),
+                    metadata: None,
+                }),
                 points_from,
                 points_to: edge.points_to,
                 excluded,

@@ -9,27 +9,27 @@ const TEST_GRAPH: &str = r#"
 {
     "nodes": {
         "A": {
-            "edges": {"directed": ["B", "C"]},
+            "edges_directed": ["B", "C"],
             "size": 1
         },
         "B": {
-            "edges": {"directed": ["A", "C"]},
+            "edges_directed": ["A", "C"],
             "size": 2
         },
         "C": {
-            "edges": {"directed": ["A", "B", "D"]},
+            "edges_directed": ["A", "B", "D"],
             "size": 3
         },
         "D": {
-            "edges": {"directed": ["E", "F"]},
+            "edges_directed": ["E", "F"],
             "size": 4
         },
         "E": {
-            "edges": {"directed": ["D", "F"]},
+            "edges_directed": ["D", "F"],
             "size": 5
         },
         "F": {
-            "edges": {"directed": ["D", "E"]},
+            "edges_directed": ["D", "E"],
             "size": 6
         }
     }

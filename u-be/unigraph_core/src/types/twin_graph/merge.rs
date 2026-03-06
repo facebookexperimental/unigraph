@@ -159,27 +159,7 @@ fn has_dynamic_edge_changes(
     right: &ArrayGraphSerializable,
     node_idx: NodeIDX,
 ) -> bool {
-    let left_edges = left.edges.dynamic.get(&node_idx);
-    let right_edges = right.edges.dynamic.get(&node_idx);
-
-    match (left_edges, right_edges) {
-        (Some(left_edges), Some(right_edges)) => {
-            if left_edges.len() != right_edges.len() {
-                return true;
-            }
-            let mut l_ordered = left_edges.iter().collect::<Vec<_>>();
-            let mut r_ordered = right_edges.iter().collect::<Vec<_>>();
-            l_ordered.sort_unstable();
-            r_ordered.sort_unstable();
-
-            // This is super annoying because we do sorting and equality check on the
-            // entire data structure.
-            // But that's the best we can do with the current data model.
-            l_ordered != r_ordered
-        }
-        (None, None) => false,
-        _ => true,
-    }
+    left.edges.dynamic.get(&node_idx) != right.edges.dynamic.get(&node_idx)
 }
 
 /// Construct a list of pairs of metric arrays for graphs but only if

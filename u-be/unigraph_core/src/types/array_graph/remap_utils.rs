@@ -9,6 +9,8 @@ use crate::ArrayGraphNodes;
 use crate::ArrayGraphSerializableEdges;
 use crate::ArrayGraphSerializableNodeMetadata;
 use crate::NodeIDX;
+use crate::types::DynamicEdgeName;
+use crate::types::DynamicTypeKey;
 use crate::types::Tag;
 
 /// Utility that takes a vec of sortable values, sorts the original vec in-place and returns
@@ -204,33 +206,49 @@ pub fn make_remapped_node_names_ordered(new_node_names: &[String]) -> ArrayGraph
     ArrayGraphNodes::from_parts(names, offsets)
 }
 
+#[allow(clippy::type_complexity)]
 fn remap_dynamic_edges(
-    dynamic: &BTreeMap<NodeIDX, Vec<ArrayGraphDynamicEdge>>,
+    dynamic: &BTreeMap<
+        NodeIDX,
+        BTreeMap<DynamicTypeKey, BTreeMap<DynamicEdgeName, ArrayGraphDynamicEdge>>,
+    >,
     remap_context: &RemapContext,
-) -> Result<BTreeMap<NodeIDX, Vec<ArrayGraphDynamicEdge>>> {
-    let mut result: BTreeMap<NodeIDX, Vec<ArrayGraphDynamicEdge>> = BTreeMap::new();
+) -> Result<
+    BTreeMap<NodeIDX, BTreeMap<DynamicTypeKey, BTreeMap<DynamicEdgeName, ArrayGraphDynamicEdge>>>,
+> {
+    let mut result: BTreeMap<
+        NodeIDX,
+        BTreeMap<DynamicTypeKey, BTreeMap<DynamicEdgeName, ArrayGraphDynamicEdge>>,
+    > = BTreeMap::new();
 
-    for (old_node_idx, edges) in dynamic {
+    for (old_node_idx, type_map) in dynamic {
         if let Some(new_node_idx) = remap_context.mappings[*old_node_idx] {
-            for edge in edges {
-                let new_branches = edge
-                    .branches
-                    .iter()
-                    .map(|(branch, node_idxs)| {
-                        let new_node_idxs: BTreeSet<NodeIDX> = node_idxs
-                            .iter()
-                            .filter_map(|&node_idx| remap_context.mappings[node_idx])
-                            .collect();
-                        (branch.clone(), new_node_idxs)
-                    })
-                    .collect();
-                result
-                    .entry(new_node_idx)
-                    .or_default()
-                    .push(ArrayGraphDynamicEdge {
-                        properties: edge.properties.clone(),
-                        branches: new_branches,
-                    });
+            for (type_key, edge_map) in type_map {
+                for (edge_name, edge) in edge_map {
+                    let new_branches = edge
+                        .branches
+                        .iter()
+                        .map(|(branch, node_idxs)| {
+                            let new_node_idxs: BTreeSet<NodeIDX> = node_idxs
+                                .iter()
+                                .filter_map(|&node_idx| remap_context.mappings[node_idx])
+                                .collect();
+                            (branch.clone(), new_node_idxs)
+                        })
+                        .collect();
+                    result
+                        .entry(new_node_idx)
+                        .or_default()
+                        .entry(type_key.clone())
+                        .or_default()
+                        .insert(
+                            edge_name.clone(),
+                            ArrayGraphDynamicEdge {
+                                metadata: edge.metadata.clone(),
+                                branches: new_branches,
+                            },
+                        );
+                }
             }
         }
     }

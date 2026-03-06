@@ -13,6 +13,8 @@ use crate::ArrayGraph;
 use crate::AscendingTiersConfig;
 use crate::traversal::messages::Message;
 use crate::traversal::messages::MessageID;
+use crate::types::DynamicEdgeName;
+use crate::types::DynamicTypeKey;
 use crate::types::NodeIDX;
 use crate::types::NodeName;
 use crate::types::Tag;
@@ -65,10 +67,9 @@ pub struct TraversalConfig {
     pub force_tagged: Option<BTreeMap<Tag, Decision>>,
     /// These rules are ordered. The first one that matches will be used.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub tag_sets: Option<Vec<NodeTagSetsPredicate>>,
-    /// These rules are ordered. The first one that matches will be used.
+    pub label_predicates: Option<Vec<NodeLabelPredicate>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub force_dynamic: Option<Vec<ForceDynamic>>,
+    pub force_dynamic: Option<BTreeMap<DynamicTypeKey, DynamicTypeConfig>>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tiered_traversal: Option<TieredTraversalConfig>,
@@ -84,9 +85,8 @@ pub struct TraversalConfigIDX {
     pub force_edges: BTreeMap<NodeIDX, BTreeMap<NodeIDX, Decision>>,
     pub force_tagged: BTreeMap<Tag, Decision>,
     /// These rules are ordered. The first one that matches will be used.
-    pub tag_sets: Vec<NodeTagSetsPredicate>,
-    /// These rules are ordered. The first one that matches will be used.
-    pub force_dynamic: Vec<ForceDynamicIDX>,
+    pub label_predicates: Vec<NodeLabelPredicate>,
+    pub force_dynamic: BTreeMap<DynamicTypeKey, DynamicTypeConfig>,
 
     pub tiered_traversal: Option<TieredTraversalConfig>,
 
@@ -101,18 +101,39 @@ pub struct TraversalConfigIDX {
     typegen::TypeGen,
     PartialEq
 )]
-pub struct ForceDynamic {
-    pub from_node: Option<NodeName>,
-    pub match_properties: BTreeMap<String, String>,
-    pub branch: Option<String>,
-    pub decision: Decision,
+pub struct DynamicTypeConfig {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_branches: Option<DefaultBranches>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub overrides: Option<BTreeMap<DynamicEdgeName, DynamicEdgeOverride>>,
 }
-#[derive(Debug)]
-pub struct ForceDynamicIDX {
-    pub from_node: Option<NodeIDX>,
-    pub match_properties: BTreeMap<String, String>,
-    pub branch: Option<String>,
-    pub decision: Decision,
+
+#[derive(
+    Debug,
+    serde::Serialize,
+    serde::Deserialize,
+    Clone,
+    typegen::TypeGen,
+    PartialEq
+)]
+pub enum DefaultBranches {
+    Include(Vec<String>),
+    Exclude(Vec<String>),
+}
+
+#[derive(
+    Debug,
+    serde::Serialize,
+    serde::Deserialize,
+    Clone,
+    typegen::TypeGen,
+    PartialEq
+)]
+pub struct DynamicEdgeOverride {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub branches: Option<DefaultBranches>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub decision: Option<Decision>,
 }
 
 /// These predicates are used to decide whether to follow an edge to a node based
@@ -143,7 +164,7 @@ pub struct ForceDynamicIDX {
     typegen::TypeGen,
     PartialEq
 )]
-pub struct NodeTagSetsPredicate {
+pub struct NodeLabelPredicate {
     pub tag_set_name: TagSetName,
     pub tag_name: Tag,
     pub contains: bool,
@@ -171,41 +192,12 @@ impl TraversalConfig {
             }
         }
 
-        let force_dynamic = self
-            .force_dynamic
-            .iter()
-            .flatten()
-            .filter_map(|dynamic| {
-                let from_node = dynamic.from_node.as_ref();
-
-                let from_node_idx =
-                    from_node.and_then(|name| array_graph.nodes.name_to_idx_log(name));
-
-                if from_node.is_some() && from_node_idx.is_none() {
-                    // if we can't find the from_node idx by its name that means it doesn't exist
-                    // in the graph and it will never match. We should be able to safely yeet it
-                    // from the config
-                    return None;
-                }
-
-                Some(ForceDynamicIDX {
-                    from_node: dynamic
-                        .from_node
-                        .as_ref()
-                        .and_then(|name| array_graph.nodes.name_to_idx_log(name)),
-                    match_properties: dynamic.match_properties.clone(),
-                    branch: dynamic.branch.clone(),
-                    decision: dynamic.decision.clone(),
-                })
-            })
-            .collect();
-
         TraversalConfigIDX {
             force_nodes,
             force_edges,
             force_tagged: self.force_tagged.clone().unwrap_or_default(),
-            force_dynamic,
-            tag_sets: self.tag_sets.clone().unwrap_or_default(),
+            force_dynamic: self.force_dynamic.clone().unwrap_or_default(),
+            label_predicates: self.label_predicates.clone().unwrap_or_default(),
             tiered_traversal: self.tiered_traversal.clone(),
             messages: self.messages.clone().unwrap_or_default(),
         }

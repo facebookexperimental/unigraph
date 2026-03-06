@@ -2,35 +2,35 @@
   "nodes": {
     "A": {
       "metrics": { "size": 1 },
-      "edges": { "directed": ["B", "D"] }
+      "edges_directed": ["B", "D"]
     },
     "B": {
       "metrics": { "size": 1 },
-      "edges": { "tagged": { "BL": ["C"], "RD": ["J"] } }
+      "edges_tagged": { "BL": ["C"], "RD": ["J"] }
     },
     "C": {
       "metrics": { "size": 1 },
-      "tag_sets": { "disallow_tags": ["b", "c"] }
+      "labels": { "disallow_tags": ["b", "c"] }
     },
     "D": {
       "metrics": { "size": 1 },
-      "edges": { "directed": ["F"], "tagged": { "RDFD": ["E"] } }
+      "edges_directed": ["F"],
+      "edges_tagged": { "RDFD": ["E"] }
     },
     "E": {
       "metrics": { "size": 1 }
     },
     "F": {
       "metrics": { "size": 1 },
-      "edges": {
-        "dynamic": [
-          {
-            "properties": { "type": "DDD" },
+      "edges_dynamic": {
+        "ddd": {
+          "ddd_1": {
             "branches": {
               "b1": ["G", "H"],
               "b2": ["I"]
             }
           }
-        ]
+        }
       }
     },
     "G": {
@@ -44,7 +44,7 @@
     },
     "J": {
       "metrics": { "size": 1 },
-      "tag_sets": { "assert_tags": ["a", "b"] }
+      "labels": { "assert_tags": ["a", "b"] }
     }
   }
 }

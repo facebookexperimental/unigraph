@@ -64,13 +64,17 @@ impl Message {
                     result = result.replace(MESSAGE_TEMPLATE_EDGE_TAG, tag);
                 }
             }
-            NonDirectedEdgeMetadata::Dynamic { properties, branch } => {
+            NonDirectedEdgeMetadata::Dynamic {
+                type_key,
+                edge_name,
+                branch,
+            } => {
                 if result.contains(MESSAGE_TEMPLATE_EDGE_BRANCH) {
                     result = result.replace(MESSAGE_TEMPLATE_EDGE_BRANCH, branch);
                 }
                 if result.contains(MESSAGE_TEMPLATE_EDGE_PROPERTIES) {
-                    let properties_str = format!("{properties:?}");
-                    result = result.replace(MESSAGE_TEMPLATE_EDGE_PROPERTIES, &properties_str);
+                    let info = format!("type_key={type_key}, edge_name={edge_name}");
+                    result = result.replace(MESSAGE_TEMPLATE_EDGE_PROPERTIES, &info);
                 }
             }
         }
@@ -158,8 +162,8 @@ impl BuiltInMessages {
         "This edge was INCLUDED because `force_tagged` config for the tag `%edge_tag%`";
     const FORCE_TAGGED_EXCLUDED_MESSAGE: &str =
         "This edge was EXCLUDED because `force_tagged` config for the tag `%edge_tag%`";
-    const FORCE_DYNAMIC_INCLUDED_MESSAGE: &str = "This edge was INCLUDED because it matched the `force_dynamic` config for the branch `%edge_branch%` with properties `%edge_properties%`.";
-    const FORCE_DYNAMIC_EXCLUDED_MESSAGE: &str = "This edge was EXCLUDED because it matched the `force_dynamic` config for the branch `%edge_branch%` with properties `%edge_properties%`.";
+    const FORCE_DYNAMIC_INCLUDED_MESSAGE: &str = "This edge was INCLUDED because it matched the `force_dynamic` config for type_key `%edge_properties%` on branch `%edge_branch%`.";
+    const FORCE_DYNAMIC_EXCLUDED_MESSAGE: &str = "This edge was EXCLUDED because it matched the `force_dynamic` config for type_key `%edge_properties%` on branch `%edge_branch%`.";
     const FORCE_TAG_SETS_INCLUDED_MESSAGE: &str = "This edge was INCLUDED because it contained tag sets that matched an entry in the `tag_sets` config`.";
     const FORCE_TAG_SETS_EXCLUDED_MESSAGE: &str = "This edge was EXCLUDED because it contained tag sets that matched an entry in the `tag_sets` config`.";
     const FORCED_CHILDREN_OF_EXCLUDED_MESSAGE: &str = "This edge was EXCLUDED because the node `%points_to%` is a child of a node whose children were excluded from the traversal using `force_children_of` config.";
@@ -265,13 +269,13 @@ D -> E
 E -> K
 F -> G
    branch: b1
-   properties: {"type": "DDD"}
+   properties: {"type_key": "ddd", "edge_name": "ddd_1"}
 F -> H
    branch: b1
-   properties: {"type": "DDD"}
+   properties: {"type_key": "ddd", "edge_name": "ddd_1"}
 F -> I
    branch: b2
-   properties: {"type": "DDD"}
+   properties: {"type_key": "ddd", "edge_name": "ddd_1"}
    message: This edge was EXCLUDED because the node `F` was force excluded from the traversal using `force_nodes` config.
 J -> K
 L -> D

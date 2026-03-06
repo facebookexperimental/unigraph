@@ -59,34 +59,29 @@ fn test_graph() {
 {
   "nodes": {
     "A": {
-      "edges": {
-        "directed": [
-          "B",
-          "D"
-        ]
-      },
       "metrics": {
         "size": 1.0
-      }
+      },
+      "edges_directed": [
+        "B",
+        "D"
+      ]
     },
     "B": {
-      "edges": {
-        "tagged": {
-          "BL": [
-            "C"
-          ],
-          "RD": [
-            "J"
-          ]
-        }
-      },
       "metrics": {
         "size": 1.0
+      },
+      "edges_tagged": {
+        "BL": [
+          "C"
+        ],
+        "RD": [
+          "J"
+        ]
       }
     },
     "C": {
-      "edges": {},
-      "tag_sets": {
+      "labels": {
         "disallow_tags": [
           "b",
           "c"
@@ -97,33 +92,30 @@ fn test_graph() {
       }
     },
     "D": {
-      "edges": {
-        "directed": [
-          "F"
-        ],
-        "tagged": {
-          "RDFD": [
-            "E"
-          ]
-        }
-      },
       "metrics": {
         "size": 1.0
+      },
+      "edges_directed": [
+        "F"
+      ],
+      "edges_tagged": {
+        "RDFD": [
+          "E"
+        ]
       }
     },
     "E": {
-      "edges": {},
       "metrics": {
         "size": 1.0
       }
     },
     "F": {
-      "edges": {
-        "dynamic": [
-          {
-            "properties": {
-              "type": "DDD"
-            },
+      "metrics": {
+        "size": 1.0
+      },
+      "edges_dynamic": {
+        "ddd": {
+          "ddd_1": {
             "branches": {
               "b1": [
                 "G",
@@ -134,33 +126,26 @@ fn test_graph() {
               ]
             }
           }
-        ]
-      },
-      "metrics": {
-        "size": 1.0
+        }
       }
     },
     "G": {
-      "edges": {},
       "metrics": {
         "size": 1.0
       }
     },
     "H": {
-      "edges": {},
       "metrics": {
         "size": 1.0
       }
     },
     "I": {
-      "edges": {},
       "metrics": {
         "size": 1.0
       }
     },
     "J": {
-      "edges": {},
-      "tag_sets": {
+      "labels": {
         "assert_tags": [
           "a",
           "b"

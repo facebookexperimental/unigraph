@@ -155,17 +155,17 @@ mod tests {
             r#"
 L: F -> G
    branch: b1
-   properties: {"type": "DDD"}
+   properties: {"type_key": "ddd", "edge_name": "ddd_1"}
 
 R: F -> G
    branch: b1
-   properties: {"type": "DDD"}
+   properties: {"type_key": "ddd", "edge_name": "ddd_1"}
 
 --------
 
 L: F -> H
    branch: b1
-   properties: {"type": "DDD"}
+   properties: {"type_key": "ddd", "edge_name": "ddd_1"}
 
 R: F -> H
 
@@ -173,11 +173,11 @@ R: F -> H
 
 L: F -> I
    branch: b2
-   properties: {"type": "DDD"}
+   properties: {"type_key": "ddd", "edge_name": "ddd_1"}
 
 R: F -> I
    branch: b2
-   properties: {"type": "DDD"}
+   properties: {"type_key": "ddd", "edge_name": "ddd_1"}
 "#
         );
         let j_idx = tg.node_names.name_to_idx_log("J").unwrap();
@@ -244,7 +244,7 @@ R: B -> J
             r#"
 L: H -> F
    branch: b1
-   properties: {"type": "DDD"}
+   properties: {"type_key": "ddd", "edge_name": "ddd_1"}
 
 R: H -> F
 "#

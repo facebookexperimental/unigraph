@@ -71,13 +71,13 @@ D -> E
 E -> K
 F -> G
    branch: b1
-   properties: {"type": "DDD"}
+   properties: {"type_key": "ddd", "edge_name": "ddd_1"}
 F -> H
    branch: b1
-   properties: {"type": "DDD"}
+   properties: {"type_key": "ddd", "edge_name": "ddd_1"}
 F -> I
    branch: b2
-   properties: {"type": "DDD"}
+   properties: {"type_key": "ddd", "edge_name": "ddd_1"}
 J -> K
 L -> D
 L -> M

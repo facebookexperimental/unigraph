@@ -574,12 +574,12 @@ mod tests {
   "self_reference": "_manifest.json",
   "stats": {
     "total_blobs": 13,
-    "total_size_bytes": 397,
+    "total_size_bytes": 385,
     "blob_sizes_bytes": {
       "directed_1506826171969472540": 35,
       "directed_offsets_8316678694188447186": 40,
-      "dynamic_chunk_0_768470073201454812": 50,
-      "dynamic_chunk_1_3675328647461951329": 23,
+      "dynamic_chunk_0_16704539601918712447": 50,
+      "dynamic_chunk_1_14093561304655809570": 11,
       "entry_points_9535545603450022154": 13,
       "metrics_6304071051133242967": 30,
       "node_names_10311418653884441124": 27,
@@ -611,8 +611,8 @@ mod tests {
       "tagged_chunk_1_8048188434168318281"
     ],
     "dynamic": [
-      "dynamic_chunk_0_768470073201454812",
-      "dynamic_chunk_1_3675328647461951329"
+      "dynamic_chunk_0_16704539601918712447",
+      "dynamic_chunk_1_14093561304655809570"
     ],
     "metrics": [
       "metrics_6304071051133242967"
@@ -645,8 +645,8 @@ mod tests {
     "_manifest.json",
     "directed_1506826171969472540",
     "directed_offsets_8316678694188447186",
-    "dynamic_chunk_0_768470073201454812",
-    "dynamic_chunk_1_3675328647461951329",
+    "dynamic_chunk_0_16704539601918712447",
+    "dynamic_chunk_1_14093561304655809570",
     "entry_points_9535545603450022154",
     "metrics_6304071051133242967",
     "node_names_10311418653884441124",

@@ -13,7 +13,6 @@ use unigraph_core::graph_settings::SizeFormatConfig;
 use unigraph_core::graph_settings::SizeInputUnits;
 use unigraph_core::graph_settings::SizeOutputUnits;
 use unigraph_core::types::map_graph::GraphNode;
-use unigraph_core::types::map_graph::MapGraphEdges;
 
 use crate::metadata::CargoGraph;
 use crate::timings;
@@ -76,26 +75,24 @@ pub fn build_map_graph(
             }
         }
 
-        // Build extra fields.
-        let mut extra_fields = BTreeMap::new();
-        extra_fields.insert("version".to_string(), info.version.clone());
-        extra_fields.insert("source".to_string(), info.source.clone());
-        extra_fields.insert("crate_type".to_string(), info.crate_type.clone());
-        extra_fields.insert("manifest_path".to_string(), info.manifest_path.clone());
+        // Build properties.
+        let mut properties = BTreeMap::new();
+        properties.insert("version".to_string(), info.version.clone());
+        properties.insert("source".to_string(), info.source.clone());
+        properties.insert("crate_type".to_string(), info.crate_type.clone());
+        properties.insert("manifest_path".to_string(), info.manifest_path.clone());
 
         let node = GraphNode {
-            edges: MapGraphEdges {
-                directed,
-                tagged,
-                dynamic: None,
-            },
-            extra_fields: Some(extra_fields),
-            tag_sets: None,
+            properties: Some(properties),
+            labels: None,
             metrics: if metrics.is_empty() {
                 None
             } else {
                 Some(metrics)
             },
+            edges_directed: directed,
+            edges_tagged: tagged,
+            edges_dynamic: None,
         };
 
         nodes.insert(name.clone(), node);

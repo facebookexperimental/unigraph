@@ -40,8 +40,7 @@ impl GraphBuilder {
         self.add_node_if_not_exists(from.to_string());
 
         let node = self.graph.nodes.get_mut(from).context("Node not found")?;
-        node.edges
-            .directed
+        node.edges_directed
             .get_or_insert_default()
             .insert(to.to_string());
         Ok(())

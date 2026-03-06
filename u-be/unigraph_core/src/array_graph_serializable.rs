@@ -34,6 +34,8 @@ use crate::remap_utils::RemapContext;
 use crate::remap_utils::remap_edges;
 use crate::remap_utils::remap_node_metadata;
 use crate::remap_utils::remap_node_names_ordered;
+use crate::types::DynamicEdgeName;
+use crate::types::DynamicTypeKey;
 use crate::types::MetricName;
 use crate::types::NodeIDX;
 use crate::types::NodeName;
@@ -85,8 +87,11 @@ pub struct ArrayGraphSerializableEdges {
     pub directed_offsets: Vec<usize>,
     /// Tagged edges: source node → tag → set of target nodes.
     pub tagged: BTreeMap<NodeIDX, BTreeMap<Tag, BTreeSet<NodeIDX>>>,
-    /// Dynamic edges with runtime-defined branches and properties.
-    pub dynamic: BTreeMap<NodeIDX, Vec<ArrayGraphDynamicEdge>>,
+    /// Dynamic edges with runtime-defined branches and metadata.
+    pub dynamic: BTreeMap<
+        NodeIDX,
+        BTreeMap<DynamicTypeKey, BTreeMap<DynamicEdgeName, ArrayGraphDynamicEdge>>,
+    >,
 }
 
 impl ArrayGraphSerializableEdges {
@@ -260,17 +265,20 @@ impl From<ArrayGraphSerializable> for ArrayGraph {
                 }
             }
 
-            if let Some(dynamic) = serializable.edges.dynamic.get(&node_idx) {
-                for dynamic_edge in dynamic {
-                    for (branch, node_idxs) in &dynamic_edge.branches {
-                        for &points_to in node_idxs {
-                            edges_forward.edges.push(Edge::new_dynamic(points_to));
-                            edges_forward.non_directed_edges_metadata.push(
-                                NonDirectedEdgeMetadata::Dynamic {
-                                    properties: dynamic_edge.properties.clone(),
-                                    branch: branch.clone(),
-                                },
-                            );
+            if let Some(type_map) = serializable.edges.dynamic.get(&node_idx) {
+                for (type_key, edge_map) in type_map {
+                    for (edge_name, dynamic_edge) in edge_map {
+                        for (branch, node_idxs) in &dynamic_edge.branches {
+                            for &points_to in node_idxs {
+                                edges_forward.edges.push(Edge::new_dynamic(points_to));
+                                edges_forward.non_directed_edges_metadata.push(
+                                    NonDirectedEdgeMetadata::Dynamic {
+                                        type_key: type_key.clone(),
+                                        edge_name: edge_name.clone(),
+                                        branch: branch.clone(),
+                                    },
+                                );
+                            }
                         }
                     }
                 }
