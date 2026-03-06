@@ -4,13 +4,15 @@
 
 use anyhow::Context;
 use anyhow::Result;
+use async_trait::async_trait;
 use chrono::Utc;
 use unigraph_storage_core::traits::UnigraphBlobStorage;
 
 use crate::SqliteStorage;
 
+#[async_trait]
 impl UnigraphBlobStorage for SqliteStorage {
-    fn put_blob(&self, key: &str, data: &[u8]) -> Result<()> {
+    async fn put_blob(&self, key: &str, data: &[u8]) -> Result<()> {
         let conn = self.conn.lock().unwrap();
         let now = Utc::now().to_rfc3339();
 
@@ -23,7 +25,7 @@ impl UnigraphBlobStorage for SqliteStorage {
         Ok(())
     }
 
-    fn get_blob(&self, key: &str) -> Result<Option<Vec<u8>>> {
+    async fn get_blob(&self, key: &str) -> Result<Option<Vec<u8>>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn
             .prepare("SELECT data FROM blobs WHERE blob_key = ?1")
@@ -37,7 +39,7 @@ impl UnigraphBlobStorage for SqliteStorage {
         Ok(result)
     }
 
-    fn delete_blob(&self, key: &str) -> Result<()> {
+    async fn delete_blob(&self, key: &str) -> Result<()> {
         let conn = self.conn.lock().unwrap();
 
         conn.execute(
@@ -49,7 +51,7 @@ impl UnigraphBlobStorage for SqliteStorage {
         Ok(())
     }
 
-    fn has_blob(&self, key: &str) -> Result<bool> {
+    async fn has_blob(&self, key: &str) -> Result<bool> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn
             .prepare("SELECT 1 FROM blobs WHERE blob_key = ?1")
@@ -64,7 +66,7 @@ impl UnigraphBlobStorage for SqliteStorage {
         Ok(exists)
     }
 
-    fn list_blobs(&self, prefix: &str) -> Result<Vec<String>> {
+    async fn list_blobs(&self, prefix: &str) -> Result<Vec<String>> {
         let conn = self.conn.lock().unwrap();
         let pattern = format!("{}%", prefix);
         let mut stmt = conn

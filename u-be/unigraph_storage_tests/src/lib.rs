@@ -14,7 +14,8 @@ use unigraph_core::ArrayGraphSerializable;
 use unigraph_core::ArrayGraphSerializableEdges;
 use unigraph_core::ArrayGraphSerializableNodeMetadata;
 use unigraph_core::NodeIDX;
-use unigraph_storage_core::FrameRow;
+// Re-export format_frames_table from unigraph_storage_core.
+pub use unigraph_storage_core::format_frames_table;
 use unigraph_storage_core::types::GraphID;
 
 /// Deterministic graph generator for testing.
@@ -147,32 +148,6 @@ impl XorShift64 {
     }
 }
 
-/// Format a list of [`FrameRow`]s as an ASCII table for snapshot testing.
-pub fn format_frames_table(frames: &[FrameRow]) -> String {
-    let mut lines = Vec::new();
-    lines.push(format!(
-        "{:<20} {:<24} {:<10} {:<10}",
-        "graph_id", "timestamp", "type", "base"
-    ));
-    lines.push("-".repeat(70));
-
-    for frame in frames {
-        let base_str = match &frame.base {
-            Some(key) => format!("{}:{}", key.timeline_id.0, key.graph_id.0),
-            None => "-".to_string(),
-        };
-        lines.push(format!(
-            "{:<20} {:<24} {:<10} {:<10}",
-            frame.frame.graph_id.0,
-            frame.frame.timestamp.format("%Y-%m-%dT%H:%M:%SZ"),
-            frame.frame_type.to_string(),
-            base_str,
-        ));
-    }
-
-    lines.join("\n")
-}
-
 /// Format a list of blob keys for snapshot testing.
 pub fn format_blob_keys(keys: &[String]) -> String {
     let mut sorted = keys.to_vec();
@@ -192,21 +167,21 @@ pub fn assert_graphs_equal(a: &ArrayGraphSerializable, b: &ArrayGraphSerializabl
 /// Helper to create a [`GraphTimeKey`] with a simple numeric timestamp.
 pub fn make_graph_time_key(
     timeline: &str,
-    graph_id: &str,
+    graph_id: i64,
     seconds: i64,
 ) -> unigraph_storage_core::GraphTimeKey {
     use chrono::TimeZone;
     unigraph_storage_core::GraphTimeKey {
         timeline_id: unigraph_storage_core::TimelineID(timeline.to_string()),
         timestamp: chrono::Utc.timestamp_opt(seconds, 0).unwrap(),
-        graph_id: GraphID(graph_id.to_string()),
+        graph_id: GraphID(graph_id),
     }
 }
 
 /// Helper to create a [`GraphKey`].
-pub fn make_graph_key(timeline: &str, graph_id: &str) -> unigraph_storage_core::GraphKey {
+pub fn make_graph_key(timeline: &str, graph_id: i64) -> unigraph_storage_core::GraphKey {
     unigraph_storage_core::GraphKey {
         timeline_id: unigraph_storage_core::TimelineID(timeline.to_string()),
-        graph_id: GraphID(graph_id.to_string()),
+        graph_id: GraphID(graph_id),
     }
 }

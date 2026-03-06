@@ -154,30 +154,12 @@ def build_all() -> None:
     build_haste()
 
 
-@app.command()
-def serve(
-    file_path: Annotated[
-        str | None,
-        typer.Option("-f", "--file-path", help="Path to graph file."),
-    ] = None,
-    right: Annotated[
-        str | None,
-        typer.Option("-r", "--right", help="Path to comparison graph file."),
-    ] = None,
-    release: Annotated[
-        bool,
-        typer.Option("--release", help="Serve pre-built static files."),
-    ] = False,
-) -> None:
-    """Start Unigraph server (dev mode with HMR, or release mode with static files)."""
-    args = ["cargo", "run", "-p", "unigraph_cli", "--", "serve"]
-    if release:
-        args.append("--release")
-    if file_path:
-        args.extend(["--file-path", file_path])
-    if right:
-        args.extend(["--right", right])
-    run(args)
+@app.command(
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True}
+)
+def serve(ctx: typer.Context) -> None:
+    """Start Unigraph server. All flags are forwarded to `unigraph_cli serve`."""
+    run(["cargo", "run", "-p", "unigraph_cli", "--", "serve", *ctx.args])
 
 
 @app.command()

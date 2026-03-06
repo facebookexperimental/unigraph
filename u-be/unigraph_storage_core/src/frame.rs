@@ -56,3 +56,33 @@ pub struct FrameData {
     /// `None` when blobs are in external blob storage.
     pub inline_blobs: Option<Vec<u8>>,
 }
+
+/// Format a list of [`FrameRow`]s as an ASCII table.
+pub fn format_frames_table(frames: &[FrameRow]) -> String {
+    let mut lines = Vec::new();
+    lines.push(format!(
+        "{:<20} {:<24} {:<10} {:<10}",
+        "graph_id", "timestamp", "type", "base"
+    ));
+    lines.push("-".repeat(70));
+
+    for frame in frames {
+        let base_str = match &frame.base {
+            Some(key) => format!("{}:{}", key.timeline_id.0, key.graph_id.0),
+            None => "-".to_string(),
+        };
+        lines.push(format!(
+            "{:<20} {:<24} {:<10} {:<10}",
+            frame.frame.graph_id.0,
+            frame.frame.timestamp.format("%Y-%m-%dT%H:%M:%SZ"),
+            frame.frame_type,
+            base_str,
+        ));
+    }
+
+    lines
+        .iter()
+        .map(|l| l.trim_end())
+        .collect::<Vec<_>>()
+        .join("\n")
+}

@@ -1,0 +1,296 @@
+// Copyright (c) Meta Platforms, Inc. and affiliates.
+
+//! Comprehensive test exercising compaction and FrameQuery together.
+//!
+//! 1. Store 12 Full frames with distinct timestamps
+//! 2. Snapshot the initial table
+//! 3. Compact only the middle range (frames 3–8)
+//! 4. Snapshot the table after partial compaction
+//! 5. Run various FrameQuery selections and snapshot results
+
+use std::sync::Arc;
+
+use anyhow::Result;
+use chrono::TimeZone;
+use k9::snapshot;
+use unigraph_db::UnigraphDb;
+use unigraph_storage_core::*;
+use unigraph_storage_sqlite::SqliteStorage;
+use unigraph_storage_tests::*;
+
+fn make_db() -> UnigraphDb {
+    let sqlite = Arc::new(SqliteStorage::new_in_memory().unwrap());
+    UnigraphDb::new(sqlite.clone(), sqlite)
+}
+
+fn ts(seconds: i64) -> Timestamp {
+    chrono::Utc.timestamp_opt(seconds, 0).unwrap()
+}
+
+fn tid() -> TimelineID {
+    TimelineID("tl".to_string())
+}
+
+#[tokio::test]
+async fn compact_and_select_frames() -> Result<()> {
+    let db = make_db();
+    db.create_timeline(
+        &tid(),
+        &TimelineConfig {
+            schema: TimelineSchema::AdjacentDeltas(AdjacentDeltasConfig {}),
+            external_id_namespace: None,
+            blob_storage: Default::default(),
+        },
+    )
+    .await?;
+
+    // ---------------------------------------------------------------
+    // 1. Store 12 Full frames, graph_ids 0..12, timestamps 1000..1011
+    // ---------------------------------------------------------------
+    let graphs: Vec<_> = (0..12).map(TestGraphTimeline::get_nth).collect();
+    let keys: Vec<_> = (0..12)
+        .map(|i| make_graph_time_key("tl", i as i64, 1000 + i as i64))
+        .collect();
+
+    for (i, key) in keys.iter().enumerate() {
+        db.store_graph_full(key, &graphs[i]).await?;
+    }
+
+    // ---------------------------------------------------------------
+    // 2. Snapshot: all 12 frames are Full
+    // ---------------------------------------------------------------
+    let all = db.list_frames(&tid()).await?;
+    snapshot!(
+        format_frames_table(&all),
+        "
+graph_id             timestamp                type       base
+----------------------------------------------------------------------
+0                    1970-01-01T00:16:40Z     Full -
+1                    1970-01-01T00:16:41Z     Full -
+2                    1970-01-01T00:16:42Z     Full -
+3                    1970-01-01T00:16:43Z     Full -
+4                    1970-01-01T00:16:44Z     Full -
+5                    1970-01-01T00:16:45Z     Full -
+6                    1970-01-01T00:16:46Z     Full -
+7                    1970-01-01T00:16:47Z     Full -
+8                    1970-01-01T00:16:48Z     Full -
+9                    1970-01-01T00:16:49Z     Full -
+10                   1970-01-01T00:16:50Z     Full -
+11                   1970-01-01T00:16:51Z     Full -
+"
+    );
+
+    // ---------------------------------------------------------------
+    // 3. Compact only the middle range: timestamps 1003..=1008
+    //    (frames with graph_ids 3, 4, 5, 6, 7, 8)
+    //    Frame 3 stays Full (first in range), 4–8 become Deltas.
+    // ---------------------------------------------------------------
+    let converted = db.compact_timeline(&tid(), ts(1003), ts(1008)).await?;
+    assert_eq!(converted, 5);
+
+    // ---------------------------------------------------------------
+    // 4. Snapshot after partial compaction
+    // ---------------------------------------------------------------
+    let all = db.list_frames(&tid()).await?;
+    snapshot!(
+        format_frames_table(&all),
+        "
+graph_id             timestamp                type       base
+----------------------------------------------------------------------
+0                    1970-01-01T00:16:40Z     Full -
+1                    1970-01-01T00:16:41Z     Full -
+2                    1970-01-01T00:16:42Z     Full -
+3                    1970-01-01T00:16:43Z     Full -
+4                    1970-01-01T00:16:44Z     Delta tl:3
+5                    1970-01-01T00:16:45Z     Delta tl:4
+6                    1970-01-01T00:16:46Z     Delta tl:5
+7                    1970-01-01T00:16:47Z     Delta tl:6
+8                    1970-01-01T00:16:48Z     Delta tl:7
+9                    1970-01-01T00:16:49Z     Full -
+10                   1970-01-01T00:16:50Z     Full -
+11                   1970-01-01T00:16:51Z     Full -
+"
+    );
+
+    // Verify all 12 graphs are still fetchable after partial compaction
+    for (i, key) in keys.iter().enumerate() {
+        let fetched = db.fetch_graph(&key.graph_key()).await?;
+        assert_graphs_equal(&graphs[i], &fetched);
+    }
+
+    // ---------------------------------------------------------------
+    // 5. FrameQuery selections
+    // ---------------------------------------------------------------
+
+    let conn = db.graph_conn().await?;
+
+    // 5a. Select only Full frames
+    let full_only = conn
+        .select_frames(&FrameQuery {
+            timeline_id: tid(),
+            frame_types: Some(vec![FrameType::Full]),
+            ..Default::default()
+        })
+        .await?;
+    snapshot!(
+        format_frames_table(&full_only),
+        "
+graph_id             timestamp                type       base
+----------------------------------------------------------------------
+0                    1970-01-01T00:16:40Z     Full -
+1                    1970-01-01T00:16:41Z     Full -
+2                    1970-01-01T00:16:42Z     Full -
+3                    1970-01-01T00:16:43Z     Full -
+9                    1970-01-01T00:16:49Z     Full -
+10                   1970-01-01T00:16:50Z     Full -
+11                   1970-01-01T00:16:51Z     Full -
+"
+    );
+
+    // 5b. Select only Delta frames
+    let deltas = conn
+        .select_frames(&FrameQuery {
+            timeline_id: tid(),
+            frame_types: Some(vec![FrameType::Delta]),
+            ..Default::default()
+        })
+        .await?;
+    snapshot!(
+        format_frames_table(&deltas),
+        "
+graph_id             timestamp                type       base
+----------------------------------------------------------------------
+4                    1970-01-01T00:16:44Z     Delta tl:3
+5                    1970-01-01T00:16:45Z     Delta tl:4
+6                    1970-01-01T00:16:46Z     Delta tl:5
+7                    1970-01-01T00:16:47Z     Delta tl:6
+8                    1970-01-01T00:16:48Z     Delta tl:7
+"
+    );
+
+    // 5c. Time range: only frames with timestamp 1005..=1009
+    let time_range = conn
+        .select_frames(&FrameQuery {
+            timeline_id: tid(),
+            timestamp_bounds: Some(TimestampBounds {
+                start: Some(ts(1005)),
+                end: Some(ts(1009)),
+            }),
+            ..Default::default()
+        })
+        .await?;
+    snapshot!(
+        format_frames_table(&time_range),
+        "
+graph_id             timestamp                type       base
+----------------------------------------------------------------------
+5                    1970-01-01T00:16:45Z     Delta tl:4
+6                    1970-01-01T00:16:46Z     Delta tl:5
+7                    1970-01-01T00:16:47Z     Delta tl:6
+8                    1970-01-01T00:16:48Z     Delta tl:7
+9                    1970-01-01T00:16:49Z     Full -
+"
+    );
+
+    // 5d. Last 3 frames (desc order, limit 3)
+    let last_3 = conn
+        .select_frames(&FrameQuery {
+            timeline_id: tid(),
+            order: Some(Order::Desc),
+            limit: Some(3),
+            ..Default::default()
+        })
+        .await?;
+    snapshot!(
+        format_frames_table(&last_3),
+        "
+graph_id             timestamp                type       base
+----------------------------------------------------------------------
+11                   1970-01-01T00:16:51Z     Full -
+10                   1970-01-01T00:16:50Z     Full -
+9                    1970-01-01T00:16:49Z     Full -
+"
+    );
+
+    // 5e. graph_id bounds: 2..=6
+    let id_range = conn
+        .select_frames(&FrameQuery {
+            timeline_id: tid(),
+            graph_id_bounds: Some((Some(GraphID(2)), Some(GraphID(6)))),
+            ..Default::default()
+        })
+        .await?;
+    snapshot!(
+        format_frames_table(&id_range),
+        "
+graph_id             timestamp                type       base
+----------------------------------------------------------------------
+2                    1970-01-01T00:16:42Z     Full -
+3                    1970-01-01T00:16:43Z     Full -
+4                    1970-01-01T00:16:44Z     Delta tl:3
+5                    1970-01-01T00:16:45Z     Delta tl:4
+6                    1970-01-01T00:16:46Z     Delta tl:5
+"
+    );
+
+    // 5f. Specific graph_ids (cherry-pick)
+    let cherry = conn
+        .select_frames(&FrameQuery {
+            timeline_id: tid(),
+            graph_ids: Some(vec![GraphID(0), GraphID(5), GraphID(11)]),
+            ..Default::default()
+        })
+        .await?;
+    snapshot!(
+        format_frames_table(&cherry),
+        "
+graph_id             timestamp                type       base
+----------------------------------------------------------------------
+0                    1970-01-01T00:16:40Z     Full -
+5                    1970-01-01T00:16:45Z     Delta tl:4
+11                   1970-01-01T00:16:51Z     Full -
+"
+    );
+
+    // 5g. "before" — frame immediately preceding graph_id=6 at ts=1006
+    let preceding = conn
+        .select_frames(&FrameQuery {
+            timeline_id: tid(),
+            before: Some((ts(1006), GraphID(6))),
+            ..Default::default()
+        })
+        .await?;
+    snapshot!(
+        format_frames_table(&preceding),
+        "
+graph_id             timestamp                type       base
+----------------------------------------------------------------------
+5                    1970-01-01T00:16:45Z     Delta tl:4
+"
+    );
+
+    // 5h. Combined: Full frames in time range 1000..=1005, limit 2
+    let combined = conn
+        .select_frames(&FrameQuery {
+            timeline_id: tid(),
+            frame_types: Some(vec![FrameType::Full]),
+            timestamp_bounds: Some(TimestampBounds {
+                start: Some(ts(1000)),
+                end: Some(ts(1005)),
+            }),
+            limit: Some(2),
+            ..Default::default()
+        })
+        .await?;
+    snapshot!(
+        format_frames_table(&combined),
+        "
+graph_id             timestamp                type       base
+----------------------------------------------------------------------
+0                    1970-01-01T00:16:40Z     Full -
+1                    1970-01-01T00:16:41Z     Full -
+"
+    );
+
+    Ok(())
+}

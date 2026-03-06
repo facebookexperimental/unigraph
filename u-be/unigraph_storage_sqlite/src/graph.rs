@@ -1,31 +1,74 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-//! [`UnigraphGraphStorage`] implementation for SQLite.
+//! [`UnigraphGraphStorage`] and [`UnigraphGraphConnection`] implementation for SQLite.
+
+use std::sync::MutexGuard;
 
 use anyhow::Context;
 use anyhow::Result;
+use async_trait::async_trait;
 use chrono::Utc;
+use rusqlite::Connection;
+use unigraph_storage_core::ExternalID;
+use unigraph_storage_core::ExternalIDNamespace;
 use unigraph_storage_core::FrameData;
+use unigraph_storage_core::FrameQuery;
 use unigraph_storage_core::FrameRow;
 use unigraph_storage_core::FrameType;
+use unigraph_storage_core::GraphID;
 use unigraph_storage_core::GraphKey;
 use unigraph_storage_core::GraphTimeKey;
+use unigraph_storage_core::Order;
 use unigraph_storage_core::TimelineConfig;
 use unigraph_storage_core::TimelineID;
 use unigraph_storage_core::Timestamp;
 use unigraph_storage_core::frame::Frame;
+use unigraph_storage_core::traits::UnigraphGraphConnection;
 use unigraph_storage_core::traits::UnigraphGraphStorage;
-use unigraph_storage_core::types::GraphID;
 
+use crate::SqliteConnection;
 use crate::SqliteStorage;
 
+#[async_trait]
 impl UnigraphGraphStorage for SqliteStorage {
-    fn create_timeline(&self, timeline_id: &TimelineID, config: &TimelineConfig) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+    async fn conn(&self) -> Result<Box<dyn UnigraphGraphConnection + '_>> {
+        Ok(Box::new(SqliteConnection {
+            conn: self.conn.clone(),
+            transaction_active: std::sync::atomic::AtomicBool::new(false),
+        }))
+    }
+}
+
+#[async_trait]
+impl UnigraphGraphConnection for SqliteConnection {
+    async fn start_transaction(&self) -> Result<()> {
+        let conn = self.lock();
+        conn.execute("BEGIN EXCLUSIVE", [])
+            .context("Failed to begin exclusive transaction")?;
+        self.transaction_active
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+        Ok(())
+    }
+
+    async fn commit_transaction(&self) -> Result<()> {
+        let conn = self.lock();
+        conn.execute("COMMIT", [])
+            .context("Failed to commit transaction")?;
+        self.transaction_active
+            .store(false, std::sync::atomic::Ordering::Relaxed);
+        Ok(())
+    }
+
+    async fn create_timeline(
+        &self,
+        timeline_id: &TimelineID,
+        config: &TimelineConfig,
+    ) -> Result<()> {
         let config_json =
             serde_json::to_string(config).context("Failed to serialize TimelineConfig")?;
         let now = Utc::now().to_rfc3339();
 
+        let conn = self.lock();
         conn.execute(
             "INSERT INTO timelines (timeline_id, config_json, created_at) VALUES (?1, ?2, ?3)",
             rusqlite::params![timeline_id.0, config_json, now],
@@ -35,31 +78,27 @@ impl UnigraphGraphStorage for SqliteStorage {
         Ok(())
     }
 
-    fn get_timeline_config(&self, timeline_id: &TimelineID) -> Result<Option<TimelineConfig>> {
-        let conn = self.conn.lock().unwrap();
-        let mut stmt = conn
-            .prepare("SELECT config_json FROM timelines WHERE timeline_id = ?1")
-            .context("Failed to prepare timeline query")?;
-
-        let result = stmt
-            .query_row(rusqlite::params![timeline_id.0], |row| {
-                row.get::<_, String>(0)
-            })
-            .optional()
-            .context("Failed to query timeline config")?;
-
-        match result {
-            Some(json) => {
-                let config: TimelineConfig =
-                    serde_json::from_str(&json).context("Failed to parse TimelineConfig")?;
-                Ok(Some(config))
-            }
-            None => Ok(None),
-        }
+    async fn get_timeline_config(
+        &self,
+        timeline_id: &TimelineID,
+    ) -> Result<Option<TimelineConfig>> {
+        let conn = self.lock();
+        query_timeline_config(&conn, timeline_id)
     }
 
-    fn list_timelines(&self) -> Result<Vec<TimelineID>> {
-        let conn = self.conn.lock().unwrap();
+    async fn get_timeline_config_and_lock(
+        &self,
+        timeline_id: &TimelineID,
+    ) -> Result<Option<TimelineConfig>> {
+        // For SQLite, BEGIN EXCLUSIVE (in start_transaction) already serializes
+        // all writers. The caller has already started the transaction, so we
+        // just read the config here.
+        let conn = self.lock();
+        query_timeline_config(&conn, timeline_id)
+    }
+
+    async fn list_timelines(&self) -> Result<Vec<TimelineID>> {
+        let conn = self.lock();
         let mut stmt = conn
             .prepare("SELECT timeline_id FROM timelines ORDER BY timeline_id")
             .context("Failed to prepare list timelines query")?;
@@ -75,7 +114,7 @@ impl UnigraphGraphStorage for SqliteStorage {
         Ok(result)
     }
 
-    fn store_frame(
+    async fn store_frame(
         &self,
         key: &GraphTimeKey,
         frame_type: FrameType,
@@ -83,7 +122,6 @@ impl UnigraphGraphStorage for SqliteStorage {
         manifest_json: &str,
         inline_blobs: Option<&[u8]>,
     ) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
         let now = Utc::now().to_rfc3339();
         let timestamp = key.timestamp.to_rfc3339();
         let frame_type_str = frame_type.to_string();
@@ -91,6 +129,15 @@ impl UnigraphGraphStorage for SqliteStorage {
             .map(serde_json::to_string)
             .transpose()
             .context("Failed to serialize base GraphKey")?;
+
+        let conn = self.lock();
+
+        // Delete an existing Empty frame so we can replace it, then insert.
+        conn.execute(
+            "DELETE FROM frames WHERE timeline_id = ?1 AND graph_id = ?2 AND frame_type = 'Empty'",
+            rusqlite::params![key.timeline_id.0, key.graph_id.0],
+        )
+        .context("Failed to delete existing empty frame")?;
 
         conn.execute(
             "INSERT INTO frames (timeline_id, timestamp, graph_id, frame_type, manifest_json, inline_blobs, base_key_json, created_at)
@@ -111,277 +158,188 @@ impl UnigraphGraphStorage for SqliteStorage {
         Ok(())
     }
 
-    fn store_frame_empty(&self, key: &GraphTimeKey) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+    async fn store_frame_empty(&self, key: &GraphTimeKey) -> Result<()> {
         let now = Utc::now().to_rfc3339();
         let timestamp = key.timestamp.to_rfc3339();
 
+        let conn = self.lock();
         conn.execute(
             "INSERT INTO frames (timeline_id, timestamp, graph_id, frame_type, manifest_json, inline_blobs, base_key_json, created_at)
              VALUES (?1, ?2, ?3, ?4, NULL, NULL, NULL, ?5)",
-            rusqlite::params![
-                key.timeline_id.0,
-                timestamp,
-                key.graph_id.0,
-                "Empty",
-                now,
-            ],
+            rusqlite::params![key.timeline_id.0, timestamp, key.graph_id.0, "Empty", now,],
         )
         .context("Failed to insert empty frame")?;
 
         Ok(())
     }
 
-    fn get_frame(&self, key: &GraphKey, with_data: bool) -> Result<Option<FrameRow>> {
-        let conn = self.conn.lock().unwrap();
+    async fn select_frames(&self, query: &FrameQuery) -> Result<Vec<FrameRow>> {
+        let with_data = query.with_data.unwrap_or(false);
 
-        if with_data {
-            let mut stmt = conn
-                .prepare(
-                    "SELECT timestamp, frame_type, base_key_json, manifest_json, inline_blobs
-                     FROM frames
-                     WHERE timeline_id = ?1 AND graph_id = ?2",
-                )
-                .context("Failed to prepare get_frame query")?;
-
-            stmt.query_row(
-                rusqlite::params![key.timeline_id.0, key.graph_id.0],
-                |row| {
-                    let timestamp_str: String = row.get(0)?;
-                    let frame_type_str: String = row.get(1)?;
-                    let base_key_json: Option<String> = row.get(2)?;
-                    let manifest_json: Option<String> = row.get(3)?;
-                    let inline_blobs: Option<Vec<u8>> = row.get(4)?;
-                    Ok((
-                        timestamp_str,
-                        frame_type_str,
-                        base_key_json,
-                        manifest_json,
-                        inline_blobs,
-                    ))
-                },
-            )
-            .optional()
-            .context("Failed to query frame")?
-            .map(
-                |(timestamp_str, frame_type_str, base_key_json, manifest_json, inline_blobs)| {
-                    let timestamp = parse_timestamp(&timestamp_str)?;
-                    let frame_type: FrameType = frame_type_str
-                        .parse()
-                        .context("Failed to parse FrameType")?;
-                    let base = parse_base_key(base_key_json.as_deref())?;
-                    let data = manifest_json.map(|mj| FrameData {
-                        manifest_json: mj,
-                        inline_blobs,
-                    });
-
-                    Ok(FrameRow {
-                        frame: Frame {
-                            timestamp,
-                            graph_id: key.graph_id.clone(),
-                        },
-                        timeline_id: key.timeline_id.clone(),
-                        frame_type,
-                        base,
-                        data,
-                    })
-                },
-            )
-            .transpose()
+        // Build SELECT columns.
+        let select = if with_data {
+            "SELECT graph_id, timestamp, frame_type, base_key_json, manifest_json, inline_blobs FROM frames"
         } else {
-            let mut stmt = conn
-                .prepare(
-                    "SELECT timestamp, frame_type, base_key_json
-                     FROM frames
-                     WHERE timeline_id = ?1 AND graph_id = ?2",
-                )
-                .context("Failed to prepare get_frame metadata query")?;
+            "SELECT graph_id, timestamp, frame_type, base_key_json FROM frames"
+        };
 
-            stmt.query_row(
-                rusqlite::params![key.timeline_id.0, key.graph_id.0],
-                |row| {
-                    let timestamp_str: String = row.get(0)?;
-                    let frame_type_str: String = row.get(1)?;
-                    let base_key_json: Option<String> = row.get(2)?;
-                    Ok((timestamp_str, frame_type_str, base_key_json))
-                },
-            )
-            .optional()
-            .context("Failed to query frame metadata")?
-            .map(|(timestamp_str, frame_type_str, base_key_json)| {
-                let timestamp = parse_timestamp(&timestamp_str)?;
-                let frame_type: FrameType = frame_type_str
-                    .parse()
-                    .context("Failed to parse FrameType")?;
-                let base = parse_base_key(base_key_json.as_deref())?;
+        // Build WHERE clauses and collect params as strings.
+        let mut conditions: Vec<String> = vec!["timeline_id = ?1".to_string()];
+        let mut params: Vec<String> = vec![query.timeline_id.0.clone()];
 
-                Ok(FrameRow {
-                    frame: Frame {
-                        timestamp,
-                        graph_id: key.graph_id.clone(),
-                    },
-                    timeline_id: key.timeline_id.clone(),
-                    frame_type,
-                    base,
-                    data: None,
+        if let Some(bounds) = &query.timestamp_bounds {
+            if let Some(start) = &bounds.start {
+                params.push(start.to_rfc3339());
+                conditions.push(format!("timestamp >= ?{}", params.len()));
+            }
+            if let Some(end) = &bounds.end {
+                params.push(end.to_rfc3339());
+                conditions.push(format!("timestamp <= ?{}", params.len()));
+            }
+        }
+
+        if let Some(bounds) = &query.graph_id_bounds {
+            if let Some(lower) = &bounds.0 {
+                params.push(lower.0.to_string());
+                conditions.push(format!("graph_id >= ?{}", params.len()));
+            }
+            if let Some(upper) = &bounds.1 {
+                params.push(upper.0.to_string());
+                conditions.push(format!("graph_id <= ?{}", params.len()));
+            }
+        }
+
+        if let Some(ids) = &query.graph_ids {
+            let placeholders: Vec<String> = ids
+                .iter()
+                .map(|id| {
+                    params.push(id.0.to_string());
+                    format!("?{}", params.len())
                 })
-            })
-            .transpose()
+                .collect();
+            conditions.push(format!("graph_id IN ({})", placeholders.join(", ")));
         }
-    }
 
-    fn list_frames(&self, timeline_id: &TimelineID) -> Result<Vec<FrameRow>> {
-        let conn = self.conn.lock().unwrap();
+        if let Some(types) = &query.frame_types {
+            let placeholders: Vec<String> = types
+                .iter()
+                .map(|ft| {
+                    params.push(ft.to_string());
+                    format!("?{}", params.len())
+                })
+                .collect();
+            conditions.push(format!("frame_type IN ({})", placeholders.join(", ")));
+        }
+
+        if let Some((ts, gid)) = &query.before {
+            let ts_str = ts.to_rfc3339();
+            params.push(ts_str.clone());
+            let ts_idx = params.len();
+            params.push(ts_str);
+            let ts_idx2 = params.len();
+            params.push(gid.0.to_string());
+            let gid_idx = params.len();
+            conditions.push(format!(
+                "(timestamp < ?{} OR (timestamp = ?{} AND graph_id < ?{}))",
+                ts_idx, ts_idx2, gid_idx
+            ));
+        }
+
+        // Build ORDER BY.
+        let order_clause = if query.before.is_some() {
+            // `before` implies DESC to get the closest preceding frame.
+            "ORDER BY timestamp DESC, graph_id DESC"
+        } else {
+            match query.order.as_ref().unwrap_or(&Order::Asc) {
+                Order::Asc => "ORDER BY timestamp, graph_id",
+                Order::Desc => "ORDER BY timestamp DESC, graph_id DESC",
+            }
+        };
+
+        // Build LIMIT.
+        let limit_clause = if query.before.is_some() {
+            // `before` implies LIMIT 1.
+            "LIMIT 1".to_string()
+        } else if let Some(limit) = query.limit {
+            format!("LIMIT {}", limit)
+        } else {
+            String::new()
+        };
+
+        let where_clause = conditions.join(" AND ");
+        let sql = format!(
+            "{} WHERE {} {} {}",
+            select, where_clause, order_clause, limit_clause
+        );
+
+        let conn = self.lock();
         let mut stmt = conn
-            .prepare(
-                "SELECT graph_id, timestamp, frame_type, base_key_json
-                 FROM frames
-                 WHERE timeline_id = ?1
-                 ORDER BY timestamp, graph_id",
-            )
-            .context("Failed to prepare list_frames query")?;
+            .prepare(&sql)
+            .context("Failed to prepare select_frames query")?;
 
-        let rows = stmt
-            .query_map(rusqlite::params![timeline_id.0], |row| {
-                let graph_id: String = row.get(0)?;
-                let timestamp_str: String = row.get(1)?;
-                let frame_type_str: String = row.get(2)?;
-                let base_key_json: Option<String> = row.get(3)?;
-                Ok((graph_id, timestamp_str, frame_type_str, base_key_json))
-            })
-            .context("Failed to query frames")?;
+        // Convert params to rusqlite dynamic params.
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> = params
+            .iter()
+            .map(|s| s as &dyn rusqlite::types::ToSql)
+            .collect();
 
         let mut result = Vec::new();
-        for row in rows {
-            let (graph_id, timestamp_str, frame_type_str, base_key_json) =
-                row.context("Failed to read frame row")?;
+        let mut rows = stmt
+            .query(param_refs.as_slice())
+            .context("Failed to execute select_frames query")?;
+
+        while let Some(row) = rows.next().context("Failed to read frame row")? {
+            let graph_id: i64 = row.get(0)?;
+            let timestamp_str: String = row.get(1)?;
+            let frame_type_str: String = row.get(2)?;
+            let base_key_json: Option<String> = row.get(3)?;
+
             let timestamp = parse_timestamp(&timestamp_str)?;
             let frame_type: FrameType = frame_type_str
                 .parse()
                 .context("Failed to parse FrameType")?;
             let base = parse_base_key(base_key_json.as_deref())?;
 
-            result.push(FrameRow {
-                frame: Frame {
-                    timestamp,
-                    graph_id: GraphID(graph_id),
-                },
-                timeline_id: timeline_id.clone(),
-                frame_type,
-                base,
-                data: None,
-            });
-        }
-        Ok(result)
-    }
-
-    fn list_frames_range(
-        &self,
-        timeline_id: &TimelineID,
-        start: Timestamp,
-        end: Timestamp,
-    ) -> Result<Vec<FrameRow>> {
-        let conn = self.conn.lock().unwrap();
-        let start_str = start.to_rfc3339();
-        let end_str = end.to_rfc3339();
-
-        let mut stmt = conn
-            .prepare(
-                "SELECT graph_id, timestamp, frame_type, base_key_json
-                 FROM frames
-                 WHERE timeline_id = ?1 AND timestamp >= ?2 AND timestamp <= ?3
-                 ORDER BY timestamp, graph_id",
-            )
-            .context("Failed to prepare list_frames_range query")?;
-
-        let rows = stmt
-            .query_map(
-                rusqlite::params![timeline_id.0, start_str, end_str],
-                |row| {
-                    let graph_id: String = row.get(0)?;
-                    let timestamp_str: String = row.get(1)?;
-                    let frame_type_str: String = row.get(2)?;
-                    let base_key_json: Option<String> = row.get(3)?;
-                    Ok((graph_id, timestamp_str, frame_type_str, base_key_json))
-                },
-            )
-            .context("Failed to query frames range")?;
-
-        let mut result = Vec::new();
-        for row in rows {
-            let (graph_id, timestamp_str, frame_type_str, base_key_json) =
-                row.context("Failed to read frame row")?;
-            let timestamp = parse_timestamp(&timestamp_str)?;
-            let frame_type: FrameType = frame_type_str
-                .parse()
-                .context("Failed to parse FrameType")?;
-            let base = parse_base_key(base_key_json.as_deref())?;
+            let data = if with_data {
+                let manifest_json: Option<String> = row.get(4)?;
+                let inline_blobs: Option<Vec<u8>> = row.get(5)?;
+                manifest_json.map(|mj| FrameData {
+                    manifest_json: mj,
+                    inline_blobs,
+                })
+            } else {
+                None
+            };
 
             result.push(FrameRow {
                 frame: Frame {
                     timestamp,
                     graph_id: GraphID(graph_id),
                 },
-                timeline_id: timeline_id.clone(),
+                timeline_id: query.timeline_id.clone(),
                 frame_type,
                 base,
-                data: None,
+                data,
             });
         }
+
         Ok(result)
     }
 
-    fn get_preceding_frame(&self, key: &GraphTimeKey) -> Result<Option<FrameRow>> {
-        let conn = self.conn.lock().unwrap();
-        let timestamp_str = key.timestamp.to_rfc3339();
-
-        let mut stmt = conn
-            .prepare(
-                "SELECT graph_id, timestamp, frame_type, base_key_json
-                 FROM frames
-                 WHERE timeline_id = ?1
-                   AND (timestamp < ?2 OR (timestamp = ?2 AND graph_id < ?3))
-                 ORDER BY timestamp DESC, graph_id DESC
-                 LIMIT 1",
+    async fn delete_frame(&self, key: &GraphKey) -> Result<bool> {
+        let conn = self.lock();
+        let deleted = conn
+            .execute(
+                "DELETE FROM frames WHERE timeline_id = ?1 AND graph_id = ?2",
+                rusqlite::params![key.timeline_id.0, key.graph_id.0],
             )
-            .context("Failed to prepare get_preceding_frame query")?;
-
-        stmt.query_row(
-            rusqlite::params![key.timeline_id.0, timestamp_str, key.graph_id.0],
-            |row| {
-                let graph_id: String = row.get(0)?;
-                let ts_str: String = row.get(1)?;
-                let frame_type_str: String = row.get(2)?;
-                let base_key_json: Option<String> = row.get(3)?;
-                Ok((graph_id, ts_str, frame_type_str, base_key_json))
-            },
-        )
-        .optional()
-        .context("Failed to query preceding frame")?
-        .map(|(graph_id, ts_str, frame_type_str, base_key_json)| {
-            let timestamp = parse_timestamp(&ts_str)?;
-            let frame_type: FrameType = frame_type_str
-                .parse()
-                .context("Failed to parse FrameType")?;
-            let base = parse_base_key(base_key_json.as_deref())?;
-
-            Ok(FrameRow {
-                frame: Frame {
-                    timestamp,
-                    graph_id: GraphID(graph_id),
-                },
-                timeline_id: key.timeline_id.clone(),
-                frame_type,
-                base,
-                data: None,
-            })
-        })
-        .transpose()
+            .context("Failed to delete frame")?;
+        Ok(deleted > 0)
     }
 
-    fn register_blobs_for_cleanup(&self, blob_keys: &[String]) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+    async fn register_blobs_for_cleanup(&self, blob_keys: &[String]) -> Result<()> {
         let now = Utc::now().to_rfc3339();
+        let conn = self.lock();
         let mut stmt = conn
             .prepare("INSERT OR IGNORE INTO blobs_to_delete (blob_key, created_at) VALUES (?1, ?2)")
             .context("Failed to prepare register_blobs_for_cleanup")?;
@@ -393,8 +351,8 @@ impl UnigraphGraphStorage for SqliteStorage {
         Ok(())
     }
 
-    fn unregister_blobs_for_cleanup(&self, blob_keys: &[String]) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+    async fn unregister_blobs_for_cleanup(&self, blob_keys: &[String]) -> Result<()> {
+        let conn = self.lock();
         let mut stmt = conn
             .prepare("DELETE FROM blobs_to_delete WHERE blob_key = ?1")
             .context("Failed to prepare unregister_blobs_for_cleanup")?;
@@ -406,8 +364,8 @@ impl UnigraphGraphStorage for SqliteStorage {
         Ok(())
     }
 
-    fn get_blobs_pending_cleanup(&self) -> Result<Vec<String>> {
-        let conn = self.conn.lock().unwrap();
+    async fn get_blobs_pending_cleanup(&self) -> Result<Vec<String>> {
+        let conn = self.lock();
         let mut stmt = conn
             .prepare("SELECT blob_key FROM blobs_to_delete ORDER BY blob_key")
             .context("Failed to prepare get_blobs_pending_cleanup")?;
@@ -421,6 +379,185 @@ impl UnigraphGraphStorage for SqliteStorage {
             result.push(row.context("Failed to read blob key")?);
         }
         Ok(result)
+    }
+
+    async fn get_blobs_pending_cleanup_older_than(
+        &self,
+        older_than: unigraph_storage_core::Timestamp,
+    ) -> Result<Vec<String>> {
+        let cutoff = older_than.to_rfc3339();
+        let conn = self.lock();
+        let mut stmt = conn
+            .prepare(
+                "SELECT blob_key FROM blobs_to_delete
+                 WHERE created_at < ?1
+                 ORDER BY blob_key",
+            )
+            .context("Failed to prepare get_blobs_pending_cleanup_older_than")?;
+
+        let rows = stmt
+            .query_map(rusqlite::params![cutoff], |row| row.get::<_, String>(0))
+            .context("Failed to query aged blobs pending cleanup")?;
+
+        let mut result = Vec::new();
+        for row in rows {
+            result.push(row.context("Failed to read blob key")?);
+        }
+        Ok(result)
+    }
+
+    // -- Named locks --
+
+    async fn acquire_named_lock(&self, _name: &str) -> Result<()> {
+        // No-op for SQLite: BEGIN EXCLUSIVE in start_transaction already serializes writers.
+        Ok(())
+    }
+
+    async fn release_named_lock(&self, _name: &str) -> Result<()> {
+        // No-op for SQLite.
+        Ok(())
+    }
+
+    // -- External ID mappings --
+
+    async fn list_external_id_mappings(
+        &self,
+        ns: &ExternalIDNamespace,
+    ) -> Result<Vec<(ExternalID, GraphID)>> {
+        let conn = self.lock();
+        let mut stmt = conn.prepare(
+            "SELECT external_id, graph_id FROM external_id_mappings
+             WHERE external_id_namespace = ?1
+             ORDER BY graph_id ASC",
+        )?;
+        stmt.query_map(rusqlite::params![ns.0], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+        })?
+        .map(|r| {
+            let (eid, gid) = r.context("Failed to read external_id mapping row")?;
+            Ok((ExternalID(eid), GraphID(gid)))
+        })
+        .collect()
+    }
+
+    async fn insert_external_id_mappings(
+        &self,
+        ns: &ExternalIDNamespace,
+        mappings: &[(ExternalID, GraphID)],
+    ) -> Result<()> {
+        let now = Utc::now().to_rfc3339();
+        let conn = self.lock();
+        let mut stmt = conn.prepare(
+            "INSERT INTO external_id_mappings
+             (external_id_namespace, external_id, graph_id, created_at)
+             VALUES (?1, ?2, ?3, ?4)",
+        )?;
+        for (eid, gid) in mappings {
+            stmt.execute(rusqlite::params![ns.0, eid.0, gid.0, now])?;
+        }
+        Ok(())
+    }
+
+    async fn graph_id_to_external_id(
+        &self,
+        external_id_namespace: &ExternalIDNamespace,
+        graph_id: &GraphID,
+    ) -> Result<Option<ExternalID>> {
+        let conn = self.lock();
+        let mut stmt = conn
+            .prepare(
+                "SELECT external_id FROM external_id_mappings
+                 WHERE external_id_namespace = ?1 AND graph_id = ?2",
+            )
+            .context("Failed to prepare graph_id_to_external_id query")?;
+
+        stmt.query_row(
+            rusqlite::params![external_id_namespace.0, graph_id.0],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .context("Failed to query graph_id_to_external_id")?
+        .map(|s| Ok(ExternalID(s)))
+        .transpose()
+    }
+
+    async fn graph_ids_to_external_ids(
+        &self,
+        external_id_namespace: &ExternalIDNamespace,
+        graph_ids: &[GraphID],
+    ) -> Result<Vec<(GraphID, ExternalID)>> {
+        let conn = self.lock();
+        let mut stmt = conn
+            .prepare(
+                "SELECT external_id FROM external_id_mappings
+                 WHERE external_id_namespace = ?1 AND graph_id = ?2",
+            )
+            .context("Failed to prepare graph_ids_to_external_ids query")?;
+
+        let mut result = Vec::new();
+        for graph_id in graph_ids {
+            let external_id: Option<String> = stmt
+                .query_row(
+                    rusqlite::params![external_id_namespace.0, graph_id.0],
+                    |row| row.get(0),
+                )
+                .optional()
+                .context("Failed to query external_id")?;
+
+            if let Some(eid) = external_id {
+                result.push((*graph_id, ExternalID(eid)));
+            }
+        }
+        Ok(result)
+    }
+
+    async fn get_latest_external_id(
+        &self,
+        external_id_namespace: &ExternalIDNamespace,
+    ) -> Result<Option<ExternalID>> {
+        let conn = self.lock();
+        let mut stmt = conn
+            .prepare(
+                "SELECT external_id FROM external_id_mappings
+                 WHERE external_id_namespace = ?1
+                 ORDER BY graph_id DESC
+                 LIMIT 1",
+            )
+            .context("Failed to prepare get_latest_external_id query")?;
+
+        stmt.query_row(rusqlite::params![external_id_namespace.0], |row| {
+            row.get::<_, String>(0)
+        })
+        .optional()
+        .context("Failed to query latest external_id")?
+        .map(|s| Ok(ExternalID(s)))
+        .transpose()
+    }
+}
+
+/// Query timeline config from an already-locked connection.
+fn query_timeline_config(
+    conn: &MutexGuard<'_, Connection>,
+    timeline_id: &TimelineID,
+) -> Result<Option<TimelineConfig>> {
+    let mut stmt = conn
+        .prepare("SELECT config_json FROM timelines WHERE timeline_id = ?1")
+        .context("Failed to prepare timeline query")?;
+
+    let result = stmt
+        .query_row(rusqlite::params![timeline_id.0], |row| {
+            row.get::<_, String>(0)
+        })
+        .optional()
+        .context("Failed to query timeline config")?;
+
+    match result {
+        Some(json) => {
+            let config: TimelineConfig =
+                serde_json::from_str(&json).context("Failed to parse TimelineConfig")?;
+            Ok(Some(config))
+        }
+        None => Ok(None),
     }
 }
 

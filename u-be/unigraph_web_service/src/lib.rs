@@ -17,16 +17,24 @@ use axum::extract::State;
 use axum::http;
 use axum::response::IntoResponse;
 use axum::routing::get;
+use serde::Deserialize;
+use serde::Serialize;
 use tower_http::services::ServeDir;
 use tower_http::services::ServeFile;
 use tower_http::trace::TraceLayer;
 use tracing::Span;
 use tracing::info;
+use unigraph_core::ArrayGraphSerializable;
 use unigraph_core::ArrayGraphSerializablePackage;
 use unigraph_core::ArrayGraphSerializablePackageConfig;
 use unigraph_core::MapGraph;
 use unigraph_core::ui_types::ExplorerComponentInputGraph;
+use unigraph_db::UnigraphDb;
 use unigraph_serialization::SerializationFormat;
+use unigraph_storage_core::FrameType;
+use unigraph_storage_core::GraphID;
+use unigraph_storage_core::GraphKey;
+use unigraph_storage_core::TimelineID;
 
 const THIS_FILES_DIR: &str = env!("CARGO_MANIFEST_DIR");
 
@@ -41,11 +49,13 @@ pub enum ServeMode {
 struct AppState {
     left_graph: Arc<String>,
     right_graph: Arc<Option<String>>,
+    db: Option<UnigraphDb>,
 }
 
 pub async fn start(
     graphite_graph_json_file_path_left: &Option<PathBuf>,
     graphite_graph_json_file_path_right: &Option<PathBuf>,
+    sqlite_path: &Option<PathBuf>,
     mode: ServeMode,
 ) -> Result<()> {
     tracing_subscriber::fmt()
@@ -68,13 +78,31 @@ pub async fn start(
         }
     };
 
+    let db = match sqlite_path {
+        Some(path) => {
+            let sqlite = Arc::new(unigraph_storage_sqlite::SqliteStorage::new(path)?);
+            Some(UnigraphDb::new(sqlite.clone(), sqlite))
+        }
+        None => None,
+    };
+
     let state = AppState {
         left_graph: Arc::new(left_graph),
         right_graph: Arc::new(right_graph),
+        db,
     };
 
     let api = Router::new()
         .route("/api/graphs", get(api_graphs))
+        .route("/api/timelines", get(api_timelines))
+        .route(
+            "/api/timelines/{timeline_id}/frames",
+            get(api_timeline_frames),
+        )
+        .route(
+            "/api/timelines/{timeline_id}/graphs/{graph_id}",
+            get(api_timeline_graph),
+        )
         .with_state(state);
 
     let project_root = PathBuf::from(THIS_FILES_DIR).join("../..");
@@ -134,6 +162,8 @@ pub async fn start(
     Ok(())
 }
 
+// --- File-based graph endpoint (existing) ---
+
 async fn api_graphs(State(state): State<AppState>) -> impl IntoResponse {
     let mut body = format!(r#"{{"left":{}"#, *state.left_graph);
     if let Some(ref right) = *state.right_graph {
@@ -142,6 +172,107 @@ async fn api_graphs(State(state): State<AppState>) -> impl IntoResponse {
     body.push('}');
     ([(http::header::CONTENT_TYPE, "application/json")], body)
 }
+
+// --- Storage-backed endpoints ---
+
+#[derive(Serialize)]
+struct TimelineResponse {
+    timeline_id: String,
+}
+
+async fn api_timelines(
+    State(state): State<AppState>,
+) -> Result<impl IntoResponse, http::StatusCode> {
+    let db = state.db.as_ref().ok_or(http::StatusCode::NOT_FOUND)?;
+    let timelines = db
+        .list_timelines()
+        .await
+        .map_err(|_| http::StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let response: Vec<TimelineResponse> = timelines
+        .into_iter()
+        .map(|tl| TimelineResponse { timeline_id: tl.0 })
+        .collect();
+
+    let json =
+        serde_json::to_string(&response).map_err(|_| http::StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(([(http::header::CONTENT_TYPE, "application/json")], json))
+}
+
+#[derive(Serialize)]
+struct FrameResponse {
+    graph_id: i64,
+    timestamp: String,
+    frame_type: String,
+    base: Option<i64>,
+}
+
+async fn api_timeline_frames(
+    State(state): State<AppState>,
+    axum::extract::Path(timeline_id): axum::extract::Path<String>,
+) -> Result<impl IntoResponse, http::StatusCode> {
+    let db = state.db.as_ref().ok_or(http::StatusCode::NOT_FOUND)?;
+    let frames = db
+        .list_frames(&TimelineID(timeline_id))
+        .await
+        .map_err(|_| http::StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let response: Vec<FrameResponse> = frames
+        .iter()
+        .map(|f| {
+            let base = f.base.as_ref().map(|k| k.graph_id.0);
+            FrameResponse {
+                graph_id: f.frame.graph_id.0,
+                timestamp: f.frame.timestamp.to_rfc3339(),
+                frame_type: f.frame_type.to_string(),
+                base,
+            }
+        })
+        .collect();
+
+    let json =
+        serde_json::to_string(&response).map_err(|_| http::StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(([(http::header::CONTENT_TYPE, "application/json")], json))
+}
+
+#[derive(Deserialize)]
+struct TimelineGraphPath {
+    timeline_id: String,
+    graph_id: i64,
+}
+
+async fn api_timeline_graph(
+    State(state): State<AppState>,
+    axum::extract::Path(path): axum::extract::Path<TimelineGraphPath>,
+) -> Result<impl IntoResponse, http::StatusCode> {
+    let db = state.db.as_ref().ok_or(http::StatusCode::NOT_FOUND)?;
+    let key = GraphKey {
+        timeline_id: TimelineID(path.timeline_id),
+        graph_id: GraphID(path.graph_id),
+    };
+
+    let frame = db
+        .get_frame(&key, false)
+        .await
+        .map_err(|_| http::StatusCode::INTERNAL_SERVER_ERROR)?
+        .ok_or(http::StatusCode::NOT_FOUND)?;
+
+    if frame.frame_type == FrameType::Empty || frame.frame_type == FrameType::Error {
+        return Err(http::StatusCode::NOT_FOUND);
+    }
+
+    let graph = db
+        .fetch_graph(&key)
+        .await
+        .map_err(|_| http::StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let json = array_graph_to_json(&graph).map_err(|_| http::StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let body = format!(r#"{{"left":{json}}}"#);
+    Ok(([(http::header::CONTENT_TYPE, "application/json")], body))
+}
+
+// --- Vite proxy ---
 
 async fn proxy_to_vite(req: axum::extract::Request) -> Result<impl IntoResponse, http::StatusCode> {
     use hyper_util::client::legacy::Client;
@@ -166,6 +297,8 @@ async fn proxy_to_vite(req: axum::extract::Request) -> Result<impl IntoResponse,
     let (parts, body) = resp.into_parts();
     Ok(axum::response::Response::from_parts(parts, Body::new(body)))
 }
+
+// --- Vite process management ---
 
 struct ViteProcess(Child);
 
@@ -197,8 +330,9 @@ async fn wait_for_vite(port: u16) -> Result<()> {
     bail!("Vite dev server did not start within 20 seconds")
 }
 
-fn to_serialized_str_json(map_graph: &MapGraph) -> Result<String> {
-    let ag = map_graph.to_array_graph()?.into_serializable();
+// --- Graph serialization helpers ---
+
+fn array_graph_to_json(ag: &ArrayGraphSerializable) -> Result<String> {
     let package_base64 = ag
         .pack(&ArrayGraphSerializablePackageConfig::default())?
         .into_base_64();
@@ -209,6 +343,11 @@ fn to_serialized_str_json(map_graph: &MapGraph) -> Result<String> {
 
     SerializationFormat::Json
         .to_string(&ExplorerComponentInputGraph::ArrayGraphSerializedPackageBase64(serialized_str))
+}
+
+fn to_serialized_str_json(map_graph: &MapGraph) -> Result<String> {
+    let ag = map_graph.to_array_graph()?.into_serializable();
+    array_graph_to_json(&ag)
 }
 
 fn into_array_graph_json(p: &Path) -> Result<String> {
