@@ -6,7 +6,22 @@ use std::sync::Arc;
 use clap::Parser;
 use clap::Subcommand;
 use unigraph_ingestion::GraphBuilder as _;
+use unigraph_storage_core::TimelineID;
 use unigraph_web_service::ServeMode;
+
+fn default_sqlite_path() -> PathBuf {
+    dirs::home_dir()
+        .expect("could not determine home directory")
+        .join(".unigraph")
+        .join("sqlite")
+}
+
+fn resolve_sqlite_path(path: &PathBuf) -> &PathBuf {
+    if *path == default_sqlite_path() {
+        eprintln!("Using database: {}", path.display());
+    }
+    path
+}
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -20,6 +35,7 @@ enum Commands {
     Serve(Serve),
     Ingest(Ingest),
     Frames(Frames),
+    Compact(Compact),
 }
 
 #[derive(Parser)]
@@ -62,7 +78,7 @@ struct Ingest {
     git_repo_path: PathBuf,
 
     /// Path to the SQLite database file (created if it doesn't exist)
-    #[arg(long)]
+    #[arg(long, default_value_os_t = default_sqlite_path())]
     sqlite_path: PathBuf,
 
     /// Which graph builder to use
@@ -81,9 +97,8 @@ enum GraphBuilderKind {
 
 impl Ingest {
     async fn run(&self) -> anyhow::Result<()> {
-        let sqlite = Arc::new(unigraph_storage_sqlite::SqliteStorage::new(
-            &self.sqlite_path,
-        )?);
+        let path = resolve_sqlite_path(&self.sqlite_path);
+        let sqlite = Arc::new(unigraph_storage_sqlite::SqliteStorage::new(path)?);
         let db = unigraph_db::UnigraphDb::new(sqlite.clone(), sqlite);
 
         let builder = match self.graph_builder {
@@ -114,7 +129,7 @@ impl Ingest {
 #[derive(Parser)]
 struct Frames {
     /// Path to the SQLite database file
-    #[arg(long)]
+    #[arg(long, default_value_os_t = default_sqlite_path())]
     sqlite_path: PathBuf,
 
     /// Timeline ID to inspect (omit to list all timelines)
@@ -124,12 +139,10 @@ struct Frames {
 
 impl Frames {
     async fn run(&self) -> anyhow::Result<()> {
-        use unigraph_storage_core::TimelineID;
         use unigraph_storage_core::format_frames_table;
 
-        let sqlite = Arc::new(unigraph_storage_sqlite::SqliteStorage::new(
-            &self.sqlite_path,
-        )?);
+        let path = resolve_sqlite_path(&self.sqlite_path);
+        let sqlite = Arc::new(unigraph_storage_sqlite::SqliteStorage::new(path)?);
         let db = unigraph_db::UnigraphDb::new(sqlite.clone(), sqlite);
 
         match &self.timeline_id {
@@ -163,6 +176,56 @@ impl Frames {
     }
 }
 
+#[derive(Parser)]
+struct Compact {
+    /// Path to the SQLite database file
+    #[arg(long, default_value_os_t = default_sqlite_path())]
+    sqlite_path: PathBuf,
+
+    /// Timeline ID to compact
+    #[arg(long)]
+    timeline_id: String,
+
+    /// Start of the time range (RFC 3339, e.g. 2025-01-01T00:00:00Z). Defaults to beginning of time.
+    #[arg(long)]
+    start: Option<String>,
+
+    /// End of the time range (RFC 3339, e.g. 2025-12-31T23:59:59Z). Defaults to now.
+    #[arg(long)]
+    end: Option<String>,
+}
+
+impl Compact {
+    async fn run(&self) -> anyhow::Result<()> {
+        let path = resolve_sqlite_path(&self.sqlite_path);
+        let sqlite = Arc::new(unigraph_storage_sqlite::SqliteStorage::new(path)?);
+        let db = unigraph_db::UnigraphDb::new(sqlite.clone(), sqlite);
+
+        let start = parse_timestamp(self.start.as_deref())?;
+        let end = parse_timestamp(self.end.as_deref())?;
+
+        let timeline_id = TimelineID(self.timeline_id.clone());
+        let converted = db.compact_timeline(&timeline_id, start, end).await?;
+
+        match converted {
+            0 => println!("Nothing to compact."),
+            n => println!("Compacted {n} frame(s) from Full to Delta."),
+        }
+
+        Ok(())
+    }
+}
+
+fn parse_timestamp(s: Option<&str>) -> anyhow::Result<Option<unigraph_timestamp::Timestamp>> {
+    match s {
+        Some(s) => Ok(Some(
+            unigraph_timestamp::Timestamp::from_rfc3339(s)
+                .map_err(|e| anyhow::anyhow!("Invalid timestamp: {e}"))?,
+        )),
+        None => Ok(None),
+    }
+}
+
 #[tokio::main]
 async fn main() {
     // Parse command line arguments
@@ -178,6 +241,12 @@ async fn main() {
         }
         Commands::Frames(frames) => {
             if let Err(e) = frames.run().await {
+                eprintln!("Error: {e:#}");
+                std::process::exit(1);
+            }
+        }
+        Commands::Compact(compact) => {
+            if let Err(e) = compact.run().await {
                 eprintln!("Error: {e:#}");
                 std::process::exit(1);
             }

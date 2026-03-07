@@ -72,7 +72,7 @@ pub struct ExternalID(pub String);
 pub struct ExternalIDNamespace(pub String);
 
 /// UTC timestamp — always stored and transmitted in UTC.
-pub type Timestamp = chrono::DateTime<chrono::Utc>;
+pub type Timestamp = unigraph_timestamp::Timestamp;
 
 /// Identifies a specific graph within a specific timeline.
 #[derive(

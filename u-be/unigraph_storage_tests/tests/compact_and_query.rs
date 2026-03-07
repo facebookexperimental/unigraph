@@ -11,12 +11,12 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use chrono::TimeZone;
 use k9::snapshot;
 use unigraph_db::UnigraphDb;
 use unigraph_storage_core::*;
 use unigraph_storage_sqlite::SqliteStorage;
 use unigraph_storage_tests::*;
+use unigraph_timestamp::Timestamp;
 
 fn make_db() -> UnigraphDb {
     let sqlite = Arc::new(SqliteStorage::new_in_memory().unwrap());
@@ -24,7 +24,7 @@ fn make_db() -> UnigraphDb {
 }
 
 fn ts(seconds: i64) -> Timestamp {
-    chrono::Utc.timestamp_opt(seconds, 0).unwrap()
+    Timestamp::from_unix_timestamp(seconds)
 }
 
 fn tid() -> TimelineID {
@@ -65,18 +65,18 @@ async fn compact_and_select_frames() -> Result<()> {
         "
 graph_id             timestamp                type       base
 ----------------------------------------------------------------------
-0                    1970-01-01T00:16:40Z     Full -
-1                    1970-01-01T00:16:41Z     Full -
-2                    1970-01-01T00:16:42Z     Full -
-3                    1970-01-01T00:16:43Z     Full -
-4                    1970-01-01T00:16:44Z     Full -
-5                    1970-01-01T00:16:45Z     Full -
-6                    1970-01-01T00:16:46Z     Full -
-7                    1970-01-01T00:16:47Z     Full -
-8                    1970-01-01T00:16:48Z     Full -
-9                    1970-01-01T00:16:49Z     Full -
-10                   1970-01-01T00:16:50Z     Full -
-11                   1970-01-01T00:16:51Z     Full -
+0                    1970-01-01T00:16:40.000Z Full -
+1                    1970-01-01T00:16:41.000Z Full -
+2                    1970-01-01T00:16:42.000Z Full -
+3                    1970-01-01T00:16:43.000Z Full -
+4                    1970-01-01T00:16:44.000Z Full -
+5                    1970-01-01T00:16:45.000Z Full -
+6                    1970-01-01T00:16:46.000Z Full -
+7                    1970-01-01T00:16:47.000Z Full -
+8                    1970-01-01T00:16:48.000Z Full -
+9                    1970-01-01T00:16:49.000Z Full -
+10                   1970-01-01T00:16:50.000Z Full -
+11                   1970-01-01T00:16:51.000Z Full -
 "
     );
 
@@ -85,7 +85,9 @@ graph_id             timestamp                type       base
     //    (frames with graph_ids 3, 4, 5, 6, 7, 8)
     //    Frame 3 stays Full (first in range), 4–8 become Deltas.
     // ---------------------------------------------------------------
-    let converted = db.compact_timeline(&tid(), ts(1003), ts(1008)).await?;
+    let converted = db
+        .compact_timeline(&tid(), Some(ts(1003)), Some(ts(1008)))
+        .await?;
     assert_eq!(converted, 5);
 
     // ---------------------------------------------------------------
@@ -97,18 +99,18 @@ graph_id             timestamp                type       base
         "
 graph_id             timestamp                type       base
 ----------------------------------------------------------------------
-0                    1970-01-01T00:16:40Z     Full -
-1                    1970-01-01T00:16:41Z     Full -
-2                    1970-01-01T00:16:42Z     Full -
-3                    1970-01-01T00:16:43Z     Full -
-4                    1970-01-01T00:16:44Z     Delta tl:3
-5                    1970-01-01T00:16:45Z     Delta tl:4
-6                    1970-01-01T00:16:46Z     Delta tl:5
-7                    1970-01-01T00:16:47Z     Delta tl:6
-8                    1970-01-01T00:16:48Z     Delta tl:7
-9                    1970-01-01T00:16:49Z     Full -
-10                   1970-01-01T00:16:50Z     Full -
-11                   1970-01-01T00:16:51Z     Full -
+0                    1970-01-01T00:16:40.000Z Full -
+1                    1970-01-01T00:16:41.000Z Full -
+2                    1970-01-01T00:16:42.000Z Full -
+3                    1970-01-01T00:16:43.000Z Full -
+4                    1970-01-01T00:16:44.000Z Delta tl:3
+5                    1970-01-01T00:16:45.000Z Delta tl:4
+6                    1970-01-01T00:16:46.000Z Delta tl:5
+7                    1970-01-01T00:16:47.000Z Delta tl:6
+8                    1970-01-01T00:16:48.000Z Delta tl:7
+9                    1970-01-01T00:16:49.000Z Full -
+10                   1970-01-01T00:16:50.000Z Full -
+11                   1970-01-01T00:16:51.000Z Full -
 "
     );
 
@@ -137,13 +139,13 @@ graph_id             timestamp                type       base
         "
 graph_id             timestamp                type       base
 ----------------------------------------------------------------------
-0                    1970-01-01T00:16:40Z     Full -
-1                    1970-01-01T00:16:41Z     Full -
-2                    1970-01-01T00:16:42Z     Full -
-3                    1970-01-01T00:16:43Z     Full -
-9                    1970-01-01T00:16:49Z     Full -
-10                   1970-01-01T00:16:50Z     Full -
-11                   1970-01-01T00:16:51Z     Full -
+0                    1970-01-01T00:16:40.000Z Full -
+1                    1970-01-01T00:16:41.000Z Full -
+2                    1970-01-01T00:16:42.000Z Full -
+3                    1970-01-01T00:16:43.000Z Full -
+9                    1970-01-01T00:16:49.000Z Full -
+10                   1970-01-01T00:16:50.000Z Full -
+11                   1970-01-01T00:16:51.000Z Full -
 "
     );
 
@@ -160,11 +162,11 @@ graph_id             timestamp                type       base
         "
 graph_id             timestamp                type       base
 ----------------------------------------------------------------------
-4                    1970-01-01T00:16:44Z     Delta tl:3
-5                    1970-01-01T00:16:45Z     Delta tl:4
-6                    1970-01-01T00:16:46Z     Delta tl:5
-7                    1970-01-01T00:16:47Z     Delta tl:6
-8                    1970-01-01T00:16:48Z     Delta tl:7
+4                    1970-01-01T00:16:44.000Z Delta tl:3
+5                    1970-01-01T00:16:45.000Z Delta tl:4
+6                    1970-01-01T00:16:46.000Z Delta tl:5
+7                    1970-01-01T00:16:47.000Z Delta tl:6
+8                    1970-01-01T00:16:48.000Z Delta tl:7
 "
     );
 
@@ -184,11 +186,11 @@ graph_id             timestamp                type       base
         "
 graph_id             timestamp                type       base
 ----------------------------------------------------------------------
-5                    1970-01-01T00:16:45Z     Delta tl:4
-6                    1970-01-01T00:16:46Z     Delta tl:5
-7                    1970-01-01T00:16:47Z     Delta tl:6
-8                    1970-01-01T00:16:48Z     Delta tl:7
-9                    1970-01-01T00:16:49Z     Full -
+5                    1970-01-01T00:16:45.000Z Delta tl:4
+6                    1970-01-01T00:16:46.000Z Delta tl:5
+7                    1970-01-01T00:16:47.000Z Delta tl:6
+8                    1970-01-01T00:16:48.000Z Delta tl:7
+9                    1970-01-01T00:16:49.000Z Full -
 "
     );
 
@@ -206,9 +208,9 @@ graph_id             timestamp                type       base
         "
 graph_id             timestamp                type       base
 ----------------------------------------------------------------------
-11                   1970-01-01T00:16:51Z     Full -
-10                   1970-01-01T00:16:50Z     Full -
-9                    1970-01-01T00:16:49Z     Full -
+11                   1970-01-01T00:16:51.000Z Full -
+10                   1970-01-01T00:16:50.000Z Full -
+9                    1970-01-01T00:16:49.000Z Full -
 "
     );
 
@@ -225,11 +227,11 @@ graph_id             timestamp                type       base
         "
 graph_id             timestamp                type       base
 ----------------------------------------------------------------------
-2                    1970-01-01T00:16:42Z     Full -
-3                    1970-01-01T00:16:43Z     Full -
-4                    1970-01-01T00:16:44Z     Delta tl:3
-5                    1970-01-01T00:16:45Z     Delta tl:4
-6                    1970-01-01T00:16:46Z     Delta tl:5
+2                    1970-01-01T00:16:42.000Z Full -
+3                    1970-01-01T00:16:43.000Z Full -
+4                    1970-01-01T00:16:44.000Z Delta tl:3
+5                    1970-01-01T00:16:45.000Z Delta tl:4
+6                    1970-01-01T00:16:46.000Z Delta tl:5
 "
     );
 
@@ -246,9 +248,9 @@ graph_id             timestamp                type       base
         "
 graph_id             timestamp                type       base
 ----------------------------------------------------------------------
-0                    1970-01-01T00:16:40Z     Full -
-5                    1970-01-01T00:16:45Z     Delta tl:4
-11                   1970-01-01T00:16:51Z     Full -
+0                    1970-01-01T00:16:40.000Z Full -
+5                    1970-01-01T00:16:45.000Z Delta tl:4
+11                   1970-01-01T00:16:51.000Z Full -
 "
     );
 
@@ -265,7 +267,7 @@ graph_id             timestamp                type       base
         "
 graph_id             timestamp                type       base
 ----------------------------------------------------------------------
-5                    1970-01-01T00:16:45Z     Delta tl:4
+5                    1970-01-01T00:16:45.000Z Delta tl:4
 "
     );
 
@@ -287,8 +289,8 @@ graph_id             timestamp                type       base
         "
 graph_id             timestamp                type       base
 ----------------------------------------------------------------------
-0                    1970-01-01T00:16:40Z     Full -
-1                    1970-01-01T00:16:41Z     Full -
+0                    1970-01-01T00:16:40.000Z Full -
+1                    1970-01-01T00:16:41.000Z Full -
 "
     );
 

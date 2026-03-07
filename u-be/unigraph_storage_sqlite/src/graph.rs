@@ -7,7 +7,6 @@ use std::sync::MutexGuard;
 use anyhow::Context;
 use anyhow::Result;
 use async_trait::async_trait;
-use chrono::Utc;
 use rusqlite::Connection;
 use unigraph_storage_core::ExternalID;
 use unigraph_storage_core::ExternalIDNamespace;
@@ -21,10 +20,10 @@ use unigraph_storage_core::GraphTimeKey;
 use unigraph_storage_core::Order;
 use unigraph_storage_core::TimelineConfig;
 use unigraph_storage_core::TimelineID;
-use unigraph_storage_core::Timestamp;
 use unigraph_storage_core::frame::Frame;
 use unigraph_storage_core::traits::UnigraphGraphConnection;
 use unigraph_storage_core::traits::UnigraphGraphStorage;
+use unigraph_timestamp::Timestamp;
 
 use crate::SqliteConnection;
 use crate::SqliteStorage;
@@ -66,7 +65,7 @@ impl UnigraphGraphConnection for SqliteConnection {
     ) -> Result<()> {
         let config_json =
             serde_json::to_string(config).context("Failed to serialize TimelineConfig")?;
-        let now = Utc::now().to_rfc3339();
+        let now = Timestamp::now().to_unix_timestamp();
 
         let conn = self.lock();
         conn.execute(
@@ -122,8 +121,8 @@ impl UnigraphGraphConnection for SqliteConnection {
         manifest_json: &str,
         inline_blobs: Option<&[u8]>,
     ) -> Result<()> {
-        let now = Utc::now().to_rfc3339();
-        let timestamp = key.timestamp.to_rfc3339();
+        let now = Timestamp::now().to_unix_timestamp();
+        let timestamp = key.timestamp.to_unix_timestamp();
         let frame_type_str = frame_type.to_string();
         let base_key_json = base
             .map(serde_json::to_string)
@@ -159,8 +158,8 @@ impl UnigraphGraphConnection for SqliteConnection {
     }
 
     async fn store_frame_empty(&self, key: &GraphTimeKey) -> Result<()> {
-        let now = Utc::now().to_rfc3339();
-        let timestamp = key.timestamp.to_rfc3339();
+        let now = Timestamp::now().to_unix_timestamp();
+        let timestamp = key.timestamp.to_unix_timestamp();
 
         let conn = self.lock();
         conn.execute(
@@ -189,11 +188,11 @@ impl UnigraphGraphConnection for SqliteConnection {
 
         if let Some(bounds) = &query.timestamp_bounds {
             if let Some(start) = &bounds.start {
-                params.push(start.to_rfc3339());
+                params.push(start.to_unix_timestamp().to_string());
                 conditions.push(format!("timestamp >= ?{}", params.len()));
             }
             if let Some(end) = &bounds.end {
-                params.push(end.to_rfc3339());
+                params.push(end.to_unix_timestamp().to_string());
                 conditions.push(format!("timestamp <= ?{}", params.len()));
             }
         }
@@ -232,7 +231,7 @@ impl UnigraphGraphConnection for SqliteConnection {
         }
 
         if let Some((ts, gid)) = &query.before {
-            let ts_str = ts.to_rfc3339();
+            let ts_str = ts.to_unix_timestamp().to_string();
             params.push(ts_str.clone());
             let ts_idx = params.len();
             params.push(ts_str);
@@ -290,11 +289,11 @@ impl UnigraphGraphConnection for SqliteConnection {
 
         while let Some(row) = rows.next().context("Failed to read frame row")? {
             let graph_id: i64 = row.get(0)?;
-            let timestamp_str: String = row.get(1)?;
+            let timestamp_unix: i64 = row.get(1)?;
             let frame_type_str: String = row.get(2)?;
             let base_key_json: Option<String> = row.get(3)?;
 
-            let timestamp = parse_timestamp(&timestamp_str)?;
+            let timestamp = Timestamp::from_unix_timestamp(timestamp_unix);
             let frame_type: FrameType = frame_type_str
                 .parse()
                 .context("Failed to parse FrameType")?;
@@ -338,7 +337,7 @@ impl UnigraphGraphConnection for SqliteConnection {
     }
 
     async fn register_blobs_for_cleanup(&self, blob_keys: &[String]) -> Result<()> {
-        let now = Utc::now().to_rfc3339();
+        let now = Timestamp::now().to_unix_timestamp();
         let conn = self.lock();
         let mut stmt = conn
             .prepare("INSERT OR IGNORE INTO blobs_to_delete (blob_key, created_at) VALUES (?1, ?2)")
@@ -385,12 +384,12 @@ impl UnigraphGraphConnection for SqliteConnection {
         &self,
         older_than: unigraph_storage_core::Timestamp,
     ) -> Result<Vec<String>> {
-        let cutoff = older_than.to_rfc3339();
+        let cutoff = older_than.to_unix_timestamp();
         let conn = self.lock();
         let mut stmt = conn
             .prepare(
                 "SELECT blob_key FROM blobs_to_delete
-                 WHERE created_at < ?1
+                 WHERE created_at <= ?1
                  ORDER BY blob_key",
             )
             .context("Failed to prepare get_blobs_pending_cleanup_older_than")?;
@@ -445,7 +444,7 @@ impl UnigraphGraphConnection for SqliteConnection {
         ns: &ExternalIDNamespace,
         mappings: &[(ExternalID, GraphID)],
     ) -> Result<()> {
-        let now = Utc::now().to_rfc3339();
+        let now = Timestamp::now().to_unix_timestamp();
         let conn = self.lock();
         let mut stmt = conn.prepare(
             "INSERT INTO external_id_mappings
@@ -559,13 +558,6 @@ fn query_timeline_config(
         }
         None => Ok(None),
     }
-}
-
-/// Parse a timestamp string (RFC 3339 / ISO 8601) into a `Timestamp`.
-fn parse_timestamp(s: &str) -> Result<Timestamp> {
-    chrono::DateTime::parse_from_rfc3339(s)
-        .map(|dt| dt.with_timezone(&chrono::Utc))
-        .with_context(|| format!("Failed to parse timestamp: {}", s))
 }
 
 /// Parse an optional base key JSON string into a `GraphKey`.

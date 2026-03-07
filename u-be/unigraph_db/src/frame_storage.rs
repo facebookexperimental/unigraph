@@ -181,9 +181,8 @@ impl UnigraphStorage {
     ///
     /// Returns the number of blobs swept.
     pub async fn sweep_blobs(&self, min_age: std::time::Duration) -> Result<usize> {
-        let cutoff = chrono::Utc::now()
-            - chrono::Duration::from_std(min_age)
-                .context("Failed to convert min_age to chrono::Duration")?;
+        let now = Timestamp::now().to_unix_timestamp();
+        let cutoff = Timestamp::from_unix_timestamp(now - min_age.as_secs() as i64);
 
         let conn = self.graph.conn().await?;
         let blob_keys = conn.get_blobs_pending_cleanup_older_than(cutoff).await?;
@@ -216,17 +215,21 @@ impl UnigraphStorage {
     pub async fn compact_timeline(
         &self,
         timeline_id: &TimelineID,
-        start: Timestamp,
-        end: Timestamp,
+        start: Option<Timestamp>,
+        end: Option<Timestamp>,
     ) -> Result<usize> {
         let conn = self.graph.conn().await?;
+
+        let timestamp_bounds = if start.is_some() || end.is_some() {
+            Some(TimestampBounds { start, end })
+        } else {
+            None
+        };
+
         let frames = conn
             .select_frames(&FrameQuery {
                 timeline_id: timeline_id.clone(),
-                timestamp_bounds: Some(TimestampBounds {
-                    start: Some(start),
-                    end: Some(end),
-                }),
+                timestamp_bounds,
                 ..Default::default()
             })
             .await?;

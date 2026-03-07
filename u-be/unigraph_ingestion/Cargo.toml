@@ -6,9 +6,9 @@ version = "0.0.0"
 
 [dependencies]
 anyhow = "1"
-chrono = { version = "0.4", features = ["clock", "serde", "std"], default-features = false }
 unigraph_cargo = { path = "../unigraph_cargo" }
 unigraph_core = { path = "../unigraph_core" }
 unigraph_git = { path = "../unigraph_git" }
 unigraph_db = { path = "../unigraph_db" }
 unigraph_storage_core = { path = "../unigraph_storage_core" }
+unigraph_timestamp = { path = "../unigraph_timestamp" }

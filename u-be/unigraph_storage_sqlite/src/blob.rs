@@ -5,8 +5,8 @@
 use anyhow::Context;
 use anyhow::Result;
 use async_trait::async_trait;
-use chrono::Utc;
 use unigraph_storage_core::traits::UnigraphBlobStorage;
+use unigraph_timestamp::Timestamp;
 
 use crate::SqliteStorage;
 
@@ -14,7 +14,7 @@ use crate::SqliteStorage;
 impl UnigraphBlobStorage for SqliteStorage {
     async fn put_blob(&self, key: &str, data: &[u8]) -> Result<()> {
         let conn = self.conn.lock().unwrap();
-        let now = Utc::now().to_rfc3339();
+        let now = Timestamp::now().to_unix_timestamp();
 
         conn.execute(
             "INSERT OR REPLACE INTO blobs (blob_key, data, created_at) VALUES (?1, ?2, ?3)",

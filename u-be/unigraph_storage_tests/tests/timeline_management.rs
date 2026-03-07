@@ -79,8 +79,6 @@ async fn list_timelines() -> Result<()> {
 
 #[tokio::test]
 async fn frames_ordered_by_timestamp_then_graph_id() -> Result<()> {
-    use chrono::TimeZone;
-
     let db = make_db();
     let config = TimelineConfig {
         schema: TimelineSchema::AdjacentDeltas(AdjacentDeltasConfig {}),
@@ -91,7 +89,7 @@ async fn frames_ordered_by_timestamp_then_graph_id() -> Result<()> {
         .await?;
 
     // Insert frames at the same timestamp with different graph IDs
-    let ts = chrono::Utc.timestamp_opt(1000, 0).unwrap();
+    let ts = unigraph_timestamp::Timestamp::from_unix_timestamp(1000);
 
     for id in [3, 1, 2] {
         let graph = TestGraphTimeline::get_nth(id as u64);
@@ -114,8 +112,6 @@ async fn frames_ordered_by_timestamp_then_graph_id() -> Result<()> {
 
 #[tokio::test]
 async fn list_frames_range() -> Result<()> {
-    use chrono::TimeZone;
-
     let db = make_db();
     let config = TimelineConfig {
         schema: TimelineSchema::AdjacentDeltas(AdjacentDeltasConfig {}),
@@ -132,8 +128,8 @@ async fn list_frames_range() -> Result<()> {
     }
 
     // Query a range that should include frames 3-7
-    let start = chrono::Utc.timestamp_opt(1003, 0).unwrap();
-    let end = chrono::Utc.timestamp_opt(1007, 0).unwrap();
+    let start = unigraph_timestamp::Timestamp::from_unix_timestamp(1003);
+    let end = unigraph_timestamp::Timestamp::from_unix_timestamp(1007);
 
     let frames = db
         .list_frames_range(&TimelineID("test".to_string()), start, end)

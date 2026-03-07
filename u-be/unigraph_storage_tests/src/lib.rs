@@ -170,10 +170,9 @@ pub fn make_graph_time_key(
     graph_id: i64,
     seconds: i64,
 ) -> unigraph_storage_core::GraphTimeKey {
-    use chrono::TimeZone;
     unigraph_storage_core::GraphTimeKey {
         timeline_id: unigraph_storage_core::TimelineID(timeline.to_string()),
-        timestamp: chrono::Utc.timestamp_opt(seconds, 0).unwrap(),
+        timestamp: unigraph_timestamp::Timestamp::from_unix_timestamp(seconds),
         graph_id: GraphID(graph_id),
     }
 }

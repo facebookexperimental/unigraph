@@ -143,7 +143,7 @@ pub async fn run_ingestion(config: &IngestionPipelineConfig<'_>, db: &UnigraphDb
             // Check out the commit
             if let Err(e) = unigraph_git::checkout_commit(repo_path, commit_hash) {
                 let errors = vec![TimestampedError {
-                    timestamp: chrono::Utc::now(),
+                    timestamp: unigraph_timestamp::Timestamp::now(),
                     message: format!("Failed to checkout: {e:#}"),
                 }];
                 db.store_error(&key, &errors).await?;
@@ -165,7 +165,7 @@ pub async fn run_ingestion(config: &IngestionPipelineConfig<'_>, db: &UnigraphDb
                     }
                     Err(e) => {
                         let errors = vec![TimestampedError {
-                            timestamp: chrono::Utc::now(),
+                            timestamp: unigraph_timestamp::Timestamp::now(),
                             message: format!("Failed to convert to ArrayGraphSerializable: {e:#}"),
                         }];
                         db.store_error(&key, &errors).await?;
@@ -175,7 +175,7 @@ pub async fn run_ingestion(config: &IngestionPipelineConfig<'_>, db: &UnigraphDb
                 },
                 Err(e) => {
                     let errors = vec![TimestampedError {
-                        timestamp: chrono::Utc::now(),
+                        timestamp: unigraph_timestamp::Timestamp::now(),
                         message: format!("Graph build failed: {e:#}"),
                     }];
                     db.store_error(&key, &errors).await?;

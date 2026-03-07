@@ -49,23 +49,17 @@ async fn compact_converts_full_to_delta() -> Result<()> {
         "
 graph_id             timestamp                type       base
 ----------------------------------------------------------------------
-0                    1970-01-01T00:16:40Z     Full -
-1                    1970-01-01T00:16:41Z     Full -
-2                    1970-01-01T00:16:42Z     Full -
-3                    1970-01-01T00:16:43Z     Full -
-4                    1970-01-01T00:16:44Z     Full -
+0                    1970-01-01T00:16:40.000Z Full -
+1                    1970-01-01T00:16:41.000Z Full -
+2                    1970-01-01T00:16:42.000Z Full -
+3                    1970-01-01T00:16:43.000Z Full -
+4                    1970-01-01T00:16:44.000Z Full -
 "
     );
 
     // Compact
-    let start = chrono::DateTime::parse_from_rfc3339("1970-01-01T00:00:00Z")
-        .unwrap()
-        .with_timezone(&chrono::Utc);
-    let end = chrono::DateTime::parse_from_rfc3339("1970-01-01T01:00:00Z")
-        .unwrap()
-        .with_timezone(&chrono::Utc);
     let converted = db
-        .compact_timeline(&TimelineID("test".to_string()), start, end)
+        .compact_timeline(&TimelineID("test".to_string()), None, None)
         .await?;
     assert_eq!(converted, 4);
 
@@ -76,11 +70,11 @@ graph_id             timestamp                type       base
         "
 graph_id             timestamp                type       base
 ----------------------------------------------------------------------
-0                    1970-01-01T00:16:40Z     Full -
-1                    1970-01-01T00:16:41Z     Delta test:0
-2                    1970-01-01T00:16:42Z     Delta test:1
-3                    1970-01-01T00:16:43Z     Delta test:2
-4                    1970-01-01T00:16:44Z     Delta test:3
+0                    1970-01-01T00:16:40.000Z Full -
+1                    1970-01-01T00:16:41.000Z Delta test:0
+2                    1970-01-01T00:16:42.000Z Delta test:1
+3                    1970-01-01T00:16:43.000Z Delta test:2
+4                    1970-01-01T00:16:44.000Z Delta test:3
 "
     );
 
@@ -92,7 +86,7 @@ graph_id             timestamp                type       base
 
     // Idempotent: compacting again should convert 0 frames
     let converted = db
-        .compact_timeline(&TimelineID("test".to_string()), start, end)
+        .compact_timeline(&TimelineID("test".to_string()), None, None)
         .await?;
     assert_eq!(converted, 0);
 
@@ -123,14 +117,8 @@ async fn compact_with_error_gap() -> Result<()> {
     db.store_graph_full(&keys[3], &graphs[2]).await?;
     db.store_graph_full(&keys[4], &graphs[3]).await?;
 
-    let start = chrono::DateTime::parse_from_rfc3339("1970-01-01T00:00:00Z")
-        .unwrap()
-        .with_timezone(&chrono::Utc);
-    let end = chrono::DateTime::parse_from_rfc3339("1970-01-01T01:00:00Z")
-        .unwrap()
-        .with_timezone(&chrono::Utc);
     let converted = db
-        .compact_timeline(&TimelineID("test".to_string()), start, end)
+        .compact_timeline(&TimelineID("test".to_string()), None, None)
         .await?;
     assert_eq!(converted, 2); // keys[1] and keys[4]
 
@@ -140,11 +128,11 @@ async fn compact_with_error_gap() -> Result<()> {
         "
 graph_id             timestamp                type       base
 ----------------------------------------------------------------------
-0                    1970-01-01T00:16:40Z     Full -
-1                    1970-01-01T00:16:41Z     Delta test:0
-2                    1970-01-01T00:16:42Z     Error -
-3                    1970-01-01T00:16:43Z     Full -
-4                    1970-01-01T00:16:44Z     Delta test:3
+0                    1970-01-01T00:16:40.000Z Full -
+1                    1970-01-01T00:16:41.000Z Delta test:0
+2                    1970-01-01T00:16:42.000Z Error -
+3                    1970-01-01T00:16:43.000Z Full -
+4                    1970-01-01T00:16:44.000Z Delta test:3
 "
     );
 
@@ -181,14 +169,8 @@ async fn compact_already_compact() -> Result<()> {
     db.store_graph_delta(&keys[2], &keys[1].graph_key(), &graphs[2])
         .await?;
 
-    let start = chrono::DateTime::parse_from_rfc3339("1970-01-01T00:00:00Z")
-        .unwrap()
-        .with_timezone(&chrono::Utc);
-    let end = chrono::DateTime::parse_from_rfc3339("1970-01-01T01:00:00Z")
-        .unwrap()
-        .with_timezone(&chrono::Utc);
     let converted = db
-        .compact_timeline(&TimelineID("test".to_string()), start, end)
+        .compact_timeline(&TimelineID("test".to_string()), None, None)
         .await?;
     assert_eq!(converted, 0);
 

@@ -7,11 +7,13 @@ version = "0.0.0"
 [dependencies]
 anyhow = "1"
 clap = { version = "4.5.37", features = ["derive"] }
+dirs = "6"
 tokio = { workspace = true }
 unigraph_core = { path = "../unigraph_core" }
 unigraph_db = { path = "../unigraph_db" }
 unigraph_ingestion = { path = "../unigraph_ingestion" }
 unigraph_storage_core = { path = "../unigraph_storage_core" }
 unigraph_storage_sqlite = { path = "../unigraph_storage_sqlite" }
+unigraph_timestamp = { path = "../unigraph_timestamp" }
 unigraph_wgpu = { path = "../unigraph_wgpu" }
 unigraph_web_service = { path = "../unigraph_web_service" }

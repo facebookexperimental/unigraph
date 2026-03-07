@@ -76,8 +76,7 @@ pub fn collect_linear_history_since(
             .with_context(|| format!("Failed to find commit {oid}"))?;
 
         let time = commit.time();
-        let timestamp =
-            chrono::DateTime::from_timestamp(time.seconds(), 0).unwrap_or_else(chrono::Utc::now);
+        let timestamp = unigraph_timestamp::Timestamp::from_unix_timestamp(time.seconds());
 
         commits.push(CommitInfo {
             hash: oid.to_string(),

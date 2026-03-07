@@ -162,6 +162,22 @@ def serve(ctx: typer.Context) -> None:
     run(["cargo", "run", "-p", "unigraph_cli", "--", "serve", *ctx.args])
 
 
+@app.command(
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True}
+)
+def cli(
+    ctx: typer.Context,
+    release: Annotated[
+        bool, typer.Option("-r", "--release", help="Build in release mode.")
+    ] = False,
+) -> None:
+    """Run unigraph_cli with arbitrary arguments. All args are forwarded."""
+    cargo = ["cargo", "run", "-p", "unigraph_cli"]
+    if release:
+        cargo.append("--release")
+    run([*cargo, "--", *ctx.args])
+
+
 @app.command()
 def dev() -> None:
     """Start dev server (Tailwind watch + Rolldown watch)."""

@@ -62,11 +62,11 @@ async fn store_multiple_graphs_and_list_frames() -> Result<()> {
         "
 graph_id             timestamp                type       base
 ----------------------------------------------------------------------
-0                    1970-01-01T00:16:40Z     Full -
-1                    1970-01-01T00:16:41Z     Full -
-2                    1970-01-01T00:16:42Z     Full -
-3                    1970-01-01T00:16:43Z     Full -
-4                    1970-01-01T00:16:44Z     Full -
+0                    1970-01-01T00:16:40.000Z Full -
+1                    1970-01-01T00:16:41.000Z Full -
+2                    1970-01-01T00:16:42.000Z Full -
+3                    1970-01-01T00:16:43.000Z Full -
+4                    1970-01-01T00:16:44.000Z Full -
 "
     );
 
@@ -108,18 +108,16 @@ async fn store_empty_frame() -> Result<()> {
 
 #[tokio::test]
 async fn store_error_frame() -> Result<()> {
-    use chrono::TimeZone;
-
     let db = make_db();
     setup_timeline(&db, "test").await;
 
     let errors = vec![
         TimestampedError {
-            timestamp: chrono::Utc.timestamp_opt(1000, 0).unwrap(),
+            timestamp: unigraph_timestamp::Timestamp::from_unix_timestamp(1000),
             message: "First error: graph computation failed".to_string(),
         },
         TimestampedError {
-            timestamp: chrono::Utc.timestamp_opt(1001, 0).unwrap(),
+            timestamp: unigraph_timestamp::Timestamp::from_unix_timestamp(1001),
             message: "Second error: timeout exceeded".to_string(),
         },
     ];
@@ -163,7 +161,7 @@ async fn delete_frame() -> Result<()> {
         "
 graph_id             timestamp                type       base
 ----------------------------------------------------------------------
-1                    1970-01-01T00:16:40Z     Full -
+1                    1970-01-01T00:16:40.000Z Full -
 "
     );
 
@@ -226,7 +224,7 @@ async fn delete_frame_with_external_blobs() -> Result<()> {
         "
 graph_id             timestamp                type       base
 ----------------------------------------------------------------------
-1                    1970-01-01T00:16:40Z     Full -
+1                    1970-01-01T00:16:40.000Z Full -
 "
     );
 

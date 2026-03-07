@@ -74,7 +74,7 @@ pub fn format_frames_table(frames: &[FrameRow]) -> String {
         lines.push(format!(
             "{:<20} {:<24} {:<10} {:<10}",
             frame.frame.graph_id.0,
-            frame.frame.timestamp.format("%Y-%m-%dT%H:%M:%SZ"),
+            frame.frame.timestamp.to_comparable_rfc3339_str(),
             frame.frame_type,
             base_str,
         ));

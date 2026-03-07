@@ -6,5 +6,5 @@ version = "0.0.0"
 
 [dependencies]
 anyhow = "1"
-chrono = { version = "0.4", features = ["clock", "serde", "std"], default-features = false }
 git2 = "0.20"
+unigraph_timestamp = { path = "../unigraph_timestamp" }

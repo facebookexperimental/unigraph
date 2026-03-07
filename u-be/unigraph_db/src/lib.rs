@@ -330,8 +330,8 @@ impl UnigraphDb {
     pub async fn compact_timeline(
         &self,
         timeline_id: &TimelineID,
-        start: Timestamp,
-        end: Timestamp,
+        start: Option<Timestamp>,
+        end: Option<Timestamp>,
     ) -> Result<usize> {
         self.storage.compact_timeline(timeline_id, start, end).await
     }

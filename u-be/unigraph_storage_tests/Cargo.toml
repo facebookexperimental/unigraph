@@ -13,6 +13,7 @@ chrono = { version = "0.4.41", features = ["clock", "serde", "std"], default-fea
 serde_json = { version = "1.0.140", features = ["alloc", "float_roundtrip", "raw_value", "unbounded_depth"] }
 unigraph_core = { path = "../unigraph_core" }
 unigraph_storage_core = { path = "../unigraph_storage_core" }
+unigraph_timestamp = { path = "../unigraph_timestamp" }
 
 [dev-dependencies]
 k9 = { version = "0.12.0", features = ["custom_comparison_formatters", "regex"] }
