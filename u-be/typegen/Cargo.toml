@@ -8,7 +8,7 @@ edition = "2024"
 license = "MIT"
 
 [dependencies]
-anyhow = "1.0.101"
+anyhow = "1.0.102"
 serde = { version = "1.0.219", features = ["derive", "rc"] }
 toml = { version = "0.9.12", features = ["preserve_order"] }
 typegen_derive = { path = "../typegen_derive" }
