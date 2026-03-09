@@ -4,6 +4,7 @@ pub(crate) mod test_graphs;
 pub(crate) mod test_utils;
 mod traversal_test;
 
+use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
 use anyhow::Result;
@@ -354,32 +355,44 @@ fn test_dfs_with_traversal_config_tag_sets() -> Result<()> {
     let mut traversal_config = TraversalConfig::default();
 
     let set_global_value = |tc: &mut TraversalConfig, value: &str| {
-        tc.label_predicates = Some(vec![
-            NodeLabelPredicate {
-                tag_set_name: "assert_tags".into(),
-                tag_name: value.into(),
-                contains: false,
-                decision: Decision::exclude(),
-            },
-            NodeLabelPredicate {
-                tag_set_name: "assert_tags".into(),
-                tag_name: value.into(),
-                contains: true,
-                decision: Decision::include(),
-            },
-            NodeLabelPredicate {
-                tag_set_name: "disallow_tags".into(),
-                tag_name: value.into(),
-                contains: true,
-                decision: Decision::exclude(),
-            },
-            NodeLabelPredicate {
-                tag_set_name: "disallow_tags".into(),
-                tag_name: value.into(),
-                contains: false,
-                decision: Decision::include(),
-            },
-        ]);
+        tc.label_predicates = Some(BTreeMap::from([
+            (
+                "assert_not_contains".to_string(),
+                NodeLabelPredicate {
+                    tag_set_name: "assert_tags".into(),
+                    tag_name: value.into(),
+                    contains: false,
+                    decision: Decision::exclude(),
+                },
+            ),
+            (
+                "assert_contains".to_string(),
+                NodeLabelPredicate {
+                    tag_set_name: "assert_tags".into(),
+                    tag_name: value.into(),
+                    contains: true,
+                    decision: Decision::include(),
+                },
+            ),
+            (
+                "disallow_contains".to_string(),
+                NodeLabelPredicate {
+                    tag_set_name: "disallow_tags".into(),
+                    tag_name: value.into(),
+                    contains: true,
+                    decision: Decision::exclude(),
+                },
+            ),
+            (
+                "disallow_not_contains".to_string(),
+                NodeLabelPredicate {
+                    tag_set_name: "disallow_tags".into(),
+                    tag_name: value.into(),
+                    contains: false,
+                    decision: Decision::include(),
+                },
+            ),
+        ]));
     };
 
     set_global_value(&mut traversal_config, "a");

@@ -195,12 +195,12 @@ fn match_force_edges(
 }
 
 fn match_label_predicates(
-    label_predicates: &[NodeLabelPredicate],
+    label_predicates: &BTreeMap<String, NodeLabelPredicate>,
     edge: &mut Edge,
     tag_sets_for_node: &std::collections::BTreeMap<String, std::collections::BTreeSet<String>>,
     indexed_messages: &IndexedMessages,
 ) -> Result<()> {
-    for predicate in label_predicates {
+    for predicate in label_predicates.values() {
         #[allow(clippy::collapsible_if)]
         if let Some(tags) = tag_sets_for_node.get(&predicate.tag_set_name) {
             if tags.contains(&predicate.tag_name) == predicate.contains {

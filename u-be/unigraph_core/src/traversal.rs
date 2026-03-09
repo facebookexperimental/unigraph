@@ -73,9 +73,8 @@ pub struct TraversalConfig {
     /// Only applied to tagged edges
     #[serde(skip_serializing_if = "Option::is_none")]
     pub force_tagged: Option<BTreeMap<Tag, Decision>>,
-    /// These rules are ordered. The first one that matches will be used.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub label_predicates: Option<Vec<NodeLabelPredicate>>,
+    pub label_predicates: Option<BTreeMap<String, NodeLabelPredicate>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub force_dynamic: Option<BTreeMap<DynamicTypeKey, DynamicTypeConfig>>,
 
@@ -92,8 +91,7 @@ pub struct TraversalConfigIDX {
     pub force_nodes: BTreeMap<NodeIDX, Decision>,
     pub force_edges: BTreeMap<NodeIDX, BTreeMap<NodeIDX, Decision>>,
     pub force_tagged: BTreeMap<Tag, Decision>,
-    /// These rules are ordered. The first one that matches will be used.
-    pub label_predicates: Vec<NodeLabelPredicate>,
+    pub label_predicates: BTreeMap<String, NodeLabelPredicate>,
     pub force_dynamic: BTreeMap<DynamicTypeKey, DynamicTypeConfig>,
 
     pub tiered_traversal: Option<TieredTraversalConfig>,
@@ -174,8 +172,10 @@ pub struct DynamicEdgeOverride {
     serde::Deserialize,
     Clone,
     typegen::TypeGen,
-    PartialEq
+    PartialEq,
+    unigraph_delta::Deltable
 )]
+#[deltable(replace)]
 pub struct NodeLabelPredicate {
     pub tag_set_name: TagSetName,
     pub tag_name: Tag,

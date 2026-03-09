@@ -1480,7 +1480,7 @@ fn test_delta_json_snapshot_cleared_fields() -> Result<()> {
 /// - force_edges: nested BTreeMap<K, BTreeMap<K, V>> with recursive deltas
 /// - force_tagged: cleared from Some to None
 /// - force_dynamic: leaf Deltable — full replacement for changed entries
-/// - label_predicates: Vec is leaf — full replacement
+/// - label_predicates: BTreeMap with per-key diffing
 /// - tiered_traversal: leaf — full replacement
 /// - messages: added, removed, changed
 #[test]
@@ -1533,20 +1533,26 @@ fn test_traversal_config_delta_comprehensive() -> Result<()> {
             ("lazy".to_string(), Decision::exclude()),
             ("async".to_string(), Decision::include()),
         ])),
-        label_predicates: Some(vec![
-            NodeLabelPredicate {
-                tag_set_name: "route".to_string(),
-                tag_name: "homepage".to_string(),
-                contains: true,
-                decision: Decision::include(),
-            },
-            NodeLabelPredicate {
-                tag_set_name: "route".to_string(),
-                tag_name: "homepage".to_string(),
-                contains: false,
-                decision: Decision::exclude(),
-            },
-        ]),
+        label_predicates: Some(BTreeMap::from([
+            (
+                "route_homepage_contains".to_string(),
+                NodeLabelPredicate {
+                    tag_set_name: "route".to_string(),
+                    tag_name: "homepage".to_string(),
+                    contains: true,
+                    decision: Decision::include(),
+                },
+            ),
+            (
+                "route_homepage_not_contains".to_string(),
+                NodeLabelPredicate {
+                    tag_set_name: "route".to_string(),
+                    tag_name: "homepage".to_string(),
+                    contains: false,
+                    decision: Decision::exclude(),
+                },
+            ),
+        ])),
         force_dynamic: Some(BTreeMap::from([(
             "ios_platform".to_string(),
             DynamicTypeConfig {
@@ -1626,13 +1632,16 @@ fn test_traversal_config_delta_comprehensive() -> Result<()> {
         ])),
         // force_tagged cleared entirely
         force_tagged: None,
-        // label_predicates changed (Vec is leaf, so full replacement)
-        label_predicates: Some(vec![NodeLabelPredicate {
-            tag_set_name: "platform".to_string(),
-            tag_name: "ios".to_string(),
-            contains: true,
-            decision: Decision::include(),
-        }]),
+        // label_predicates: per-key delta (added platform_ios, removed route_homepage_not_contains, changed route_homepage_contains)
+        label_predicates: Some(BTreeMap::from([(
+            "route_homepage_contains".to_string(),
+            NodeLabelPredicate {
+                tag_set_name: "platform".to_string(),
+                tag_name: "ios".to_string(),
+                contains: true,
+                decision: Decision::include(),
+            },
+        )])),
         // force_dynamic changed: different platform config
         force_dynamic: Some(BTreeMap::from([
             // ios_platform changed (leaf — full replacement)
@@ -1761,17 +1770,22 @@ fn test_traversal_config_delta_comprehensive() -> Result<()> {
   "force_tagged": {
     "cleared": true
   },
-  "label_predicates": [
-    {
-      "tag_set_name": "platform",
-      "tag_name": "ios",
-      "contains": true,
-      "decision": {
-        "include": true,
-        "message_id": null
+  "label_predicates": {
+    "removed": [
+      "route_homepage_not_contains"
+    ],
+    "changed": {
+      "route_homepage_contains": {
+        "tag_set_name": "platform",
+        "tag_name": "ios",
+        "contains": true,
+        "decision": {
+          "include": true,
+          "message_id": null
+        }
       }
     }
-  ],
+  },
   "force_dynamic": {
     "added": {
       "android_platform": {
