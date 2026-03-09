@@ -22,7 +22,14 @@ use crate::graph_settings::GraphSettings;
 
 type NodeName = String;
 
-#[derive(serde::Deserialize, serde::Serialize)]
+#[derive(
+    serde::Deserialize,
+    serde::Serialize,
+    Clone,
+    PartialEq,
+    Debug,
+    unigraph_delta::Deltable
+)]
 pub struct MapGraph {
     pub nodes: BTreeMap<NodeName, GraphNode>,
     pub traversal_config: Option<TraversalConfig>,
@@ -33,7 +40,15 @@ pub struct MapGraph {
     pub entry_points: Option<BTreeSet<NodeName>>,
 }
 
-#[derive(serde::Deserialize, serde::Serialize, Default)]
+#[derive(
+    serde::Deserialize,
+    serde::Serialize,
+    Default,
+    Clone,
+    PartialEq,
+    Debug,
+    unigraph_delta::Deltable
+)]
 pub struct GraphNode {
     /// Single-valued string metadata.
     /// e.g. { "oncall": "unigraph", "path": "html/js/..." }
@@ -60,11 +75,28 @@ pub struct GraphNode {
 
 /// Represents an edge that can point to multiple nodes with branches,
 /// as well as have metadata associated with it.
-#[derive(serde::Deserialize, serde::Serialize, Default)]
+#[derive(
+    serde::Deserialize,
+    serde::Serialize,
+    Default,
+    Clone,
+    PartialEq,
+    Debug,
+    unigraph_delta::Deltable
+)]
 pub struct DynamicEdge {
-    pub branches: BTreeMap<String, Vec<NodeName>>,
+    pub branches: BTreeMap<String, BTreeSet<NodeName>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<BTreeMap<String, String>>,
+}
+
+impl MapGraphDelta {
+    pub fn is_empty(&self) -> bool {
+        self.nodes.is_none()
+            && self.graph_settings.is_none()
+            && self.traversal_config.is_none()
+            && self.entry_points.is_none()
+    }
 }
 
 impl MapGraph {

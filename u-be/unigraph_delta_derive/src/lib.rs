@@ -92,6 +92,11 @@ fn derive_replace(input: &DeriveInput) -> TokenStream {
                 *self = delta;
                 Ok(())
             }
+
+            fn merge_delta(_first: Self::Delta, second: Self::Delta) -> Self::Delta {
+                // Whole-value replacement: last write wins.
+                second
+            }
         }
     };
 
@@ -162,6 +167,20 @@ fn derive_field_level(input: &DeriveInput) -> TokenStream {
         }
     });
 
+    let merge_fields = fields.iter().map(|f| {
+        let field_name = &f.ident;
+        let field_type = &f.ty;
+        quote! {
+            #field_name: match (first.#field_name, second.#field_name) {
+                (first_val, None) => first_val,
+                (None, second_val) => second_val,
+                (Some(f), Some(s)) => Some(
+                    <#field_type as ::unigraph_delta::Deltable>::merge_delta(f, s)
+                ),
+            }
+        }
+    });
+
     // Determine if we need to add pub to the generated struct module path
     let delta_vis = match vis {
         Visibility::Public(_) => quote! { pub },
@@ -170,7 +189,7 @@ fn derive_field_level(input: &DeriveInput) -> TokenStream {
     };
 
     let expanded = quote! {
-        #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+        #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
         #delta_vis struct #delta_name {
             #(#delta_fields,)*
         }
@@ -193,6 +212,12 @@ fn derive_field_level(input: &DeriveInput) -> TokenStream {
             fn apply_delta(&mut self, delta: Self::Delta) -> ::anyhow::Result<()> {
                 #(#apply_fields)*
                 Ok(())
+            }
+
+            fn merge_delta(first: Self::Delta, second: Self::Delta) -> Self::Delta {
+                #delta_name {
+                    #(#merge_fields,)*
+                }
             }
         }
     };

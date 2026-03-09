@@ -53,6 +53,11 @@ macro_rules! impl_deltable_leaf {
                     *self = delta;
                     Ok(())
                 }
+
+                fn merge_delta(_first: Self::Delta, second: Self::Delta) -> Self::Delta {
+                    // For leaf types, the last write wins.
+                    second
+                }
             }
         )*
     };
@@ -77,6 +82,10 @@ impl Deltable for f32 {
         *self = delta;
         Ok(())
     }
+
+    fn merge_delta(_first: Self::Delta, second: Self::Delta) -> Self::Delta {
+        second
+    }
 }
 
 impl Deltable for f64 {
@@ -93,6 +102,10 @@ impl Deltable for f64 {
     fn apply_delta(&mut self, delta: Self::Delta) -> Result<()> {
         *self = delta;
         Ok(())
+    }
+
+    fn merge_delta(_first: Self::Delta, second: Self::Delta) -> Self::Delta {
+        second
     }
 }
 
@@ -117,6 +130,11 @@ where
     fn apply_delta(&mut self, delta: Self::Delta) -> Result<()> {
         *self = delta;
         Ok(())
+    }
+
+    fn merge_delta(_first: Self::Delta, second: Self::Delta) -> Self::Delta {
+        // Vec is a leaf type — last write wins.
+        second
     }
 }
 
@@ -167,6 +185,10 @@ where
         }
         Ok(())
     }
+
+    fn merge_delta(first: Self::Delta, second: Self::Delta) -> Self::Delta {
+        first.merge(second)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -208,6 +230,10 @@ where
             }
         }
         Ok(())
+    }
+
+    fn merge_delta(first: Self::Delta, second: Self::Delta) -> Self::Delta {
+        first.merge(second)
     }
 }
 
@@ -295,5 +321,9 @@ where
             }
         }
         Ok(())
+    }
+
+    fn merge_delta(first: Self::Delta, second: Self::Delta) -> Self::Delta {
+        first.merge(second)
     }
 }

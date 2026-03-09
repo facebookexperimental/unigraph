@@ -187,4 +187,11 @@ pub trait Deltable: Sized {
     /// Returns `Err` if the delta is invalid (e.g. references keys that don't
     /// exist in the current value).
     fn apply_delta(&mut self, delta: Self::Delta) -> anyhow::Result<()>;
+
+    /// Merge two sequential deltas into one.
+    ///
+    /// Given `d1` (base→mid) and `d2` (mid→target), produces a single delta
+    /// (base→target) such that `apply(base, merge(d1, d2))` equals
+    /// `apply(apply(base, d1), d2)`.
+    fn merge_delta(first: Self::Delta, second: Self::Delta) -> Self::Delta;
 }

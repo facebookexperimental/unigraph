@@ -233,7 +233,7 @@ async fn reconstruct_from_range(
             format!("delta frame graph_id={} has no data", row.frame.graph_id.0)
         })?;
         let delta = storage.reconstruct_delta(data).await?;
-        current = apply_delta(&current, &delta).with_context(|| {
+        current = apply_delta(current, &delta).with_context(|| {
             format!("failed to apply delta at graph_id={}", row.frame.graph_id.0)
         })?;
     }

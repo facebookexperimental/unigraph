@@ -343,7 +343,7 @@ mod tests {
             let base = random_graph(i * 2);
             let target = random_graph(i * 2 + 1);
             let delta = derive_delta(&base, &target)?;
-            let result = apply_delta(&base, &delta)?;
+            let result = apply_delta(base, &delta)?;
             assert!(
                 graphs_equal(&result, &target),
                 "Round-trip failed for pair {}",
@@ -359,7 +359,7 @@ mod tests {
         for step in 0..50 {
             let next = random_graph(1000 + step + 1);
             let delta = derive_delta(&current, &next)?;
-            current = apply_delta(&current, &delta)?;
+            current = apply_delta(current, &delta)?;
             assert!(graphs_equal(&current, &next), "Chain step {} failed", step);
         }
         Ok(())
@@ -384,12 +384,12 @@ mod tests {
         let base = random_graph(seeds[0]);
         let mut sequential = base;
         for d in &deltas {
-            sequential = apply_delta(&sequential, d)?;
+            sequential = apply_delta(sequential, d)?;
         }
 
         // Batch application
         let base = random_graph(seeds[0]);
-        let batch = apply_deltas(&base, &deltas)?;
+        let batch = apply_deltas(base, &deltas)?;
 
         assert!(
             graphs_equal(&sequential, &batch),
@@ -469,8 +469,8 @@ mod tests {
             let unpacked = unpack_delta(&package)?;
 
             // Apply both and compare
-            let from_original = apply_delta(&base, &delta)?;
-            let from_unpacked = apply_delta(&base, &unpacked)?;
+            let from_original = apply_delta(random_graph(6000 + i * 2), &delta)?;
+            let from_unpacked = apply_delta(random_graph(6000 + i * 2), &unpacked)?;
             assert!(
                 graphs_equal(&from_original, &from_unpacked),
                 "Pack/unpack round-trip failed for pair {}",
@@ -489,7 +489,7 @@ mod tests {
             let base = random_graph(7000 + i * 2);
             let target = random_graph(7000 + i * 2 + 1);
             let delta = derive_delta(&base, &target)?;
-            let result = apply_delta(&base, &delta)?;
+            let result = apply_delta(base, &delta)?;
             hashes.push(format!("pair_{:02}: {}", i, integrity_string(&result)));
         }
         k9::snapshot!(

@@ -81,53 +81,48 @@ impl DeltaManifestStats {
             .map(|(k, v)| (k.clone(), v.len() as u32))
             .collect();
 
-        // Count nodes that have any change (edges, metrics, or tag sets)
-        let mut changed_nodes = std::collections::BTreeSet::new();
-        for node in delta.edge_changes.keys() {
-            changed_nodes.insert(node.clone());
-        }
-        for changes in delta.metric_changes.values() {
-            for change in changes {
-                changed_nodes.insert(change.node_name.clone());
-            }
-        }
-        for node in delta.tag_set_changes.keys() {
-            changed_nodes.insert(node.clone());
-        }
+        let empty_nodes = unigraph_delta::MapDelta {
+            added: BTreeMap::new(),
+            removed: std::collections::BTreeSet::new(),
+            changed: BTreeMap::new(),
+        };
+        let nodes = delta.nodes.as_ref().unwrap_or(&empty_nodes);
 
         let mut directed_edges_added: u32 = 0;
         let mut directed_edges_removed: u32 = 0;
         let mut tagged_edges_changed: u32 = 0;
         let mut dynamic_edges_changed: u32 = 0;
+        let mut metrics_changed: u32 = 0;
+        let mut tag_sets_changed: u32 = 0;
 
-        for edge_delta in delta.edge_changes.values() {
-            if let Some(directed) = &edge_delta.directed {
-                directed_edges_added += directed.added.len() as u32;
-                directed_edges_removed += directed.removed.len() as u32;
+        for node_delta in nodes.changed.values() {
+            if let Some(ref dir) = node_delta.edges_directed {
+                if let unigraph_delta::OptionDelta::Changed(set_delta) = dir {
+                    directed_edges_added += set_delta.added.len() as u32;
+                    directed_edges_removed += set_delta.removed.len() as u32;
+                }
             }
-            if edge_delta.tagged.is_some() {
+            if node_delta.edges_tagged.is_some() {
                 tagged_edges_changed += 1;
             }
-            if edge_delta.dynamic.is_some() {
+            if node_delta.edges_dynamic.is_some() {
                 dynamic_edges_changed += 1;
             }
+            if node_delta.metrics.is_some() {
+                metrics_changed += 1;
+            }
+            if node_delta.labels.is_some() {
+                tag_sets_changed += 1;
+            }
         }
-
-        let metrics_changed: u32 = delta
-            .metric_changes
-            .values()
-            .map(|changes| changes.len() as u32)
-            .sum();
-
-        let tag_sets_changed = delta.tag_set_changes.len() as u32;
 
         DeltaManifestStats {
             total_blobs,
             total_size_bytes,
             blob_sizes_bytes,
-            nodes_added: delta.nodes_added.len() as u32,
-            nodes_removed: delta.nodes_removed.len() as u32,
-            nodes_changed: changed_nodes.len() as u32,
+            nodes_added: nodes.added.len() as u32,
+            nodes_removed: nodes.removed.len() as u32,
+            nodes_changed: nodes.changed.len() as u32,
             directed_edges_added,
             directed_edges_removed,
             tagged_edges_changed,

@@ -6,12 +6,10 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use unigraph_delta::Deltable;
-use unigraph_delta::apply_option_delta;
+use unigraph_delta::MapDelta;
+use unigraph_delta::OptionDelta;
 
-use super::DynamicEdgeSerialized;
-use super::DynamicEdgesMap;
-use super::GraphDelta;
-use super::TaggedEdgesMap;
+use super::MapGraphDelta;
 use crate::ArrayGraphDynamicEdge;
 use crate::ArrayGraphNodes;
 use crate::ArrayGraphSerializable;
@@ -22,51 +20,78 @@ use crate::remap_utils::RemapContext;
 use crate::types::DynamicEdgeName;
 use crate::types::DynamicTypeKey;
 use crate::types::Tag;
+use crate::types::map_graph::DynamicEdge;
+use crate::types::map_graph::GraphNode;
+use crate::types::map_graph::GraphNodeDelta;
 
 /// Apply a single delta to a base graph, producing the resulting graph.
+/// Consumes the base graph — if the delta is empty, the base is returned as-is
+/// without copying.
 pub fn apply_delta(
-    base: &ArrayGraphSerializable,
-    delta: &GraphDelta,
+    base: ArrayGraphSerializable,
+    delta: &MapGraphDelta,
 ) -> Result<ArrayGraphSerializable> {
     apply_deltas(base, std::slice::from_ref(delta))
 }
 
 /// Apply multiple deltas to a base graph efficiently.
 ///
-/// This batches all node additions/removals across all deltas, builds the
-/// final node name list once, then applies edge/metric/tag_set changes in order.
-/// This is O(N + E + sum_of_delta_sizes), not O(K * (N + E)).
+/// Consumes the base graph. If no deltas, the base is returned as-is.
+/// Otherwise, computes the final node set across ALL deltas, remaps ONCE,
+/// then applies each delta's changes in order to the mutable adjacency lists.
 pub fn apply_deltas(
-    base: &ArrayGraphSerializable,
-    deltas: &[GraphDelta],
+    base: ArrayGraphSerializable,
+    deltas: &[MapGraphDelta],
 ) -> Result<ArrayGraphSerializable> {
     if deltas.is_empty() {
-        return Ok(clone_serializable(base));
+        return Ok(base);
     }
 
-    // Phase 1: Compute final node set
-    let mut live_nodes: BTreeSet<String> = base
-        .node_names_ordered
-        .combined_node_names_iter()
-        .map(|s| s.to_string())
-        .collect();
+    let empty_nodes = MapDelta {
+        added: BTreeMap::new(),
+        removed: BTreeSet::new(),
+        changed: BTreeMap::new(),
+    };
 
+    // Phase 1: Compute the final set of node names by replaying add/remove
+    // operations across all deltas. We only allocate for delta-sized sets,
+    // not the full base node list.
+    //
+    // We track which names are added/removed relative to the base using
+    // a small set that replays the net effect of all deltas.
+    let mut delta_names: BTreeSet<String> = BTreeSet::new();
+    let mut delta_removed: BTreeSet<String> = BTreeSet::new();
+
+    // Replay all deltas to compute net adds/removes
     for delta in deltas {
-        for name in &delta.nodes_removed {
-            live_nodes.remove(name);
+        let nodes = delta.nodes.as_ref().unwrap_or(&empty_nodes);
+        for name in &nodes.removed {
+            delta_names.remove(name);
+            delta_removed.insert(name.clone());
         }
-        for name in &delta.nodes_added {
-            live_nodes.insert(name.clone());
+        for name in nodes.added.keys() {
+            delta_removed.remove(name);
+            delta_names.insert(name.clone());
         }
+        // Edge targets pointing to non-existing nodes need indices too
+        for graph_node in nodes.added.values() {
+            for name in graph_node.edge_names_iter() {
+                if !delta_removed.contains(name) {
+                    delta_names.insert(name.clone());
+                }
+            }
+        }
+        collect_edge_target_names_into(&nodes.changed, &mut delta_names);
     }
 
-    // Phase 2: Build final ArrayGraphNodes + remap base
-    let final_nodes = build_array_graph_nodes_from_sorted(&live_nodes);
+    // Phase 2: Build final ArrayGraphNodes by merge-sorting base names + delta_names,
+    // skipping delta_removed. No per-name allocation for base nodes that are unchanged.
+    let final_nodes = build_final_nodes(&base.node_names_ordered, &delta_names, &delta_removed);
     let remap = build_remap_context(&base.node_names_ordered, &final_nodes);
     let remapped_edges = base.edges.remap(&remap)?;
     let remapped_metadata = base.node_metadata.remap(&remap)?;
 
-    // Phase 3: Convert CSR to mutable adjacency lists
+    // Phase 3: Convert CSR to mutable adjacency lists ONCE
     let node_count = final_nodes.combined_nodes_len();
     let mut directed_adj = csr_to_adj_lists(
         &remapped_edges.directed,
@@ -78,203 +103,39 @@ pub fn apply_deltas(
     let mut metrics = remapped_metadata.metrics;
     let mut tag_sets = remapped_metadata.tag_sets;
 
-    // Phase 4: Apply all changes in order
+    // Phase 4: Apply each delta's changes in order
     for delta in deltas {
-        // Clear all data for nodes removed by this delta that still exist in
-        // the final node set. This handles the case where a node is removed
-        // by one delta and re-added by a later delta: the removal must clear
-        // all edges, metrics, and tag sets before the re-add populates them.
-        for removed_name in &delta.nodes_removed {
-            if let Some(idx) = final_nodes.name_to_idx_log(removed_name) {
-                // Clear outgoing edges and metadata
-                directed_adj[idx].clear();
-                tagged.remove(&idx);
-                dynamic.remove(&idx);
-                tag_sets.remove(&idx);
-                for metric_vec in metrics.values_mut() {
-                    metric_vec[idx] = 0.0;
-                }
-
-                // Clear incoming directed edges
-                for adj in directed_adj.iter_mut() {
-                    adj.remove(&idx);
-                }
-
-                // Clear incoming tagged edges
-                for tag_map in tagged.values_mut() {
-                    for target_set in tag_map.values_mut() {
-                        target_set.remove(&idx);
-                    }
-                    tag_map.retain(|_, targets| !targets.is_empty());
-                }
-                tagged.retain(|_, tag_map| !tag_map.is_empty());
-
-                // Clear incoming dynamic edges (remove idx from branch targets)
-                for type_map in dynamic.values_mut() {
-                    for edge_map in type_map.values_mut() {
-                        for edge in edge_map.values_mut() {
-                            for targets in edge.branches.values_mut() {
-                                targets.remove(&idx);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Apply edge changes
-        for (node_name, edge_delta) in &delta.edge_changes {
-            let Some(src_idx) = final_nodes.name_to_idx_log(node_name) else {
-                // Node doesn't exist in final graph (was removed later). Skip.
-                continue;
-            };
-
-            // Directed edges
-            if let Some(ref dir) = edge_delta.directed {
-                for removed_name in &dir.removed {
-                    if let Some(tgt_idx) = final_nodes.name_to_idx_log(removed_name) {
-                        directed_adj[src_idx].remove(&tgt_idx);
-                    }
-                }
-                for added_name in &dir.added {
-                    if let Some(tgt_idx) = final_nodes.name_to_idx_log(added_name) {
-                        directed_adj[src_idx].insert(tgt_idx);
-                    }
-                    // If target doesn't exist in final graph, silently skip.
-                }
-            }
-
-            // Tagged edges (recursive delta)
-            if let Some(ref tag_delta) = edge_delta.tagged {
-                // Convert current NodeIDX-based tagged edges to name-based form
-                let mut serialized = tagged
-                    .get(&src_idx)
-                    .map(|tag_map| tagged_edges_idx_to_serialized(tag_map, &final_nodes))
-                    .unwrap_or_default();
-
-                // Ensure all `changed` and `removed` keys exist so apply_delta
-                // can find them. The remap may have dropped empty entries for
-                // tags whose targets were all removed, but the delta still
-                // references those tags.
-                for k in tag_delta.changed.keys().chain(tag_delta.removed.iter()) {
-                    serialized.entry(k.clone()).or_default();
-                }
-
-                // Ensure inner sets contain entries referenced by `removed` in
-                // nested SetDeltas. Remap may have dropped node names whose
-                // targets no longer exist in the final graph.
-                for (tag, inner_set_delta) in &tag_delta.changed {
-                    if let Some(inner_set) = serialized.get_mut(tag) {
-                        for name in &inner_set_delta.removed {
-                            inner_set.insert(name.clone());
-                        }
-                    }
-                }
-
-                // Apply the recursive delta in the serialized (name-based) domain
-                serialized.apply_delta(tag_delta.clone())?;
-
-                // Clean up empty entries produced by removals
-                serialized.retain(|_, targets| !targets.is_empty());
-
-                // Convert back
-                if serialized.is_empty() {
-                    tagged.remove(&src_idx);
-                } else {
-                    tagged.insert(
-                        src_idx,
-                        tagged_edges_serialized_to_idx(&serialized, &final_nodes),
-                    );
-                }
-            }
-
-            // Dynamic edges (recursive delta)
-            if let Some(ref dyn_delta) = edge_delta.dynamic {
-                // Convert current NodeIDX-based edges to name-based serialized form
-                let mut serialized = dynamic
-                    .get(&src_idx)
-                    .map(|type_map| dynamic_edges_idx_to_serialized(type_map, &final_nodes))
-                    .unwrap_or_default();
-
-                // Ensure all `changed` and `removed` keys exist so apply_delta
-                // can find them.
-                for k in dyn_delta.changed.keys().chain(dyn_delta.removed.iter()) {
-                    serialized.entry(k.clone()).or_default();
-                }
-
-                // Apply the recursive delta in the serialized (name-based) domain
-                serialized.apply_delta(dyn_delta.clone())?;
-
-                if serialized.is_empty() {
-                    dynamic.remove(&src_idx);
-                } else {
-                    // Convert back to NodeIDX-based representation
-                    dynamic.insert(
-                        src_idx,
-                        dynamic_edges_serialized_to_idx(&serialized, &final_nodes),
-                    );
-                }
-            }
-        }
-
-        // Apply metric changes
-        for (metric_name, changes) in &delta.metric_changes {
-            let metric_vec = metrics
-                .entry(metric_name.clone())
-                .or_insert_with(|| vec![0.0; node_count]);
-
-            // Ensure vec is the right length (could be shorter if metric is new)
-            if metric_vec.len() < node_count {
-                metric_vec.resize(node_count, 0.0);
-            }
-
-            for change in changes {
-                if let Some(idx) = final_nodes.name_to_idx_log(&change.node_name) {
-                    metric_vec[idx] = change.value;
-                }
-            }
-        }
-
-        // Apply tag set changes
-        for (node_name, ts_delta) in &delta.tag_set_changes {
-            let Some(node_idx) = final_nodes.name_to_idx_log(node_name) else {
-                continue;
-            };
-
-            let ts_map = tag_sets.entry(node_idx).or_default();
-
-            // Ensure all `changed` and `removed` keys exist so apply_delta
-            // can find them.
-            for k in ts_delta.changed.keys().chain(ts_delta.removed.iter()) {
-                ts_map.entry(k.clone()).or_default();
-            }
-
-            ts_map.apply_delta(ts_delta.clone())?;
-
-            // Clean up empty entries
-            ts_map.retain(|_, tags| !tags.is_empty());
-            if ts_map.is_empty() {
-                tag_sets.remove(&node_idx);
-            }
-        }
+        let nodes = delta.nodes.as_ref().unwrap_or(&empty_nodes);
+        apply_node_changes(
+            nodes,
+            &final_nodes,
+            &mut directed_adj,
+            &mut tagged,
+            &mut dynamic,
+            &mut metrics,
+            &mut tag_sets,
+            node_count,
+        )?;
     }
 
-    // Phase 5: Apply top-level settings (last non-Unchanged wins)
+    // Phase 5: Apply top-level settings (last non-None wins)
     let mut graph_settings = base.graph_settings.clone();
     let mut traversal_config = base.traversal_config.clone();
     let mut entry_points = base.entry_points.clone();
 
     for delta in deltas {
-        if !delta.graph_settings.is_unchanged() {
-            graph_settings.apply_delta(delta.graph_settings.clone())?;
+        if let Some(ref gs_delta) = delta.graph_settings {
+            graph_settings.apply_delta(gs_delta.clone())?;
         }
-        if !delta.traversal_config.is_unchanged() {
-            traversal_config.apply_delta(delta.traversal_config.clone())?;
+        if let Some(ref tc_delta) = delta.traversal_config {
+            traversal_config.apply_delta(tc_delta.clone())?;
         }
-        apply_option_delta(&mut entry_points, &delta.entry_points);
+        if let Some(ref ep_delta) = delta.entry_points {
+            entry_points.apply_delta(ep_delta.clone())?;
+        }
     }
 
-    // Phase 6: Rebuild CSR + assemble result
+    // Phase 6: Rebuild CSR + assemble result ONCE
     let (directed, directed_offsets) = adj_lists_to_csr(&directed_adj, node_count);
 
     Ok(ArrayGraphSerializable {
@@ -292,34 +153,576 @@ pub fn apply_deltas(
     })
 }
 
-/// Build an `ArrayGraphNodes` from a sorted set of names.
-fn build_array_graph_nodes_from_sorted(names: &BTreeSet<String>) -> ArrayGraphNodes {
-    let mut node_names = String::new();
-    let mut offsets = vec![0usize];
+/// Apply a single delta's node changes to the mutable graph state.
+#[allow(clippy::too_many_arguments)]
+fn apply_node_changes(
+    nodes: &MapDelta<String, GraphNode, GraphNodeDelta>,
+    final_nodes: &ArrayGraphNodes,
+    directed_adj: &mut Vec<BTreeSet<NodeIDX>>,
+    tagged: &mut BTreeMap<NodeIDX, BTreeMap<Tag, BTreeSet<NodeIDX>>>,
+    dynamic: &mut BTreeMap<
+        NodeIDX,
+        BTreeMap<DynamicTypeKey, BTreeMap<DynamicEdgeName, ArrayGraphDynamicEdge>>,
+    >,
+    metrics: &mut BTreeMap<String, Vec<f32>>,
+    tag_sets: &mut BTreeMap<NodeIDX, BTreeMap<String, BTreeSet<String>>>,
+    node_count: usize,
+) -> Result<()> {
+    // Clear removed nodes
+    for removed_name in &nodes.removed {
+        if let Some(idx) = final_nodes.name_to_idx_log(removed_name) {
+            clear_node(
+                idx,
+                directed_adj,
+                tagged,
+                dynamic,
+                metrics,
+                tag_sets,
+                node_count,
+            );
+        }
+    }
 
-    for name in names {
-        node_names.push_str(name);
-        offsets.push(node_names.len());
+    // Apply added nodes
+    for (node_name, graph_node) in &nodes.added {
+        let Some(src_idx) = final_nodes.name_to_idx_log(node_name) else {
+            continue;
+        };
+        apply_graph_node(
+            src_idx,
+            graph_node,
+            final_nodes,
+            directed_adj,
+            tagged,
+            dynamic,
+            metrics,
+            tag_sets,
+            node_count,
+        );
+    }
+
+    // Apply changed nodes
+    for (node_name, node_delta) in &nodes.changed {
+        let Some(src_idx) = final_nodes.name_to_idx_log(node_name) else {
+            continue;
+        };
+        apply_graph_node_delta(
+            src_idx,
+            node_delta,
+            final_nodes,
+            directed_adj,
+            tagged,
+            dynamic,
+            metrics,
+            tag_sets,
+            node_count,
+        )?;
+    }
+
+    Ok(())
+}
+
+/// Collect edge target names from changed nodes into the names set.
+fn collect_edge_target_names_into(
+    changed: &BTreeMap<String, GraphNodeDelta>,
+    names: &mut BTreeSet<String>,
+) {
+    for node_delta in changed.values() {
+        if let Some(OptionDelta::Changed(ref set_delta)) = node_delta.edges_directed {
+            for name in &set_delta.added {
+                names.insert(name.clone());
+            }
+        }
+        if let Some(OptionDelta::Set(ref edges)) = node_delta.edges_directed {
+            for name in edges {
+                names.insert(name.clone());
+            }
+        }
+        if let Some(OptionDelta::Changed(ref map_delta)) = node_delta.edges_tagged {
+            for targets in map_delta.added.values() {
+                for name in targets {
+                    names.insert(name.clone());
+                }
+            }
+            for inner_delta in map_delta.changed.values() {
+                for name in &inner_delta.added {
+                    names.insert(name.clone());
+                }
+            }
+        }
+        if let Some(OptionDelta::Set(ref edges)) = node_delta.edges_tagged {
+            for targets in edges.values() {
+                for name in targets {
+                    names.insert(name.clone());
+                }
+            }
+        }
+        if let Some(OptionDelta::Changed(ref map_delta)) = node_delta.edges_dynamic {
+            for edge_map in map_delta.added.values() {
+                for edge in edge_map.values() {
+                    for branch_names in edge.branches.values() {
+                        for name in branch_names {
+                            names.insert(name.clone());
+                        }
+                    }
+                }
+            }
+        }
+        if let Some(OptionDelta::Set(ref edges)) = node_delta.edges_dynamic {
+            for type_map in edges.values() {
+                for edge in type_map.values() {
+                    for branch_names in edge.branches.values() {
+                        for name in branch_names {
+                            names.insert(name.clone());
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Build final ArrayGraphNodes by merge-sorting base names with additions,
+/// skipping removals. Avoids allocating a String per base node name.
+fn build_final_nodes(
+    base: &ArrayGraphNodes,
+    added: &BTreeSet<String>,
+    removed: &BTreeSet<String>,
+) -> ArrayGraphNodes {
+    let base_count = base.combined_nodes_len();
+    let estimated_count = base_count + added.len();
+    let mut node_names = String::new();
+    let mut offsets = Vec::with_capacity(estimated_count + 1);
+    offsets.push(0);
+
+    let mut base_iter = base.combined_node_names_iter().peekable();
+    let mut added_iter = added.iter().peekable();
+
+    loop {
+        match (base_iter.peek(), added_iter.peek()) {
+            (Some(&base_name), Some(add_name)) => {
+                let add_name = add_name.as_str();
+                match base_name.cmp(add_name) {
+                    std::cmp::Ordering::Less => {
+                        if !removed.contains(base_name) {
+                            node_names.push_str(base_name);
+                            offsets.push(node_names.len());
+                        }
+                        base_iter.next();
+                    }
+                    std::cmp::Ordering::Equal => {
+                        // In both base and added — keep it (added overrides removal)
+                        node_names.push_str(base_name);
+                        offsets.push(node_names.len());
+                        base_iter.next();
+                        added_iter.next();
+                    }
+                    std::cmp::Ordering::Greater => {
+                        node_names.push_str(add_name);
+                        offsets.push(node_names.len());
+                        added_iter.next();
+                    }
+                }
+            }
+            (Some(&base_name), None) => {
+                if !removed.contains(base_name) {
+                    node_names.push_str(base_name);
+                    offsets.push(node_names.len());
+                }
+                base_iter.next();
+            }
+            (None, Some(add_name)) => {
+                node_names.push_str(add_name);
+                offsets.push(node_names.len());
+                added_iter.next();
+            }
+            (None, None) => break,
+        }
     }
 
     ArrayGraphNodes::from_parts(node_names, offsets)
 }
 
-/// Build a `RemapContext` mapping old indices (base) to new indices (target).
+/// Clear all data for a removed node.
+fn clear_node(
+    idx: NodeIDX,
+    directed_adj: &mut Vec<BTreeSet<NodeIDX>>,
+    tagged: &mut BTreeMap<NodeIDX, BTreeMap<Tag, BTreeSet<NodeIDX>>>,
+    dynamic: &mut BTreeMap<
+        NodeIDX,
+        BTreeMap<DynamicTypeKey, BTreeMap<DynamicEdgeName, ArrayGraphDynamicEdge>>,
+    >,
+    metrics: &mut BTreeMap<String, Vec<f32>>,
+    tag_sets: &mut BTreeMap<NodeIDX, BTreeMap<String, BTreeSet<String>>>,
+    _node_count: usize,
+) {
+    directed_adj[idx].clear();
+    tagged.remove(&idx);
+    dynamic.remove(&idx);
+    tag_sets.remove(&idx);
+    for metric_vec in metrics.values_mut() {
+        metric_vec[idx] = 0.0;
+    }
+
+    // Clear incoming directed edges from all other nodes
+    for adj in directed_adj.iter_mut() {
+        adj.remove(&idx);
+    }
+
+    // Clear incoming tagged edges
+    for tag_map in tagged.values_mut() {
+        for target_set in tag_map.values_mut() {
+            target_set.remove(&idx);
+        }
+        tag_map.retain(|_, targets| !targets.is_empty());
+    }
+    tagged.retain(|_, tag_map| !tag_map.is_empty());
+
+    // Clear incoming dynamic edges
+    for type_map in dynamic.values_mut() {
+        for edge_map in type_map.values_mut() {
+            for edge in edge_map.values_mut() {
+                for targets in edge.branches.values_mut() {
+                    targets.remove(&idx);
+                }
+            }
+        }
+    }
+}
+
+/// Apply a full GraphNode (for added nodes) — set all edges, metrics, labels.
+#[allow(clippy::too_many_arguments)]
+fn apply_graph_node(
+    src_idx: NodeIDX,
+    graph_node: &GraphNode,
+    final_nodes: &ArrayGraphNodes,
+    directed_adj: &mut Vec<BTreeSet<NodeIDX>>,
+    tagged: &mut BTreeMap<NodeIDX, BTreeMap<Tag, BTreeSet<NodeIDX>>>,
+    dynamic: &mut BTreeMap<
+        NodeIDX,
+        BTreeMap<DynamicTypeKey, BTreeMap<DynamicEdgeName, ArrayGraphDynamicEdge>>,
+    >,
+    metrics: &mut BTreeMap<String, Vec<f32>>,
+    tag_sets: &mut BTreeMap<NodeIDX, BTreeMap<String, BTreeSet<String>>>,
+    node_count: usize,
+) {
+    // Directed edges
+    if let Some(ref edges) = graph_node.edges_directed {
+        for name in edges {
+            if let Some(tgt_idx) = final_nodes.name_to_idx_log(name) {
+                directed_adj[src_idx].insert(tgt_idx);
+            }
+        }
+    }
+
+    // Tagged edges
+    if let Some(ref edges) = graph_node.edges_tagged {
+        let idx_map: BTreeMap<Tag, BTreeSet<NodeIDX>> = edges
+            .iter()
+            .map(|(tag, names)| {
+                (
+                    tag.clone(),
+                    names
+                        .iter()
+                        .filter_map(|name| final_nodes.name_to_idx_log(name))
+                        .collect(),
+                )
+            })
+            .collect();
+        if !idx_map.is_empty() {
+            tagged.insert(src_idx, idx_map);
+        }
+    }
+
+    // Dynamic edges
+    if let Some(ref edges) = graph_node.edges_dynamic {
+        let idx_map = dynamic_edges_name_to_idx(edges, final_nodes);
+        if !idx_map.is_empty() {
+            dynamic.insert(src_idx, idx_map);
+        }
+    }
+
+    // Metrics
+    if let Some(ref node_metrics) = graph_node.metrics {
+        for (metric_name, &value) in node_metrics {
+            let metric_vec = metrics
+                .entry(metric_name.clone())
+                .or_insert_with(|| vec![0.0; node_count]);
+            if metric_vec.len() < node_count {
+                metric_vec.resize(node_count, 0.0);
+            }
+            metric_vec[src_idx] = value;
+        }
+    }
+
+    // Labels
+    if let Some(ref labels) = graph_node.labels {
+        tag_sets.insert(src_idx, labels.clone());
+    }
+}
+
+/// Apply a GraphNodeDelta (for changed nodes) — apply edge/metric/label deltas.
+#[allow(clippy::too_many_arguments)]
+fn apply_graph_node_delta(
+    src_idx: NodeIDX,
+    node_delta: &GraphNodeDelta,
+    final_nodes: &ArrayGraphNodes,
+    directed_adj: &mut Vec<BTreeSet<NodeIDX>>,
+    tagged: &mut BTreeMap<NodeIDX, BTreeMap<Tag, BTreeSet<NodeIDX>>>,
+    dynamic: &mut BTreeMap<
+        NodeIDX,
+        BTreeMap<DynamicTypeKey, BTreeMap<DynamicEdgeName, ArrayGraphDynamicEdge>>,
+    >,
+    metrics: &mut BTreeMap<String, Vec<f32>>,
+    tag_sets: &mut BTreeMap<NodeIDX, BTreeMap<String, BTreeSet<String>>>,
+    node_count: usize,
+) -> Result<()> {
+    // Directed edges
+    if let Some(ref dir_delta) = node_delta.edges_directed {
+        match dir_delta {
+            OptionDelta::Changed(set_delta) => {
+                for removed_name in &set_delta.removed {
+                    if let Some(tgt_idx) = final_nodes.name_to_idx_log(removed_name) {
+                        directed_adj[src_idx].remove(&tgt_idx);
+                    }
+                }
+                for added_name in &set_delta.added {
+                    if let Some(tgt_idx) = final_nodes.name_to_idx_log(added_name) {
+                        directed_adj[src_idx].insert(tgt_idx);
+                    }
+                }
+            }
+            OptionDelta::Set(edges) => {
+                directed_adj[src_idx].clear();
+                for name in edges {
+                    if let Some(tgt_idx) = final_nodes.name_to_idx_log(name) {
+                        directed_adj[src_idx].insert(tgt_idx);
+                    }
+                }
+            }
+            OptionDelta::Cleared => {
+                directed_adj[src_idx].clear();
+            }
+            OptionDelta::Unchanged => {}
+        }
+    }
+
+    // Tagged edges
+    if let Some(ref tag_delta) = node_delta.edges_tagged {
+        match tag_delta {
+            OptionDelta::Changed(map_delta) => {
+                let mut serialized = tagged
+                    .get(&src_idx)
+                    .map(|tag_map| tagged_edges_idx_to_name(tag_map, final_nodes))
+                    .unwrap_or_default();
+
+                // Ensure keys exist for apply_delta
+                for k in map_delta.changed.keys().chain(map_delta.removed.iter()) {
+                    serialized.entry(k.clone()).or_default();
+                }
+                for (tag, inner_set_delta) in &map_delta.changed {
+                    if let Some(inner_set) = serialized.get_mut(tag) {
+                        for name in &inner_set_delta.removed {
+                            inner_set.insert(name.clone());
+                        }
+                    }
+                }
+
+                serialized.apply_delta(map_delta.clone())?;
+                serialized.retain(|_, targets| !targets.is_empty());
+
+                if serialized.is_empty() {
+                    tagged.remove(&src_idx);
+                } else {
+                    tagged.insert(src_idx, tagged_edges_name_to_idx(&serialized, final_nodes));
+                }
+            }
+            OptionDelta::Set(edges) => {
+                let idx_map: BTreeMap<Tag, BTreeSet<NodeIDX>> = edges
+                    .iter()
+                    .map(|(tag, names)| {
+                        (
+                            tag.clone(),
+                            names
+                                .iter()
+                                .filter_map(|name| final_nodes.name_to_idx_log(name))
+                                .collect(),
+                        )
+                    })
+                    .collect();
+                if idx_map.is_empty() {
+                    tagged.remove(&src_idx);
+                } else {
+                    tagged.insert(src_idx, idx_map);
+                }
+            }
+            OptionDelta::Cleared => {
+                tagged.remove(&src_idx);
+            }
+            OptionDelta::Unchanged => {}
+        }
+    }
+
+    // Dynamic edges
+    if let Some(ref dyn_delta) = node_delta.edges_dynamic {
+        match dyn_delta {
+            OptionDelta::Changed(map_delta) => {
+                let mut serialized = dynamic
+                    .get(&src_idx)
+                    .map(|type_map| dynamic_edges_idx_to_name(type_map, final_nodes))
+                    .unwrap_or_default();
+
+                for k in map_delta.changed.keys().chain(map_delta.removed.iter()) {
+                    serialized.entry(k.clone()).or_default();
+                }
+
+                serialized.apply_delta(map_delta.clone())?;
+
+                if serialized.is_empty() {
+                    dynamic.remove(&src_idx);
+                } else {
+                    dynamic.insert(src_idx, dynamic_edges_name_to_idx(&serialized, final_nodes));
+                }
+            }
+            OptionDelta::Set(edges) => {
+                let idx_map = dynamic_edges_name_to_idx(edges, final_nodes);
+                if idx_map.is_empty() {
+                    dynamic.remove(&src_idx);
+                } else {
+                    dynamic.insert(src_idx, idx_map);
+                }
+            }
+            OptionDelta::Cleared => {
+                dynamic.remove(&src_idx);
+            }
+            OptionDelta::Unchanged => {}
+        }
+    }
+
+    // Metrics
+    if let Some(ref metrics_delta) = node_delta.metrics {
+        match metrics_delta {
+            OptionDelta::Changed(map_delta) => {
+                // Remove metrics
+                for metric_name in &map_delta.removed {
+                    if let Some(metric_vec) = metrics.get_mut(metric_name) {
+                        metric_vec[src_idx] = 0.0;
+                    }
+                }
+                // Add metrics
+                for (metric_name, &value) in &map_delta.added {
+                    let metric_vec = metrics
+                        .entry(metric_name.clone())
+                        .or_insert_with(|| vec![0.0; node_count]);
+                    if metric_vec.len() < node_count {
+                        metric_vec.resize(node_count, 0.0);
+                    }
+                    metric_vec[src_idx] = value;
+                }
+                // Change metrics
+                for (metric_name, &value) in &map_delta.changed {
+                    let metric_vec = metrics
+                        .entry(metric_name.clone())
+                        .or_insert_with(|| vec![0.0; node_count]);
+                    if metric_vec.len() < node_count {
+                        metric_vec.resize(node_count, 0.0);
+                    }
+                    metric_vec[src_idx] = value;
+                }
+            }
+            OptionDelta::Set(new_metrics) => {
+                // Clear all existing metrics for this node
+                for metric_vec in metrics.values_mut() {
+                    metric_vec[src_idx] = 0.0;
+                }
+                // Set new ones
+                for (metric_name, &value) in new_metrics {
+                    let metric_vec = metrics
+                        .entry(metric_name.clone())
+                        .or_insert_with(|| vec![0.0; node_count]);
+                    if metric_vec.len() < node_count {
+                        metric_vec.resize(node_count, 0.0);
+                    }
+                    metric_vec[src_idx] = value;
+                }
+            }
+            OptionDelta::Cleared => {
+                for metric_vec in metrics.values_mut() {
+                    metric_vec[src_idx] = 0.0;
+                }
+            }
+            OptionDelta::Unchanged => {}
+        }
+    }
+
+    // Labels (tag sets)
+    if let Some(ref labels_delta) = node_delta.labels {
+        match labels_delta {
+            OptionDelta::Changed(map_delta) => {
+                let ts_map = tag_sets.entry(src_idx).or_default();
+                for k in map_delta.changed.keys().chain(map_delta.removed.iter()) {
+                    ts_map.entry(k.clone()).or_default();
+                }
+                ts_map.apply_delta(map_delta.clone())?;
+                ts_map.retain(|_, tags| !tags.is_empty());
+                if ts_map.is_empty() {
+                    tag_sets.remove(&src_idx);
+                }
+            }
+            OptionDelta::Set(labels) => {
+                if labels.is_empty() {
+                    tag_sets.remove(&src_idx);
+                } else {
+                    tag_sets.insert(src_idx, labels.clone());
+                }
+            }
+            OptionDelta::Cleared => {
+                tag_sets.remove(&src_idx);
+            }
+            OptionDelta::Unchanged => {}
+        }
+    }
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Helper functions
+// ---------------------------------------------------------------------------
+
+/// Build a remap context by merge-walking two sorted node lists.
+/// O(N) instead of O(N log N) — avoids binary search per node.
 fn build_remap_context(base_nodes: &ArrayGraphNodes, new_nodes: &ArrayGraphNodes) -> RemapContext {
     let base_count = base_nodes.combined_nodes_len();
     let new_count = new_nodes.combined_nodes_len();
-
-    let mut mappings: Vec<Option<NodeIDX>> = Vec::with_capacity(base_count);
+    let mut mappings: Vec<Option<NodeIDX>> = vec![None; base_count];
     let mut original_positions: Vec<Option<NodeIDX>> = vec![None; new_count];
 
+    let mut new_iter = new_nodes.combined_node_idx_iter().peekable();
+
     for old_idx in base_nodes.combined_node_idx_iter() {
-        let name = base_nodes.idx_to_name(old_idx);
-        if let Some(new_idx) = new_nodes.name_to_idx_log(name) {
-            mappings.push(Some(new_idx));
-            original_positions[new_idx] = Some(old_idx);
-        } else {
-            mappings.push(None); // node was removed
+        let base_name = base_nodes.idx_to_name(old_idx);
+
+        // Advance new_iter until we find a name >= base_name
+        while let Some(&new_idx) = new_iter.peek() {
+            let new_name = new_nodes.idx_to_name(new_idx);
+            match new_name.cmp(base_name) {
+                std::cmp::Ordering::Less => {
+                    // new node not in base — skip
+                    new_iter.next();
+                }
+                std::cmp::Ordering::Equal => {
+                    // Match — record mapping
+                    mappings[old_idx] = Some(new_idx);
+                    original_positions[new_idx] = Some(old_idx);
+                    new_iter.next();
+                    break;
+                }
+                std::cmp::Ordering::Greater => {
+                    // base node was removed (not in new) — mappings[old_idx] stays None
+                    break;
+                }
+            }
         }
     }
 
@@ -329,14 +732,12 @@ fn build_remap_context(base_nodes: &ArrayGraphNodes, new_nodes: &ArrayGraphNodes
     }
 }
 
-/// Convert CSR (directed edges + offsets) to per-node adjacency sets.
 fn csr_to_adj_lists(
     directed: &[NodeIDX],
     offsets: &[usize],
     node_count: usize,
 ) -> Vec<BTreeSet<NodeIDX>> {
     let mut adj: Vec<BTreeSet<NodeIDX>> = vec![BTreeSet::new(); node_count];
-
     for i in 0..node_count {
         let start = offsets[i];
         let end = offsets[i + 1];
@@ -344,51 +745,67 @@ fn csr_to_adj_lists(
             adj[i].insert(target);
         }
     }
-
     adj
 }
 
-/// Convert per-node adjacency sets back to CSR format.
 fn adj_lists_to_csr(adj: &[BTreeSet<NodeIDX>], node_count: usize) -> (Vec<NodeIDX>, Vec<usize>) {
-    let mut directed = Vec::new();
+    let total_edges: usize = adj.iter().map(|s| s.len()).sum();
+    let mut directed = Vec::with_capacity(total_edges);
     let mut offsets = Vec::with_capacity(node_count + 1);
     offsets.push(0);
-
     for i in 0..node_count {
         for &target in &adj[i] {
             directed.push(target);
         }
         offsets.push(directed.len());
     }
-
     (directed, offsets)
 }
 
-/// Clone an `ArrayGraphSerializable` (edges and metadata are not Clone-derived).
-fn clone_serializable(g: &ArrayGraphSerializable) -> ArrayGraphSerializable {
-    ArrayGraphSerializable {
-        node_names_ordered: g.node_names_ordered.clone(),
-        edges: ArrayGraphSerializableEdges {
-            directed: g.edges.directed.clone(),
-            directed_offsets: g.edges.directed_offsets.clone(),
-            tagged: g.edges.tagged.clone(),
-            dynamic: g.edges.dynamic.clone(),
-        },
-        node_metadata: ArrayGraphSerializableNodeMetadata {
-            metrics: g.node_metadata.metrics.clone(),
-            tag_sets: g.node_metadata.tag_sets.clone(),
-        },
-        graph_settings: g.graph_settings.clone(),
-        traversal_config: g.traversal_config.clone(),
-        entry_points: g.entry_points.clone(),
-    }
+// ---------------------------------------------------------------------------
+// Name ↔ Index conversion helpers
+// ---------------------------------------------------------------------------
+
+fn tagged_edges_idx_to_name(
+    tag_map: &BTreeMap<Tag, BTreeSet<NodeIDX>>,
+    nodes: &ArrayGraphNodes,
+) -> BTreeMap<Tag, BTreeSet<String>> {
+    tag_map
+        .iter()
+        .map(|(tag, targets)| {
+            (
+                tag.clone(),
+                targets
+                    .iter()
+                    .map(|&idx| nodes.idx_to_name(idx).to_string())
+                    .collect(),
+            )
+        })
+        .collect()
 }
 
-/// Convert NodeIDX-based dynamic edges to name-based serialized form.
-fn dynamic_edges_idx_to_serialized(
+fn tagged_edges_name_to_idx(
+    serialized: &BTreeMap<Tag, BTreeSet<String>>,
+    nodes: &ArrayGraphNodes,
+) -> BTreeMap<Tag, BTreeSet<NodeIDX>> {
+    serialized
+        .iter()
+        .map(|(tag, names)| {
+            (
+                tag.clone(),
+                names
+                    .iter()
+                    .filter_map(|name| nodes.name_to_idx_log(name))
+                    .collect(),
+            )
+        })
+        .collect()
+}
+
+fn dynamic_edges_idx_to_name(
     type_map: &BTreeMap<DynamicTypeKey, BTreeMap<DynamicEdgeName, ArrayGraphDynamicEdge>>,
     nodes: &ArrayGraphNodes,
-) -> DynamicEdgesMap {
+) -> BTreeMap<DynamicTypeKey, BTreeMap<DynamicEdgeName, DynamicEdge>> {
     type_map
         .iter()
         .map(|(type_key, edge_map)| {
@@ -399,16 +816,17 @@ fn dynamic_edges_idx_to_serialized(
                         .branches
                         .iter()
                         .map(|(branch, idxs)| {
-                            let names: BTreeSet<String> = idxs
-                                .iter()
-                                .map(|&idx| nodes.idx_to_name(idx).to_string())
-                                .collect();
-                            (branch.clone(), names)
+                            (
+                                branch.clone(),
+                                idxs.iter()
+                                    .map(|&idx| nodes.idx_to_name(idx).to_string())
+                                    .collect(),
+                            )
                         })
                         .collect();
                     (
                         edge_name.clone(),
-                        DynamicEdgeSerialized {
+                        DynamicEdge {
                             branches,
                             metadata: edge.metadata.clone(),
                         },
@@ -420,9 +838,8 @@ fn dynamic_edges_idx_to_serialized(
         .collect()
 }
 
-/// Convert name-based serialized dynamic edges back to NodeIDX-based form.
-fn dynamic_edges_serialized_to_idx(
-    serialized: &DynamicEdgesMap,
+fn dynamic_edges_name_to_idx(
+    serialized: &BTreeMap<DynamicTypeKey, BTreeMap<DynamicEdgeName, DynamicEdge>>,
     nodes: &ArrayGraphNodes,
 ) -> BTreeMap<DynamicTypeKey, BTreeMap<DynamicEdgeName, ArrayGraphDynamicEdge>> {
     serialized
@@ -435,11 +852,13 @@ fn dynamic_edges_serialized_to_idx(
                         .branches
                         .iter()
                         .map(|(branch, names)| {
-                            let idxs: BTreeSet<NodeIDX> = names
-                                .iter()
-                                .filter_map(|name| nodes.name_to_idx_log(name))
-                                .collect();
-                            (branch.clone(), idxs)
+                            (
+                                branch.clone(),
+                                names
+                                    .iter()
+                                    .filter_map(|name| nodes.name_to_idx_log(name))
+                                    .collect(),
+                            )
                         })
                         .collect();
                     (
@@ -452,40 +871,6 @@ fn dynamic_edges_serialized_to_idx(
                 })
                 .collect();
             (type_key.clone(), inner)
-        })
-        .collect()
-}
-
-/// Convert NodeIDX-based tagged edges to name-based serialized form.
-fn tagged_edges_idx_to_serialized(
-    tag_map: &BTreeMap<Tag, BTreeSet<NodeIDX>>,
-    nodes: &ArrayGraphNodes,
-) -> TaggedEdgesMap {
-    tag_map
-        .iter()
-        .map(|(tag, targets)| {
-            let names: BTreeSet<String> = targets
-                .iter()
-                .map(|&idx| nodes.idx_to_name(idx).to_string())
-                .collect();
-            (tag.clone(), names)
-        })
-        .collect()
-}
-
-/// Convert name-based serialized tagged edges back to NodeIDX-based form.
-fn tagged_edges_serialized_to_idx(
-    serialized: &TaggedEdgesMap,
-    nodes: &ArrayGraphNodes,
-) -> BTreeMap<Tag, BTreeSet<NodeIDX>> {
-    serialized
-        .iter()
-        .map(|(tag, names)| {
-            let idxs: BTreeSet<NodeIDX> = names
-                .iter()
-                .filter_map(|name| nodes.name_to_idx_log(name))
-                .collect();
-            (tag.clone(), idxs)
         })
         .collect()
 }
