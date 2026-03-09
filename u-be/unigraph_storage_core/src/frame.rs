@@ -13,7 +13,9 @@ use crate::types::TimelineID;
 use crate::types::Timestamp;
 
 /// A point in a timeline: timestamp + graph ID.
-#[derive(Debug, Clone)]
+///
+/// Ordered by `(timestamp, graph_id)`, matching the SQL `ORDER BY` convention.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Frame {
     pub timestamp: Timestamp,
     pub graph_id: GraphID,

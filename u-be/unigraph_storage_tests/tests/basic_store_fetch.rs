@@ -98,8 +98,11 @@ async fn store_empty_frame() -> Result<()> {
     assert!(result.is_err());
     let err_msg = format!("{}", result.err().unwrap());
     assert!(
-        err_msg.contains("empty") || err_msg.contains("Empty") || err_msg.contains("missing"),
-        "Error should mention empty/missing frame, got: {}",
+        err_msg.contains("empty")
+            || err_msg.contains("Empty")
+            || err_msg.contains("missing")
+            || err_msg.contains("no Full frame found"),
+        "Error should mention empty/missing frame or no Full frame, got: {}",
         err_msg,
     );
 
@@ -476,6 +479,56 @@ async fn sweep_respects_min_age() -> Result<()> {
     // Pending cleanup still has entries
     let pending = db.get_blobs_pending_cleanup().await?;
     assert!(!pending.is_empty());
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn replace_empty_frames_with_full_graphs() -> Result<()> {
+    let db = make_db();
+    setup_timeline(&db, "test").await;
+
+    // Phase A: Register empty frames for 5 commits (mimics ingestion pipeline).
+    // All graph_ids are allocated up front, so the last frame has graph_id=4.
+    for i in 0..5 {
+        let key = make_graph_time_key("test", i, 1000 + i);
+        db.store_frame_empty(&key).await?;
+    }
+
+    let frames = db.list_frames(&TimelineID("test".to_string())).await?;
+    assert_eq!(frames.len(), 5);
+    assert!(frames.iter().all(|f| f.frame_type == FrameType::Empty));
+
+    // Phase B: Replace each empty frame with a Full graph, starting from
+    // graph_id=0. This is NOT an append (graph_id=0 < last graph_id=4),
+    // but it should succeed because we're replacing existing frames.
+    for i in 0..5 {
+        let graph = TestGraphTimeline::get_nth(i as u64);
+        let key = make_graph_time_key("test", i, 1000 + i);
+        db.store_graph_full(&key, &graph).await?;
+    }
+
+    // Verify all frames are now Full.
+    let frames = db.list_frames(&TimelineID("test".to_string())).await?;
+    snapshot!(
+        format_frames_table(&frames),
+        "
+graph_id             timestamp                type       base
+----------------------------------------------------------------------
+0                    1970-01-01T00:16:40.000Z Full -
+1                    1970-01-01T00:16:41.000Z Full -
+2                    1970-01-01T00:16:42.000Z Full -
+3                    1970-01-01T00:16:43.000Z Full -
+4                    1970-01-01T00:16:44.000Z Full -
+"
+    );
+
+    // Verify each graph can be fetched back correctly.
+    for i in 0..5 {
+        let expected = TestGraphTimeline::get_nth(i as u64);
+        let fetched = db.fetch_graph(&make_graph_key("test", i)).await?;
+        assert_graphs_equal(&expected, &fetched);
+    }
 
     Ok(())
 }

@@ -88,10 +88,10 @@ async fn frames_ordered_by_timestamp_then_graph_id() -> Result<()> {
     db.create_timeline(&TimelineID("test".to_string()), &config)
         .await?;
 
-    // Insert frames at the same timestamp with different graph IDs
+    // Insert frames at the same timestamp with monotonically increasing graph IDs
     let ts = unigraph_timestamp::Timestamp::from_unix_timestamp(1000);
 
-    for id in [3, 1, 2] {
+    for id in [1, 2, 3] {
         let graph = TestGraphTimeline::get_nth(id as u64);
         let key = GraphTimeKey {
             timeline_id: TimelineID("test".to_string()),

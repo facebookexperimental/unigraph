@@ -10,6 +10,7 @@
 //!
 //! `UnigraphDb` is `Clone` (via `Arc`) and can be passed freely across threads.
 
+mod adjacent_deltas;
 mod frame_storage;
 mod storage;
 
@@ -97,9 +98,19 @@ impl UnigraphDb {
     // -- Frame operations --
 
     /// Store an empty frame (placeholder with no data).
+    ///
+    /// Transactional: locks the timeline, validates monotonic ordering,
+    /// stores the frame, and commits.
     pub async fn store_frame_empty(&self, key: &GraphTimeKey) -> Result<()> {
         let conn = self.storage.graph.conn().await?;
-        conn.store_frame_empty(key).await
+        conn.start_transaction().await?;
+        conn.get_timeline_config_and_lock(&key.timeline_id).await?;
+
+        crate::adjacent_deltas::validate_monotonic_append(&*conn, key).await?;
+
+        conn.store_frame_empty(key).await?;
+        conn.commit_transaction().await?;
+        Ok(())
     }
 
     /// Select frames matching a structured query.
@@ -284,8 +295,8 @@ impl UnigraphDb {
 
     /// Fetch and reconstruct a graph from storage.
     ///
-    /// Handles delta chain resolution: if the frame is a Delta, recursively
-    /// fetches the base graph and applies the delta.
+    /// Uses iterative delta chain resolution: finds the nearest Full frame,
+    /// loads the range, and folds deltas forward. See [`adjacent_deltas`].
     pub async fn fetch_graph(&self, key: &GraphKey) -> Result<ArrayGraphSerializable> {
         self.storage.fetch_graph(key).await
     }
@@ -333,7 +344,7 @@ impl UnigraphDb {
         start: Option<Timestamp>,
         end: Option<Timestamp>,
     ) -> Result<usize> {
-        self.storage.compact_timeline(timeline_id, start, end).await
+        crate::adjacent_deltas::compact_timeline(&self.storage, timeline_id, start, end).await
     }
 }
 

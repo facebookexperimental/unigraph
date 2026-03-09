@@ -147,7 +147,7 @@ async fn delta_chain_with_intermediate_full() -> Result<()> {
 }
 
 #[tokio::test]
-async fn cross_timeline_delta_reference() -> Result<()> {
+async fn cross_timeline_delta_reference_rejected() -> Result<()> {
     let db = make_db();
     setup_timeline(&db, "timeline_a").await;
     setup_timeline(&db, "timeline_b").await;
@@ -161,13 +161,16 @@ async fn cross_timeline_delta_reference() -> Result<()> {
     // Store full in timeline_a
     db.store_graph_full(&key_a, &graph_a).await?;
 
-    // Store delta in timeline_b referencing timeline_a
-    db.store_graph_delta(&key_b, &key_a.graph_key(), &graph_b)
-        .await?;
-
-    // Fetch from timeline_b — should resolve cross-timeline
-    let fetched = db.fetch_graph(&key_b.graph_key()).await?;
-    assert_graphs_equal(&graph_b, &fetched);
+    // Store delta in timeline_b referencing timeline_a — should fail
+    // because AdjacentDeltas requires the base to be the preceding frame
+    // in the same timeline.
+    let result = db
+        .store_graph_delta(&key_b, &key_a.graph_key(), &graph_b)
+        .await;
+    assert!(
+        result.is_err(),
+        "cross-timeline delta reference should be rejected"
+    );
 
     Ok(())
 }

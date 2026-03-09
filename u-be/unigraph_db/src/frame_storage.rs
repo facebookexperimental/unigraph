@@ -8,7 +8,6 @@
 //! with safe blob cleanup.
 
 use std::collections::BTreeMap;
-use std::collections::HashSet;
 use std::sync::Arc;
 
 use anyhow::Context;
@@ -22,7 +21,6 @@ use unigraph_core::DeltaManifest;
 use unigraph_core::DeltaPackage;
 use unigraph_core::ErrorManifest;
 use unigraph_core::ErrorPackage;
-use unigraph_core::apply_delta;
 use unigraph_core::derive_delta;
 use unigraph_core::pack_delta;
 use unigraph_core::pack_errors;
@@ -37,9 +35,7 @@ use unigraph_storage_core::FrameRow;
 use unigraph_storage_core::FrameType;
 use unigraph_storage_core::GraphKey;
 use unigraph_storage_core::GraphTimeKey;
-use unigraph_storage_core::TimelineID;
 use unigraph_storage_core::Timestamp;
-use unigraph_storage_core::TimestampBounds;
 use unigraph_storage_core::TimestampedError;
 use unigraph_storage_core::UnigraphGraphConnection;
 
@@ -111,11 +107,11 @@ impl UnigraphStorage {
 
     /// Fetch and reconstruct a graph from storage.
     ///
-    /// Handles delta chain resolution: if the frame is a Delta, recursively
-    /// fetches the base graph and applies the delta.
+    /// Dispatches to the appropriate fetch strategy based on the timeline schema.
+    /// For AdjacentDeltas: uses a range query + iterative delta application
+    /// (no recursion). See [`crate::adjacent_deltas`] for details.
     pub async fn fetch_graph(&self, key: &GraphKey) -> Result<ArrayGraphSerializable> {
-        let mut visited = HashSet::new();
-        self.resolve_graph(key, &mut visited).await
+        crate::adjacent_deltas::fetch_graph(self, key).await
     }
 
     /// Fetch errors for a frame.
@@ -204,143 +200,6 @@ impl UnigraphStorage {
         Ok(blob_keys.len())
     }
 
-    /// Compact a timeline by replacing consecutive Full frames with Deltas.
-    ///
-    /// Walks frames in `(timestamp, graph_id)` order within the given range.
-    /// The first Full frame stays Full. Every subsequent Full is replaced with
-    /// a Delta derived from the previous data-carrying frame. Empty and Error
-    /// frames break the chain (the next Full after them stays Full).
-    ///
-    /// Returns the number of frames converted from Full to Delta.
-    pub async fn compact_timeline(
-        &self,
-        timeline_id: &TimelineID,
-        start: Option<Timestamp>,
-        end: Option<Timestamp>,
-    ) -> Result<usize> {
-        let conn = self.graph.conn().await?;
-
-        let timestamp_bounds = if start.is_some() || end.is_some() {
-            Some(TimestampBounds { start, end })
-        } else {
-            None
-        };
-
-        let frames = conn
-            .select_frames(&FrameQuery {
-                timeline_id: timeline_id.clone(),
-                timestamp_bounds,
-                ..Default::default()
-            })
-            .await?;
-        drop(conn);
-
-        let mut converted = 0;
-        let mut prev_data_key: Option<GraphKey> = None;
-
-        for frame in &frames {
-            match frame.frame_type {
-                FrameType::Full => {
-                    if let Some(base_key) = &prev_data_key {
-                        self.replace_full_with_delta(timeline_id, base_key, frame)
-                            .await?;
-                        converted += 1;
-                    }
-                    prev_data_key = Some(GraphKey {
-                        timeline_id: timeline_id.clone(),
-                        graph_id: frame.frame.graph_id,
-                    });
-                }
-                FrameType::Delta => {
-                    prev_data_key = Some(GraphKey {
-                        timeline_id: timeline_id.clone(),
-                        graph_id: frame.frame.graph_id,
-                    });
-                }
-                FrameType::Empty | FrameType::Error => {
-                    prev_data_key = None;
-                }
-            }
-        }
-
-        Ok(converted)
-    }
-
-    /// Replace a Full frame with a Delta derived from a base frame.
-    ///
-    /// Fetches both graphs, derives the delta, packs it, and atomically
-    /// swaps the frame using `delete_frame_on_conn` + `store_package_on_conn`
-    /// in a single transaction.
-    async fn replace_full_with_delta(
-        &self,
-        timeline_id: &TimelineID,
-        base_key: &GraphKey,
-        target_frame: &FrameRow,
-    ) -> Result<()> {
-        let target_key = GraphKey {
-            timeline_id: timeline_id.clone(),
-            graph_id: target_frame.frame.graph_id,
-        };
-        let target_time_key = GraphTimeKey {
-            timeline_id: timeline_id.clone(),
-            timestamp: target_frame.frame.timestamp,
-            graph_id: target_frame.frame.graph_id,
-        };
-
-        let base_graph = self
-            .fetch_graph(base_key)
-            .await
-            .with_context(|| format!("Failed to fetch base graph {:?}", base_key))?;
-        let target_graph = self
-            .fetch_graph(&target_key)
-            .await
-            .with_context(|| format!("Failed to fetch target graph {:?}", target_key))?;
-
-        let delta = derive_delta(&base_graph, &target_graph).context("Failed to derive delta")?;
-
-        let config = make_pack_config(&target_time_key);
-        let package = pack_delta(&delta, &config).context("Failed to pack delta")?;
-        let manifest_json = serde_json::to_string(&package.manifest)
-            .context("Failed to serialize delta manifest")?;
-
-        // Determine inline vs. external for the new delta.
-        let threshold = {
-            let conn = self.graph.conn().await?;
-            let config = conn
-                .get_timeline_config(timeline_id)
-                .await?
-                .ok_or_else(|| anyhow::anyhow!("Timeline not found: {:?}", timeline_id))?;
-            config.inline_blob_threshold()
-        };
-
-        let inline_blobs = prepare_inline_blobs(&package.blobs, threshold)?;
-        let blob_keys_to_unregister = if inline_blobs.is_none() {
-            Some(self.upload_blobs(&package.blobs).await?)
-        } else {
-            None
-        };
-
-        // Single transaction: delete old Full + insert new Delta.
-        let conn = self.graph.conn().await?;
-        conn.start_transaction().await?;
-        conn.get_timeline_config_and_lock(timeline_id).await?;
-
-        self.delete_frame_on_conn(&*conn, &target_key).await?;
-        self.store_package_on_conn(
-            &*conn,
-            &target_time_key,
-            FrameType::Delta,
-            Some(base_key),
-            &manifest_json,
-            inline_blobs.as_deref(),
-            blob_keys_to_unregister.as_deref(),
-        )
-        .await?;
-
-        conn.commit_transaction().await?;
-        Ok(())
-    }
-
     // --- internal helpers ---
 
     /// Store a packed package (standalone — owns its own transaction).
@@ -387,6 +246,11 @@ impl UnigraphStorage {
             .await
             .with_context(|| format!("Failed to lock timeline for {:?}", frame_type))?;
 
+        crate::adjacent_deltas::validate_monotonic_append(&*conn, key).await?;
+        if frame_type == FrameType::Delta {
+            crate::adjacent_deltas::validate_delta_base(&*conn, key, base).await?;
+        }
+
         self.store_package_on_conn(
             &*conn,
             key,
@@ -432,47 +296,11 @@ impl UnigraphStorage {
         Ok(())
     }
 
-    /// Recursively resolve a graph, following delta chains.
-    async fn resolve_graph(
-        &self,
-        key: &GraphKey,
-        visited: &mut HashSet<GraphKey>,
-    ) -> Result<ArrayGraphSerializable> {
-        if !visited.insert(key.clone()) {
-            anyhow::bail!("Cycle detected in delta chain at {:?}", key);
-        }
-
-        let conn = self.graph.conn().await?;
-        let row = get_frame_with_data(&*conn, key).await?;
-        // Drop the connection before recursing to avoid holding the lock
-        drop(conn);
-
-        let data = row
-            .data
-            .ok_or_else(|| anyhow::anyhow!("Frame data missing for {:?}", key))?;
-
-        match row.frame_type {
-            FrameType::Full => self.reconstruct_full_graph(&data).await,
-            FrameType::Delta => {
-                let base_key = row
-                    .base
-                    .ok_or_else(|| anyhow::anyhow!("Delta frame {:?} has no base key", key))?;
-
-                let delta = self.reconstruct_delta(&data).await?;
-                let base_graph = Box::pin(self.resolve_graph(&base_key, visited)).await?;
-                apply_delta(&base_graph, &delta).context("Failed to apply delta")
-            }
-            FrameType::Error => {
-                anyhow::bail!("Cannot fetch graph for error frame {:?}", key);
-            }
-            FrameType::Empty => {
-                anyhow::bail!("Cannot fetch graph for empty frame {:?}", key);
-            }
-        }
-    }
-
     /// Reconstruct a full graph from frame data.
-    async fn reconstruct_full_graph(&self, data: &FrameData) -> Result<ArrayGraphSerializable> {
+    pub(crate) async fn reconstruct_full_graph(
+        &self,
+        data: &FrameData,
+    ) -> Result<ArrayGraphSerializable> {
         let manifest: ArrayGraphSerializableManifest = serde_json::from_str(&data.manifest_json)
             .context("Failed to parse ArrayGraphSerializableManifest")?;
 
@@ -497,7 +325,10 @@ impl UnigraphStorage {
     }
 
     /// Reconstruct a delta from frame data.
-    async fn reconstruct_delta(&self, data: &FrameData) -> Result<unigraph_core::GraphDelta> {
+    pub(crate) async fn reconstruct_delta(
+        &self,
+        data: &FrameData,
+    ) -> Result<unigraph_core::GraphDelta> {
         let manifest: DeltaManifest =
             serde_json::from_str(&data.manifest_json).context("Failed to parse DeltaManifest")?;
 
@@ -572,7 +403,7 @@ impl UnigraphStorage {
 ///
 /// This ensures each frame's blobs have unique IDs and can be independently
 /// deleted when the frame is removed.
-fn make_pack_config(key: &GraphTimeKey) -> ArrayGraphSerializablePackageConfig {
+pub(crate) fn make_pack_config(key: &GraphTimeKey) -> ArrayGraphSerializablePackageConfig {
     let timeline_id = key.timeline_id.clone();
     let graph_id = key.graph_id;
     ArrayGraphSerializablePackageConfig {
@@ -588,7 +419,7 @@ fn make_pack_config(key: &GraphTimeKey) -> ArrayGraphSerializablePackageConfig {
 ///
 /// Use `TimelineConfig::inline_blob_threshold()` to get the threshold for
 /// a specific timeline, or `DEFAULT_INLINE_BLOB_THRESHOLD_BYTES` for the default.
-pub fn prepare_inline_blobs(
+pub(crate) fn prepare_inline_blobs(
     blobs: &BTreeMap<BlobID, Vec<u8>>,
     inline_threshold_bytes: usize,
 ) -> Result<Option<Vec<u8>>> {

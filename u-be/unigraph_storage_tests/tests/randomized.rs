@@ -36,20 +36,10 @@ async fn randomized_full_graph_roundtrip_1000() -> Result<()> {
         .map(|i| (i, TestGraphTimeline::get_nth(i)))
         .collect();
 
-    // Store in shuffled order (Fisher-Yates using simple XOR-shift)
-    let mut indices: Vec<u64> = (0..1000).collect();
-    let mut rng_state: u64 = 12345;
-    for i in (1..indices.len()).rev() {
-        rng_state ^= rng_state << 13;
-        rng_state ^= rng_state >> 7;
-        rng_state ^= rng_state << 17;
-        let j = (rng_state as usize) % (i + 1);
-        indices.swap(i, j);
-    }
-
-    for &i in &indices {
+    // Store in monotonic order (required by AdjacentDeltas invariant)
+    for &(i, ref graph) in &graphs {
         let key = make_graph_time_key("test", i as i64, 1000 + i as i64);
-        db.store_graph_full(&key, &graphs[i as usize].1).await?;
+        db.store_graph_full(&key, graph).await?;
     }
 
     // Verify all 1000 graphs round-trip correctly
