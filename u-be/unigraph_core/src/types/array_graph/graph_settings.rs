@@ -15,7 +15,8 @@ use crate::types::TierName;
     typegen::TypeGen,
     Clone,
     Default,
-    PartialEq
+    PartialEq,
+    unigraph_delta::Deltable
 )]
 pub struct GraphSettings {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -28,8 +29,11 @@ pub struct GraphSettings {
     serde::Deserialize,
     typegen::TypeGen,
     Clone,
-    PartialEq
+    PartialEq,
+    Default,
+    unigraph_delta::Deltable
 )]
+#[deltable(replace)]
 pub struct MetricSettings {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
@@ -180,8 +184,10 @@ pub enum SortOrder {
     typegen::TypeGen,
     Clone,
     Copy,
-    PartialEq
+    PartialEq,
+    unigraph_delta::Deltable
 )]
+#[deltable(replace)]
 pub enum SidebarPanel {
     None,
     Simulation,
@@ -202,8 +208,10 @@ pub enum SidebarPanel {
     Clone,
     Copy,
     Default,
-    PartialEq
+    PartialEq,
+    unigraph_delta::Deltable
 )]
+#[deltable(replace)]
 pub enum OptionEnabledDependingOnRightGraph {
     WhenRightGraphPresent,
     #[default]
@@ -217,7 +225,8 @@ pub enum OptionEnabledDependingOnRightGraph {
     typegen::TypeGen,
     Clone,
     Default,
-    PartialEq
+    PartialEq,
+    unigraph_delta::Deltable
 )]
 pub struct ArrayGraphUISettings {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -284,8 +293,10 @@ pub struct ArrayGraphUISettings {
     Clone,
     Copy,
     Default,
-    PartialEq
+    PartialEq,
+    unigraph_delta::Deltable
 )]
+#[deltable(replace)]
 #[repr(u8)]
 pub enum GraphStructure {
     // default, follow the forward edges
@@ -319,8 +330,10 @@ impl GraphStructure {
     typegen::TypeGen,
     Clone,
     Default,
-    PartialEq
+    PartialEq,
+    unigraph_delta::Deltable
 )]
+#[deltable(replace)]
 pub enum ArrayGraphUISettingsTreeTableEntryPoints {
     #[default]
     Determine,
@@ -335,7 +348,8 @@ pub enum ArrayGraphUISettingsTreeTableEntryPoints {
     typegen::TypeGen,
     Clone,
     Default,
-    PartialEq
+    PartialEq,
+    unigraph_delta::Deltable
 )]
 pub struct ColumnSettings {
     /// Graph table in UI will be sorted using provided column
@@ -413,8 +427,10 @@ pub struct ColumnSettings {
     Clone,
     Copy,
     Default,
-    PartialEq
+    PartialEq,
+    unigraph_delta::Deltable
 )]
+#[deltable(replace)]
 pub enum IndividualOptionEnabled {
     #[default]
     WhenEnabledGlobally,
@@ -429,8 +445,10 @@ pub enum IndividualOptionEnabled {
     Clone,
     Copy,
     Default,
-    PartialEq
+    PartialEq,
+    unigraph_delta::Deltable
 )]
+#[deltable(replace)]
 pub enum IndividualDominatedOptionEnabled {
     // This will only show when global flag is enabled and we're in dominator mode.
     #[default]
@@ -445,8 +463,10 @@ pub enum IndividualDominatedOptionEnabled {
     serde::Serialize,
     serde::Deserialize,
     typegen::TypeGen,
-    PartialEq
+    PartialEq,
+    unigraph_delta::Deltable
 )]
+#[deltable(replace)]
 pub struct GraphTableSort {
     pub column: SortColumn,
     pub order: SortOrder,
@@ -455,12 +475,14 @@ pub struct GraphTableSort {
 #[derive(
     Clone,
     Debug,
+    Default,
     serde::Serialize,
     serde::Deserialize,
     typegen::TypeGen,
     PartialEq
 )]
 pub enum ColumnType {
+    #[default]
     Left,
     Right,
     Delta,
@@ -520,4 +542,10 @@ pub enum SortColumn {
         name: String,
         tier: String,
     },
+}
+
+impl Default for SortColumn {
+    fn default() -> Self {
+        SortColumn::NodeName {}
+    }
 }

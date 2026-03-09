@@ -5,6 +5,8 @@ mod derive;
 pub mod package;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_randomized;
 
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
@@ -12,9 +14,14 @@ use std::collections::BTreeSet;
 pub use apply::apply_delta;
 pub use apply::apply_deltas;
 pub use derive::derive_delta;
+use unigraph_delta::Deltable;
+use unigraph_delta::OptionDelta;
+use unigraph_delta::SetDelta;
 
 use crate::TraversalConfig;
 use crate::graph_settings::GraphSettings;
+pub use crate::graph_settings::GraphSettingsDelta;
+pub use crate::traversal::TraversalConfigDelta;
 use crate::types::DynamicBranchName;
 use crate::types::DynamicEdgeName;
 use crate::types::DynamicTypeKey;
@@ -49,15 +56,20 @@ pub struct GraphDelta {
     /// Tag set changes keyed by node name.
     pub tag_set_changes: BTreeMap<NodeName, TagSetDelta>,
 
-    /// Graph settings change. None = unchanged, Some(None) = cleared,
-    /// Some(Some(v)) = replaced with v.
-    pub graph_settings: Option<Option<GraphSettings>>,
+    /// Field-level delta for graph settings.
+    /// Unchanged = no change, Cleared = cleared, Set = full value, Changed = field-level delta.
+    #[serde(default, skip_serializing_if = "OptionDelta::is_unchanged")]
+    pub graph_settings: OptionDelta<GraphSettings, GraphSettingsDelta>,
 
-    /// Traversal config change. Same semantics as graph_settings.
-    pub traversal_config: Option<Option<TraversalConfig>>,
+    /// Field-level delta for traversal config.
+    /// Unchanged = no change, Cleared = cleared, Set = full value, Changed = field-level delta.
+    #[serde(default, skip_serializing_if = "OptionDelta::is_unchanged")]
+    pub traversal_config: OptionDelta<TraversalConfig, TraversalConfigDelta>,
 
-    /// Entry points change. Same semantics as graph_settings.
-    pub entry_points: Option<Option<BTreeSet<NodeName>>>,
+    /// Entry points change. Unchanged = no change, Cleared = cleared,
+    /// Set(v) = replaced.
+    #[serde(default, skip_serializing_if = "OptionDelta::is_unchanged")]
+    pub entry_points: OptionDelta<BTreeSet<NodeName>>,
 }
 
 impl GraphDelta {
@@ -67,9 +79,9 @@ impl GraphDelta {
             && self.edge_changes.is_empty()
             && self.metric_changes.is_empty()
             && self.tag_set_changes.is_empty()
-            && self.graph_settings.is_none()
-            && self.traversal_config.is_none()
-            && self.entry_points.is_none()
+            && self.graph_settings.is_unchanged()
+            && self.traversal_config.is_unchanged()
+            && self.entry_points.is_unchanged()
     }
 }
 
@@ -82,43 +94,41 @@ pub struct NodeEdgeDelta {
 }
 
 /// Individual directed edge additions and removals.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct DirectedEdgeDelta {
-    pub added: BTreeSet<NodeName>,
-    pub removed: BTreeSet<NodeName>,
-}
+pub type DirectedEdgeDelta = SetDelta<NodeName>;
 
-/// Tagged edge changes organized by tag name.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct TaggedEdgeDelta {
-    pub changes: BTreeMap<Tag, TaggedEdgeTagDelta>,
-}
+/// The full tagged edge map type for a single source node (serialized with node names).
+pub type TaggedEdgesMap = BTreeMap<Tag, BTreeSet<NodeName>>;
 
-/// Individual tagged edge additions and removals for one tag.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct TaggedEdgeTagDelta {
-    pub added: BTreeSet<NodeName>,
-    pub removed: BTreeSet<NodeName>,
-}
+/// Recursive delta for tagged edges of a single source node.
+///
+/// Maps operate at the tag level (added/removed/changed tags), and within each
+/// changed tag, a `SetDelta<NodeName>` tracks individual target additions/removals.
+pub type TaggedEdgeDelta = <TaggedEdgesMap as Deltable>::Delta;
 
-/// Full replacement of dynamic edges for a source node.
-/// Dynamic edges have complex structure (branches + metadata) with
-/// no stable identity, so we replace the entire set per source node.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct DynamicEdgeDelta {
-    pub replacement: BTreeMap<DynamicTypeKey, BTreeMap<DynamicEdgeName, DynamicEdgeSerialized>>,
-}
+/// The full dynamic edge map type for a single source node (serialized with node names).
+pub type DynamicEdgesMap =
+    BTreeMap<DynamicTypeKey, BTreeMap<DynamicEdgeName, DynamicEdgeSerialized>>;
+
+/// Recursive delta for dynamic edges of a single source node.
+///
+/// Diffs all the way down through nested BTreeMaps and BTreeSets:
+/// - Outer map: added/removed/changed `DynamicTypeKey` entries
+/// - Inner map: added/removed/changed `DynamicEdgeName` entries
+/// - Per-edge: field-level delta (branches, metadata)
+pub type DynamicEdgeDelta = <DynamicEdgesMap as Deltable>::Delta;
 
 /// A dynamic edge using node names instead of NodeIDX.
 #[derive(
     Debug,
+    Default,
     Clone,
     serde::Serialize,
     serde::Deserialize,
     PartialEq,
     Eq,
     PartialOrd,
-    Ord
+    Ord,
+    unigraph_delta::Deltable
 )]
 pub struct DynamicEdgeSerialized {
     pub branches: BTreeMap<DynamicBranchName, BTreeSet<NodeName>>,
@@ -134,15 +144,11 @@ pub struct MetricNodeChange {
     pub value: f32,
 }
 
-/// Tag set changes for a single node.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct TagSetDelta {
-    pub changes: BTreeMap<TagSetName, TagSetValueDelta>,
-}
+/// The full tag set map type for a single node.
+pub type TagSetsMap = BTreeMap<TagSetName, BTreeSet<Tag>>;
 
-/// Individual tag additions and removals within a single tag set.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct TagSetValueDelta {
-    pub added: BTreeSet<Tag>,
-    pub removed: BTreeSet<Tag>,
-}
+/// Tag set changes for a single node.
+///
+/// Maps operate at the tag set name level, and within each changed tag set,
+/// a `SetDelta<Tag>` tracks individual tag additions/removals.
+pub type TagSetDelta = <TagSetsMap as Deltable>::Delta;

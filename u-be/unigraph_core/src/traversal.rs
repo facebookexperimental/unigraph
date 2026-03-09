@@ -23,7 +23,14 @@ use crate::types::TierIDX;
 use crate::types::TierName;
 
 #[derive(Clone, PartialEq)]
-#[derive(serde::Serialize, serde::Deserialize, Debug, typegen::TypeGen)]
+#[derive(
+    serde::Serialize,
+    serde::Deserialize,
+    Debug,
+    typegen::TypeGen,
+    unigraph_delta::Deltable
+)]
+#[deltable(replace)]
 pub struct Decision {
     pub include: bool,
     pub message_id: Option<MessageID>,
@@ -52,7 +59,8 @@ impl Decision {
     Default,
     Clone,
     typegen::TypeGen,
-    PartialEq
+    PartialEq,
+    unigraph_delta::Deltable
 )]
 pub struct TraversalConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -99,8 +107,10 @@ pub struct TraversalConfigIDX {
     serde::Deserialize,
     Clone,
     typegen::TypeGen,
-    PartialEq
+    PartialEq,
+    unigraph_delta::Deltable
 )]
+#[deltable(replace)]
 pub struct DynamicTypeConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default_branches: Option<DefaultBranches>,
@@ -127,8 +137,10 @@ pub enum DefaultBranches {
     serde::Deserialize,
     Clone,
     typegen::TypeGen,
-    PartialEq
+    PartialEq,
+    unigraph_delta::Deltable
 )]
+#[deltable(replace)]
 pub struct DynamicEdgeOverride {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub branches: Option<DefaultBranches>,

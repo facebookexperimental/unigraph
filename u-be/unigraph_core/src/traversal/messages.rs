@@ -29,7 +29,8 @@ pub type MessageID = String;
 ///     %points_from%   - name of the node the edge is coming from
 ///     %points_to%     - name of the node the edge is pointing to
 #[derive(Clone, serde::Serialize, serde::Deserialize, Debug, PartialEq)]
-#[derive(typegen::TypeGen)]
+#[derive(typegen::TypeGen, unigraph_delta::Deltable)]
+#[deltable(replace)]
 pub struct Message(pub String);
 
 const MESSAGE_TEMPLATE_POINTS_FROM: &str = "%points_from%";

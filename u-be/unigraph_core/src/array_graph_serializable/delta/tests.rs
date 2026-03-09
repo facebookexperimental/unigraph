@@ -7,6 +7,7 @@ use anyhow::Context;
 use anyhow::Result;
 use k9::assert_equal;
 use k9::snapshot;
+use unigraph_delta::OptionDelta;
 
 use super::apply::apply_delta;
 use super::apply::apply_deltas;
@@ -167,7 +168,19 @@ fn format_delta(d: &GraphDelta) -> String {
                 out.push_str(&format!("  {} directed: {}\n", name, parts.join(", ")));
             }
             if let Some(ref tag) = edge_delta.tagged {
-                for (tag_name, tag_delta) in &tag.changes {
+                for (tag_name, targets) in &tag.added {
+                    let parts: Vec<String> = targets.iter().map(|a| format!("+{}", a)).collect();
+                    out.push_str(&format!(
+                        "  {} tagged [{}]: {}\n",
+                        name,
+                        tag_name,
+                        parts.join(", ")
+                    ));
+                }
+                for tag_name in &tag.removed {
+                    out.push_str(&format!("  {} tagged [{}]: <removed>\n", name, tag_name));
+                }
+                for (tag_name, tag_delta) in &tag.changed {
                     let mut parts = Vec::new();
                     for a in &tag_delta.added {
                         parts.push(format!("+{}", a));
@@ -184,15 +197,18 @@ fn format_delta(d: &GraphDelta) -> String {
                 }
             }
             if let Some(ref dyn_delta) = edge_delta.dynamic {
-                if dyn_delta.replacement.is_empty() {
+                if dyn_delta.added.is_empty()
+                    && dyn_delta.removed.is_empty()
+                    && dyn_delta.changed.is_empty()
+                {
                     out.push_str(&format!("  {} dynamic: <cleared>\n", name));
                 } else {
-                    for (type_key, edge_map) in &dyn_delta.replacement {
+                    for (type_key, edge_map) in &dyn_delta.added {
                         for (edge_name, de) in edge_map {
                             for (branch, targets) in &de.branches {
                                 let tgts: Vec<&str> = targets.iter().map(|s| s.as_str()).collect();
                                 out.push_str(&format!(
-                                    "  {} dynamic [{}]: {} ({}:{})\n",
+                                    "  {} dynamic +[{}]: {} ({}:{})\n",
                                     name,
                                     branch,
                                     tgts.join(", "),
@@ -201,6 +217,19 @@ fn format_delta(d: &GraphDelta) -> String {
                                 ));
                             }
                         }
+                    }
+                    if !dyn_delta.removed.is_empty() {
+                        let removed: Vec<&str> =
+                            dyn_delta.removed.iter().map(|s| s.as_str()).collect();
+                        out.push_str(&format!(
+                            "  {} dynamic removed types: {}\n",
+                            name,
+                            removed.join(", ")
+                        ));
+                    }
+                    // changed entries contain recursive deltas — show summary
+                    for (type_key, _inner_delta) in &dyn_delta.changed {
+                        out.push_str(&format!("  {} dynamic ~[{}]: <changed>\n", name, type_key,));
                     }
                 }
             }
@@ -223,7 +252,14 @@ fn format_delta(d: &GraphDelta) -> String {
     if !d.tag_set_changes.is_empty() {
         out.push_str("Tag set changes:\n");
         for (name, ts_delta) in &d.tag_set_changes {
-            for (ts_name, vd) in &ts_delta.changes {
+            for (ts_name, tags) in &ts_delta.added {
+                let parts: Vec<String> = tags.iter().map(|t| format!("+{}", t)).collect();
+                out.push_str(&format!("  {} {}: {}\n", name, ts_name, parts.join(", ")));
+            }
+            for ts_name in &ts_delta.removed {
+                out.push_str(&format!("  {} {}: <removed>\n", name, ts_name));
+            }
+            for (ts_name, vd) in &ts_delta.changed {
                 let mut parts = Vec::new();
                 for a in &vd.added {
                     parts.push(format!("+{}", a));
@@ -236,13 +272,13 @@ fn format_delta(d: &GraphDelta) -> String {
         }
     }
 
-    if d.graph_settings.is_some() {
+    if !d.graph_settings.is_unchanged() {
         out.push_str("Settings: changed\n");
     }
-    if d.traversal_config.is_some() {
+    if !d.traversal_config.is_unchanged() {
         out.push_str("Traversal config: changed\n");
     }
-    if d.entry_points.is_some() {
+    if !d.entry_points.is_unchanged() {
         out.push_str("Entry points: changed\n");
     }
 
@@ -268,9 +304,9 @@ fn empty_delta() -> GraphDelta {
         edge_changes: BTreeMap::new(),
         metric_changes: BTreeMap::new(),
         tag_set_changes: BTreeMap::new(),
-        graph_settings: None,
-        traversal_config: None,
-        entry_points: None,
+        graph_settings: OptionDelta::Unchanged,
+        traversal_config: OptionDelta::Unchanged,
+        entry_points: OptionDelta::Unchanged,
     }
 }
 
@@ -491,7 +527,7 @@ fn test_tagged_edge_changes() -> Result<()> {
         "
 Edge changes:
   A tagged [async]: +B
-  A tagged [lazy]: -C
+  A tagged [lazy]: <removed>
 "
     );
 
@@ -530,7 +566,8 @@ fn test_dynamic_edge_changes() -> Result<()> {
         format_delta(&delta),
         "
 Edge changes:
-  A dynamic [primary]: D (android_platform:android_1)
+  A dynamic +[primary]: D (android_platform:android_1)
+  A dynamic removed types: ios_platform
 "
     );
 
@@ -591,8 +628,8 @@ fn test_tag_set_changes() -> Result<()> {
         format_delta(&delta),
         "
 Tag set changes:
-  C categories: +desktop, -mobile
   C priority: +high
+  C categories: +desktop, -mobile
 "
     );
 
@@ -644,8 +681,8 @@ fn test_combined_changes() -> Result<()> {
 Added nodes: K
 Edge changes:
   A directed: +K
-  B tagged [RD]: -J
   B tagged [RDFD]: +J
+  B tagged [RD]: <removed>
   K directed: +B
 Metric changes:
   size: A=5, K=7
@@ -833,9 +870,9 @@ fn test_apply_deltas_transient_node() -> Result<()> {
         ]),
         metric_changes: BTreeMap::new(),
         tag_set_changes: BTreeMap::new(),
-        graph_settings: None,
-        traversal_config: None,
-        entry_points: None,
+        graph_settings: OptionDelta::Unchanged,
+        traversal_config: OptionDelta::Unchanged,
+        entry_points: OptionDelta::Unchanged,
     };
 
     let d2 = GraphDelta {
@@ -854,9 +891,9 @@ fn test_apply_deltas_transient_node() -> Result<()> {
         )]),
         metric_changes: BTreeMap::new(),
         tag_set_changes: BTreeMap::new(),
-        graph_settings: None,
-        traversal_config: None,
-        entry_points: None,
+        graph_settings: OptionDelta::Unchanged,
+        traversal_config: OptionDelta::Unchanged,
+        entry_points: OptionDelta::Unchanged,
     };
 
     let d3 = GraphDelta {
@@ -865,9 +902,9 @@ fn test_apply_deltas_transient_node() -> Result<()> {
         edge_changes: BTreeMap::new(),
         metric_changes: BTreeMap::new(),
         tag_set_changes: BTreeMap::new(),
-        graph_settings: None,
-        traversal_config: None,
-        entry_points: None,
+        graph_settings: OptionDelta::Unchanged,
+        traversal_config: OptionDelta::Unchanged,
+        entry_points: OptionDelta::Unchanged,
     };
 
     let result = apply_deltas(&base, &[d1, d2, d3])?;
@@ -913,9 +950,9 @@ fn test_apply_deltas_edge_add_then_remove() -> Result<()> {
         )]),
         metric_changes: BTreeMap::new(),
         tag_set_changes: BTreeMap::new(),
-        graph_settings: None,
-        traversal_config: None,
-        entry_points: None,
+        graph_settings: OptionDelta::Unchanged,
+        traversal_config: OptionDelta::Unchanged,
+        entry_points: OptionDelta::Unchanged,
     };
 
     let d2 = GraphDelta {
@@ -934,9 +971,9 @@ fn test_apply_deltas_edge_add_then_remove() -> Result<()> {
         )]),
         metric_changes: BTreeMap::new(),
         tag_set_changes: BTreeMap::new(),
-        graph_settings: None,
-        traversal_config: None,
-        entry_points: None,
+        graph_settings: OptionDelta::Unchanged,
+        traversal_config: OptionDelta::Unchanged,
+        entry_points: OptionDelta::Unchanged,
     };
 
     let result = apply_deltas(&base, &[d1, d2])?;
@@ -967,9 +1004,9 @@ fn test_apply_deltas_metric_overwrite_ordering() -> Result<()> {
             }],
         )]),
         tag_set_changes: BTreeMap::new(),
-        graph_settings: None,
-        traversal_config: None,
-        entry_points: None,
+        graph_settings: OptionDelta::Unchanged,
+        traversal_config: OptionDelta::Unchanged,
+        entry_points: OptionDelta::Unchanged,
     };
 
     let d2 = GraphDelta {
@@ -984,9 +1021,9 @@ fn test_apply_deltas_metric_overwrite_ordering() -> Result<()> {
             }],
         )]),
         tag_set_changes: BTreeMap::new(),
-        graph_settings: None,
-        traversal_config: None,
-        entry_points: None,
+        graph_settings: OptionDelta::Unchanged,
+        traversal_config: OptionDelta::Unchanged,
+        entry_points: OptionDelta::Unchanged,
     };
 
     let result = apply_deltas(&base, &[d1, d2])?;
@@ -1054,9 +1091,9 @@ fn test_large_batch() -> Result<()> {
                     }],
                 )]),
                 tag_set_changes: BTreeMap::new(),
-                graph_settings: None,
-                traversal_config: None,
-                entry_points: None,
+                graph_settings: OptionDelta::Unchanged,
+                traversal_config: OptionDelta::Unchanged,
+                entry_points: OptionDelta::Unchanged,
             }
         })
         .collect();
@@ -1098,7 +1135,7 @@ fn test_dynamic_edge_removal() -> Result<()> {
         format_delta(&delta),
         "
 Edge changes:
-  A dynamic: <cleared>
+  A dynamic removed types: ios_platform
 "
     );
 
@@ -1129,7 +1166,7 @@ fn test_tag_set_removal() -> Result<()> {
         format_delta(&delta),
         "
 Tag set changes:
-  C categories: -mobile, -web
+  C categories: <removed>
 "
     );
 
@@ -1192,5 +1229,753 @@ fn test_apply_deltas_with_all_edge_types() -> Result<()> {
 
     assert_equal!(format_graph(&batch_result), format_graph(&seq_result));
     assert_equal!(format_graph(&batch_result), format_graph(&g3));
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Serialized delta snapshot tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_delta_json_snapshot() -> Result<()> {
+    use crate::TraversalConfig;
+    use crate::graph_settings::ArrayGraphUISettings;
+    use crate::graph_settings::ColumnSettings;
+    use crate::graph_settings::GraphSettings;
+    use crate::graph_settings::GraphStructure;
+    use crate::graph_settings::SidebarPanel;
+    use crate::traversal::Decision;
+
+    // Base graph: A->B->C, with tags, dynamic edges, metrics, tag sets
+    let mut base = make_graph(
+        r#"{
+        "nodes": {
+            "A": {
+                "edges_directed": ["B", "C"],
+                "edges_tagged": { "lazy": ["B"] },
+                "edges_dynamic": {
+                    "ios_platform": {
+                        "ios_1": {
+                            "branches": { "main": ["C"] }
+                        }
+                    }
+                },
+                "labels": { "categories": ["web", "mobile"] },
+                "metrics": { "size": 10, "weight": 5 }
+            },
+            "B": {
+                "edges_directed": ["C"],
+                "metrics": { "size": 20 }
+            },
+            "C": {
+                "labels": { "priority": ["high"] },
+                "metrics": { "size": 30 }
+            }
+        }
+    }"#,
+    )?;
+    base.graph_settings = Some(GraphSettings {
+        ui_settings: Some(ArrayGraphUISettings {
+            selected_sidebar_panel: Some(SidebarPanel::Simulation),
+            columns: Some(ColumnSettings {
+                hide_metrics: Some(true),
+                show_counts: Some(false),
+                ..Default::default()
+            }),
+            graph_structure: Some(GraphStructure::Forward),
+            ..Default::default()
+        }),
+    });
+    base.traversal_config = Some(TraversalConfig {
+        force_nodes: Some(BTreeMap::from([
+            ("A".to_string(), Decision::include()),
+            ("B".to_string(), Decision::exclude()),
+        ])),
+        ..Default::default()
+    });
+    base.entry_points = Some(BTreeSet::from(["A".to_string()]));
+
+    // Target graph: many changes
+    // - Remove node C
+    // - Add node D, E
+    // - Change directed edges on A: remove C, add D
+    // - Change tagged edges on A: remove lazy->B, add async->D
+    // - Change dynamic edges on A: different platform
+    // - Change metrics: A.size 10->50, B.weight added, D.size added
+    // - Change tag sets on A: remove "mobile", add "desktop"
+    // - Change graph settings: sidebar panel, graph structure
+    // - Change traversal config: different force_nodes
+    // - Change entry points
+    let mut target = make_graph(
+        r#"{
+        "nodes": {
+            "A": {
+                "edges_directed": ["B", "D"],
+                "edges_tagged": { "async": ["D"] },
+                "edges_dynamic": {
+                    "android_platform": {
+                        "android_1": {
+                            "branches": { "primary": ["D"], "fallback": ["E"] },
+                            "metadata": { "version": "2.0" }
+                        }
+                    }
+                },
+                "labels": { "categories": ["web", "desktop"] },
+                "metrics": { "size": 50, "weight": 5 }
+            },
+            "B": {
+                "edges_directed": ["D"],
+                "metrics": { "size": 20, "weight": 3 }
+            },
+            "D": {
+                "edges_directed": ["E"],
+                "labels": { "tier": ["t1"] },
+                "metrics": { "size": 40 }
+            },
+            "E": {
+                "metrics": { "size": 15 }
+            }
+        }
+    }"#,
+    )?;
+    target.graph_settings = Some(GraphSettings {
+        ui_settings: Some(ArrayGraphUISettings {
+            selected_sidebar_panel: Some(SidebarPanel::GraphInfo),
+            columns: Some(ColumnSettings {
+                hide_metrics: Some(true),
+                show_counts: Some(true),
+                show_tier_column: Some(true),
+                ..Default::default()
+            }),
+            graph_structure: Some(GraphStructure::Dominator),
+            ..Default::default()
+        }),
+    });
+    target.traversal_config = Some(TraversalConfig {
+        force_nodes: Some(BTreeMap::from([
+            ("A".to_string(), Decision::include()),
+            ("D".to_string(), Decision::include()),
+        ])),
+        force_tagged: Some(BTreeMap::from([("async".to_string(), Decision::include())])),
+        ..Default::default()
+    });
+    target.entry_points = Some(BTreeSet::from(["A".to_string(), "D".to_string()]));
+
+    let delta = derive_delta(&base, &target)?;
+
+    // Verify round-trip works
+    let result = apply_delta(&base, &delta)?;
+    assert_equal!(format_graph(&result), format_graph(&target));
+
+    // Snapshot the pretty-printed JSON of the delta
+    let json = serde_json::to_string_pretty(&delta)?;
+    snapshot!(
+        &json,
+        r#"
+{
+  "nodes_added": [
+    "D",
+    "E"
+  ],
+  "nodes_removed": [
+    "C"
+  ],
+  "edge_changes": {
+    "A": {
+      "directed": {
+        "added": [
+          "D"
+        ],
+        "removed": [
+          "C"
+        ]
+      },
+      "tagged": {
+        "added": {
+          "async": [
+            "D"
+          ]
+        },
+        "removed": [
+          "lazy"
+        ]
+      },
+      "dynamic": {
+        "added": {
+          "android_platform": {
+            "android_1": {
+              "branches": {
+                "fallback": [
+                  "E"
+                ],
+                "primary": [
+                  "D"
+                ]
+              },
+              "metadata": {
+                "version": "2.0"
+              }
+            }
+          }
+        },
+        "removed": [
+          "ios_platform"
+        ]
+      }
+    },
+    "B": {
+      "directed": {
+        "added": [
+          "D"
+        ],
+        "removed": [
+          "C"
+        ]
+      },
+      "tagged": null,
+      "dynamic": null
+    },
+    "D": {
+      "directed": {
+        "added": [
+          "E"
+        ]
+      },
+      "tagged": null,
+      "dynamic": null
+    }
+  },
+  "metric_changes": {
+    "size": [
+      {
+        "node_name": "A",
+        "value": 50.0
+      },
+      {
+        "node_name": "D",
+        "value": 40.0
+      },
+      {
+        "node_name": "E",
+        "value": 15.0
+      }
+    ],
+    "weight": [
+      {
+        "node_name": "B",
+        "value": 3.0
+      }
+    ]
+  },
+  "tag_set_changes": {
+    "A": {
+      "changed": {
+        "categories": {
+          "added": [
+            "desktop"
+          ],
+          "removed": [
+            "mobile"
+          ]
+        }
+      }
+    },
+    "D": {
+      "added": {
+        "tier": [
+          "t1"
+        ]
+      }
+    }
+  },
+  "graph_settings": {
+    "ui_settings": {
+      "selected_sidebar_panel": "GraphInfo",
+      "columns": {
+        "show_counts": true,
+        "show_tier_column": {
+          "set": true
+        }
+      },
+      "graph_structure": "Dominator"
+    }
+  },
+  "traversal_config": {
+    "force_nodes": {
+      "added": {
+        "D": {
+          "include": true,
+          "message_id": null
+        }
+      },
+      "removed": [
+        "B"
+      ]
+    },
+    "force_tagged": {
+      "set": {
+        "async": {
+          "include": true,
+          "message_id": null
+        }
+      }
+    }
+  },
+  "entry_points": {
+    "set": [
+      "A",
+      "D"
+    ]
+  }
+}
+"#
+    );
+
+    // Also verify the serde round-trip of the delta itself
+    let roundtripped: GraphDelta = serde_json::from_str(&json)?;
+    let roundtripped_json = serde_json::to_string_pretty(&roundtripped)?;
+    assert_equal!(&json, &roundtripped_json);
+
+    Ok(())
+}
+
+#[test]
+fn test_delta_json_snapshot_cleared_fields() -> Result<()> {
+    use crate::TraversalConfig;
+    use crate::graph_settings::ArrayGraphUISettings;
+    use crate::graph_settings::GraphSettings;
+    use crate::graph_settings::SidebarPanel;
+    use crate::traversal::Decision;
+
+    // Base: has settings, traversal config, and entry points
+    let mut base = make_graph(
+        r#"{
+        "nodes": {
+            "A": { "edges_directed": ["B"], "metrics": { "size": 1 } },
+            "B": { "metrics": { "size": 2 } }
+        }
+    }"#,
+    )?;
+    base.graph_settings = Some(GraphSettings {
+        ui_settings: Some(ArrayGraphUISettings {
+            selected_sidebar_panel: Some(SidebarPanel::Simulation),
+            ..Default::default()
+        }),
+    });
+    base.traversal_config = Some(TraversalConfig {
+        force_nodes: Some(BTreeMap::from([("A".to_string(), Decision::include())])),
+        ..Default::default()
+    });
+    base.entry_points = Some(BTreeSet::from(["A".to_string()]));
+
+    // Target: clear settings, traversal config, and entry points
+    let mut target = make_graph(
+        r#"{
+        "nodes": {
+            "A": { "edges_directed": ["B"], "metrics": { "size": 1 } },
+            "B": { "metrics": { "size": 2 } }
+        }
+    }"#,
+    )?;
+    target.graph_settings = None;
+    target.traversal_config = None;
+    target.entry_points = None;
+
+    let delta = derive_delta(&base, &target)?;
+
+    // Verify round-trip
+    let result = apply_delta(&base, &delta)?;
+    assert_eq!(result.graph_settings, None);
+    assert_eq!(result.traversal_config, None);
+    assert_eq!(result.entry_points, None);
+
+    let json = serde_json::to_string_pretty(&delta)?;
+    snapshot!(
+        &json,
+        r#"
+{
+  "nodes_added": [],
+  "nodes_removed": [],
+  "edge_changes": {},
+  "metric_changes": {},
+  "tag_set_changes": {},
+  "graph_settings": {
+    "cleared": true
+  },
+  "traversal_config": {
+    "cleared": true
+  },
+  "entry_points": {
+    "cleared": true
+  }
+}
+"#
+    );
+
+    // Verify serde round-trip
+    let roundtripped: GraphDelta = serde_json::from_str(&json)?;
+    let roundtripped_json = serde_json::to_string_pretty(&roundtripped)?;
+    assert_equal!(&json, &roundtripped_json);
+
+    Ok(())
+}
+
+/// Comprehensive test for TraversalConfig delta with recursive map diffing.
+///
+/// Two configs that share some structure but differ in many ways:
+/// - force_nodes: unchanged entries, changed entries, added entries, removed entries
+/// - force_edges: nested BTreeMap<K, BTreeMap<K, V>> with recursive deltas
+/// - force_tagged: cleared from Some to None
+/// - force_dynamic: leaf Deltable — full replacement for changed entries
+/// - label_predicates: Vec is leaf — full replacement
+/// - tiered_traversal: leaf — full replacement
+/// - messages: added, removed, changed
+#[test]
+fn test_traversal_config_delta_comprehensive() -> Result<()> {
+    use unigraph_delta::Deltable;
+
+    use crate::TraversalConfig;
+    use crate::traversal::Decision;
+    use crate::traversal::DefaultBranches;
+    use crate::traversal::DynamicEdgeOverride;
+    use crate::traversal::DynamicTypeConfig;
+    use crate::traversal::NodeLabelPredicate;
+    use crate::traversal::messages::Message;
+    use crate::traversal::tiered_traversal::AscendingTier;
+    use crate::traversal::tiered_traversal::AscendingTiersConfig;
+    use crate::traversal::tiered_traversal::TieredTraversalConfig;
+
+    let base = TraversalConfig {
+        force_nodes: Some(BTreeMap::from([
+            // unchanged
+            ("AppRoot".to_string(), Decision::include()),
+            // will be changed (include -> exclude)
+            (
+                "DebugPanel".to_string(),
+                Decision {
+                    include: true,
+                    message_id: Some("debug_msg".to_string()),
+                },
+            ),
+            // will be removed
+            ("LegacyModule".to_string(), Decision::exclude()),
+        ])),
+        force_edges: Some(BTreeMap::from([
+            (
+                "AppRoot".to_string(),
+                BTreeMap::from([
+                    // unchanged
+                    ("Header".to_string(), Decision::include()),
+                    // will change
+                    ("Sidebar".to_string(), Decision::include()),
+                ]),
+            ),
+            (
+                // will be removed entirely
+                "LegacyModule".to_string(),
+                BTreeMap::from([("OldDep".to_string(), Decision::exclude())]),
+            ),
+        ])),
+        force_tagged: Some(BTreeMap::from([
+            ("lazy".to_string(), Decision::exclude()),
+            ("async".to_string(), Decision::include()),
+        ])),
+        label_predicates: Some(vec![
+            NodeLabelPredicate {
+                tag_set_name: "route".to_string(),
+                tag_name: "homepage".to_string(),
+                contains: true,
+                decision: Decision::include(),
+            },
+            NodeLabelPredicate {
+                tag_set_name: "route".to_string(),
+                tag_name: "homepage".to_string(),
+                contains: false,
+                decision: Decision::exclude(),
+            },
+        ]),
+        force_dynamic: Some(BTreeMap::from([(
+            "ios_platform".to_string(),
+            DynamicTypeConfig {
+                default_branches: Some(DefaultBranches::Include(vec![
+                    "main".to_string(),
+                    "fallback".to_string(),
+                ])),
+                overrides: Some(BTreeMap::from([(
+                    "special_edge".to_string(),
+                    DynamicEdgeOverride {
+                        branches: Some(DefaultBranches::Exclude(vec!["fallback".to_string()])),
+                        decision: Some(Decision::include()),
+                    },
+                )])),
+            },
+        )])),
+        tiered_traversal: Some(TieredTraversalConfig::AscendingTiers(
+            AscendingTiersConfig {
+                tiers: vec![
+                    AscendingTier {
+                        name: "initial".to_string(),
+                        tags_that_transition_to_this_tier: vec![],
+                    },
+                    AscendingTier {
+                        name: "lazy".to_string(),
+                        tags_that_transition_to_this_tier: vec!["LL".to_string()],
+                    },
+                ],
+                max_tier: Some(1),
+            },
+        )),
+        messages: Some(BTreeMap::from([
+            (
+                "debug_msg".to_string(),
+                Message("Debug panel: %points_to%".to_string()),
+            ),
+            (
+                "legacy_msg".to_string(),
+                Message("Legacy: %points_from% -> %points_to%".to_string()),
+            ),
+            // unchanged
+            (
+                "info_msg".to_string(),
+                Message("Info about %points_to%".to_string()),
+            ),
+        ])),
+    };
+
+    let target = TraversalConfig {
+        force_nodes: Some(BTreeMap::from([
+            // unchanged
+            ("AppRoot".to_string(), Decision::include()),
+            // changed: include -> exclude, message_id removed
+            ("DebugPanel".to_string(), Decision::exclude()),
+            // added
+            ("NewFeature".to_string(), Decision::include()),
+            // LegacyModule removed
+        ])),
+        force_edges: Some(BTreeMap::from([
+            (
+                "AppRoot".to_string(),
+                BTreeMap::from([
+                    // unchanged
+                    ("Header".to_string(), Decision::include()),
+                    // changed: include -> exclude
+                    ("Sidebar".to_string(), Decision::exclude()),
+                    // added
+                    ("Footer".to_string(), Decision::include()),
+                ]),
+            ),
+            // LegacyModule removed
+            // NewFeature added
+            (
+                "NewFeature".to_string(),
+                BTreeMap::from([("FeatureDep".to_string(), Decision::include())]),
+            ),
+        ])),
+        // force_tagged cleared entirely
+        force_tagged: None,
+        // label_predicates changed (Vec is leaf, so full replacement)
+        label_predicates: Some(vec![NodeLabelPredicate {
+            tag_set_name: "platform".to_string(),
+            tag_name: "ios".to_string(),
+            contains: true,
+            decision: Decision::include(),
+        }]),
+        // force_dynamic changed: different platform config
+        force_dynamic: Some(BTreeMap::from([
+            // ios_platform changed (leaf — full replacement)
+            (
+                "ios_platform".to_string(),
+                DynamicTypeConfig {
+                    default_branches: Some(DefaultBranches::Include(vec!["main".to_string()])),
+                    overrides: None,
+                },
+            ),
+            // android_platform added
+            (
+                "android_platform".to_string(),
+                DynamicTypeConfig {
+                    default_branches: Some(DefaultBranches::Exclude(vec![
+                        "experimental".to_string(),
+                    ])),
+                    overrides: None,
+                },
+            ),
+        ])),
+        // tiered_traversal changed: different tiers + no max
+        tiered_traversal: Some(TieredTraversalConfig::AscendingTiers(
+            AscendingTiersConfig {
+                tiers: vec![
+                    AscendingTier {
+                        name: "critical".to_string(),
+                        tags_that_transition_to_this_tier: vec![],
+                    },
+                    AscendingTier {
+                        name: "deferred".to_string(),
+                        tags_that_transition_to_this_tier: vec!["DF".to_string()],
+                    },
+                    AscendingTier {
+                        name: "background".to_string(),
+                        tags_that_transition_to_this_tier: vec!["BG".to_string()],
+                    },
+                ],
+                max_tier: None,
+            },
+        )),
+        messages: Some(BTreeMap::from([
+            // debug_msg changed text
+            (
+                "debug_msg".to_string(),
+                Message("Debug v2: %points_to% (from %points_from%)".to_string()),
+            ),
+            // legacy_msg removed
+            // info_msg unchanged
+            (
+                "info_msg".to_string(),
+                Message("Info about %points_to%".to_string()),
+            ),
+            // welcome_msg added
+            (
+                "welcome_msg".to_string(),
+                Message("Welcome to %points_to%".to_string()),
+            ),
+        ])),
+    };
+
+    let delta = base.derive_delta(&target).unwrap();
+
+    // Verify roundtrip: base + delta == target
+    let mut result = base.clone();
+    result.apply_delta(delta.clone()).unwrap();
+    assert_equal!(&result, &target);
+
+    // Verify serde roundtrip of the delta itself
+    let json = serde_json::to_string_pretty(&delta)?;
+    let roundtripped: <TraversalConfig as Deltable>::Delta = serde_json::from_str(&json)?;
+    let roundtripped_json = serde_json::to_string_pretty(&roundtripped)?;
+    assert_equal!(&json, &roundtripped_json);
+
+    // Snapshot the full JSON delta
+    snapshot!(
+        &json,
+        r#"
+{
+  "force_nodes": {
+    "added": {
+      "NewFeature": {
+        "include": true,
+        "message_id": null
+      }
+    },
+    "removed": [
+      "LegacyModule"
+    ],
+    "changed": {
+      "DebugPanel": {
+        "include": false,
+        "message_id": null
+      }
+    }
+  },
+  "force_edges": {
+    "added": {
+      "NewFeature": {
+        "FeatureDep": {
+          "include": true,
+          "message_id": null
+        }
+      }
+    },
+    "removed": [
+      "LegacyModule"
+    ],
+    "changed": {
+      "AppRoot": {
+        "added": {
+          "Footer": {
+            "include": true,
+            "message_id": null
+          }
+        },
+        "changed": {
+          "Sidebar": {
+            "include": false,
+            "message_id": null
+          }
+        }
+      }
+    }
+  },
+  "force_tagged": {
+    "cleared": true
+  },
+  "label_predicates": [
+    {
+      "tag_set_name": "platform",
+      "tag_name": "ios",
+      "contains": true,
+      "decision": {
+        "include": true,
+        "message_id": null
+      }
+    }
+  ],
+  "force_dynamic": {
+    "added": {
+      "android_platform": {
+        "default_branches": {
+          "Exclude": [
+            "experimental"
+          ]
+        }
+      }
+    },
+    "changed": {
+      "ios_platform": {
+        "default_branches": {
+          "Include": [
+            "main"
+          ]
+        }
+      }
+    }
+  },
+  "tiered_traversal": {
+    "AscendingTiers": {
+      "tiers": [
+        {
+          "name": "critical",
+          "tags_that_transition_to_this_tier": []
+        },
+        {
+          "name": "deferred",
+          "tags_that_transition_to_this_tier": [
+            "DF"
+          ]
+        },
+        {
+          "name": "background",
+          "tags_that_transition_to_this_tier": [
+            "BG"
+          ]
+        }
+      ],
+      "max_tier": null
+    }
+  },
+  "messages": {
+    "added": {
+      "welcome_msg": "Welcome to %points_to%"
+    },
+    "removed": [
+      "legacy_msg"
+    ],
+    "changed": {
+      "debug_msg": "Debug v2: %points_to% (from %points_from%)"
+    }
+  }
+}
+"#
+    );
+
     Ok(())
 }

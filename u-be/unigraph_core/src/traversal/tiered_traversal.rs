@@ -20,7 +20,8 @@ use crate::types::array_graph::tiers::tier_idx_to_flags;
 /// we look at the node's current tier and then we look at the new tier this node
 /// is supposed to transition to and record that.
 #[derive(Debug, typegen::TypeGen, PartialEq)]
-#[derive(serde::Serialize, serde::Deserialize, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, unigraph_delta::Deltable)]
+#[deltable(replace)]
 pub enum TieredTraversalConfig {
     // Simple ascending tiers configuration.
     // This is specifically used for JS loading tiers.
@@ -31,7 +32,13 @@ pub enum TieredTraversalConfig {
     AscendingTiers(AscendingTiersConfig),
 }
 
-#[derive(Debug, typegen::TypeGen, PartialEq)]
+impl Default for TieredTraversalConfig {
+    fn default() -> Self {
+        TieredTraversalConfig::AscendingTiers(AscendingTiersConfig::default())
+    }
+}
+
+#[derive(Debug, typegen::TypeGen, PartialEq, Default)]
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
 pub struct AscendingTiersConfig {
     pub tiers: Vec<AscendingTier>,

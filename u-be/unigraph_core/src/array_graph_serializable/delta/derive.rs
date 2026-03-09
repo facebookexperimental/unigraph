@@ -5,17 +5,19 @@ use std::collections::BTreeSet;
 
 use anyhow::Context;
 use anyhow::Result;
+use unigraph_delta::Deltable;
+use unigraph_delta::OptionDelta;
+use unigraph_delta::diff_option;
 
 use super::DirectedEdgeDelta;
 use super::DynamicEdgeDelta;
 use super::DynamicEdgeSerialized;
+use super::DynamicEdgesMap;
 use super::GraphDelta;
 use super::MetricNodeChange;
 use super::NodeEdgeDelta;
 use super::TagSetDelta;
-use super::TagSetValueDelta;
 use super::TaggedEdgeDelta;
-use super::TaggedEdgeTagDelta;
 use crate::ArrayGraphDynamicEdge;
 use crate::ArrayGraphNodes;
 use crate::ArrayGraphSerializable;
@@ -139,22 +141,17 @@ pub fn derive_delta(
         }
     }
 
-    // Diff top-level settings
-    let graph_settings = if base.graph_settings != target.graph_settings {
-        Some(target.graph_settings.clone())
-    } else {
-        None
-    };
-    let traversal_config = if base.traversal_config != target.traversal_config {
-        Some(target.traversal_config.clone())
-    } else {
-        None
-    };
-    let entry_points = if base.entry_points != target.entry_points {
-        Some(target.entry_points.clone())
-    } else {
-        None
-    };
+    // Diff top-level settings using field-level deltas via Deltable trait.
+    // derive_delta returns None when equal (= no change = Unchanged).
+    let graph_settings = base
+        .graph_settings
+        .derive_delta(&target.graph_settings)
+        .unwrap_or(OptionDelta::Unchanged);
+    let traversal_config = base
+        .traversal_config
+        .derive_delta(&target.traversal_config)
+        .unwrap_or(OptionDelta::Unchanged);
+    let entry_points = diff_option(&base.entry_points, &target.entry_points);
 
     Ok(GraphDelta {
         nodes_added,
@@ -197,29 +194,24 @@ fn collect_all_edges_as_added(
         }
     };
 
-    let tag_delta = tagged.get(&node_idx).map(|tag_map| {
-        let changes = tag_map
+    let tag_delta = tagged.get(&node_idx).and_then(|tag_map| {
+        let target_serialized: BTreeMap<Tag, BTreeSet<NodeName>> = tag_map
             .iter()
             .map(|(tag, targets)| {
-                let added: BTreeSet<NodeName> = targets
+                let names: BTreeSet<NodeName> = targets
                     .iter()
                     .map(|&idx| nodes.idx_to_name(idx).to_string())
                     .collect();
-                (
-                    tag.clone(),
-                    TaggedEdgeTagDelta {
-                        added,
-                        removed: BTreeSet::new(),
-                    },
-                )
+                (tag.clone(), names)
             })
             .collect();
-        TaggedEdgeDelta { changes }
+        BTreeMap::new().derive_delta(&target_serialized)
     });
 
-    let dyn_delta = dynamic
-        .get(&node_idx)
-        .map(|edges| dynamic_edges_to_serialized(edges, nodes));
+    let dyn_delta = dynamic.get(&node_idx).and_then(|edges| {
+        let target_serialized = dynamic_edges_to_serialized(edges, nodes);
+        DynamicEdgesMap::new().derive_delta(&target_serialized)
+    });
 
     if dir_delta.is_none() && tag_delta.is_none() && dyn_delta.is_none() {
         return None;
@@ -323,112 +315,50 @@ fn diff_tagged_edges(
     target_tagged: &BTreeMap<NodeIDX, BTreeMap<Tag, BTreeSet<NodeIDX>>>,
     nodes: &ArrayGraphNodes,
 ) -> Option<TaggedEdgeDelta> {
-    let base_tags = base_tagged.get(&node_idx);
-    let target_tags = target_tagged.get(&node_idx);
-
-    match (base_tags, target_tags) {
-        (None, None) => None,
-        (None, Some(target_map)) => {
-            // All tags are new
-            let changes = target_map
+    let to_serialized =
+        |tag_map: &BTreeMap<Tag, BTreeSet<NodeIDX>>| -> BTreeMap<Tag, BTreeSet<NodeName>> {
+            tag_map
                 .iter()
                 .map(|(tag, targets)| {
-                    let added: BTreeSet<NodeName> = targets
+                    let names: BTreeSet<NodeName> = targets
                         .iter()
                         .map(|&idx| nodes.idx_to_name(idx).to_string())
                         .collect();
-                    (
-                        tag.clone(),
-                        TaggedEdgeTagDelta {
-                            added,
-                            removed: BTreeSet::new(),
-                        },
-                    )
+                    (tag.clone(), names)
                 })
-                .collect();
-            Some(TaggedEdgeDelta { changes })
-        }
-        (Some(base_map), None) => {
-            // All tags are removed
-            let changes = base_map
-                .iter()
-                .map(|(tag, targets)| {
-                    let removed: BTreeSet<NodeName> = targets
-                        .iter()
-                        .map(|&idx| nodes.idx_to_name(idx).to_string())
-                        .collect();
-                    (
-                        tag.clone(),
-                        TaggedEdgeTagDelta {
-                            added: BTreeSet::new(),
-                            removed,
-                        },
-                    )
-                })
-                .collect();
-            Some(TaggedEdgeDelta { changes })
-        }
-        (Some(base_map), Some(target_map)) => {
-            let mut changes: BTreeMap<Tag, TaggedEdgeTagDelta> = BTreeMap::new();
+                .collect()
+        };
 
-            // All tags from both sides
-            let all_tags: BTreeSet<&Tag> = base_map.keys().chain(target_map.keys()).collect();
+    let base_serialized = base_tagged
+        .get(&node_idx)
+        .map(to_serialized)
+        .unwrap_or_default();
+    let target_serialized = target_tagged
+        .get(&node_idx)
+        .map(to_serialized)
+        .unwrap_or_default();
 
-            for tag in all_tags {
-                let base_set = base_map.get(tag);
-                let target_set = target_map.get(tag);
+    base_serialized.derive_delta(&target_serialized)
+}
 
-                match (base_set, target_set) {
-                    (None, None) => unreachable!(),
-                    (None, Some(targets)) => {
-                        let added: BTreeSet<NodeName> = targets
-                            .iter()
-                            .map(|&idx| nodes.idx_to_name(idx).to_string())
-                            .collect();
-                        changes.insert(
-                            tag.clone(),
-                            TaggedEdgeTagDelta {
-                                added,
-                                removed: BTreeSet::new(),
-                            },
-                        );
-                    }
-                    (Some(bases), None) => {
-                        let removed: BTreeSet<NodeName> = bases
-                            .iter()
-                            .map(|&idx| nodes.idx_to_name(idx).to_string())
-                            .collect();
-                        changes.insert(
-                            tag.clone(),
-                            TaggedEdgeTagDelta {
-                                added: BTreeSet::new(),
-                                removed,
-                            },
-                        );
-                    }
-                    (Some(bases), Some(targets)) => {
-                        let added: BTreeSet<NodeName> = targets
-                            .difference(bases)
-                            .map(|&idx| nodes.idx_to_name(idx).to_string())
-                            .collect();
-                        let removed: BTreeSet<NodeName> = bases
-                            .difference(targets)
-                            .map(|&idx| nodes.idx_to_name(idx).to_string())
-                            .collect();
-                        if !added.is_empty() || !removed.is_empty() {
-                            changes.insert(tag.clone(), TaggedEdgeTagDelta { added, removed });
-                        }
-                    }
-                }
-            }
+fn diff_tag_sets(
+    node_idx: NodeIDX,
+    base_tag_sets: &BTreeMap<NodeIDX, BTreeMap<String, BTreeSet<Tag>>>,
+    target_tag_sets: &BTreeMap<NodeIDX, BTreeMap<String, BTreeSet<Tag>>>,
+) -> Option<TagSetDelta> {
+    let base = base_tag_sets.get(&node_idx).cloned().unwrap_or_default();
+    let target = target_tag_sets.get(&node_idx).cloned().unwrap_or_default();
 
-            if changes.is_empty() {
-                None
-            } else {
-                Some(TaggedEdgeDelta { changes })
-            }
-        }
-    }
+    base.derive_delta(&target)
+}
+
+fn collect_tag_sets_as_added(
+    node_idx: NodeIDX,
+    tag_sets: &BTreeMap<NodeIDX, BTreeMap<String, BTreeSet<Tag>>>,
+) -> Option<TagSetDelta> {
+    tag_sets
+        .get(&node_idx)
+        .and_then(|ts_map| BTreeMap::new().derive_delta(ts_map))
 }
 
 fn diff_dynamic_edges(
@@ -446,31 +376,21 @@ fn diff_dynamic_edges(
     let base_edges = base_dynamic.get(&node_idx);
     let target_edges = target_dynamic.get(&node_idx);
 
-    match (base_edges, target_edges) {
-        (None, None) => None,
-        (None, Some(target)) => Some(dynamic_edges_to_serialized(target, nodes)),
-        (Some(_), None) => {
-            // Dynamic edges removed — replacement with empty map
-            Some(DynamicEdgeDelta {
-                replacement: BTreeMap::new(),
-            })
-        }
-        (Some(base), Some(target)) => {
-            // BTreeMap has deterministic order, direct equality works
-            if base == target {
-                None
-            } else {
-                Some(dynamic_edges_to_serialized(target, nodes))
-            }
-        }
-    }
+    let base_serialized = base_edges
+        .map(|e| dynamic_edges_to_serialized(e, nodes))
+        .unwrap_or_default();
+    let target_serialized = target_edges
+        .map(|e| dynamic_edges_to_serialized(e, nodes))
+        .unwrap_or_default();
+
+    base_serialized.derive_delta(&target_serialized)
 }
 
 fn dynamic_edges_to_serialized(
     type_map: &BTreeMap<DynamicTypeKey, BTreeMap<DynamicEdgeName, ArrayGraphDynamicEdge>>,
     nodes: &ArrayGraphNodes,
-) -> DynamicEdgeDelta {
-    let replacement = type_map
+) -> DynamicEdgesMap {
+    type_map
         .iter()
         .map(|(type_key, edge_map)| {
             let inner = edge_map
@@ -498,8 +418,7 @@ fn dynamic_edges_to_serialized(
                 .collect();
             (type_key.clone(), inner)
         })
-        .collect();
-    DynamicEdgeDelta { replacement }
+        .collect()
 }
 
 fn collect_metrics_for_node(
@@ -551,112 +470,4 @@ fn diff_metrics_for_node(
                 });
         }
     }
-}
-
-fn diff_tag_sets(
-    node_idx: NodeIDX,
-    base_tag_sets: &BTreeMap<NodeIDX, BTreeMap<String, BTreeSet<Tag>>>,
-    target_tag_sets: &BTreeMap<NodeIDX, BTreeMap<String, BTreeSet<Tag>>>,
-) -> Option<TagSetDelta> {
-    let base = base_tag_sets.get(&node_idx);
-    let target = target_tag_sets.get(&node_idx);
-
-    match (base, target) {
-        (None, None) => None,
-        (None, Some(target_map)) => {
-            let changes = target_map
-                .iter()
-                .map(|(ts_name, tags)| {
-                    (
-                        ts_name.clone(),
-                        TagSetValueDelta {
-                            added: tags.clone(),
-                            removed: BTreeSet::new(),
-                        },
-                    )
-                })
-                .collect();
-            Some(TagSetDelta { changes })
-        }
-        (Some(base_map), None) => {
-            let changes = base_map
-                .iter()
-                .map(|(ts_name, tags)| {
-                    (
-                        ts_name.clone(),
-                        TagSetValueDelta {
-                            added: BTreeSet::new(),
-                            removed: tags.clone(),
-                        },
-                    )
-                })
-                .collect();
-            Some(TagSetDelta { changes })
-        }
-        (Some(base_map), Some(target_map)) => {
-            let mut changes = BTreeMap::new();
-            let all_names: BTreeSet<&String> = base_map.keys().chain(target_map.keys()).collect();
-
-            for ts_name in all_names {
-                let base_set = base_map.get(ts_name);
-                let target_set = target_map.get(ts_name);
-
-                match (base_set, target_set) {
-                    (None, None) => unreachable!(),
-                    (None, Some(targets)) => {
-                        changes.insert(
-                            ts_name.clone(),
-                            TagSetValueDelta {
-                                added: targets.clone(),
-                                removed: BTreeSet::new(),
-                            },
-                        );
-                    }
-                    (Some(bases), None) => {
-                        changes.insert(
-                            ts_name.clone(),
-                            TagSetValueDelta {
-                                added: BTreeSet::new(),
-                                removed: bases.clone(),
-                            },
-                        );
-                    }
-                    (Some(bases), Some(targets)) => {
-                        let added: BTreeSet<Tag> = targets.difference(bases).cloned().collect();
-                        let removed: BTreeSet<Tag> = bases.difference(targets).cloned().collect();
-                        if !added.is_empty() || !removed.is_empty() {
-                            changes.insert(ts_name.clone(), TagSetValueDelta { added, removed });
-                        }
-                    }
-                }
-            }
-
-            if changes.is_empty() {
-                None
-            } else {
-                Some(TagSetDelta { changes })
-            }
-        }
-    }
-}
-
-fn collect_tag_sets_as_added(
-    node_idx: NodeIDX,
-    tag_sets: &BTreeMap<NodeIDX, BTreeMap<String, BTreeSet<Tag>>>,
-) -> Option<TagSetDelta> {
-    tag_sets.get(&node_idx).map(|ts_map| {
-        let changes = ts_map
-            .iter()
-            .map(|(ts_name, tags)| {
-                (
-                    ts_name.clone(),
-                    TagSetValueDelta {
-                        added: tags.clone(),
-                        removed: BTreeSet::new(),
-                    },
-                )
-            })
-            .collect();
-        TagSetDelta { changes }
-    })
 }

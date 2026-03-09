@@ -13,6 +13,8 @@ pub use crate::array_graph_serializable::ArrayGraphSerializable;
 pub use crate::array_graph_serializable::ArrayGraphSerializableEdges;
 pub use crate::array_graph_serializable::ArrayGraphSerializableNodeMetadata;
 pub use crate::array_graph_serializable::delta::GraphDelta;
+pub use crate::array_graph_serializable::delta::GraphSettingsDelta;
+pub use crate::array_graph_serializable::delta::TraversalConfigDelta;
 pub use crate::array_graph_serializable::delta::apply_delta;
 pub use crate::array_graph_serializable::delta::apply_deltas;
 pub use crate::array_graph_serializable::delta::derive_delta;
