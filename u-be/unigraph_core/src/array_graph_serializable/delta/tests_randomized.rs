@@ -373,6 +373,7 @@ mod tests {
                             tiered_metrics: BTreeSet::new(),
                         },
                         budgets,
+                        dynamic_budget_definitions: BTreeMap::new(),
                         traversal_config: None,
                     },
                 );

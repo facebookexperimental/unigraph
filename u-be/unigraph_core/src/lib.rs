@@ -59,6 +59,7 @@ pub use crate::types::array_graph::budget_graph::BudgetAlgo;
 pub use crate::types::array_graph::budget_graph::BudgetAlgoConfig;
 pub use crate::types::array_graph::budget_graph::BudgetConfig;
 pub use crate::types::array_graph::budget_graph::BudgetDefinition;
+pub use crate::types::array_graph::budget_graph::DynamicBudgetDefinition;
 pub use crate::types::array_graph::budget_graph::build_budget_graph;
 pub use crate::types::array_graph::budget_graph::build_budget_graph_with_custom_algos;
 pub use crate::types::array_graph::graph_settings;

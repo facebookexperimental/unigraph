@@ -255,6 +255,11 @@ pub struct BudgetConfig {
     /// The budgets to compute. Key = budget name, value = definition.
     pub budgets: BTreeMap<String, BudgetDefinition>,
 
+    /// Dynamic budget definitions resolved from the graph at compute time.
+    /// Merged with `budgets` before computation (static budgets win conflicts).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub dynamic_budget_definitions: BTreeMap<String, DynamicBudgetDefinition>,
+
     /// Traversal config to apply to the source graph before computing.
     /// If None, uses the source graph's existing traversal config.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -284,6 +289,31 @@ pub struct BudgetDefinition {
     /// Custom algos read what they need from here.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub properties: Option<BTreeMap<String, String>>,
+}
+
+/// Defines how to dynamically generate budget definitions from the graph.
+///
+/// Dynamic definitions are resolved at compute time by inspecting the source
+/// graph, then merged with static `BudgetConfig.budgets` (static wins on
+/// name conflicts).
+#[derive(
+    Debug,
+    serde::Serialize,
+    serde::Deserialize,
+    typegen::TypeGen,
+    Clone,
+    PartialEq,
+    unigraph_delta::Deltable
+)]
+#[deltable(replace)]
+pub enum DynamicBudgetDefinition {
+    /// Create one budget per entry point in the graph.
+    ///
+    /// Entry points are determined by [`ArrayGraph::determine_entrypoints()`]
+    /// (parentless nodes, or explicit `entry_points` if set on the graph).
+    /// Each budget gets the entry point's node name as its budget name and
+    /// a single-element `entry_points` set.
+    AllEntryPoints {},
 }
 
 // -------------------------------------------------------------------
@@ -359,7 +389,23 @@ pub fn build_budget_graph_with_custom_algos(
         source.apply_traversal_config(tvc.clone())?;
     }
 
-    // Phase 2: Dispatch to algo
+    // Phase 2: Resolve dynamic budget definitions
+    let effective_config;
+    let config = if config.dynamic_budget_definitions.is_empty() {
+        config
+    } else {
+        let mut merged = resolve_dynamic_budgets(&source, &config.dynamic_budget_definitions);
+        // Static budgets win on name conflicts
+        merged.extend(config.budgets.clone());
+        effective_config = BudgetConfig {
+            budgets: merged,
+            dynamic_budget_definitions: BTreeMap::new(),
+            ..config.clone()
+        };
+        &effective_config
+    };
+
+    // Phase 3: Dispatch to algo
     let budget_graph = match &config.algo {
         BudgetAlgoConfig::Transitive {
             metrics,
@@ -379,6 +425,36 @@ pub fn build_budget_graph_with_custom_algos(
     };
 
     Ok((source, budget_graph))
+}
+
+// -------------------------------------------------------------------
+// Dynamic budget resolution
+// -------------------------------------------------------------------
+
+/// Resolve dynamic budget definitions into concrete [`BudgetDefinition`]s.
+fn resolve_dynamic_budgets(
+    source: &ArrayGraph,
+    dynamic_defs: &BTreeMap<String, DynamicBudgetDefinition>,
+) -> BTreeMap<String, BudgetDefinition> {
+    let mut result = BTreeMap::new();
+    for def in dynamic_defs.values() {
+        match def {
+            DynamicBudgetDefinition::AllEntryPoints {} => {
+                let entry_idxs = source.determine_entrypoints();
+                for idx in entry_idxs {
+                    let name = source.idx_to_name(idx).to_string();
+                    result.insert(
+                        name.clone(),
+                        BudgetDefinition {
+                            entry_points: BTreeSet::from([name]),
+                            properties: None,
+                        },
+                    );
+                }
+            }
+        }
+    }
+    result
 }
 
 // -------------------------------------------------------------------
@@ -655,6 +731,7 @@ mod tests {
                     },
                 ),
             ]),
+            dynamic_budget_definitions: BTreeMap::new(),
             traversal_config: None,
         };
 
@@ -703,6 +780,7 @@ from_L: node_count=12, size=12
                     },
                 ),
             ]),
+            dynamic_budget_definitions: BTreeMap::new(),
             traversal_config: Some(tvc),
         };
 
@@ -728,6 +806,7 @@ from_L: node_count=8, size=8
                 name: "nonexistent".into(),
             },
             budgets: BTreeMap::new(),
+            dynamic_budget_definitions: BTreeMap::new(),
             traversal_config: None,
         };
 
@@ -758,6 +837,7 @@ from_L: node_count=8, size=8
                         properties: None,
                     },
                 )]),
+                dynamic_budget_definitions: BTreeMap::new(),
                 traversal_config: None,
             },
         );
@@ -800,6 +880,7 @@ from_L: node_count=8, size=8
                     properties: None,
                 },
             )]),
+            dynamic_budget_definitions: BTreeMap::new(),
             traversal_config: None,
         };
 
@@ -834,6 +915,7 @@ from_L: node_count=8, size=8
                     properties: None,
                 },
             )]),
+            dynamic_budget_definitions: BTreeMap::new(),
             traversal_config: Some(tvc),
         };
 

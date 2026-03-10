@@ -1,0 +1,52 @@
+[
+  {
+    "source": {
+      "Git": {
+        "repo_path": "~/p/unigraph",
+        "main_branch": "main"
+      }
+    },
+    "timelines": [
+      {
+        "timeline_id": "cargo",
+        "builder": {
+          "Cargo": {
+            "manifest_path": "Cargo.toml"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "source": {
+      "AnotherTimeline": {
+        "source_timeline_id": "cargo"
+      }
+    },
+    "timelines": [
+      {
+        "timeline_id": "cargo_budget",
+        "builder": {
+          "BudgetGraph": {
+            "budget_config": {
+              "algo": {
+                "Transitive": {
+                  "metrics": [
+                    "rlib_size"
+                  ],
+                  "counts": true,
+                  "tiered_metrics": []
+                }
+              },
+              "budgets": {},
+              "dynamic_budget_definitions": {
+                "all": { "AllEntryPoints": {} }
+              },
+              "traversal_config": null
+            }
+          }
+        }
+      }
+    ]
+  }
+]

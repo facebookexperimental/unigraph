@@ -1,11 +1,15 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use anyhow::Context;
 use clap::Parser;
 use clap::Subcommand;
-use unigraph_ingestion::GraphBuilder as _;
+use unigraph_core::BudgetConfig;
+use unigraph_core::build_budget_graph;
+use unigraph_storage_core::GraphKey;
 use unigraph_storage_core::TimelineID;
 use unigraph_web_service::ServeMode;
 
@@ -16,7 +20,7 @@ fn default_sqlite_path() -> PathBuf {
         .join("sqlite")
 }
 
-fn resolve_sqlite_path(path: &PathBuf) -> &PathBuf {
+fn resolve_sqlite_path(path: &Path) -> &Path {
     if *path == default_sqlite_path() {
         eprintln!("Using database: {}", path.display());
     }
@@ -26,6 +30,10 @@ fn resolve_sqlite_path(path: &PathBuf) -> &PathBuf {
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 struct Args {
+    /// Path to the SQLite database file
+    #[arg(long, default_value_os_t = default_sqlite_path(), global = true)]
+    sqlite_path: PathBuf,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -36,6 +44,7 @@ enum Commands {
     Ingest(Ingest),
     Frames(Frames),
     Compact(Compact),
+    BuildGraph(BuildGraph),
 }
 
 #[derive(Parser)]
@@ -49,23 +58,20 @@ struct Serve {
     #[arg(short, long)]
     right: Option<PathBuf>,
 
-    /// Path to the SQLite database file (for timeline browsing)
-    #[arg(long)]
-    sqlite_path: Option<PathBuf>,
-
     /// Serve pre-built static files instead of proxying to Vite dev server
     #[arg(long)]
     release: bool,
 }
 
 impl Serve {
-    async fn run(&self) {
+    async fn run(&self, sqlite_path: &Path) {
         let mode = if self.release {
             ServeMode::Release
         } else {
             ServeMode::Dev
         };
-        unigraph_web_service::start(&self.file_path, &self.right, &self.sqlite_path, mode)
+        let sqlite_path = Some(sqlite_path.to_path_buf());
+        unigraph_web_service::start(&self.file_path, &self.right, &sqlite_path, mode)
             .await
             .unwrap();
     }
@@ -73,75 +79,155 @@ impl Serve {
 
 #[derive(Parser)]
 struct Ingest {
-    /// Path to the git repository to ingest
+    /// Path to the ingestion config file
     #[arg(long)]
-    git_repo_path: PathBuf,
-
-    /// Path to the SQLite database file (created if it doesn't exist)
-    #[arg(long, default_value_os_t = default_sqlite_path())]
-    sqlite_path: PathBuf,
-
-    /// Which graph builder to use
-    #[arg(long, value_enum, default_value = "cargo")]
-    graph_builder: GraphBuilderKind,
-
-    /// Path to Cargo.toml relative to the repo root (only for cargo builder)
-    #[arg(long, default_value = "Cargo.toml")]
-    manifest_path: PathBuf,
-}
-
-#[derive(Clone, clap::ValueEnum)]
-enum GraphBuilderKind {
-    Cargo,
+    config: PathBuf,
 }
 
 impl Ingest {
-    async fn run(&self) -> anyhow::Result<()> {
-        let path = resolve_sqlite_path(&self.sqlite_path);
+    async fn run(&self, sqlite_path: &Path) -> anyhow::Result<()> {
+        let path = resolve_sqlite_path(sqlite_path);
         let sqlite = Arc::new(unigraph_storage_sqlite::SqliteStorage::new(path)?);
         let db = unigraph_db::UnigraphDb::new(sqlite.clone(), sqlite);
 
-        let builder = match self.graph_builder {
-            GraphBuilderKind::Cargo => {
-                unigraph_ingestion::CargoGraphBuilder::new(self.manifest_path.clone())
+        let config_file = &self.config;
+        let configs = unigraph_ingestion::load_ingestion_configs(config_file)?;
+
+        eprintln!(
+            "Loaded {} ingestion config(s) from {}",
+            configs.len(),
+            config_file.display()
+        );
+
+        for (i, ingestion_config) in configs.iter().enumerate() {
+            eprintln!("\n=== Ingestion config {}/{} ===", i + 1, configs.len());
+            run_one_config(ingestion_config, &db).await?;
+        }
+
+        Ok(())
+    }
+}
+
+async fn run_one_config(
+    config: &unigraph_ingestion::IngestionConfig,
+    db: &unigraph_db::UnigraphDb,
+) -> anyhow::Result<()> {
+    // Resolve the source
+    let source = resolve_source(&config.source, db).await?;
+
+    // Resolve and own the builders
+    let mut cargo_builders = Vec::new();
+    let mut budget_builders = Vec::new();
+
+    // Track which builder type and index for each timeline entry
+    enum BuilderRef {
+        Cargo(usize),
+        Budget(usize),
+    }
+    let mut builder_refs = Vec::new();
+    let mut timeline_ids = Vec::new();
+
+    for entry in &config.timelines {
+        timeline_ids.push(TimelineID(entry.timeline_id.clone()));
+        match &entry.builder {
+            unigraph_ingestion::GraphBuilderConfig::Cargo { manifest_path } => {
+                let idx = cargo_builders.len();
+                cargo_builders.push(unigraph_ingestion::CargoGraphBuilder::new(PathBuf::from(
+                    manifest_path,
+                )));
+                builder_refs.push(BuilderRef::Cargo(idx));
             }
-        };
+            unigraph_ingestion::GraphBuilderConfig::BudgetGraph { budget_config } => {
+                let idx = budget_builders.len();
+                budget_builders.push(unigraph_ingestion::BudgetGraphBuilder {
+                    name: entry.timeline_id.clone(),
+                    budget_config: budget_config.as_deref().cloned(),
+                });
+                builder_refs.push(BuilderRef::Budget(idx));
+            }
+        }
+    }
 
-        let config = unigraph_ingestion::IngestionPipelineConfig {
-            source: unigraph_ingestion::IngestionSource::Git {
-                repo_path: self.git_repo_path.clone(),
-                main_branch: "main".to_string(),
-            },
-            external_id_namespace: unigraph_storage_core::ExternalIDNamespace(format!(
-                "{}/git",
-                self.git_repo_path.display()
-            )),
-            builders: vec![unigraph_ingestion::TimelineBuilderConfig {
-                timeline_id: unigraph_storage_core::TimelineID(builder.name().to_string()),
-                builder: &builder,
-            }],
-        };
+    // Build the pipeline config with references into the owned builders
+    let builders: Vec<unigraph_ingestion::TimelineBuilderConfig<'_>> = builder_refs
+        .iter()
+        .enumerate()
+        .map(|(i, bref)| {
+            let builder = match bref {
+                BuilderRef::Cargo(idx) => {
+                    unigraph_ingestion::Builder::FromRepo(&cargo_builders[*idx])
+                }
+                BuilderRef::Budget(idx) => {
+                    unigraph_ingestion::Builder::BudgetGraph(&budget_builders[*idx])
+                }
+            };
+            unigraph_ingestion::TimelineBuilderConfig {
+                timeline_id: timeline_ids[i].clone(),
+                builder,
+            }
+        })
+        .collect();
 
-        unigraph_ingestion::run_ingestion(&config, &db).await
+    let pipeline_config = unigraph_ingestion::IngestionPipelineConfig { source, builders };
+
+    unigraph_ingestion::run_ingestion(&pipeline_config, db).await
+}
+
+async fn resolve_source(
+    source_config: &unigraph_ingestion::IngestionSourceConfig,
+    db: &unigraph_db::UnigraphDb,
+) -> anyhow::Result<unigraph_ingestion::IngestionSource> {
+    match source_config {
+        unigraph_ingestion::IngestionSourceConfig::Git {
+            repo_path,
+            main_branch,
+        } => {
+            let repo_path = expand_tilde(repo_path);
+            let ns =
+                unigraph_storage_core::ExternalIDNamespace(format!("{}/git", repo_path.display()));
+            Ok(unigraph_ingestion::IngestionSource::Git {
+                repo_path,
+                main_branch: main_branch.clone(),
+                external_id_namespace: ns,
+            })
+        }
+        unigraph_ingestion::IngestionSourceConfig::AnotherTimeline { source_timeline_id } => {
+            let timeline_id = TimelineID(source_timeline_id.clone());
+            let timeline_config =
+                db.get_timeline_config(&timeline_id)
+                    .await?
+                    .with_context(|| {
+                        format!(
+                            "Source timeline '{}' not found in database",
+                            source_timeline_id
+                        )
+                    })?;
+            let ns = timeline_config.external_id_namespace.with_context(|| {
+                format!(
+                    "Source timeline '{}' has no external_id_namespace",
+                    source_timeline_id
+                )
+            })?;
+            Ok(unigraph_ingestion::IngestionSource::AnotherTimeline {
+                source_timeline_id: timeline_id,
+                external_id_namespace: ns,
+            })
+        }
     }
 }
 
 #[derive(Parser)]
 struct Frames {
-    /// Path to the SQLite database file
-    #[arg(long, default_value_os_t = default_sqlite_path())]
-    sqlite_path: PathBuf,
-
     /// Timeline ID to inspect (omit to list all timelines)
     #[arg(long)]
     timeline_id: Option<String>,
 }
 
 impl Frames {
-    async fn run(&self) -> anyhow::Result<()> {
+    async fn run(&self, sqlite_path: &Path) -> anyhow::Result<()> {
         use unigraph_storage_core::format_frames_table;
 
-        let path = resolve_sqlite_path(&self.sqlite_path);
+        let path = resolve_sqlite_path(sqlite_path);
         let sqlite = Arc::new(unigraph_storage_sqlite::SqliteStorage::new(path)?);
         let db = unigraph_db::UnigraphDb::new(sqlite.clone(), sqlite);
 
@@ -178,10 +264,6 @@ impl Frames {
 
 #[derive(Parser)]
 struct Compact {
-    /// Path to the SQLite database file
-    #[arg(long, default_value_os_t = default_sqlite_path())]
-    sqlite_path: PathBuf,
-
     /// Timeline ID to compact
     #[arg(long)]
     timeline_id: String,
@@ -196,8 +278,8 @@ struct Compact {
 }
 
 impl Compact {
-    async fn run(&self) -> anyhow::Result<()> {
-        let path = resolve_sqlite_path(&self.sqlite_path);
+    async fn run(&self, sqlite_path: &Path) -> anyhow::Result<()> {
+        let path = resolve_sqlite_path(sqlite_path);
         let sqlite = Arc::new(unigraph_storage_sqlite::SqliteStorage::new(path)?);
         let db = unigraph_db::UnigraphDb::new(sqlite.clone(), sqlite);
 
@@ -216,6 +298,83 @@ impl Compact {
     }
 }
 
+#[derive(Parser)]
+struct BuildGraph {
+    #[command(subcommand)]
+    command: BuildGraphCommands,
+}
+
+#[derive(Subcommand)]
+enum BuildGraphCommands {
+    Budget(BuildBudget),
+}
+
+#[derive(Parser)]
+struct BuildBudget {
+    /// Graph key in timeline~id format (e.g. cargo~356)
+    #[arg(long)]
+    graph_key: String,
+
+    /// Budget config as JSON string
+    #[arg(long)]
+    budget_config_json: String,
+
+    /// Print JSON to stdout instead of writing to a temp file
+    #[arg(long)]
+    stdout: bool,
+}
+
+impl BuildBudget {
+    async fn run(&self, sqlite_path: &Path) -> anyhow::Result<()> {
+        let path = resolve_sqlite_path(sqlite_path);
+        let sqlite = Arc::new(unigraph_storage_sqlite::SqliteStorage::new(path)?);
+        let db = unigraph_db::UnigraphDb::new(sqlite.clone(), sqlite);
+
+        let graph_key: GraphKey = self.graph_key.parse()?;
+        let budget_config: BudgetConfig = serde_json::from_str(&self.budget_config_json)
+            .context("failed to parse --budget-config-json")?;
+
+        eprintln!("Fetching graph {}...", graph_key);
+        let source = db.fetch_graph(&graph_key).await?;
+
+        let node_count = source.node_names_ordered.combined_nodes_len();
+        let array_graph = source.into_array_graph();
+
+        eprintln!("Building budget graph ({} nodes in source)...", node_count);
+        let (_source, budget) = build_budget_graph(array_graph, &budget_config)?;
+
+        let map_graph = budget.to_map_graph()?;
+        let json = serde_json::to_string_pretty(&map_graph)?;
+
+        write_json_output(&json, self.stdout, "budget")
+    }
+}
+
+/// Write JSON output to a temp file (printing the path to stdout) or to stdout directly.
+fn write_json_output(json: &str, to_stdout: bool, label: &str) -> anyhow::Result<()> {
+    if to_stdout {
+        println!("{json}");
+    } else {
+        let dir = std::env::temp_dir().join("unigraph");
+        std::fs::create_dir_all(&dir)?;
+        let filename = format!("{label}_{}.json", std::process::id());
+        let path = dir.join(filename);
+        std::fs::write(&path, json).context("failed to write temp file")?;
+        println!("{}", path.display());
+    }
+    Ok(())
+}
+
+fn expand_tilde(path: &Path) -> PathBuf {
+    if let Ok(rest) = path.strip_prefix("~") {
+        dirs::home_dir()
+            .expect("could not determine home directory")
+            .join(rest)
+    } else {
+        path.to_path_buf()
+    }
+}
+
 fn parse_timestamp(s: Option<&str>) -> anyhow::Result<Option<unigraph_timestamp::Timestamp>> {
     match s {
         Some(s) => Ok(Some(
@@ -228,28 +387,24 @@ fn parse_timestamp(s: Option<&str>) -> anyhow::Result<Option<unigraph_timestamp:
 
 #[tokio::main]
 async fn main() {
-    // Parse command line arguments
     let args = Args::parse();
+    let sqlite_path = &args.sqlite_path;
 
-    match args.command {
-        Commands::Serve(serve) => serve.run().await,
-        Commands::Ingest(ingest) => {
-            if let Err(e) = ingest.run().await {
-                eprintln!("Error: {e:#}");
-                std::process::exit(1);
-            }
+    let result = match args.command {
+        Commands::Serve(serve) => {
+            serve.run(sqlite_path).await;
+            Ok(())
         }
-        Commands::Frames(frames) => {
-            if let Err(e) = frames.run().await {
-                eprintln!("Error: {e:#}");
-                std::process::exit(1);
-            }
-        }
-        Commands::Compact(compact) => {
-            if let Err(e) = compact.run().await {
-                eprintln!("Error: {e:#}");
-                std::process::exit(1);
-            }
-        }
+        Commands::Ingest(ingest) => ingest.run(sqlite_path).await,
+        Commands::Frames(frames) => frames.run(sqlite_path).await,
+        Commands::Compact(compact) => compact.run(sqlite_path).await,
+        Commands::BuildGraph(bg) => match bg.command {
+            BuildGraphCommands::Budget(budget) => budget.run(sqlite_path).await,
+        },
+    };
+
+    if let Err(e) = result {
+        eprintln!("Error: {e:#}");
+        std::process::exit(1);
     }
 }

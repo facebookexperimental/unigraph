@@ -89,6 +89,45 @@ pub struct GraphKey {
     pub graph_id: GraphID,
 }
 
+impl fmt::Display for GraphKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}~{}", self.timeline_id.0, self.graph_id.0)
+    }
+}
+
+impl FromStr for GraphKey {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        anyhow::ensure!(!s.is_empty(), "GraphKey cannot be empty");
+
+        let (timeline, id) = s.rsplit_once('~').ok_or_else(|| {
+            anyhow::anyhow!(
+                "Invalid GraphKey '{s}': expected format '<timeline>~<graph_id>' (e.g. 'cargo~356')"
+            )
+        })?;
+
+        anyhow::ensure!(
+            !timeline.is_empty(),
+            "Invalid GraphKey '{s}': timeline_id is empty (before '~')"
+        );
+
+        anyhow::ensure!(
+            !id.is_empty(),
+            "Invalid GraphKey '{s}': graph_id is empty (after '~')"
+        );
+
+        let graph_id: i64 = id.parse().map_err(|_| {
+            anyhow::anyhow!("Invalid GraphKey '{s}': graph_id '{id}' is not a valid integer")
+        })?;
+
+        Ok(GraphKey {
+            timeline_id: TimelineID(timeline.to_string()),
+            graph_id: GraphID(graph_id),
+        })
+    }
+}
+
 /// Identifies a specific graph within a timeline at a specific point in time.
 #[derive(
     Debug,
@@ -285,3 +324,57 @@ pub const DEFAULT_INLINE_BLOB_THRESHOLD_BYTES: usize = 50_000; // 50 KB
 /// in the frames table rather than in external blob storage.
 #[deprecated(note = "Use TimelineConfig::inline_blob_threshold() instead")]
 pub const INLINE_BLOB_THRESHOLD_BYTES: usize = DEFAULT_INLINE_BLOB_THRESHOLD_BYTES;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn graph_key_display() {
+        let key = GraphKey {
+            timeline_id: TimelineID("cargo".to_string()),
+            graph_id: GraphID(356),
+        };
+        assert_eq!(key.to_string(), "cargo~356");
+    }
+
+    #[test]
+    fn graph_key_parse() {
+        let key: GraphKey = "cargo~356".parse().unwrap();
+        assert_eq!(key.timeline_id, TimelineID("cargo".to_string()));
+        assert_eq!(key.graph_id, GraphID(356));
+    }
+
+    #[test]
+    fn graph_key_roundtrip() {
+        let key = GraphKey {
+            timeline_id: TimelineID("my_timeline".to_string()),
+            graph_id: GraphID(42),
+        };
+        let parsed: GraphKey = key.to_string().parse().unwrap();
+        assert_eq!(key, parsed);
+    }
+
+    #[test]
+    fn graph_key_parse_errors() {
+        // No separator
+        let err = "noseparator".parse::<GraphKey>().unwrap_err();
+        assert!(err.to_string().contains("expected format"), "{err}");
+
+        // Empty input
+        let err = "".parse::<GraphKey>().unwrap_err();
+        assert!(err.to_string().contains("cannot be empty"), "{err}");
+
+        // Empty timeline
+        let err = "~123".parse::<GraphKey>().unwrap_err();
+        assert!(err.to_string().contains("timeline_id is empty"), "{err}");
+
+        // Empty graph_id
+        let err = "cargo~".parse::<GraphKey>().unwrap_err();
+        assert!(err.to_string().contains("graph_id is empty"), "{err}");
+
+        // Non-integer graph_id
+        let err = "cargo~abc".parse::<GraphKey>().unwrap_err();
+        assert!(err.to_string().contains("not a valid integer"), "{err}");
+    }
+}

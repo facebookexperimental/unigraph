@@ -51,10 +51,6 @@ pub fn build_map_graph(
 
         // Build metrics.
         let mut metrics = BTreeMap::new();
-        metrics.insert(
-            "direct_dep_count".to_string(),
-            (info.normal_deps.len() + info.dev_deps.len() + info.build_deps.len()) as f32,
-        );
 
         // Merge timing metrics if available.
         if let Some(timing_map) = timings {
