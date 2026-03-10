@@ -1,5 +1,6 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
+use std::cmp;
 use std::collections::HashSet;
 use std::path::Path;
 
@@ -20,19 +21,30 @@ use unigraph_storage_core::TimestampedError;
 use crate::config::IngestionPipelineConfig;
 use crate::config::IngestionSource;
 use crate::graph_builder::Builder;
-use crate::progress::IngestionProgress;
+
+/// Options that control ingestion behavior.
+pub struct IngestionOptions {
+    /// Maximum number of new commits to ingest. `None` means unlimited.
+    pub limit: Option<usize>,
+}
 
 /// Run the full ingestion pipeline, dispatching on the source type.
-pub async fn run_ingestion(config: &IngestionPipelineConfig<'_>, db: &UnigraphDb) -> Result<()> {
+pub async fn run_ingestion(
+    config: &IngestionPipelineConfig<'_>,
+    db: &UnigraphDb,
+    options: &IngestionOptions,
+) -> Result<()> {
+    let task = ll::Task::create_new("ingestion");
+
     match &config.source {
         IngestionSource::Git {
             repo_path,
             main_branch,
             ..
-        } => run_git_ingestion(config, db, repo_path, main_branch).await,
+        } => run_git_ingestion(config, db, repo_path, main_branch, options, &task).await,
         IngestionSource::AnotherTimeline {
             source_timeline_id, ..
-        } => run_timeline_ingestion(config, db, source_timeline_id).await,
+        } => run_timeline_ingestion(config, db, source_timeline_id, &task).await,
     }
 }
 
@@ -49,23 +61,34 @@ async fn run_git_ingestion(
     db: &UnigraphDb,
     repo_path: &Path,
     _main_branch: &str,
+    options: &IngestionOptions,
+    task: &ll::Task,
 ) -> Result<()> {
     let ns = config.source.external_id_namespace();
 
     // === Phase A: Registration ===
 
+    let registration_task = task.create("discover_commits");
+
     let latest_external_id = db.get_latest_external_id(ns).await?;
     let since_hash = latest_external_id.map(|eid| eid.0);
 
-    eprintln!("Collecting git history from {}...", repo_path.display());
-    let new_commits = unigraph_git::collect_linear_history_since(repo_path, since_hash.as_deref())
-        .context("Failed to collect git history")?;
+    let mut new_commits =
+        unigraph_git::collect_linear_history_since(repo_path, since_hash.as_deref())
+            .context("Failed to collect git history")?;
+
+    if let Some(limit) = options.limit
+        && new_commits.len() > limit
+    {
+        registration_task.data("limited_from", new_commits.len());
+        new_commits.truncate(limit);
+    }
+
+    registration_task.data("new_commits", new_commits.len());
 
     if new_commits.is_empty() {
-        eprintln!("No new commits, nothing to do.");
         return Ok(());
     }
-    eprintln!("Found {} new commits", new_commits.len());
 
     let external_ids: Vec<ExternalID> = new_commits
         .iter()
@@ -96,10 +119,14 @@ async fn run_git_ingestion(
         }
     }
 
+    drop(registration_task);
+
     // === Phase B: Processing ===
 
     for builder_config in &config.builders {
         let timeline_id = &builder_config.timeline_id;
+        let builder_task = task.create(&format!("build:{}", timeline_id.0));
+
         let frames = db.list_frames(timeline_id).await?;
         let empty_frames: Vec<_> = frames
             .iter()
@@ -109,19 +136,11 @@ async fn run_git_ingestion(
         let to_process = empty_frames.len();
         let already_done = total - to_process;
 
-        eprintln!(
-            "[{}] {} total frames, {} already ingested, {} to process",
-            timeline_id.0, total, already_done, to_process
-        );
+        builder_task.data("total_frames", total);
+        builder_task.data("to_process", to_process);
 
-        let mut progress = IngestionProgress::new(total);
         let mut stored_count = 0usize;
-        let skipped_count = already_done;
         let mut error_count = 0usize;
-
-        for _ in 0..already_done {
-            progress.skip_silent();
-        }
 
         let Builder::FromRepo(builder) = &builder_config.builder else {
             anyhow::bail!(
@@ -130,13 +149,16 @@ async fn run_git_ingestion(
             );
         };
 
-        for frame in &empty_frames {
+        for (i, frame) in empty_frames.iter().enumerate() {
             let external_id = db
                 .graph_id_to_external_id(ns, &frame.frame.graph_id)
                 .await?
                 .context("ExternalID mapping must exist for allocated GraphID")?;
             let commit_hash = &external_id.0;
-            progress.start(commit_hash, "");
+            let short_hash = &commit_hash[..cmp::min(8, commit_hash.len())];
+
+            let commit_task = builder_task.create(&format!("commit:{short_hash}"));
+            builder_task.progress((already_done + i) as i64, total as i64);
 
             let key = GraphTimeKey {
                 timeline_id: timeline_id.clone(),
@@ -147,7 +169,7 @@ async fn run_git_ingestion(
             // Check out the commit
             if let Err(e) = unigraph_git::checkout_commit(repo_path, commit_hash) {
                 store_error(db, &key, &format!("Failed to checkout: {e:#}")).await?;
-                progress.error(&e);
+                commit_task.data("status", "error");
                 error_count += 1;
                 continue;
             }
@@ -158,9 +180,8 @@ async fn run_git_ingestion(
                     Ok(array_graph) => {
                         db.store_graph_full(&key, &array_graph)
                             .await
-                            .with_context(|| {
-                                format!("Failed to store graph for {}", &commit_hash[..8])
-                            })?;
+                            .with_context(|| format!("Failed to store graph for {short_hash}"))?;
+                        commit_task.data("status", "stored");
                         stored_count += 1;
                     }
                     Err(e) => {
@@ -170,19 +191,22 @@ async fn run_git_ingestion(
                             &format!("Failed to convert to ArrayGraphSerializable: {e:#}"),
                         )
                         .await?;
-                        progress.error(&e);
+                        commit_task.data("status", "error");
                         error_count += 1;
                     }
                 },
                 Err(e) => {
                     store_error(db, &key, &format!("Graph build failed: {e:#}")).await?;
-                    progress.error(&e);
+                    commit_task.data("status", "error");
                     error_count += 1;
                 }
             }
         }
 
-        progress.done(stored_count, skipped_count, error_count);
+        builder_task.progress(total as i64, total as i64);
+        builder_task.data("stored", stored_count);
+        builder_task.data("skipped", already_done);
+        builder_task.data("errors", error_count);
     }
 
     Ok(())
@@ -202,25 +226,22 @@ async fn run_timeline_ingestion(
     config: &IngestionPipelineConfig<'_>,
     db: &UnigraphDb,
     source_timeline_id: &TimelineID,
+    task: &ll::Task,
 ) -> Result<()> {
     let ns = config.source.external_id_namespace();
 
     // === Phase A: Registration ===
 
+    let registration_task = task.create("discover_frames");
+
     let source_frames = db.list_frames(source_timeline_id).await?;
 
+    registration_task.data("source_timeline", &source_timeline_id.0);
+    registration_task.data("source_frames", source_frames.len());
+
     if source_frames.is_empty() {
-        eprintln!(
-            "Source timeline '{}' has no frames, nothing to do.",
-            source_timeline_id.0
-        );
         return Ok(());
     }
-    eprintln!(
-        "Source timeline '{}' has {} frames",
-        source_timeline_id.0,
-        source_frames.len()
-    );
 
     for builder_config in &config.builders {
         let timeline_id = &builder_config.timeline_id;
@@ -246,10 +267,14 @@ async fn run_timeline_ingestion(
         }
     }
 
+    drop(registration_task);
+
     // === Phase B: Processing ===
 
     for builder_config in &config.builders {
         let timeline_id = &builder_config.timeline_id;
+        let builder_task = task.create(&format!("build:{}", timeline_id.0));
+
         let frames = db.list_frames(timeline_id).await?;
         let empty_frames: Vec<_> = frames
             .iter()
@@ -259,19 +284,11 @@ async fn run_timeline_ingestion(
         let to_process = empty_frames.len();
         let already_done = total - to_process;
 
-        eprintln!(
-            "[{}] {} total frames, {} already ingested, {} to process",
-            timeline_id.0, total, already_done, to_process
-        );
+        builder_task.data("total_frames", total);
+        builder_task.data("to_process", to_process);
 
-        let mut progress = IngestionProgress::new(total);
         let mut stored_count = 0usize;
-        let skipped_count = already_done;
         let mut error_count = 0usize;
-
-        for _ in 0..already_done {
-            progress.skip_silent();
-        }
 
         let Builder::BudgetGraph(budget_builder) = &builder_config.builder else {
             anyhow::bail!(
@@ -281,15 +298,20 @@ async fn run_timeline_ingestion(
             );
         };
 
-        for frame in &empty_frames {
+        for (i, frame) in empty_frames.iter().enumerate() {
             let graph_id = frame.frame.graph_id;
 
-            // Resolve external ID for progress display
+            // Resolve external ID for display
             let display_id = match db.graph_id_to_external_id(ns, &graph_id).await? {
-                Some(eid) => eid.0,
-                None => format!("graph_id:{}", graph_id.0),
+                Some(eid) => {
+                    let hash = &eid.0;
+                    hash[..cmp::min(8, hash.len())].to_string()
+                }
+                None => format!("g:{}", graph_id.0),
             };
-            progress.start(&display_id, "");
+
+            let frame_task = builder_task.create(&format!("frame:{display_id}"));
+            builder_task.progress((already_done + i) as i64, total as i64);
 
             let key = GraphTimeKey {
                 timeline_id: timeline_id.clone(),
@@ -320,6 +342,7 @@ async fn run_timeline_ingestion(
                         ),
                     )
                     .await?;
+                    frame_task.data("status", "error");
                     error_count += 1;
                     continue;
                 }
@@ -333,6 +356,7 @@ async fn run_timeline_ingestion(
                         ),
                     )
                     .await?;
+                    frame_task.data("status", "error");
                     error_count += 1;
                     continue;
                 }
@@ -343,7 +367,7 @@ async fn run_timeline_ingestion(
                 Ok(g) => g,
                 Err(e) => {
                     store_error(db, &key, &format!("Failed to fetch source graph: {e:#}")).await?;
-                    progress.error(&e);
+                    frame_task.data("status", "error");
                     error_count += 1;
                     continue;
                 }
@@ -355,17 +379,21 @@ async fn run_timeline_ingestion(
                     db.store_graph_full(&key, &result_graph)
                         .await
                         .with_context(|| format!("Failed to store graph for {display_id}"))?;
+                    frame_task.data("status", "stored");
                     stored_count += 1;
                 }
                 Err(e) => {
                     store_error(db, &key, &format!("Transform failed: {e:#}")).await?;
-                    progress.error(&e);
+                    frame_task.data("status", "error");
                     error_count += 1;
                 }
             }
         }
 
-        progress.done(stored_count, skipped_count, error_count);
+        builder_task.progress(total as i64, total as i64);
+        builder_task.data("stored", stored_count);
+        builder_task.data("skipped", already_done);
+        builder_task.data("errors", error_count);
     }
 
     Ok(())
@@ -387,7 +415,6 @@ async fn ensure_timeline(
             blob_storage: Default::default(),
         };
         db.create_timeline(timeline_id, &timeline_config).await?;
-        eprintln!("Created timeline '{}'", timeline_id.0);
     }
     Ok(())
 }

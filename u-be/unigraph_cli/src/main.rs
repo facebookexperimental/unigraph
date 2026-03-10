@@ -7,9 +7,10 @@ use std::sync::Arc;
 use anyhow::Context;
 use clap::Parser;
 use clap::Subcommand;
+use crossterm::tty::IsTty;
 use unigraph_core::BudgetConfig;
 use unigraph_core::build_budget_graph;
-use unigraph_storage_core::GraphKey;
+use unigraph_storage_core::GraphKeyOrTimelineID;
 use unigraph_storage_core::TimelineID;
 use unigraph_web_service::ServeMode;
 
@@ -44,7 +45,7 @@ enum Commands {
     Ingest(Ingest),
     Frames(Frames),
     Compact(Compact),
-    BuildGraph(BuildGraph),
+    Graph(Graph),
 }
 
 #[derive(Parser)]
@@ -82,6 +83,10 @@ struct Ingest {
     /// Path to the ingestion config file
     #[arg(long)]
     config: PathBuf,
+
+    /// Maximum number of new commits to ingest (for testing)
+    #[arg(long)]
+    limit: Option<usize>,
 }
 
 impl Ingest {
@@ -99,9 +104,11 @@ impl Ingest {
             config_file.display()
         );
 
+        let options = unigraph_ingestion::IngestionOptions { limit: self.limit };
+
         for (i, ingestion_config) in configs.iter().enumerate() {
             eprintln!("\n=== Ingestion config {}/{} ===", i + 1, configs.len());
-            run_one_config(ingestion_config, &db).await?;
+            run_one_config(ingestion_config, &db, &options).await?;
         }
 
         Ok(())
@@ -111,6 +118,7 @@ impl Ingest {
 async fn run_one_config(
     config: &unigraph_ingestion::IngestionConfig,
     db: &unigraph_db::UnigraphDb,
+    options: &unigraph_ingestion::IngestionOptions,
 ) -> anyhow::Result<()> {
     // Resolve the source
     let source = resolve_source(&config.source, db).await?;
@@ -130,11 +138,17 @@ async fn run_one_config(
     for entry in &config.timelines {
         timeline_ids.push(TimelineID(entry.timeline_id.clone()));
         match &entry.builder {
-            unigraph_ingestion::GraphBuilderConfig::Cargo { manifest_path } => {
+            unigraph_ingestion::GraphBuilderConfig::Cargo {
+                manifest_path,
+                collect_timings,
+                collect_sizes,
+            } => {
                 let idx = cargo_builders.len();
-                cargo_builders.push(unigraph_ingestion::CargoGraphBuilder::new(PathBuf::from(
-                    manifest_path,
-                )));
+                cargo_builders.push(unigraph_ingestion::CargoGraphBuilder::new(
+                    PathBuf::from(manifest_path),
+                    *collect_timings,
+                    *collect_sizes,
+                ));
                 builder_refs.push(BuilderRef::Cargo(idx));
             }
             unigraph_ingestion::GraphBuilderConfig::BudgetGraph { budget_config } => {
@@ -170,7 +184,7 @@ async fn run_one_config(
 
     let pipeline_config = unigraph_ingestion::IngestionPipelineConfig { source, builders };
 
-    unigraph_ingestion::run_ingestion(&pipeline_config, db).await
+    unigraph_ingestion::run_ingestion(&pipeline_config, db, options).await
 }
 
 async fn resolve_source(
@@ -299,21 +313,66 @@ impl Compact {
 }
 
 #[derive(Parser)]
-struct BuildGraph {
+struct Graph {
     #[command(subcommand)]
-    command: BuildGraphCommands,
+    command: GraphCommands,
 }
 
 #[derive(Subcommand)]
-enum BuildGraphCommands {
-    Budget(BuildBudget),
+enum GraphCommands {
+    /// Fetch a graph and dump it as MapGraph JSON
+    Get(GraphGet),
+    /// Build a budget graph from a stored graph
+    Budget(GraphBudget),
 }
 
 #[derive(Parser)]
-struct BuildBudget {
-    /// Graph key in timeline~id format (e.g. cargo~356)
+struct GraphGet {
+    /// Graph key (cargo~356) or timeline ID (cargo) for latest
+    key: String,
+
+    /// Print JSON to stdout instead of writing to a temp file
     #[arg(long)]
-    graph_key: String,
+    stdout: bool,
+}
+
+impl GraphGet {
+    async fn run(&self, sqlite_path: &Path) -> anyhow::Result<()> {
+        let path = resolve_sqlite_path(sqlite_path);
+        let sqlite = Arc::new(unigraph_storage_sqlite::SqliteStorage::new(path)?);
+        let db = unigraph_db::UnigraphDb::new(sqlite.clone(), sqlite);
+
+        let parsed: GraphKeyOrTimelineID = self.key.parse()?;
+
+        let (key, serializable) = match parsed {
+            GraphKeyOrTimelineID::GraphKey(key) => {
+                eprintln!("Fetching graph {}...", key);
+                let graph = db.fetch_graph(&key).await?;
+                (key, graph)
+            }
+            GraphKeyOrTimelineID::TimelineID(tid) => {
+                eprintln!("Fetching latest graph from timeline {}...", tid);
+                let (key, graph) = db.fetch_latest_graph(&tid).await?;
+                eprintln!("Resolved to {}", key);
+                (key, graph)
+            }
+        };
+
+        let node_count = serializable.node_names_ordered.combined_nodes_len();
+        let array_graph = serializable.into_array_graph();
+
+        eprintln!("{} nodes", node_count);
+        let map_graph = array_graph.to_map_graph()?;
+        let json = serde_json::to_string_pretty(&map_graph)?;
+
+        write_json_output(&json, self.stdout, &format!("graph_{}", key))
+    }
+}
+
+#[derive(Parser)]
+struct GraphBudget {
+    /// Graph key (cargo~356) or timeline ID (cargo) for latest
+    key: String,
 
     /// Budget config as JSON string
     #[arg(long)]
@@ -324,21 +383,32 @@ struct BuildBudget {
     stdout: bool,
 }
 
-impl BuildBudget {
+impl GraphBudget {
     async fn run(&self, sqlite_path: &Path) -> anyhow::Result<()> {
         let path = resolve_sqlite_path(sqlite_path);
         let sqlite = Arc::new(unigraph_storage_sqlite::SqliteStorage::new(path)?);
         let db = unigraph_db::UnigraphDb::new(sqlite.clone(), sqlite);
 
-        let graph_key: GraphKey = self.graph_key.parse()?;
+        let parsed: GraphKeyOrTimelineID = self.key.parse()?;
         let budget_config: BudgetConfig = serde_json::from_str(&self.budget_config_json)
             .context("failed to parse --budget-config-json")?;
 
-        eprintln!("Fetching graph {}...", graph_key);
-        let source = db.fetch_graph(&graph_key).await?;
+        let (_key, serializable) = match parsed {
+            GraphKeyOrTimelineID::GraphKey(key) => {
+                eprintln!("Fetching graph {}...", key);
+                let graph = db.fetch_graph(&key).await?;
+                (key, graph)
+            }
+            GraphKeyOrTimelineID::TimelineID(tid) => {
+                eprintln!("Fetching latest graph from timeline {}...", tid);
+                let (key, graph) = db.fetch_latest_graph(&tid).await?;
+                eprintln!("Resolved to {}", key);
+                (key, graph)
+            }
+        };
 
-        let node_count = source.node_names_ordered.combined_nodes_len();
-        let array_graph = source.into_array_graph();
+        let node_count = serializable.node_names_ordered.combined_nodes_len();
+        let array_graph = serializable.into_array_graph();
 
         eprintln!("Building budget graph ({} nodes in source)...", node_count);
         let (_source, budget) = build_budget_graph(array_graph, &budget_config)?;
@@ -390,6 +460,11 @@ async fn main() {
     let args = Args::parse();
     let sqlite_path = &args.sqlite_path;
 
+    // Show interactive task tree only on TTY terminals
+    if std::io::stderr().is_tty() {
+        ll::reporters::term_status::show();
+    }
+
     let result = match args.command {
         Commands::Serve(serve) => {
             serve.run(sqlite_path).await;
@@ -398,8 +473,9 @@ async fn main() {
         Commands::Ingest(ingest) => ingest.run(sqlite_path).await,
         Commands::Frames(frames) => frames.run(sqlite_path).await,
         Commands::Compact(compact) => compact.run(sqlite_path).await,
-        Commands::BuildGraph(bg) => match bg.command {
-            BuildGraphCommands::Budget(budget) => budget.run(sqlite_path).await,
+        Commands::Graph(g) => match g.command {
+            GraphCommands::Get(get) => get.run(sqlite_path).await,
+            GraphCommands::Budget(budget) => budget.run(sqlite_path).await,
         },
     };
 

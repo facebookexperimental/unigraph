@@ -24,9 +24,11 @@ use unigraph_storage_core::ExternalID;
 use unigraph_storage_core::ExternalIDNamespace;
 use unigraph_storage_core::FrameQuery;
 use unigraph_storage_core::FrameRow;
+use unigraph_storage_core::FrameType;
 use unigraph_storage_core::GraphID;
 use unigraph_storage_core::GraphKey;
 use unigraph_storage_core::GraphTimeKey;
+use unigraph_storage_core::Order;
 use unigraph_storage_core::TimelineConfig;
 use unigraph_storage_core::TimelineID;
 use unigraph_storage_core::Timestamp;
@@ -299,6 +301,37 @@ impl UnigraphDb {
     /// loads the range, and folds deltas forward. See [`adjacent_deltas`].
     pub async fn fetch_graph(&self, key: &GraphKey) -> Result<ArrayGraphSerializable> {
         self.storage.fetch_graph(key).await
+    }
+
+    /// Fetch the latest reconstructable graph from a timeline.
+    ///
+    /// Finds the most recent `Full` or `Delta` frame (skipping `Empty` and `Error`)
+    /// and reconstructs the graph from it.
+    pub async fn fetch_latest_graph(
+        &self,
+        timeline_id: &TimelineID,
+    ) -> Result<(GraphKey, ArrayGraphSerializable)> {
+        let frames = self
+            .select_frames(&FrameQuery {
+                timeline_id: timeline_id.clone(),
+                frame_types: Some(vec![FrameType::Full, FrameType::Delta]),
+                order: Some(Order::Desc),
+                limit: Some(1),
+                with_data: Some(false),
+                ..Default::default()
+            })
+            .await?;
+
+        let frame = frames.into_iter().next().ok_or_else(|| {
+            anyhow::anyhow!("No fetchable graph found in timeline '{}'", timeline_id)
+        })?;
+
+        let key = GraphKey {
+            timeline_id: timeline_id.clone(),
+            graph_id: frame.frame.graph_id,
+        };
+        let graph = self.fetch_graph(&key).await?;
+        Ok((key, graph))
     }
 
     /// Fetch errors for a frame.

@@ -2,6 +2,7 @@
 
 use std::path::Path;
 use std::path::PathBuf;
+use std::process::Command;
 
 use anyhow::Context;
 use anyhow::Result;
@@ -30,12 +31,22 @@ pub trait GraphBuilder {
 pub struct CargoGraphBuilder {
     /// Path to Cargo.toml relative to the repository root.
     pub manifest_relative_path: PathBuf,
+    /// Whether to run `cargo build --timings` and collect build timing metrics.
+    pub collect_timings: bool,
+    /// Whether to collect compiled `.rlib` artifact sizes.
+    pub collect_sizes: bool,
 }
 
 impl CargoGraphBuilder {
-    pub fn new(manifest_relative_path: PathBuf) -> Self {
+    pub fn new(
+        manifest_relative_path: PathBuf,
+        collect_timings: bool,
+        collect_sizes: bool,
+    ) -> Self {
         Self {
             manifest_relative_path,
+            collect_timings,
+            collect_sizes,
         }
     }
 }
@@ -48,9 +59,56 @@ impl GraphBuilder for CargoGraphBuilder {
     fn build(&self, repo_path: &Path) -> Result<MapGraph> {
         let manifest_path = repo_path.join(&self.manifest_relative_path);
         let cargo_graph = unigraph_cargo::collect_metadata(&manifest_path)?;
-        let map_graph = unigraph_cargo::build_map_graph(&cargo_graph, None, None);
+
+        let timings = if self.collect_timings {
+            match unigraph_cargo::collect_timings(&manifest_path) {
+                Ok(t) => Some(t),
+                Err(e) => {
+                    eprintln!("  Warning: failed to collect timings: {e:#}");
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
+        let rlib_sizes = if self.collect_sizes {
+            // collect_timings runs `cargo +nightly build`, which produces rlib artifacts.
+            // If timings weren't collected, we need a plain `cargo build` first.
+            if (!self.collect_timings || timings.is_none())
+                && let Err(e) = run_cargo_build(&manifest_path)
+            {
+                eprintln!("  Warning: cargo build failed: {e:#}");
+            }
+            match unigraph_cargo::collect_rlib_sizes(&cargo_graph.target_directory) {
+                Ok(s) => Some(s),
+                Err(e) => {
+                    eprintln!("  Warning: failed to collect rlib sizes: {e:#}");
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
+        let map_graph =
+            unigraph_cargo::build_map_graph(&cargo_graph, timings.as_ref(), rlib_sizes.as_ref());
         Ok(map_graph)
     }
+}
+
+fn run_cargo_build(manifest_path: &Path) -> Result<()> {
+    let output = Command::new("cargo")
+        .arg("build")
+        .arg("--manifest-path")
+        .arg(manifest_path)
+        .output()
+        .context("Failed to run cargo build")?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("cargo build failed:\n{stderr}");
+    }
+    Ok(())
 }
 
 /// Transforms a source graph into a budget graph.

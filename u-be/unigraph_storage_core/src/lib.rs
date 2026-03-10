@@ -32,6 +32,7 @@ pub use types::FrameQuery;
 pub use types::FrameType;
 pub use types::GraphID;
 pub use types::GraphKey;
+pub use types::GraphKeyOrTimelineID;
 pub use types::GraphTimeKey;
 #[allow(deprecated)]
 pub use types::INLINE_BLOB_THRESHOLD_BYTES;

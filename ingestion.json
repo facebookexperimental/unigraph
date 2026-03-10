@@ -11,7 +11,9 @@
         "timeline_id": "cargo",
         "builder": {
           "Cargo": {
-            "manifest_path": "Cargo.toml"
+            "manifest_path": "Cargo.toml",
+            "collect_timings": true,
+            "collect_sizes": true
           }
         }
       }

@@ -3,4 +3,5 @@ resolver = "2"
 members = ["u-be/*"]
 
 [workspace.dependencies]
+ll = "7.1.0"
 tokio = { version = "1.38", features = ["full", "rt"] }

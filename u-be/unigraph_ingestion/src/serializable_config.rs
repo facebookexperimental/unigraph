@@ -52,6 +52,10 @@ pub struct TimelineBuilderEntry {
 pub enum GraphBuilderConfig {
     Cargo {
         manifest_path: String,
+        #[serde(default)]
+        collect_timings: bool,
+        #[serde(default)]
+        collect_sizes: bool,
     },
     BudgetGraph {
         budget_config: Option<Box<BudgetConfig>>,
