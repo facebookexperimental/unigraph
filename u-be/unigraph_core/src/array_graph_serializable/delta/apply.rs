@@ -769,8 +769,8 @@ fn adj_lists_to_csr(adj: &[BTreeSet<NodeIDX>], node_count: usize) -> (Vec<NodeID
     let mut directed = Vec::with_capacity(total_edges);
     let mut offsets = Vec::with_capacity(node_count + 1);
     offsets.push(0);
-    for i in 0..node_count {
-        for &target in &adj[i] {
+    for adj_set in adj.iter().take(node_count) {
+        for &target in adj_set {
             directed.push(target);
         }
         offsets.push(directed.len());

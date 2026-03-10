@@ -365,8 +365,8 @@ pub fn get_combined_metrics_for_entry_points(
 
                 // make it cumulative. If the node appears on one tier, it's also
                 // included in all tiers above it.
-                for add_metric_to_tier_idx in tier_idx..4 {
-                    tiered_result_vec[metric_idx][add_metric_to_tier_idx] += metric_value;
+                for item in &mut tiered_result_vec[metric_idx][tier_idx..] {
+                    *item += metric_value;
                 }
             }
         }
