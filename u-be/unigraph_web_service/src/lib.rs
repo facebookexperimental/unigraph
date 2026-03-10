@@ -36,7 +36,10 @@ use unigraph_storage_core::GraphID;
 use unigraph_storage_core::GraphKey;
 use unigraph_storage_core::TimelineID;
 
-const THIS_FILES_DIR: &str = env!("CARGO_MANIFEST_DIR");
+const THIS_FILES_DIR: &str = match option_env!("CARGO_MANIFEST_DIR") {
+    Some(dir) => dir,
+    None => ".",
+};
 
 pub enum ServeMode {
     /// Proxy frontend requests to Vite dev server (React Router + HMR)

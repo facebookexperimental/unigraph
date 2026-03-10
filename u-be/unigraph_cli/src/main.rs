@@ -29,7 +29,7 @@ fn resolve_sqlite_path(path: &Path) -> &Path {
 }
 
 #[derive(Parser)]
-#[command(author, version, about, long_about = None)]
+#[command(long_about = None)]
 struct Args {
     /// Path to the SQLite database file
     #[arg(long, default_value_os_t = default_sqlite_path(), global = true)]
