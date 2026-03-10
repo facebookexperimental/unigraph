@@ -181,6 +181,19 @@ impl Timestamp {
         self.0.weekday()
     }
 
+    /// ISO 8601 week number (1–53).
+    #[inline]
+    pub fn iso_week(&self) -> u32 {
+        self.0.iso_week().week()
+    }
+
+    /// ISO week-numbering year. Can differ from the calendar year at year
+    /// boundaries (e.g. 2024-12-31 may belong to ISO year 2025).
+    #[inline]
+    pub fn iso_week_year(&self) -> i32 {
+        self.0.iso_week().year()
+    }
+
     /// Useful for aggregating dates by week.
     /// Calling this on multiple Timestamps within one week will always return
     /// 00:00:00 of the preceding Monday which can later be used as a map key.
@@ -382,6 +395,36 @@ mod tests {
                 &d_debug
             );
         }
+        Ok(())
+    }
+
+    #[test]
+    fn test_iso_week() -> Result<()> {
+        // Mid-year: straightforward
+        let ts = Timestamp::from_rfc3339("2024-07-02T10:00:00Z")?;
+        assert_equal!(ts.iso_week(), 27);
+        assert_equal!(ts.iso_week_year(), 2024);
+
+        // Year boundary: Dec 31, 2024 is a Tuesday → ISO week 1 of 2025
+        let ts = Timestamp::from_rfc3339("2024-12-31T00:00:00Z")?;
+        assert_equal!(ts.iso_week(), 1);
+        assert_equal!(ts.iso_week_year(), 2025);
+
+        // Year boundary: Jan 1, 2025 is a Wednesday → also ISO week 1 of 2025
+        let ts = Timestamp::from_rfc3339("2025-01-01T00:00:00Z")?;
+        assert_equal!(ts.iso_week(), 1);
+        assert_equal!(ts.iso_week_year(), 2025);
+
+        // Dec 28, 2024 is a Saturday → still ISO week 52 of 2024
+        let ts = Timestamp::from_rfc3339("2024-12-28T00:00:00Z")?;
+        assert_equal!(ts.iso_week(), 52);
+        assert_equal!(ts.iso_week_year(), 2024);
+
+        // W53: 2020-12-31 is a Thursday → ISO week 53 of 2020
+        let ts = Timestamp::from_rfc3339("2020-12-31T00:00:00Z")?;
+        assert_equal!(ts.iso_week(), 53);
+        assert_equal!(ts.iso_week_year(), 2020);
+
         Ok(())
     }
 

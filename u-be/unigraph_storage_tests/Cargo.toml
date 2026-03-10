@@ -19,4 +19,5 @@ unigraph_timestamp = { path = "../unigraph_timestamp" }
 k9 = { version = "0.12.0", features = ["custom_comparison_formatters", "regex"] }
 tokio = { version = "1.47.1", features = ["full", "test-util", "tracing"] }
 unigraph_db = { path = "../unigraph_db" }
+unigraph_metric_history = { path = "../unigraph_metric_history" }
 unigraph_storage_sqlite = { path = "../unigraph_storage_sqlite" }

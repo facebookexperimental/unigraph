@@ -413,6 +413,7 @@ async fn ensure_timeline(
             schema: TimelineSchema::AdjacentDeltas(AdjacentDeltasConfig {}),
             external_id_namespace: Some(ns.clone()),
             blob_storage: Default::default(),
+            store_metric_history: None,
         };
         db.create_timeline(timeline_id, &timeline_config).await?;
     }

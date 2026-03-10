@@ -21,6 +21,7 @@ async fn setup_timeline(db: &UnigraphDb, name: &str) {
             schema: TimelineSchema::AdjacentDeltas(AdjacentDeltasConfig {}),
             external_id_namespace: None,
             blob_storage: Default::default(),
+            store_metric_history: None,
         },
     )
     .await

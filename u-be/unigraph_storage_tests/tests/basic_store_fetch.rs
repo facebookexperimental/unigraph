@@ -21,6 +21,7 @@ async fn setup_timeline(db: &UnigraphDb, name: &str) {
             schema: TimelineSchema::AdjacentDeltas(AdjacentDeltasConfig {}),
             external_id_namespace: None,
             blob_storage: Default::default(),
+            store_metric_history: None,
         },
     )
     .await
@@ -209,6 +210,7 @@ async fn delete_frame_with_external_blobs() -> Result<()> {
             schema: TimelineSchema::AdjacentDeltas(AdjacentDeltasConfig {}),
             external_id_namespace: None,
             blob_storage: BlobStorageMode::External,
+            store_metric_history: None,
         },
     )
     .await
@@ -363,6 +365,7 @@ async fn sweep_deleted_blobs() -> Result<()> {
             schema: TimelineSchema::AdjacentDeltas(AdjacentDeltasConfig {}),
             external_id_namespace: None,
             blob_storage: BlobStorageMode::External,
+            store_metric_history: None,
         },
     )
     .await
@@ -466,6 +469,7 @@ async fn sweep_respects_min_age() -> Result<()> {
             schema: TimelineSchema::AdjacentDeltas(AdjacentDeltasConfig {}),
             external_id_namespace: None,
             blob_storage: BlobStorageMode::External,
+            store_metric_history: None,
         },
     )
     .await

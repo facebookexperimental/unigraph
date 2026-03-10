@@ -40,6 +40,7 @@ async fn compact_and_select_frames() -> Result<()> {
             schema: TimelineSchema::AdjacentDeltas(AdjacentDeltasConfig {}),
             external_id_namespace: None,
             blob_storage: Default::default(),
+            store_metric_history: None,
         },
     )
     .await?;

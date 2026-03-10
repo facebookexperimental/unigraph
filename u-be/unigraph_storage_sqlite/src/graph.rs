@@ -532,6 +532,153 @@ impl UnigraphGraphConnection for SqliteConnection {
         .map(|s| Ok(ExternalID(s)))
         .transpose()
     }
+
+    // -- Metric history --
+
+    async fn ensure_metric_history_partitions_exist(
+        &self,
+        timeline_id: &TimelineID,
+        week_key: &str,
+        node_names: &[String],
+    ) -> Result<()> {
+        let now = Timestamp::now().to_unix_timestamp();
+        let conn = self.lock();
+        let mut stmt = conn
+            .prepare(
+                "INSERT OR IGNORE INTO metric_history
+                 (timeline_id, node_name, week_key, data, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+            )
+            .context("failed to prepare ensure_metric_history_partitions_exist")?;
+
+        let empty_blob: &[u8] = &[];
+        for name in node_names {
+            stmt.execute(rusqlite::params![
+                timeline_id.0,
+                name,
+                week_key,
+                empty_blob,
+                now,
+            ])
+            .context("failed to insert metric_history partition placeholder")?;
+        }
+        Ok(())
+    }
+
+    async fn get_metric_history_for_week(
+        &self,
+        timeline_id: &TimelineID,
+        week_key: &str,
+    ) -> Result<std::collections::BTreeMap<String, Vec<u8>>> {
+        let conn = self.lock();
+        let mut stmt = conn
+            .prepare(
+                "SELECT node_name, data FROM metric_history
+                 WHERE timeline_id = ?1 AND week_key = ?2",
+            )
+            .context("failed to prepare get_metric_history_for_week")?;
+
+        let rows = stmt
+            .query_map(rusqlite::params![timeline_id.0, week_key], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, Vec<u8>>(1)?))
+            })
+            .context("failed to query metric_history for week")?;
+
+        let mut result = std::collections::BTreeMap::new();
+        for row in rows {
+            let (name, data) = row.context("failed to read metric_history row")?;
+            if !data.is_empty() {
+                result.insert(name, data);
+            }
+        }
+        Ok(result)
+    }
+
+    async fn upsert_metric_history_batch(
+        &self,
+        timeline_id: &TimelineID,
+        week_key: &str,
+        entries: &[(String, Vec<u8>)],
+    ) -> Result<()> {
+        let now = Timestamp::now().to_unix_timestamp();
+        let conn = self.lock();
+        let mut stmt = conn
+            .prepare(
+                "INSERT OR REPLACE INTO metric_history
+                 (timeline_id, node_name, week_key, data, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+            )
+            .context("failed to prepare upsert_metric_history_batch")?;
+
+        for (node_name, data) in entries {
+            stmt.execute(rusqlite::params![
+                timeline_id.0,
+                node_name,
+                week_key,
+                data,
+                now,
+            ])
+            .context("failed to upsert metric_history row")?;
+        }
+        Ok(())
+    }
+
+    async fn get_metric_history_range(
+        &self,
+        timeline_id: &TimelineID,
+        node_names: &[String],
+        start_week: &str,
+        end_week: &str,
+    ) -> Result<Vec<(String, String, Vec<u8>)>> {
+        if node_names.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let conn = self.lock();
+
+        let placeholders: Vec<String> = node_names
+            .iter()
+            .enumerate()
+            .map(|(i, _)| format!("?{}", i + 4))
+            .collect();
+
+        let sql = format!(
+            "SELECT node_name, week_key, data FROM metric_history
+             WHERE timeline_id = ?1 AND week_key >= ?2 AND week_key <= ?3
+             AND node_name IN ({})
+             AND length(data) > 0
+             ORDER BY node_name, week_key",
+            placeholders.join(", ")
+        );
+
+        let mut stmt = conn
+            .prepare(&sql)
+            .context("failed to prepare get_metric_history_range")?;
+
+        let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+        params.push(Box::new(timeline_id.0.clone()));
+        params.push(Box::new(start_week.to_string()));
+        params.push(Box::new(end_week.to_string()));
+        for name in node_names {
+            params.push(Box::new(name.clone()));
+        }
+
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> =
+            params.iter().map(|p| p.as_ref()).collect();
+
+        let mut rows = stmt
+            .query(param_refs.as_slice())
+            .context("failed to query metric_history range")?;
+
+        let mut result = Vec::new();
+        while let Some(row) = rows.next().context("failed to read metric_history row")? {
+            let node_name: String = row.get(0)?;
+            let week_key: String = row.get(1)?;
+            let data: Vec<u8> = row.get(2)?;
+            result.push((node_name, week_key, data));
+        }
+        Ok(result)
+    }
 }
 
 /// Query timeline config from an already-locked connection.

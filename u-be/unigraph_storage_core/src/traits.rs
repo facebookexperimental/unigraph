@@ -182,6 +182,55 @@ pub trait UnigraphGraphConnection: Send + Sync {
         &self,
         external_id_namespace: &ExternalIDNamespace,
     ) -> Result<Option<ExternalID>>;
+
+    // -- Metric history --
+
+    /// Ensure metric_history rows exist for the given `(timeline, week, node_name)` combos.
+    ///
+    /// Uses `INSERT OR IGNORE` semantics with empty placeholder data.
+    /// **Must be called BEFORE the transaction** — MySQL has a 15-year-old bug
+    /// where it gives away multiple locks for the same non-existent row within
+    /// a transaction.
+    async fn ensure_metric_history_partitions_exist(
+        &self,
+        timeline_id: &TimelineID,
+        week_key: &str,
+        node_names: &[String],
+    ) -> Result<()>;
+
+    /// Batch-fetch all metric history blobs for a timeline + ISO week.
+    ///
+    /// Returns all node blobs for the given week. Within a transaction,
+    /// this effectively locks these rows.
+    async fn get_metric_history_for_week(
+        &self,
+        timeline_id: &TimelineID,
+        week_key: &str,
+    ) -> Result<std::collections::BTreeMap<String, Vec<u8>>>;
+
+    /// Batch-upsert metric history blobs for a timeline + ISO week.
+    ///
+    /// `INSERT OR REPLACE` semantics — replaces the blob for each
+    /// `(timeline, node_name, week)` tuple.
+    async fn upsert_metric_history_batch(
+        &self,
+        timeline_id: &TimelineID,
+        week_key: &str,
+        entries: &[(String, Vec<u8>)],
+    ) -> Result<()>;
+
+    /// Fetch metric history blobs for specific nodes within a week range.
+    ///
+    /// Returns `(node_name, week_key, compressed_blob)` tuples, ordered by
+    /// `(node_name, week_key)`. `start_week` and `end_week` are inclusive
+    /// bounds in `"YYYY-Www"` format.
+    async fn get_metric_history_range(
+        &self,
+        timeline_id: &TimelineID,
+        node_names: &[String],
+        start_week: &str,
+        end_week: &str,
+    ) -> Result<Vec<(String, String, Vec<u8>)>>;
 }
 
 /// Graph storage backend — vends connections.

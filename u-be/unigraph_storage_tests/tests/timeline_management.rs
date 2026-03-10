@@ -21,6 +21,7 @@ async fn create_and_get_timeline_config() -> Result<()> {
         schema: TimelineSchema::AdjacentDeltas(AdjacentDeltasConfig {}),
         external_id_namespace: None,
         blob_storage: Default::default(),
+        store_metric_history: None,
     };
 
     db.create_timeline(&TimelineID("my_timeline".to_string()), &config)
@@ -59,6 +60,7 @@ async fn list_timelines() -> Result<()> {
         schema: TimelineSchema::AdjacentDeltas(AdjacentDeltasConfig {}),
         external_id_namespace: None,
         blob_storage: Default::default(),
+        store_metric_history: None,
     };
 
     db.create_timeline(&TimelineID("beta".to_string()), &config)
@@ -84,6 +86,7 @@ async fn frames_ordered_by_timestamp_then_graph_id() -> Result<()> {
         schema: TimelineSchema::AdjacentDeltas(AdjacentDeltasConfig {}),
         external_id_namespace: None,
         blob_storage: Default::default(),
+        store_metric_history: None,
     };
     db.create_timeline(&TimelineID("test".to_string()), &config)
         .await?;
@@ -117,6 +120,7 @@ async fn list_frames_range() -> Result<()> {
         schema: TimelineSchema::AdjacentDeltas(AdjacentDeltasConfig {}),
         external_id_namespace: None,
         blob_storage: Default::default(),
+        store_metric_history: None,
     };
     db.create_timeline(&TimelineID("test".to_string()), &config)
         .await?;

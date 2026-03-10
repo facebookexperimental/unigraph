@@ -44,31 +44,43 @@ use crate::storage::UnigraphStorage;
 impl UnigraphStorage {
     /// Store a full graph snapshot.
     ///
-    /// Packs the graph into a manifest + blobs, then stores inline or
-    /// externally depending on total blob size.
+    /// Packs the graph into a manifest + blobs, prepares metric history
+    /// (if enabled), then stores everything in a single transaction.
     pub async fn store_graph_full(
         &self,
         key: &GraphTimeKey,
         graph: &ArrayGraphSerializable,
     ) -> Result<()> {
+        let prepared_history = self.prepare_history_if_enabled(key, graph).await?;
+
         let config = make_pack_config(key);
         let package = graph.pack(&config).context("Failed to pack graph")?;
         let manifest_json = serde_json::to_string(&package.manifest)
             .context("Failed to serialize graph manifest")?;
 
-        self.store_package(key, FrameType::Full, None, &manifest_json, &package.blobs)
-            .await
+        self.store_package(
+            key,
+            FrameType::Full,
+            None,
+            &manifest_json,
+            &package.blobs,
+            prepared_history,
+        )
+        .await
     }
 
     /// Store a delta-compressed graph.
     ///
-    /// Fetches the base graph, derives the delta, packs it, and stores.
+    /// Fetches the base graph, derives the delta, packs it, prepares metric
+    /// history (if enabled), then stores everything in a single transaction.
     pub async fn store_graph_delta(
         &self,
         key: &GraphTimeKey,
         base_key: &GraphKey,
         target_graph: &ArrayGraphSerializable,
     ) -> Result<()> {
+        let prepared_history = self.prepare_history_if_enabled(key, target_graph).await?;
+
         let base_graph = self
             .fetch_graph(base_key)
             .await
@@ -87,6 +99,7 @@ impl UnigraphStorage {
             Some(base_key),
             &manifest_json,
             &package.blobs,
+            prepared_history,
         )
         .await
     }
@@ -101,8 +114,15 @@ impl UnigraphStorage {
         let manifest_json = serde_json::to_string(&package.manifest)
             .context("Failed to serialize error manifest")?;
 
-        self.store_package(key, FrameType::Error, None, &manifest_json, &package.blobs)
-            .await
+        self.store_package(
+            key,
+            FrameType::Error,
+            None,
+            &manifest_json,
+            &package.blobs,
+            None,
+        )
+        .await
     }
 
     /// Fetch and reconstruct a graph from storage.
@@ -210,8 +230,13 @@ impl UnigraphStorage {
     /// 2. If external: register blob keys for cleanup and upload blobs
     ///    (OUTSIDE the db transaction)
     /// 3. Start transaction, lock timeline, write frame
-    /// 4. If external: unregister blob keys (INSIDE the transaction)
-    /// 5. Commit
+    /// 4. If prepared history provided: store it (INSIDE the transaction)
+    /// 5. If external: unregister blob keys (INSIDE the transaction)
+    /// 6. Commit
+    ///
+    /// History preparation (extracting metrics, ensuring partitions) happens
+    /// in the caller (`store_graph_full` / `store_graph_delta`) BEFORE this
+    /// method is called.
     async fn store_package(
         &self,
         key: &GraphTimeKey,
@@ -219,8 +244,8 @@ impl UnigraphStorage {
         base: Option<&GraphKey>,
         manifest_json: &str,
         blobs: &BTreeMap<BlobID, Vec<u8>>,
+        prepared_history: Option<crate::metric_history::PreparedHistoryEntries>,
     ) -> Result<()> {
-        // Read the timeline config (non-locking) to determine inline threshold.
         let threshold = {
             let conn = self.graph.conn().await?;
             let config = conn
@@ -262,8 +287,47 @@ impl UnigraphStorage {
         )
         .await?;
 
+        // Store metric history INSIDE the same transaction.
+        if let Some(prepared) = prepared_history {
+            crate::metric_history::store_metric_history_on_conn(&*conn, &key.timeline_id, prepared)
+                .await?;
+        }
+
         conn.commit_transaction().await?;
         Ok(())
+    }
+
+    /// Prepare metric history if enabled for this timeline.
+    ///
+    /// Reads the timeline config, checks `store_metric_history`, extracts
+    /// metrics from the graph, and ensures partition rows exist in the DB.
+    /// Must be called BEFORE the transaction (MySQL row-locking bug workaround).
+    ///
+    /// Returns `None` if history is disabled or the timeline doesn't exist.
+    async fn prepare_history_if_enabled(
+        &self,
+        key: &GraphTimeKey,
+        graph: &ArrayGraphSerializable,
+    ) -> Result<Option<crate::metric_history::PreparedHistoryEntries>> {
+        let config = {
+            let conn = self.graph.conn().await?;
+            conn.get_timeline_config(&key.timeline_id).await?
+        };
+
+        let Some(config) = config else {
+            return Ok(None);
+        };
+
+        if config.store_metric_history != Some(true) {
+            return Ok(None);
+        }
+
+        let prepared = crate::metric_history::prepare_history_entries(&[(key.clone(), graph)]);
+        let conn = self.graph.conn().await?;
+        crate::metric_history::ensure_history_partitions(&*conn, &key.timeline_id, &prepared)
+            .await?;
+
+        Ok(Some(prepared))
     }
 
     /// Store a packed package on an existing connection.

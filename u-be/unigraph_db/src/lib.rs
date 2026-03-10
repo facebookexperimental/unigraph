@@ -12,6 +12,7 @@
 
 mod adjacent_deltas;
 mod frame_storage;
+pub mod metric_history;
 mod storage;
 
 use std::collections::HashMap;
@@ -378,6 +379,33 @@ impl UnigraphDb {
         end: Option<Timestamp>,
     ) -> Result<usize> {
         crate::adjacent_deltas::compact_timeline(&self.storage, timeline_id, start, end).await
+    }
+
+    // -- Metric history --
+
+    /// Fetch metric history for specific nodes within a time range.
+    ///
+    /// Returns a map of `node_name → Vec<(Timestamp, GraphID, NodeMetricSnapshot)>`,
+    /// sorted by `(Timestamp, GraphID)`, deduplicated across week boundaries.
+    pub async fn fetch_metric_history(
+        &self,
+        timeline_id: &TimelineID,
+        node_names: &[String],
+        start: Timestamp,
+        end: Timestamp,
+    ) -> Result<
+        std::collections::BTreeMap<
+            String,
+            Vec<(
+                Timestamp,
+                unigraph_storage_core::GraphID,
+                unigraph_metric_history::NodeMetricSnapshot,
+            )>,
+        >,
+    > {
+        let conn = self.storage.graph.conn().await?;
+        crate::metric_history::fetch_metric_history(&*conn, timeline_id, node_names, start, end)
+            .await
     }
 }
 

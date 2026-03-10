@@ -354,6 +354,11 @@ pub struct TimelineConfig {
     /// Defaults to `Inline` (blobs under 50 KB are stored in the frames table).
     #[serde(default)]
     pub blob_storage: BlobStorageMode,
+    /// When `Some(true)`, per-node metric history is stored alongside each
+    /// graph frame in the same transaction. History blobs are partitioned by
+    /// ISO week for bounded blob sizes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub store_metric_history: Option<bool>,
 }
 
 impl TimelineConfig {

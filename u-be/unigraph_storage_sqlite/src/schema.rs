@@ -48,4 +48,16 @@ CREATE TABLE IF NOT EXISTS external_id_mappings (
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_external_id_mappings_reverse
     ON external_id_mappings(external_id_namespace, graph_id);
+
+CREATE TABLE IF NOT EXISTS metric_history (
+    timeline_id   TEXT    NOT NULL,
+    node_name     TEXT    NOT NULL,
+    week_key      TEXT    NOT NULL,
+    data          BLOB    NOT NULL,
+    updated_at    INTEGER NOT NULL,
+    PRIMARY KEY (timeline_id, node_name, week_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_metric_history_timeline_week
+    ON metric_history(timeline_id, week_key);
 ";
