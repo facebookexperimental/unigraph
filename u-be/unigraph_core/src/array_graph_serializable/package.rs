@@ -34,6 +34,7 @@ use crate::ArrayGraphSerializable;
 use crate::ArrayGraphSerializableEdges;
 use crate::ArrayGraphSerializableNodeMetadata;
 use crate::graph_settings::GraphSettings;
+use crate::types::array_graph::budget_graph::BudgetConfig;
 
 /// Default maximum size of each blob chunk before splitting (2 MB).
 const DEFAULT_BYTES_PER_BLOB_CHUNK: usize = 2_000_000; // 2 MB
@@ -109,6 +110,9 @@ pub struct ManifestBlobs {
 
     /// Optional traversal configuration (entry points, tier rules, etc.).
     pub traversal_config: Vec<BlobID>,
+    /// Budget configurations keyed by project name.
+    #[serde(default)]
+    pub budget_configs: Vec<BlobID>,
     /// Explicit graph entry points, if set.
     pub entry_points: Vec<BlobID>,
 }
@@ -164,6 +168,7 @@ impl ManifestBlobs {
             metrics,
             tag_sets,
             traversal_config,
+            budget_configs,
             entry_points,
         } = self;
 
@@ -177,6 +182,7 @@ impl ManifestBlobs {
             metrics,
             tag_sets,
             traversal_config,
+            budget_configs,
             entry_points,
         ]
         .into_iter()
@@ -285,6 +291,7 @@ pub fn pack(
         node_metadata,
         graph_settings,
         traversal_config,
+        budget_configs,
         entry_points,
     } = &graph;
 
@@ -308,6 +315,7 @@ pub fn pack(
     let metrics = into_blobs(&metrics, "metrics", &mut b, c)?;
     let tag_sets = into_blobs(&tag_sets, "tag_sets", &mut b, c)?;
     let traversal_config = into_blobs(&traversal_config, "traversal_config", &mut b, c)?;
+    let budget_configs = into_blobs(&budget_configs, "budget_configs", &mut b, c)?;
     let entry_points = into_blobs(&entry_points, "entry_points", &mut b, c)?;
 
     let manifest_blobs = ManifestBlobs {
@@ -320,6 +328,7 @@ pub fn pack(
         metrics,
         tag_sets,
         traversal_config,
+        budget_configs,
         entry_points,
     };
 
@@ -372,6 +381,7 @@ pub fn unpack(package: &ArrayGraphSerializablePackage) -> Result<ArrayGraphSeria
             metrics,
             tag_sets,
             traversal_config,
+            budget_configs,
             entry_points,
         } = &blobs;
 
@@ -388,6 +398,11 @@ pub fn unpack(package: &ArrayGraphSerializablePackage) -> Result<ArrayGraphSeria
         let metrics = from_blobs_field(metrics, b)?;
         let tag_sets = from_blobs_field(tag_sets, b)?;
         let traversal_config = from_blobs_field(traversal_config, b)?;
+        let budget_configs: BTreeMap<String, BudgetConfig> = if budget_configs.is_empty() {
+            BTreeMap::new()
+        } else {
+            from_blobs_field(budget_configs, b)?
+        };
         let entry_points = from_blobs_field(entry_points, b)?;
 
         let edges = ArrayGraphSerializableEdges {
@@ -408,6 +423,7 @@ pub fn unpack(package: &ArrayGraphSerializablePackage) -> Result<ArrayGraphSeria
             node_metadata,
             graph_settings: graph_settings.clone(),
             traversal_config,
+            budget_configs,
             entry_points,
         })
     })()
@@ -573,9 +589,10 @@ mod tests {
 {
   "self_reference": "_manifest.json",
   "stats": {
-    "total_blobs": 13,
-    "total_size_bytes": 385,
+    "total_blobs": 14,
+    "total_size_bytes": 396,
     "blob_sizes_bytes": {
+      "budget_configs_4370653166743570923": 11,
       "directed_1506826171969472540": 35,
       "directed_offsets_8316678694188447186": 40,
       "dynamic_chunk_0_16704539601918712447": 50,
@@ -624,6 +641,9 @@ mod tests {
     "traversal_config": [
       "traversal_config_9535545603450022154"
     ],
+    "budget_configs": [
+      "budget_configs_4370653166743570923"
+    ],
     "entry_points": [
       "entry_points_9535545603450022154"
     ]
@@ -643,6 +663,7 @@ mod tests {
             r#"
 [
     "_manifest.json",
+    "budget_configs_4370653166743570923",
     "directed_1506826171969472540",
     "directed_offsets_8316678694188447186",
     "dynamic_chunk_0_16704539601918712447",

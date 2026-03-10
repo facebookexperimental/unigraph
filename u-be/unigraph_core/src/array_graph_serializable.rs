@@ -45,12 +45,26 @@ use crate::types::array_graph::NodeFlags;
 use crate::types::array_graph::array_graph_derived_state::ArrayGraphDerivedState;
 use crate::types::array_graph::array_graph_nodes::ArrayGraphNodesForGraphSide;
 use crate::types::array_graph::array_graph_state::ArrayGraphState;
+use crate::types::array_graph::budget_graph::BudgetConfig;
 use crate::types::array_graph::offset_graph::Edge;
 use crate::types::array_graph::offset_graph::NonDirectedEdgeMetadata;
 use crate::types::array_graph::offset_graph::OffsetGraph;
 
 /// A serializable representation of an array graph, which can be used for
 /// storing or transmitting the graph structure.
+///
+/// IMPORTANT: When adding or removing fields here, you MUST update ALL of
+/// the following to maintain field parity:
+///   - `ArrayGraph` struct (array_graph.rs)
+///   - `From<ArrayGraph> for ArrayGraphSerializable`
+///   - `From<ArrayGraphSerializable> for ArrayGraph`
+///   - `ArrayGraphSerializable::remap()`
+///   - `ManifestBlobs` struct, `pack()`, and `unpack()` (package.rs)
+///   - `ManifestBlobs::get_all_blob_ids()`
+///   - `apply_deltas()` (delta/apply.rs)
+///   - `remap_with_nodes()` (twin_graph/merge.rs)
+///   - `MapGraph::to_array_graph_serializable()` (map_graph.rs)
+///   - `super_root::append_super_root()` destructure + reconstruction
 #[derive(serde::Serialize, serde::Deserialize, typegen::TypeGen)]
 pub struct ArrayGraphSerializable {
     pub node_names_ordered: Arc<ArrayGraphNodes>,
@@ -59,6 +73,9 @@ pub struct ArrayGraphSerializable {
 
     pub graph_settings: Option<GraphSettings>,
     pub traversal_config: Option<TraversalConfig>,
+
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub budget_configs: BTreeMap<String, BudgetConfig>,
 
     /// If present, these graph will use these entrypoints instead
     /// of automatically determining them.
@@ -169,6 +186,7 @@ impl ArrayGraphSerializable {
             node_metadata: self.node_metadata.remap(ctx)?,
             graph_settings: self.graph_settings,
             traversal_config: self.traversal_config,
+            budget_configs: self.budget_configs,
             entry_points: self.entry_points,
         })
     }
@@ -212,6 +230,7 @@ impl From<ArrayGraph> for ArrayGraphSerializable {
             },
             graph_settings: graph.graph_settings,
             traversal_config: graph.state.traversal_config,
+            budget_configs: graph.budget_configs,
             entry_points: graph.entry_points,
         }
     }
@@ -314,6 +333,7 @@ impl From<ArrayGraphSerializable> for ArrayGraph {
                 tiers,
             },
             graph_settings: serializable.graph_settings,
+            budget_configs: serializable.budget_configs,
             entry_points: serializable.entry_points,
         }
     }

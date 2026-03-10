@@ -76,6 +76,7 @@ pub fn pack_parallel(
         node_metadata,
         graph_settings,
         traversal_config,
+        budget_configs,
         entry_points,
     } = &graph;
 
@@ -100,6 +101,7 @@ pub fn pack_parallel(
         metrics,
         tag_sets,
         traversal_config,
+        budget_configs,
         entry_points,
     ) = into_blobs_parallelized!(
         node_names,
@@ -111,6 +113,7 @@ pub fn pack_parallel(
         metrics,
         tag_sets,
         traversal_config,
+        budget_configs,
         entry_points;
         &mut b, c
     );
@@ -125,6 +128,7 @@ pub fn pack_parallel(
         metrics,
         tag_sets,
         traversal_config,
+        budget_configs,
         entry_points,
     };
 

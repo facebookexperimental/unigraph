@@ -53,6 +53,17 @@ pub fn apply_deltas(
         changed: BTreeMap::new(),
     };
 
+    // Destructure base so we can move fields instead of cloning.
+    let ArrayGraphSerializable {
+        node_names_ordered: base_node_names,
+        edges: base_edges,
+        node_metadata: base_node_metadata,
+        graph_settings: base_graph_settings,
+        traversal_config: base_traversal_config,
+        budget_configs: base_budget_configs,
+        entry_points: base_entry_points,
+    } = base;
+
     // Phase 1: Compute the final set of node names by replaying add/remove
     // operations across all deltas. We only allocate for delta-sized sets,
     // not the full base node list.
@@ -86,10 +97,10 @@ pub fn apply_deltas(
 
     // Phase 2: Build final ArrayGraphNodes by merge-sorting base names + delta_names,
     // skipping delta_removed. No per-name allocation for base nodes that are unchanged.
-    let final_nodes = build_final_nodes(&base.node_names_ordered, &delta_names, &delta_removed);
-    let remap = build_remap_context(&base.node_names_ordered, &final_nodes);
-    let remapped_edges = base.edges.remap(&remap)?;
-    let remapped_metadata = base.node_metadata.remap(&remap)?;
+    let final_nodes = build_final_nodes(&base_node_names, &delta_names, &delta_removed);
+    let remap = build_remap_context(&base_node_names, &final_nodes);
+    let remapped_edges = base_edges.remap(&remap)?;
+    let remapped_metadata = base_node_metadata.remap(&remap)?;
 
     // Phase 3: Convert CSR to mutable adjacency lists ONCE
     let node_count = final_nodes.combined_nodes_len();
@@ -119,9 +130,10 @@ pub fn apply_deltas(
     }
 
     // Phase 5: Apply top-level settings (last non-None wins)
-    let mut graph_settings = base.graph_settings.clone();
-    let mut traversal_config = base.traversal_config.clone();
-    let mut entry_points = base.entry_points.clone();
+    let mut graph_settings = base_graph_settings;
+    let mut traversal_config = base_traversal_config;
+    let mut budget_configs = base_budget_configs;
+    let mut entry_points = base_entry_points;
 
     for delta in deltas {
         if let Some(ref gs_delta) = delta.graph_settings {
@@ -129,6 +141,9 @@ pub fn apply_deltas(
         }
         if let Some(ref tc_delta) = delta.traversal_config {
             traversal_config.apply_delta(tc_delta.clone())?;
+        }
+        if let Some(ref bc_delta) = delta.budget_configs {
+            budget_configs.apply_delta(bc_delta.clone())?;
         }
         if let Some(ref ep_delta) = delta.entry_points {
             entry_points.apply_delta(ep_delta.clone())?;
@@ -149,6 +164,7 @@ pub fn apply_deltas(
         node_metadata: ArrayGraphSerializableNodeMetadata { metrics, tag_sets },
         graph_settings,
         traversal_config,
+        budget_configs,
         entry_points,
     })
 }

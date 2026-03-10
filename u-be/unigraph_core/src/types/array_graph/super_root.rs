@@ -50,6 +50,7 @@ pub fn append_super_root(
         mut metrics,
         tag_sets,
         graph_settings,
+        budget_configs,
         entry_points: _, // we get them by determining
         state,
     } = ag;
@@ -90,6 +91,7 @@ be no other node already on the list that doesn't start from the same character"
         tag_sets,
         state,
         graph_settings,
+        budget_configs,
         entry_points: Some(BTreeSet::from([super_root_name])),
     })
 }

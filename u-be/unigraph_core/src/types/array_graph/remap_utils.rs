@@ -380,6 +380,7 @@ J (tag sets: assert_tags: [a, b]):
             node_metadata: remap_node_metadata(&sg.node_metadata, &ctx)?,
             graph_settings: None,
             traversal_config: None,
+            budget_configs: BTreeMap::new(),
             entry_points: None,
         };
 

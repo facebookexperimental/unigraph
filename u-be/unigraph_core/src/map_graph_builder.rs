@@ -20,6 +20,7 @@ impl GraphBuilder {
                 nodes: BTreeMap::new(),
                 traversal_config: Default::default(),
                 graph_settings: Default::default(),
+                budget_configs: BTreeMap::new(),
                 entry_points: Default::default(),
             },
         }

@@ -19,6 +19,7 @@ use super::array_graph::array_graph_nodes::NodeNamesOrderedBuilder;
 use crate::ArrayGraphSerializable;
 use crate::TraversalConfig;
 use crate::graph_settings::GraphSettings;
+use crate::types::array_graph::budget_graph::BudgetConfig;
 
 type NodeName = String;
 
@@ -34,6 +35,9 @@ pub struct MapGraph {
     pub nodes: BTreeMap<NodeName, GraphNode>,
     pub traversal_config: Option<TraversalConfig>,
     pub graph_settings: Option<GraphSettings>,
+
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub budget_configs: BTreeMap<String, BudgetConfig>,
 
     /// If present, these graph will use these entry points instead
     /// of automatically determining them.
@@ -95,6 +99,7 @@ impl MapGraphDelta {
         self.nodes.is_none()
             && self.graph_settings.is_none()
             && self.traversal_config.is_none()
+            && self.budget_configs.is_none()
             && self.entry_points.is_none()
     }
 }
@@ -230,6 +235,7 @@ impl MapGraph {
             },
             graph_settings: self.graph_settings.clone(),
             traversal_config: self.traversal_config.clone(),
+            budget_configs: self.budget_configs.clone(),
             entry_points: self.entry_points.clone(),
         })
     }

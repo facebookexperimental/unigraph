@@ -215,6 +215,7 @@ fn empty_delta() -> MapGraphDelta {
         nodes: None,
         graph_settings: None,
         traversal_config: None,
+        budget_configs: None,
         entry_points: None,
     }
 }

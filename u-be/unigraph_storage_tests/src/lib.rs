@@ -120,6 +120,7 @@ impl TestGraphTimeline {
             node_metadata: ArrayGraphSerializableNodeMetadata { metrics, tag_sets },
             graph_settings: None,
             traversal_config: None,
+            budget_configs: BTreeMap::new(),
             entry_points: None,
         }
     }

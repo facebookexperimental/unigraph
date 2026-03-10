@@ -237,6 +237,7 @@ graph_id             timestamp                type       base
         format_blob_keys(&blobs),
         "
 test/1/_manifest.json
+test/1/budget_configs_5399181262045623723
 test/1/directed_6393609996011794433
 test/1/directed_offsets_194495599743061723
 test/1/dynamic_5399181262045623723
@@ -278,6 +279,7 @@ graph_id             timestamp                type       base
         format_blob_keys(&blobs_after),
         "
 test/1/_manifest.json
+test/1/budget_configs_5399181262045623723
 test/1/directed_6393609996011794433
 test/1/directed_offsets_194495599743061723
 test/1/dynamic_5399181262045623723
@@ -297,6 +299,7 @@ test/1/traversal_config_252579103958576740
         format_blob_keys(&pending),
         "
 test/1/_manifest.json
+test/1/budget_configs_5399181262045623723
 test/1/directed_6393609996011794433
 test/1/directed_offsets_194495599743061723
 test/1/dynamic_5399181262045623723
@@ -377,6 +380,7 @@ async fn sweep_deleted_blobs() -> Result<()> {
         format_blob_keys(&blobs),
         "
 test/1/_manifest.json
+test/1/budget_configs_5399181262045623723
 test/1/directed_6393609996011794433
 test/1/directed_offsets_194495599743061723
 test/1/dynamic_5399181262045623723
@@ -400,6 +404,7 @@ test/1/traversal_config_252579103958576740
         format_blob_keys(&blobs_after_delete),
         "
 test/1/_manifest.json
+test/1/budget_configs_5399181262045623723
 test/1/directed_6393609996011794433
 test/1/directed_offsets_194495599743061723
 test/1/dynamic_5399181262045623723
@@ -417,6 +422,7 @@ test/1/traversal_config_252579103958576740
         format_blob_keys(&pending),
         "
 test/1/_manifest.json
+test/1/budget_configs_5399181262045623723
 test/1/directed_6393609996011794433
 test/1/directed_offsets_194495599743061723
 test/1/dynamic_5399181262045623723
@@ -432,7 +438,7 @@ test/1/traversal_config_252579103958576740
 
     // Sweep with Duration::ZERO — should sweep everything
     let swept = db.sweep_blobs(std::time::Duration::ZERO).await?;
-    assert_eq!(swept, 11);
+    assert_eq!(swept, 12);
 
     // After sweep: blobs physically gone, cleanup table empty
     let blobs_after_sweep = sqlite.list_blobs("").await?;

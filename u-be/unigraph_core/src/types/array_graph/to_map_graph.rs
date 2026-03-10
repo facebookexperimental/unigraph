@@ -15,6 +15,7 @@ pub fn to_map_graph(graph: &ArrayGraph) -> Result<MapGraph> {
         nodes: Default::default(),
         traversal_config: graph.state.traversal_config.clone(),
         graph_settings: graph.graph_settings.clone(),
+        budget_configs: graph.budget_configs.clone(),
         entry_points: graph.entry_points.clone(),
     };
 

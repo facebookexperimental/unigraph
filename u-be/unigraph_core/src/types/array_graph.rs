@@ -9,6 +9,7 @@ mod array_graph_name_search;
 pub(crate) mod array_graph_nodes;
 pub mod array_graph_state;
 mod array_graph_stats;
+pub mod budget_graph;
 mod conjoint_cost;
 pub mod graph_settings;
 pub(crate) mod offset_graph;
@@ -60,6 +61,7 @@ use crate::types::array_graph::array_graph_nodes::ArrayGraphNodesForGraphSide;
 use crate::types::array_graph::array_graph_nodes::NodeIDXsArcIter;
 use crate::types::array_graph::array_graph_state::ArrayGraphState;
 use crate::types::array_graph::array_graph_stats::ArrayGraphStats;
+use crate::types::array_graph::budget_graph::BudgetConfig;
 use crate::types::array_graph::conjoint_cost::ConjointCost;
 use crate::types::array_graph::offset_graph::lengauer_tarjan_dominator_tree::make_dominator_tree;
 use crate::types::array_graph::offset_graph::shortest_path::shortest_path;
@@ -85,6 +87,8 @@ pub struct ArrayGraph {
     pub tag_sets: BTreeMap<NodeIDX, BTreeMap<TagSetName, BTreeSet<Tag>>>,
 
     pub graph_settings: Option<GraphSettings>,
+
+    pub budget_configs: BTreeMap<String, BudgetConfig>,
 
     /// If present, these graph will use these entrypoints instead
     /// of automatically determining them.
