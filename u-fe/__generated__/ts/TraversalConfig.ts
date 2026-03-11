@@ -6,9 +6,9 @@
 
 
 import type { Decision } from './Decision.ts';
-import type { ForceDynamic } from './ForceDynamic.ts';
+import type { DynamicTypeConfig } from './DynamicTypeConfig.ts';
 import type { Message } from './Message.ts';
-import type { NodeTagSetsPredicate } from './NodeTagSetsPredicate.ts';
+import type { NodeLabelPredicate } from './NodeLabelPredicate.ts';
 import type { TieredTraversalConfig } from './TieredTraversalConfig.ts';
 
 export interface TraversalConfig {
@@ -17,10 +17,8 @@ export interface TraversalConfig {
   force_edges?: { [key: string]: { [key: string]: Decision } } | undefined;
   /** Only applied to tagged edges */
   force_tagged?: { [key: string]: Decision } | undefined;
-  /** These rules are ordered. The first one that matches will be used. */
-  tag_sets?: NodeTagSetsPredicate[] | undefined;
-  /** These rules are ordered. The first one that matches will be used. */
-  force_dynamic?: ForceDynamic[] | undefined;
+  label_predicates?: { [key: string]: NodeLabelPredicate } | undefined;
+  force_dynamic?: { [key: string]: DynamicTypeConfig } | undefined;
   tiered_traversal?: TieredTraversalConfig | undefined;
   messages?: { [key: string]: Message } | undefined;
 }

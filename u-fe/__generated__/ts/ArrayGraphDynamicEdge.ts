@@ -9,5 +9,5 @@ import type { NodeIDX } from './NodeIDX.ts';
 
 export interface ArrayGraphDynamicEdge {
   branches: { [key: string]: NodeIDX[] };
-  properties: { [key: string]: string };
+  metadata?: { [key: string]: string } | undefined;
 }

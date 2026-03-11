@@ -28,6 +28,7 @@ type_name_prefix = "TUnigraph"
 file_name_prefix = "UnigraphTypeGen"
 header = """
 <?hh
+<<file: __PackageOverride('prod')>>
 
 /**
  * Copyright (c) Meta Platforms, Inc. and affiliates.

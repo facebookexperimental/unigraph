@@ -5,6 +5,7 @@
  */
 
 
+import type { DynamicEdgeInfo } from './DynamicEdgeInfo.ts';
 import type { NodeIDX } from './NodeIDX.ts';
 
 /**
@@ -17,8 +18,7 @@ import type { NodeIDX } from './NodeIDX.ts';
  */
 export interface Arrow {
   tag?: string | undefined;
-  branch?: string | undefined;
-  properties?: { [key: string]: string } | undefined;
+  dynamic?: DynamicEdgeInfo | undefined;
   points_from: NodeIDX;
   points_to: NodeIDX;
   excluded: boolean;

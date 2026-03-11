@@ -9,12 +9,12 @@ import type { ArrayGraphSerializableManifest } from './ArrayGraphSerializableMan
 import type { BlobID } from './BlobID.ts';
 
 /**
- * Base64 Version of the package, where the blobs are Base64 encoded.
- * This is intended for browser use or JSON encoding of the package itself
- * for passing between servers/clients.
- * If Vec<u8> is double serialized into JSON it will be represented as
- *     [1, 19, 113, 48, ...]
- * which is very inefficient
+ * Base64-encoded variant of [`ArrayGraphSerializablePackage`].
+ * 
+ * JSON-serializing raw `Vec<u8>` produces a verbose integer array
+ * (`[1, 19, 113, ...]`). This variant stores each blob as a base64
+ * string instead, making it much more compact for JSON transport
+ * between servers and browsers.
  */
 export interface ArrayGraphSerializablePackageBase64 {
   manifest: ArrayGraphSerializableManifest;
