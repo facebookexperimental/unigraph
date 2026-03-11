@@ -51,7 +51,8 @@ pub struct MapGraph {
     Clone,
     PartialEq,
     Debug,
-    unigraph_delta::Deltable
+    unigraph_delta::Deltable,
+    typegen::TypeGen
 )]
 pub struct GraphNode {
     /// Single-valued string metadata.
@@ -86,7 +87,8 @@ pub struct GraphNode {
     Clone,
     PartialEq,
     Debug,
-    unigraph_delta::Deltable
+    unigraph_delta::Deltable,
+    typegen::TypeGen
 )]
 pub struct DynamicEdge {
     pub branches: BTreeMap<String, BTreeSet<NodeName>>,
