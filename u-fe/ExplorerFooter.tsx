@@ -19,6 +19,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import Metric from "./components/Metric";
 import UHoverCard from "./components/UHoverCard";
+import USplitToggleButton from "./components/USplitToggleButton";
 import UToggleButton from "./components/UToggleButton";
 import UTooltip from "./components/UTooltip";
 import { Button } from "./components/ui/button";
@@ -148,10 +149,28 @@ function Toggles() {
 
   return (
     <div className="flex gap-4 items-center">
-      <UHoverCard content={<CountsHovercardContent />}>
-        <UToggleButton
-          size="sm"
-          selected={graphSettings.ui_settings?.columns?.show_counts === true}
+      <USplitToggleButton
+        selected={graphSettings.ui_settings?.columns?.show_counts === true}
+        onSelectedChange={(checked) => {
+          setGraphSettings({
+            ...graphSettings,
+            ui_settings: {
+              ...graphSettings.ui_settings,
+              columns: {
+                ...graphSettings.ui_settings?.columns,
+                show_counts: checked,
+              },
+            },
+          });
+        }}
+        popoverContent={<CountsHovercardContent />}
+      >
+        <Tally5 />
+      </USplitToggleButton>
+
+      {hasMetrics && (
+        <USplitToggleButton
+          selected={graphSettings.ui_settings?.columns?.hide_metrics !== true}
           onSelectedChange={(checked) => {
             setGraphSettings({
               ...graphSettings,
@@ -159,37 +178,15 @@ function Toggles() {
                 ...graphSettings.ui_settings,
                 columns: {
                   ...graphSettings.ui_settings?.columns,
-                  show_counts: checked,
+                  hide_metrics: !checked,
                 },
               },
             });
           }}
+          popoverContent={<MetricsHovercardContent />}
         >
-          <Tally5 />
-        </UToggleButton>
-      </UHoverCard>
-
-      {hasMetrics && (
-        <UHoverCard content={<MetricsHovercardContent />}>
-          <UToggleButton
-            size="sm"
-            selected={graphSettings.ui_settings?.columns?.hide_metrics !== true}
-            onSelectedChange={(checked) => {
-              setGraphSettings({
-                ...graphSettings,
-                ui_settings: {
-                  ...graphSettings.ui_settings,
-                  columns: {
-                    ...graphSettings.ui_settings?.columns,
-                    hide_metrics: !checked,
-                  },
-                },
-              });
-            }}
-          >
-            <ChartNoAxesCombined />
-          </UToggleButton>
-        </UHoverCard>
+          <ChartNoAxesCombined />
+        </USplitToggleButton>
       )}
 
       <SeparatorVertical />
