@@ -282,6 +282,46 @@ pub fn type_gen(input: TokenStream) -> TokenStream {
                 })
                 .collect::<Vec<_>>();
 
+            // Validate: mixed enums (some unit, some data variants) are not allowed.
+            // Either all variants must be unit variants, or all must carry data.
+            {
+                let has_unit = data_enum
+                    .variants
+                    .iter()
+                    .any(|v| matches!(v.fields, syn::Fields::Unit));
+                let has_data = data_enum
+                    .variants
+                    .iter()
+                    .any(|v| !matches!(v.fields, syn::Fields::Unit));
+                if has_unit && has_data {
+                    let unit_variants: Vec<_> = data_enum
+                        .variants
+                        .iter()
+                        .filter(|v| matches!(v.fields, syn::Fields::Unit))
+                        .map(|v| v.ident.to_string())
+                        .collect();
+                    let data_variants: Vec<_> = data_enum
+                        .variants
+                        .iter()
+                        .filter(|v| !matches!(v.fields, syn::Fields::Unit))
+                        .map(|v| v.ident.to_string())
+                        .collect();
+                    return syn::Error::new_spanned(
+                        &input,
+                        format!(
+                            "TypeGen does not support mixed enums (some unit variants, some data variants). \
+                             Either all variants must be unit variants or all must carry data.\n\
+                             Unit variants: [{}]\n\
+                             Data variants: [{}]",
+                            unit_variants.join(", "),
+                            data_variants.join(", "),
+                        ),
+                    )
+                    .to_compile_error()
+                    .into();
+                }
+            }
+
             // Generate field validation tests for enums
             let field_tests = generate_field_validation_tests(name, &input.data);
 

@@ -95,6 +95,12 @@ export type FlowTypeShape =
   { "Rectangle": [number, number] } |
   /** Point with coordinates */
   { "Point": { x: number, y: number, z: number } };
+---------------- ./flow/FlowPrefixHttpMethod.js.flow
+
+/* flow header */
+
+/** Simple enum with multi-word CamelCase variants to test SCREAMING_SNAKE_CASE conversion */
+export type FlowTypeHttpMethod = "GetRequest" | "PostRequest" | "DeleteAll" | "XMLParser" | "SimpleA";
 ---------------- ./flow/FlowPrefixOverrideTest.js.flow
 
 /* flow header */

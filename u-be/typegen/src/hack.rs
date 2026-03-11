@@ -11,6 +11,35 @@ use crate::types::TypeGenDecl;
 use crate::types::TypeGenGeneratedType;
 use crate::types::TypeRef;
 
+/// Convert a CamelCase name to SCREAMING_SNAKE_CASE.
+///
+/// Examples:
+/// - `"Cat"` → `"CAT"`
+/// - `"HelloWorld"` → `"HELLO_WORLD"`
+/// - `"XMLParser"` → `"XML_PARSER"`
+/// - `"getHTTPResponse"` → `"GET_HTTP_RESPONSE"`
+fn to_screaming_snake_case(name: &str) -> String {
+    let mut result = String::with_capacity(name.len() + 4);
+    let chars: Vec<char> = name.chars().collect();
+
+    for (i, &ch) in chars.iter().enumerate() {
+        if ch.is_uppercase() && i > 0 {
+            let prev = chars[i - 1];
+            // Insert underscore before an uppercase letter when:
+            // 1. Previous char is lowercase (e.g., "helloW" → "hello_W")
+            // 2. Previous char is uppercase but next char is lowercase (e.g., "XMLParser" → "XML_Parser")
+            if prev.is_lowercase()
+                || (prev.is_uppercase() && i + 1 < chars.len() && chars[i + 1].is_lowercase())
+            {
+                result.push('_');
+            }
+        }
+        result.push(ch.to_ascii_uppercase());
+    }
+
+    result
+}
+
 /// Hack type code generator
 pub struct HackGenerator<'a> {
     pub config: &'a TypeGenConfig,
@@ -138,12 +167,27 @@ impl<'a> HackGenerator<'a> {
             .iter()
             .all(|variant| matches!(variant, EnumVariant::Unit { .. }));
 
+        let has_any_unit = enum_decl
+            .variants
+            .iter()
+            .any(|variant| matches!(variant, EnumVariant::Unit { .. }));
+
+        // Mixed enums (some unit, some data) are not supported — they cause
+        // serialization mismatches between serde and typegen-generated Hack shapes.
+        if !is_simple_enum && has_any_unit {
+            panic!(
+                "TypeGen: enum '{}' has mixed variants (some unit, some data). \
+                 Either all variants must be unit variants or all must carry data.",
+                type_name
+            );
+        }
+
         if is_simple_enum {
             // Generate Hack enum for simple enums
             result.push_str(&format!("enum {}: string as string {{\n", type_name));
             for variant in &enum_decl.variants {
                 if let EnumVariant::Unit { name, docs } = variant {
-                    let constant_name = name.to_uppercase();
+                    let constant_name = to_screaming_snake_case(name);
                     result.push_str(&render_docs(docs, DocFormat::TwoSlash, 2));
                     result.push_str(&format!("  {} = \"{}\";\n", constant_name, name));
                 }
@@ -218,7 +262,7 @@ impl<'a> HackGenerator<'a> {
                     EnumVariant::Tuple { name, .. } => name,
                     EnumVariant::Struct { name, .. } => name,
                 };
-                let constant_name = variant_name.to_uppercase();
+                let constant_name = to_screaming_snake_case(variant_name);
                 result.push_str(&format!("  {} = \"{}\";\n", constant_name, variant_name));
             }
             result.push_str("}\n");
@@ -287,5 +331,37 @@ impl<'a> HackGenerator<'a> {
             | PrimitiveTypeRef::USize => "int".to_string(),
             PrimitiveTypeRef::F32 | PrimitiveTypeRef::F64 => "float".to_string(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::to_screaming_snake_case;
+
+    #[test]
+    fn test_to_screaming_snake_case() {
+        // Single words
+        assert_eq!(to_screaming_snake_case("Cat"), "CAT");
+        assert_eq!(to_screaming_snake_case("Hello"), "HELLO");
+
+        // Multi-word CamelCase
+        assert_eq!(to_screaming_snake_case("HelloWorld"), "HELLO_WORLD");
+        assert_eq!(to_screaming_snake_case("GetRequest"), "GET_REQUEST");
+        assert_eq!(to_screaming_snake_case("PostRequest"), "POST_REQUEST");
+        assert_eq!(to_screaming_snake_case("DeleteAll"), "DELETE_ALL");
+
+        // Acronyms
+        assert_eq!(to_screaming_snake_case("XMLParser"), "XML_PARSER");
+        assert_eq!(
+            to_screaming_snake_case("getHTTPResponse"),
+            "GET_HTTP_RESPONSE"
+        );
+        assert_eq!(to_screaming_snake_case("SimpleA"), "SIMPLE_A");
+
+        // Already uppercase single char
+        assert_eq!(to_screaming_snake_case("A"), "A");
+
+        // All uppercase
+        assert_eq!(to_screaming_snake_case("URL"), "URL");
     }
 }

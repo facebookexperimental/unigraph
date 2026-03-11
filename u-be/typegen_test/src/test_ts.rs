@@ -97,6 +97,12 @@ export type TSTypeShape =
   { "Point": { x: number, y: number, z: number } };
 
 export type TSTypeShapeVariants = "Circle" | "Rectangle" | "Point";
+---------------- ./ts/TSPrefixHttpMethod.ts
+
+/* ts header */
+
+/** Simple enum with multi-word CamelCase variants to test SCREAMING_SNAKE_CASE conversion */
+export type TSTypeHttpMethod = "GetRequest" | "PostRequest" | "DeleteAll" | "XMLParser" | "SimpleA";
 ---------------- ./ts/TSPrefixOverrideTest.ts
 
 /* ts header */

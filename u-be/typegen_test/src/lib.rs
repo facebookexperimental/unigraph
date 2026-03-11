@@ -117,6 +117,16 @@ pub enum Shape {
     },
 }
 
+/// Simple enum with multi-word CamelCase variants to test SCREAMING_SNAKE_CASE conversion
+#[derive(TypeGen)]
+pub enum HttpMethod {
+    GetRequest,
+    PostRequest,
+    DeleteAll,
+    XMLParser,
+    SimpleA,
+}
+
 #[cfg(test)]
 mod tests {
     use crate::shared::get_all_declarations;
@@ -481,6 +491,42 @@ TypeGenGeneratedType {
                             docs: None,
                         },
                     ],
+                },
+            ],
+        },
+    ),
+    overrides: None,
+    skip: None,
+}
+
+TypeGenGeneratedType {
+    original_type_name: "HttpMethod",
+    docs: Some(
+        "Simple enum with multi-word CamelCase variants to test SCREAMING_SNAKE_CASE conversion",
+    ),
+    file_path: <SANITIZED>
+    declaration: EnumDecl(
+        EnumDecl {
+            variants: [
+                Unit {
+                    name: "GetRequest",
+                    docs: None,
+                },
+                Unit {
+                    name: "PostRequest",
+                    docs: None,
+                },
+                Unit {
+                    name: "DeleteAll",
+                    docs: None,
+                },
+                Unit {
+                    name: "XMLParser",
+                    docs: None,
+                },
+                Unit {
+                    name: "SimpleA",
+                    docs: None,
                 },
             ],
         },

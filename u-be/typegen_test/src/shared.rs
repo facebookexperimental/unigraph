@@ -11,6 +11,7 @@ use typegen::TypeScriptConfig;
 
 use crate::Address;
 use crate::Animal;
+use crate::HttpMethod;
 use crate::OverrideTest;
 use crate::Person;
 use crate::Point;
@@ -31,6 +32,7 @@ pub fn get_all_declarations() -> Vec<TypeGenGeneratedType> {
         WrappedString::to_type_decl(),
         Animal::to_type_decl(),
         Shape::to_type_decl(),
+        HttpMethod::to_type_decl(),
         OverrideTest::to_type_decl(),
         SkipTest::to_type_decl(),
         SkipAndOverrideTest::to_type_decl(),
