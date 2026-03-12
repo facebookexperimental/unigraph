@@ -125,7 +125,7 @@ graph_id             timestamp                type       base
     // 5. FrameQuery selections
     // ---------------------------------------------------------------
 
-    let conn = db.graph_conn().await?;
+    let mut conn = db.graph_conn().await?;
 
     // 5a. Select only Full frames
     let full_only = conn

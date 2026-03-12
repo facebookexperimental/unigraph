@@ -146,7 +146,7 @@ pub async fn fetch_graph(
 /// Returns metadata only (no data) — the actual graph data is loaded
 /// later in `load_frame_range` to avoid fetching it twice.
 async fn find_nearest_full_frame(storage: &UnigraphStorage, key: &GraphKey) -> Result<Frame> {
-    let conn = storage.graph.conn().await?;
+    let mut conn = storage.graph.conn().await?;
     let mut rows = conn
         .select_frames(&FrameQuery {
             timeline_id: key.timeline_id.clone(),
@@ -177,7 +177,7 @@ async fn load_frame_range(
     key: &GraphKey,
     full_graph_id: GraphID,
 ) -> Result<FrameRange> {
-    let conn = storage.graph.conn().await?;
+    let mut conn = storage.graph.conn().await?;
     let rows = conn
         .select_frames(&FrameQuery {
             timeline_id: key.timeline_id.clone(),
@@ -267,7 +267,7 @@ pub async fn compact_timeline(
     start: Option<Timestamp>,
     end: Option<Timestamp>,
 ) -> Result<usize> {
-    let conn = storage.graph.conn().await?;
+    let mut conn = storage.graph.conn().await?;
 
     // Verify the timeline uses AdjacentDeltas schema.
     let config = conn
@@ -364,7 +364,7 @@ async fn replace_full_with_delta(
 
     // Determine inline vs. external for the new delta.
     let threshold = {
-        let conn = storage.graph.conn().await?;
+        let mut conn = storage.graph.conn().await?;
         let config = conn
             .get_timeline_config(timeline_id)
             .await?
@@ -380,14 +380,16 @@ async fn replace_full_with_delta(
     };
 
     // Single transaction: delete old Full + insert new Delta.
-    let conn = storage.graph.conn().await?;
+    let mut conn = storage.graph.conn().await?;
     conn.start_transaction().await?;
     conn.get_timeline_config_and_lock(timeline_id).await?;
 
-    storage.delete_frame_on_conn(&*conn, &target_key).await?;
+    storage
+        .delete_frame_on_conn(&mut *conn, &target_key)
+        .await?;
     storage
         .store_package_on_conn(
-            &*conn,
+            &mut *conn,
             &target_time_key,
             FrameType::Delta,
             Some(base_key),
@@ -417,7 +419,7 @@ async fn replace_full_with_delta(
 ///   Empty → Full or Full → Delta): skips the append check since the
 ///   frame's position in the timeline is unchanged.
 pub(crate) async fn validate_monotonic_append(
-    conn: &dyn UnigraphGraphConnection,
+    conn: &mut dyn UnigraphGraphConnection,
     key: &GraphTimeKey,
 ) -> Result<()> {
     // Check if a frame with this graph_id already exists (replacement).
@@ -476,7 +478,7 @@ pub(crate) async fn validate_monotonic_append(
 ///
 /// Must be called inside an exclusive transaction on the timeline.
 pub(crate) async fn validate_delta_base(
-    conn: &dyn UnigraphGraphConnection,
+    conn: &mut dyn UnigraphGraphConnection,
     key: &GraphTimeKey,
     base: Option<&GraphKey>,
 ) -> Result<()> {

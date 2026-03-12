@@ -14,8 +14,6 @@ use std::path::Path;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
 
 use anyhow::Context;
 use anyhow::Result;
@@ -91,7 +89,7 @@ impl SqliteStorage {
 /// automatically rolled back.
 pub struct SqliteConnection {
     conn: Arc<Mutex<Connection>>,
-    transaction_active: AtomicBool,
+    transaction_active: bool,
 }
 
 impl SqliteConnection {
@@ -103,7 +101,7 @@ impl SqliteConnection {
 
 impl Drop for SqliteConnection {
     fn drop(&mut self) {
-        if self.transaction_active.load(Ordering::Relaxed) {
+        if self.transaction_active {
             let conn = self.conn.lock().unwrap();
             let _ = conn.execute("ROLLBACK", []);
         }

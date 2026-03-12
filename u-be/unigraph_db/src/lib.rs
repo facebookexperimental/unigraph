@@ -78,7 +78,7 @@ impl UnigraphDb {
         timeline_id: &TimelineID,
         config: &TimelineConfig,
     ) -> Result<()> {
-        let conn = self.storage.graph.conn().await?;
+        let mut conn = self.storage.graph.conn().await?;
         conn.create_timeline(timeline_id, config).await
     }
 
@@ -88,13 +88,13 @@ impl UnigraphDb {
         &self,
         timeline_id: &TimelineID,
     ) -> Result<Option<TimelineConfig>> {
-        let conn = self.storage.graph.conn().await?;
+        let mut conn = self.storage.graph.conn().await?;
         conn.get_timeline_config(timeline_id).await
     }
 
     /// List all timeline IDs.
     pub async fn list_timelines(&self) -> Result<Vec<TimelineID>> {
-        let conn = self.storage.graph.conn().await?;
+        let mut conn = self.storage.graph.conn().await?;
         conn.list_timelines().await
     }
 
@@ -105,11 +105,11 @@ impl UnigraphDb {
     /// Transactional: locks the timeline, validates monotonic ordering,
     /// stores the frame, and commits.
     pub async fn store_frame_empty(&self, key: &GraphTimeKey) -> Result<()> {
-        let conn = self.storage.graph.conn().await?;
+        let mut conn = self.storage.graph.conn().await?;
         conn.start_transaction().await?;
         conn.get_timeline_config_and_lock(&key.timeline_id).await?;
 
-        crate::adjacent_deltas::validate_monotonic_append(&*conn, key).await?;
+        crate::adjacent_deltas::validate_monotonic_append(&mut *conn, key).await?;
 
         conn.store_frame_empty(key).await?;
         conn.commit_transaction().await?;
@@ -118,7 +118,7 @@ impl UnigraphDb {
 
     /// Select frames matching a structured query.
     pub async fn select_frames(&self, query: &FrameQuery) -> Result<Vec<FrameRow>> {
-        let conn = self.storage.graph.conn().await?;
+        let mut conn = self.storage.graph.conn().await?;
         conn.select_frames(query).await
     }
 
@@ -129,7 +129,7 @@ impl UnigraphDb {
     ///
     /// Returns `None` if the frame does not exist.
     pub async fn get_frame(&self, key: &GraphKey, with_data: bool) -> Result<Option<FrameRow>> {
-        let conn = self.storage.graph.conn().await?;
+        let mut conn = self.storage.graph.conn().await?;
         let mut rows = conn
             .select_frames(&FrameQuery {
                 timeline_id: key.timeline_id.clone(),
@@ -145,7 +145,7 @@ impl UnigraphDb {
     /// List all frames in a timeline, ordered by (timestamp, graph_id).
     /// Returns metadata only (data is `None`).
     pub async fn list_frames(&self, timeline_id: &TimelineID) -> Result<Vec<FrameRow>> {
-        let conn = self.storage.graph.conn().await?;
+        let mut conn = self.storage.graph.conn().await?;
         conn.select_frames(&FrameQuery {
             timeline_id: timeline_id.clone(),
             ..Default::default()
@@ -161,7 +161,7 @@ impl UnigraphDb {
         start: Timestamp,
         end: Timestamp,
     ) -> Result<Vec<FrameRow>> {
-        let conn = self.storage.graph.conn().await?;
+        let mut conn = self.storage.graph.conn().await?;
         conn.select_frames(&FrameQuery {
             timeline_id: timeline_id.clone(),
             timestamp_bounds: Some(TimestampBounds {
@@ -176,7 +176,7 @@ impl UnigraphDb {
     /// Get the frame immediately preceding the given key in the timeline.
     /// Returns metadata only (data is `None`).
     pub async fn get_preceding_frame(&self, key: &GraphTimeKey) -> Result<Option<FrameRow>> {
-        let conn = self.storage.graph.conn().await?;
+        let mut conn = self.storage.graph.conn().await?;
         let mut rows = conn
             .select_frames(&FrameQuery {
                 timeline_id: key.timeline_id.clone(),
@@ -189,7 +189,7 @@ impl UnigraphDb {
 
     /// Get all blob keys that are pending cleanup.
     pub async fn get_blobs_pending_cleanup(&self) -> Result<Vec<String>> {
-        let conn = self.storage.graph.conn().await?;
+        let mut conn = self.storage.graph.conn().await?;
         conn.get_blobs_pending_cleanup().await
     }
 
@@ -228,13 +228,13 @@ impl UnigraphDb {
         }
 
         let lock_name = format!("external_ids:{}", ns.0);
-        let conn = self.storage.graph.conn().await?;
+        let mut conn = self.storage.graph.conn().await?;
         conn.acquire_named_lock(&lock_name).await?;
         conn.start_transaction().await?;
 
-        let result = resolve_and_allocate(&*conn, ns, external_ids).await;
+        let result = resolve_and_allocate(&mut *conn, ns, external_ids).await;
 
-        finish_transaction(&*conn, result, &lock_name).await
+        finish_transaction(&mut *conn, result, &lock_name).await
     }
 
     /// Look up the ExternalID for a GraphID within a namespace.
@@ -243,7 +243,7 @@ impl UnigraphDb {
         external_id_namespace: &ExternalIDNamespace,
         graph_id: &GraphID,
     ) -> Result<Option<ExternalID>> {
-        let conn = self.storage.graph.conn().await?;
+        let mut conn = self.storage.graph.conn().await?;
         conn.graph_id_to_external_id(external_id_namespace, graph_id)
             .await
     }
@@ -254,7 +254,7 @@ impl UnigraphDb {
         external_id_namespace: &ExternalIDNamespace,
         graph_ids: &[GraphID],
     ) -> Result<Vec<(GraphID, ExternalID)>> {
-        let conn = self.storage.graph.conn().await?;
+        let mut conn = self.storage.graph.conn().await?;
         conn.graph_ids_to_external_ids(external_id_namespace, graph_ids)
             .await
     }
@@ -264,7 +264,7 @@ impl UnigraphDb {
         &self,
         external_id_namespace: &ExternalIDNamespace,
     ) -> Result<Option<ExternalID>> {
-        let conn = self.storage.graph.conn().await?;
+        let mut conn = self.storage.graph.conn().await?;
         conn.get_latest_external_id(external_id_namespace).await
     }
 
@@ -345,10 +345,10 @@ impl UnigraphDb {
     /// Starts a transaction, locks the timeline, deletes the frame,
     /// registers external blobs for cleanup, and commits.
     pub async fn delete_frame(&self, key: &GraphKey, timeline_id: &TimelineID) -> Result<bool> {
-        let conn = self.storage.graph.conn().await?;
+        let mut conn = self.storage.graph.conn().await?;
         conn.start_transaction().await?;
         conn.get_timeline_config_and_lock(timeline_id).await?;
-        let deleted = self.storage.delete_frame_on_conn(&*conn, key).await?;
+        let deleted = self.storage.delete_frame_on_conn(&mut *conn, key).await?;
         conn.commit_transaction().await?;
         Ok(deleted)
     }
@@ -403,8 +403,8 @@ impl UnigraphDb {
             )>,
         >,
     > {
-        let conn = self.storage.graph.conn().await?;
-        crate::metric_history::fetch_metric_history(&*conn, timeline_id, node_names, start, end)
+        let mut conn = self.storage.graph.conn().await?;
+        crate::metric_history::fetch_metric_history(&mut *conn, timeline_id, node_names, start, end)
             .await
     }
 }
@@ -414,7 +414,7 @@ impl UnigraphDb {
 /// Load existing mappings, validate linear history, and insert new ones.
 /// Must be called inside an exclusive transaction.
 async fn resolve_and_allocate(
-    conn: &dyn UnigraphGraphConnection,
+    conn: &mut dyn UnigraphGraphConnection,
     ns: &ExternalIDNamespace,
     external_ids: &[ExternalID],
 ) -> Result<Vec<GraphID>> {
@@ -437,7 +437,7 @@ async fn resolve_and_allocate(
 
 /// Commit on success, rollback on error, release lock in both cases.
 async fn finish_transaction<T>(
-    conn: &dyn UnigraphGraphConnection,
+    conn: &mut dyn UnigraphGraphConnection,
     result: Result<T>,
     lock_name: &str,
 ) -> Result<T> {

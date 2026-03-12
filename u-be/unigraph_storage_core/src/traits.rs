@@ -29,26 +29,28 @@ use crate::types::Timestamp;
 /// to commit it. If the connection is dropped while a transaction is active
 /// (i.e. started but not committed), the transaction is rolled back.
 #[async_trait]
-pub trait UnigraphGraphConnection: Send + Sync {
+pub trait UnigraphGraphConnection: Send {
     /// Begin a transaction. All subsequent operations on this connection
     /// will be part of the transaction until [`commit_transaction`](Self::commit_transaction)
     /// is called or the connection is dropped (which rolls back).
-    async fn start_transaction(&self) -> Result<()>;
+    async fn start_transaction(&mut self) -> Result<()>;
 
     /// Commit the active transaction.
-    async fn commit_transaction(&self) -> Result<()>;
+    async fn commit_transaction(&mut self) -> Result<()>;
 
     /// Create a new timeline with the given configuration.
     async fn create_timeline(
-        &self,
+        &mut self,
         timeline_id: &TimelineID,
         config: &TimelineConfig,
     ) -> Result<()>;
 
     /// Get the configuration for an existing timeline.
     /// Returns `None` if the timeline does not exist.
-    async fn get_timeline_config(&self, timeline_id: &TimelineID)
-    -> Result<Option<TimelineConfig>>;
+    async fn get_timeline_config(
+        &mut self,
+        timeline_id: &TimelineID,
+    ) -> Result<Option<TimelineConfig>>;
 
     /// Get the timeline configuration and acquire an exclusive lock on it.
     ///
@@ -63,12 +65,12 @@ pub trait UnigraphGraphConnection: Send + Sync {
     ///
     /// Returns `None` if the timeline does not exist.
     async fn get_timeline_config_and_lock(
-        &self,
+        &mut self,
         timeline_id: &TimelineID,
     ) -> Result<Option<TimelineConfig>>;
 
     /// List all timeline IDs.
-    async fn list_timelines(&self) -> Result<Vec<TimelineID>>;
+    async fn list_timelines(&mut self) -> Result<Vec<TimelineID>>;
 
     /// Store a frame with data (Full, Delta, or Error).
     ///
@@ -78,7 +80,7 @@ pub trait UnigraphGraphConnection: Send + Sync {
     /// - `manifest_json`: JSON-serialized manifest
     /// - `inline_blobs`: optional ZSTD-compressed blob map (when blobs are small enough to inline)
     async fn store_frame(
-        &self,
+        &mut self,
         key: &GraphTimeKey,
         frame_type: FrameType,
         base: Option<&GraphKey>,
@@ -87,13 +89,13 @@ pub trait UnigraphGraphConnection: Send + Sync {
     ) -> Result<()>;
 
     /// Store an empty frame (placeholder with no data).
-    async fn store_frame_empty(&self, key: &GraphTimeKey) -> Result<()>;
+    async fn store_frame_empty(&mut self, key: &GraphTimeKey) -> Result<()>;
 
     /// Select frames matching a structured query.
     ///
     /// The implementation compiles the [`FrameQuery`] into a single SQL
     /// statement with conditional WHERE clauses, ORDER BY, and LIMIT.
-    async fn select_frames(&self, query: &FrameQuery) -> Result<Vec<FrameRow>>;
+    async fn select_frames(&mut self, query: &FrameQuery) -> Result<Vec<FrameRow>>;
 
     /// Delete a frame row by its graph key.
     ///
@@ -102,19 +104,19 @@ pub trait UnigraphGraphConnection: Send + Sync {
     /// registering external blob keys for cleanup before calling this.
     ///
     /// Returns `true` if a frame was deleted, `false` if it didn't exist.
-    async fn delete_frame(&self, key: &GraphKey) -> Result<bool>;
+    async fn delete_frame(&mut self, key: &GraphKey) -> Result<bool>;
 
     /// Register blob keys for deferred cleanup.
     ///
     /// Used during store operations: if the transaction fails after blobs
     /// have been uploaded to external storage, these keys can be cleaned up later.
-    async fn register_blobs_for_cleanup(&self, blob_keys: &[String]) -> Result<()>;
+    async fn register_blobs_for_cleanup(&mut self, blob_keys: &[String]) -> Result<()>;
 
     /// Unregister blob keys from the cleanup list (transaction succeeded).
-    async fn unregister_blobs_for_cleanup(&self, blob_keys: &[String]) -> Result<()>;
+    async fn unregister_blobs_for_cleanup(&mut self, blob_keys: &[String]) -> Result<()>;
 
     /// Get all blob keys that are pending cleanup.
-    async fn get_blobs_pending_cleanup(&self) -> Result<Vec<String>>;
+    async fn get_blobs_pending_cleanup(&mut self) -> Result<Vec<String>>;
 
     /// Get blob keys pending cleanup that were registered before `older_than`.
     ///
@@ -122,7 +124,7 @@ pub trait UnigraphGraphConnection: Send + Sync {
     /// This ensures recently-registered blobs (from in-flight transactions)
     /// are not swept prematurely.
     async fn get_blobs_pending_cleanup_older_than(
-        &self,
+        &mut self,
         older_than: Timestamp,
     ) -> Result<Vec<String>>;
 
@@ -136,40 +138,40 @@ pub trait UnigraphGraphConnection: Send + Sync {
     ///
     /// - SQLite: no-op (`BEGIN EXCLUSIVE` in `start_transaction` already serializes writers)
     /// - MySQL: `GET_LOCK(name, timeout)`, released on connection drop
-    async fn acquire_named_lock(&self, name: &str) -> Result<()>;
+    async fn acquire_named_lock(&mut self, name: &str) -> Result<()>;
 
     /// Release a named advisory lock.
     ///
     /// - SQLite: no-op
     /// - MySQL: `RELEASE_LOCK(name)`
-    async fn release_named_lock(&self, name: &str) -> Result<()>;
+    async fn release_named_lock(&mut self, name: &str) -> Result<()>;
 
     // -- External ID mappings --
 
     /// Load all external ID mappings for a namespace, ordered by graph_id ASC.
     async fn list_external_id_mappings(
-        &self,
+        &mut self,
         ns: &ExternalIDNamespace,
     ) -> Result<Vec<(ExternalID, GraphID)>>;
 
     /// Insert a batch of new external ID → graph ID mappings.
     /// Caller is responsible for transaction management.
     async fn insert_external_id_mappings(
-        &self,
+        &mut self,
         ns: &ExternalIDNamespace,
         mappings: &[(ExternalID, GraphID)],
     ) -> Result<()>;
 
     /// Look up the ExternalID for a GraphID within a namespace.
     async fn graph_id_to_external_id(
-        &self,
+        &mut self,
         external_id_namespace: &ExternalIDNamespace,
         graph_id: &GraphID,
     ) -> Result<Option<ExternalID>>;
 
     /// Look up ExternalIDs for multiple GraphIDs within a namespace (batch).
     async fn graph_ids_to_external_ids(
-        &self,
+        &mut self,
         external_id_namespace: &ExternalIDNamespace,
         graph_ids: &[GraphID],
     ) -> Result<Vec<(GraphID, ExternalID)>>;
@@ -179,7 +181,7 @@ pub trait UnigraphGraphConnection: Send + Sync {
     /// Used for incremental ingestion: find the last-known external ID
     /// to query the source system for only newer entries.
     async fn get_latest_external_id(
-        &self,
+        &mut self,
         external_id_namespace: &ExternalIDNamespace,
     ) -> Result<Option<ExternalID>>;
 
@@ -192,7 +194,7 @@ pub trait UnigraphGraphConnection: Send + Sync {
     /// where it gives away multiple locks for the same non-existent row within
     /// a transaction.
     async fn ensure_metric_history_partitions_exist(
-        &self,
+        &mut self,
         timeline_id: &TimelineID,
         week_key: &str,
         node_names: &[String],
@@ -203,7 +205,7 @@ pub trait UnigraphGraphConnection: Send + Sync {
     /// Returns all node blobs for the given week. Within a transaction,
     /// this effectively locks these rows.
     async fn get_metric_history_for_week(
-        &self,
+        &mut self,
         timeline_id: &TimelineID,
         week_key: &str,
     ) -> Result<std::collections::BTreeMap<String, Vec<u8>>>;
@@ -213,7 +215,7 @@ pub trait UnigraphGraphConnection: Send + Sync {
     /// `INSERT OR REPLACE` semantics — replaces the blob for each
     /// `(timeline, node_name, week)` tuple.
     async fn upsert_metric_history_batch(
-        &self,
+        &mut self,
         timeline_id: &TimelineID,
         week_key: &str,
         entries: &[(String, Vec<u8>)],
@@ -225,7 +227,7 @@ pub trait UnigraphGraphConnection: Send + Sync {
     /// `(node_name, week_key)`. `start_week` and `end_week` are inclusive
     /// bounds in `"YYYY-Www"` format.
     async fn get_metric_history_range(
-        &self,
+        &mut self,
         timeline_id: &TimelineID,
         node_names: &[String],
         start_week: &str,
@@ -239,14 +241,47 @@ pub trait UnigraphGraphConnection: Send + Sync {
 /// SQLite connection, a MySQL connection pool). Each call to [`conn`](Self::conn)
 /// returns a connection that holds whatever resources are needed (lock guard,
 /// pooled connection, etc.) for the duration of its lifetime.
+///
+/// # Connection roles
+///
+/// In addition to the general-purpose [`conn`](Self::conn), role-specific methods
+/// let backends route to different connection pools or replicas:
+///
+/// - [`conn_read`](Self::conn_read) — read-only queries (can go to a replica)
+/// - [`conn_write`](Self::conn_write) — read-write operations (primary)
+/// - [`conn_master`](Self::conn_master) — admin / DDL operations (primary, may bypass query routing)
+/// - [`conn_analytics`](Self::conn_analytics) — heavy analytical queries (dedicated pool / replica)
+///
+/// All role methods have default implementations that delegate to [`conn`](Self::conn),
+/// so single-connection backends (e.g. SQLite) work without overriding anything.
 #[async_trait]
 pub trait UnigraphGraphStorage: Send + Sync {
-    /// Get a connection to the storage.
+    /// Get a general-purpose connection to the storage.
     ///
     /// For SQLite, this acquires the mutex and returns a connection that holds
     /// the lock guard. For connection-pooled backends, this checks out a
     /// connection from the pool.
     async fn conn(&self) -> Result<Box<dyn UnigraphGraphConnection + '_>>;
+
+    /// Get a read-only connection (may route to a replica).
+    async fn conn_read(&self) -> Result<Box<dyn UnigraphGraphConnection + '_>> {
+        self.conn().await
+    }
+
+    /// Get a read-write connection (routes to the primary).
+    async fn conn_write(&self) -> Result<Box<dyn UnigraphGraphConnection + '_>> {
+        self.conn().await
+    }
+
+    /// Get an admin / DDL connection (routes to the primary, may bypass query routing).
+    async fn conn_master(&self) -> Result<Box<dyn UnigraphGraphConnection + '_>> {
+        self.conn().await
+    }
+
+    /// Get a connection for heavy analytical queries (may route to a dedicated pool / replica).
+    async fn conn_analytics(&self) -> Result<Box<dyn UnigraphGraphConnection + '_>> {
+        self.conn().await
+    }
 }
 
 /// External blob storage trait — manages large blobs outside the frames table.

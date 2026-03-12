@@ -212,7 +212,7 @@ pub fn prepare_history_entries(
 /// For SQLite this is technically unnecessary (BEGIN EXCLUSIVE already
 /// serializes), but we keep the pattern for portability to MySQL backends.
 pub async fn ensure_history_partitions(
-    conn: &dyn UnigraphGraphConnection,
+    conn: &mut dyn UnigraphGraphConnection,
     timeline_id: &TimelineID,
     prepared: &PreparedHistoryEntries,
 ) -> Result<()> {
@@ -244,7 +244,7 @@ pub async fn ensure_history_partitions(
 ///    - Serialize updated `FlatHistory` to ZSTD bytes
 /// 5. Batch-upsert all updated blobs — single write query
 pub async fn store_metric_history_on_conn(
-    conn: &dyn UnigraphGraphConnection,
+    conn: &mut dyn UnigraphGraphConnection,
     timeline_id: &TimelineID,
     mut prepared: PreparedHistoryEntries,
 ) -> Result<()> {
@@ -272,7 +272,7 @@ pub async fn store_metric_history_on_conn(
 /// with an absolute first frame). There are no cross-week delta dependencies,
 /// so merging is a simple concatenation + sort.
 pub async fn fetch_metric_history(
-    conn: &dyn UnigraphGraphConnection,
+    conn: &mut dyn UnigraphGraphConnection,
     timeline_id: &TimelineID,
     node_names: &[String],
     start: Timestamp,
@@ -304,7 +304,7 @@ pub async fn fetch_metric_history(
 // --- Internals ---
 
 async fn store_week(
-    conn: &dyn UnigraphGraphConnection,
+    conn: &mut dyn UnigraphGraphConnection,
     timeline_id: &TimelineID,
     week_entry: &mut PreparedHistoryForWeek,
 ) -> Result<()> {
@@ -383,7 +383,7 @@ async fn store_week(
 
 /// Build the `all_frames` set for a week: existing frames from DB + new frames.
 async fn build_all_frames(
-    conn: &dyn UnigraphGraphConnection,
+    conn: &mut dyn UnigraphGraphConnection,
     timeline_id: &TimelineID,
     _week_partition: &WeekPartition,
     new_frames: &[Frame],

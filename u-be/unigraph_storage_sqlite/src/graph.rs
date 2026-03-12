@@ -33,33 +33,31 @@ impl UnigraphGraphStorage for SqliteStorage {
     async fn conn(&self) -> Result<Box<dyn UnigraphGraphConnection + '_>> {
         Ok(Box::new(SqliteConnection {
             conn: self.conn.clone(),
-            transaction_active: std::sync::atomic::AtomicBool::new(false),
+            transaction_active: false,
         }))
     }
 }
 
 #[async_trait]
 impl UnigraphGraphConnection for SqliteConnection {
-    async fn start_transaction(&self) -> Result<()> {
-        let conn = self.lock();
-        conn.execute("BEGIN EXCLUSIVE", [])
+    async fn start_transaction(&mut self) -> Result<()> {
+        self.lock()
+            .execute("BEGIN EXCLUSIVE", [])
             .context("Failed to begin exclusive transaction")?;
-        self.transaction_active
-            .store(true, std::sync::atomic::Ordering::Relaxed);
+        self.transaction_active = true;
         Ok(())
     }
 
-    async fn commit_transaction(&self) -> Result<()> {
-        let conn = self.lock();
-        conn.execute("COMMIT", [])
+    async fn commit_transaction(&mut self) -> Result<()> {
+        self.lock()
+            .execute("COMMIT", [])
             .context("Failed to commit transaction")?;
-        self.transaction_active
-            .store(false, std::sync::atomic::Ordering::Relaxed);
+        self.transaction_active = false;
         Ok(())
     }
 
     async fn create_timeline(
-        &self,
+        &mut self,
         timeline_id: &TimelineID,
         config: &TimelineConfig,
     ) -> Result<()> {
@@ -78,7 +76,7 @@ impl UnigraphGraphConnection for SqliteConnection {
     }
 
     async fn get_timeline_config(
-        &self,
+        &mut self,
         timeline_id: &TimelineID,
     ) -> Result<Option<TimelineConfig>> {
         let conn = self.lock();
@@ -86,7 +84,7 @@ impl UnigraphGraphConnection for SqliteConnection {
     }
 
     async fn get_timeline_config_and_lock(
-        &self,
+        &mut self,
         timeline_id: &TimelineID,
     ) -> Result<Option<TimelineConfig>> {
         // For SQLite, BEGIN EXCLUSIVE (in start_transaction) already serializes
@@ -96,7 +94,7 @@ impl UnigraphGraphConnection for SqliteConnection {
         query_timeline_config(&conn, timeline_id)
     }
 
-    async fn list_timelines(&self) -> Result<Vec<TimelineID>> {
+    async fn list_timelines(&mut self) -> Result<Vec<TimelineID>> {
         let conn = self.lock();
         let mut stmt = conn
             .prepare("SELECT timeline_id FROM timelines ORDER BY timeline_id")
@@ -114,7 +112,7 @@ impl UnigraphGraphConnection for SqliteConnection {
     }
 
     async fn store_frame(
-        &self,
+        &mut self,
         key: &GraphTimeKey,
         frame_type: FrameType,
         base: Option<&GraphKey>,
@@ -157,7 +155,7 @@ impl UnigraphGraphConnection for SqliteConnection {
         Ok(())
     }
 
-    async fn store_frame_empty(&self, key: &GraphTimeKey) -> Result<()> {
+    async fn store_frame_empty(&mut self, key: &GraphTimeKey) -> Result<()> {
         let now = Timestamp::now().to_unix_timestamp();
         let timestamp = key.timestamp.to_unix_timestamp();
 
@@ -172,7 +170,7 @@ impl UnigraphGraphConnection for SqliteConnection {
         Ok(())
     }
 
-    async fn select_frames(&self, query: &FrameQuery) -> Result<Vec<FrameRow>> {
+    async fn select_frames(&mut self, query: &FrameQuery) -> Result<Vec<FrameRow>> {
         let with_data = query.with_data.unwrap_or(false);
 
         // Build SELECT columns.
@@ -325,7 +323,7 @@ impl UnigraphGraphConnection for SqliteConnection {
         Ok(result)
     }
 
-    async fn delete_frame(&self, key: &GraphKey) -> Result<bool> {
+    async fn delete_frame(&mut self, key: &GraphKey) -> Result<bool> {
         let conn = self.lock();
         let deleted = conn
             .execute(
@@ -336,7 +334,7 @@ impl UnigraphGraphConnection for SqliteConnection {
         Ok(deleted > 0)
     }
 
-    async fn register_blobs_for_cleanup(&self, blob_keys: &[String]) -> Result<()> {
+    async fn register_blobs_for_cleanup(&mut self, blob_keys: &[String]) -> Result<()> {
         let now = Timestamp::now().to_unix_timestamp();
         let conn = self.lock();
         let mut stmt = conn
@@ -350,7 +348,7 @@ impl UnigraphGraphConnection for SqliteConnection {
         Ok(())
     }
 
-    async fn unregister_blobs_for_cleanup(&self, blob_keys: &[String]) -> Result<()> {
+    async fn unregister_blobs_for_cleanup(&mut self, blob_keys: &[String]) -> Result<()> {
         let conn = self.lock();
         let mut stmt = conn
             .prepare("DELETE FROM blobs_to_delete WHERE blob_key = ?1")
@@ -363,7 +361,7 @@ impl UnigraphGraphConnection for SqliteConnection {
         Ok(())
     }
 
-    async fn get_blobs_pending_cleanup(&self) -> Result<Vec<String>> {
+    async fn get_blobs_pending_cleanup(&mut self) -> Result<Vec<String>> {
         let conn = self.lock();
         let mut stmt = conn
             .prepare("SELECT blob_key FROM blobs_to_delete ORDER BY blob_key")
@@ -381,7 +379,7 @@ impl UnigraphGraphConnection for SqliteConnection {
     }
 
     async fn get_blobs_pending_cleanup_older_than(
-        &self,
+        &mut self,
         older_than: unigraph_storage_core::Timestamp,
     ) -> Result<Vec<String>> {
         let cutoff = older_than.to_unix_timestamp();
@@ -407,12 +405,12 @@ impl UnigraphGraphConnection for SqliteConnection {
 
     // -- Named locks --
 
-    async fn acquire_named_lock(&self, _name: &str) -> Result<()> {
+    async fn acquire_named_lock(&mut self, _name: &str) -> Result<()> {
         // No-op for SQLite: BEGIN EXCLUSIVE in start_transaction already serializes writers.
         Ok(())
     }
 
-    async fn release_named_lock(&self, _name: &str) -> Result<()> {
+    async fn release_named_lock(&mut self, _name: &str) -> Result<()> {
         // No-op for SQLite.
         Ok(())
     }
@@ -420,7 +418,7 @@ impl UnigraphGraphConnection for SqliteConnection {
     // -- External ID mappings --
 
     async fn list_external_id_mappings(
-        &self,
+        &mut self,
         ns: &ExternalIDNamespace,
     ) -> Result<Vec<(ExternalID, GraphID)>> {
         let conn = self.lock();
@@ -440,7 +438,7 @@ impl UnigraphGraphConnection for SqliteConnection {
     }
 
     async fn insert_external_id_mappings(
-        &self,
+        &mut self,
         ns: &ExternalIDNamespace,
         mappings: &[(ExternalID, GraphID)],
     ) -> Result<()> {
@@ -458,7 +456,7 @@ impl UnigraphGraphConnection for SqliteConnection {
     }
 
     async fn graph_id_to_external_id(
-        &self,
+        &mut self,
         external_id_namespace: &ExternalIDNamespace,
         graph_id: &GraphID,
     ) -> Result<Option<ExternalID>> {
@@ -481,7 +479,7 @@ impl UnigraphGraphConnection for SqliteConnection {
     }
 
     async fn graph_ids_to_external_ids(
-        &self,
+        &mut self,
         external_id_namespace: &ExternalIDNamespace,
         graph_ids: &[GraphID],
     ) -> Result<Vec<(GraphID, ExternalID)>> {
@@ -511,7 +509,7 @@ impl UnigraphGraphConnection for SqliteConnection {
     }
 
     async fn get_latest_external_id(
-        &self,
+        &mut self,
         external_id_namespace: &ExternalIDNamespace,
     ) -> Result<Option<ExternalID>> {
         let conn = self.lock();
@@ -536,7 +534,7 @@ impl UnigraphGraphConnection for SqliteConnection {
     // -- Metric history --
 
     async fn ensure_metric_history_partitions_exist(
-        &self,
+        &mut self,
         timeline_id: &TimelineID,
         week_key: &str,
         node_names: &[String],
@@ -566,7 +564,7 @@ impl UnigraphGraphConnection for SqliteConnection {
     }
 
     async fn get_metric_history_for_week(
-        &self,
+        &mut self,
         timeline_id: &TimelineID,
         week_key: &str,
     ) -> Result<std::collections::BTreeMap<String, Vec<u8>>> {
@@ -595,7 +593,7 @@ impl UnigraphGraphConnection for SqliteConnection {
     }
 
     async fn upsert_metric_history_batch(
-        &self,
+        &mut self,
         timeline_id: &TimelineID,
         week_key: &str,
         entries: &[(String, Vec<u8>)],
@@ -624,7 +622,7 @@ impl UnigraphGraphConnection for SqliteConnection {
     }
 
     async fn get_metric_history_range(
-        &self,
+        &mut self,
         timeline_id: &TimelineID,
         node_names: &[String],
         start_week: &str,

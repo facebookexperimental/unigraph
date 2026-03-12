@@ -136,8 +136,8 @@ impl UnigraphStorage {
 
     /// Fetch errors for a frame.
     pub async fn fetch_errors(&self, key: &GraphKey) -> Result<Vec<TimestampedError>> {
-        let conn = self.graph.conn().await?;
-        let row = get_frame_with_data(&*conn, key).await?;
+        let mut conn = self.graph.conn().await?;
+        let row = get_frame_with_data(&mut *conn, key).await?;
 
         if row.frame_type != FrameType::Error {
             anyhow::bail!("Frame {:?} is {:?}, not Error", key, row.frame_type);
@@ -172,7 +172,7 @@ impl UnigraphStorage {
     /// Returns `true` if the frame existed and was deleted.
     pub async fn delete_frame_on_conn(
         &self,
-        conn: &dyn UnigraphGraphConnection,
+        conn: &mut dyn UnigraphGraphConnection,
         key: &GraphKey,
     ) -> Result<bool> {
         let row = match get_frame_with_data_on_conn(conn, key).await? {
@@ -200,7 +200,7 @@ impl UnigraphStorage {
         let now = Timestamp::now().to_unix_timestamp();
         let cutoff = Timestamp::from_unix_timestamp(now - min_age.as_secs() as i64);
 
-        let conn = self.graph.conn().await?;
+        let mut conn = self.graph.conn().await?;
         let blob_keys = conn.get_blobs_pending_cleanup_older_than(cutoff).await?;
         drop(conn);
 
@@ -214,7 +214,7 @@ impl UnigraphStorage {
         }
 
         // Unregister from cleanup table (separate short-lived connection).
-        let conn = self.graph.conn().await?;
+        let mut conn = self.graph.conn().await?;
         conn.unregister_blobs_for_cleanup(&blob_keys).await?;
 
         Ok(blob_keys.len())
@@ -247,7 +247,7 @@ impl UnigraphStorage {
         prepared_history: Option<crate::metric_history::PreparedHistoryEntries>,
     ) -> Result<()> {
         let threshold = {
-            let conn = self.graph.conn().await?;
+            let mut conn = self.graph.conn().await?;
             let config = conn
                 .get_timeline_config(&key.timeline_id)
                 .await?
@@ -265,19 +265,19 @@ impl UnigraphStorage {
         };
 
         // Start transaction, lock timeline, write frame.
-        let conn = self.graph.conn().await?;
+        let mut conn = self.graph.conn().await?;
         conn.start_transaction().await?;
         conn.get_timeline_config_and_lock(&key.timeline_id)
             .await
             .with_context(|| format!("Failed to lock timeline for {:?}", frame_type))?;
 
-        crate::adjacent_deltas::validate_monotonic_append(&*conn, key).await?;
+        crate::adjacent_deltas::validate_monotonic_append(&mut *conn, key).await?;
         if frame_type == FrameType::Delta {
-            crate::adjacent_deltas::validate_delta_base(&*conn, key, base).await?;
+            crate::adjacent_deltas::validate_delta_base(&mut *conn, key, base).await?;
         }
 
         self.store_package_on_conn(
-            &*conn,
+            &mut *conn,
             key,
             frame_type,
             base,
@@ -289,8 +289,12 @@ impl UnigraphStorage {
 
         // Store metric history INSIDE the same transaction.
         if let Some(prepared) = prepared_history {
-            crate::metric_history::store_metric_history_on_conn(&*conn, &key.timeline_id, prepared)
-                .await?;
+            crate::metric_history::store_metric_history_on_conn(
+                &mut *conn,
+                &key.timeline_id,
+                prepared,
+            )
+            .await?;
         }
 
         conn.commit_transaction().await?;
@@ -310,7 +314,7 @@ impl UnigraphStorage {
         graph: &ArrayGraphSerializable,
     ) -> Result<Option<crate::metric_history::PreparedHistoryEntries>> {
         let config = {
-            let conn = self.graph.conn().await?;
+            let mut conn = self.graph.conn().await?;
             conn.get_timeline_config(&key.timeline_id).await?
         };
 
@@ -323,8 +327,8 @@ impl UnigraphStorage {
         }
 
         let prepared = crate::metric_history::prepare_history_entries(&[(key.clone(), graph)]);
-        let conn = self.graph.conn().await?;
-        crate::metric_history::ensure_history_partitions(&*conn, &key.timeline_id, &prepared)
+        let mut conn = self.graph.conn().await?;
+        crate::metric_history::ensure_history_partitions(&mut *conn, &key.timeline_id, &prepared)
             .await?;
 
         Ok(Some(prepared))
@@ -340,7 +344,7 @@ impl UnigraphStorage {
     #[allow(clippy::too_many_arguments)]
     pub async fn store_package_on_conn(
         &self,
-        conn: &dyn UnigraphGraphConnection,
+        conn: &mut dyn UnigraphGraphConnection,
         key: &GraphTimeKey,
         frame_type: FrameType,
         base: Option<&GraphKey>,
@@ -447,7 +451,7 @@ impl UnigraphStorage {
         let blob_keys: Vec<String> = blobs.keys().map(|id| id.0.clone()).collect();
 
         // Register for cleanup using a separate short-lived connection.
-        let reg_conn = self.graph.conn().await?;
+        let mut reg_conn = self.graph.conn().await?;
         reg_conn.register_blobs_for_cleanup(&blob_keys).await?;
         drop(reg_conn);
 
@@ -546,7 +550,7 @@ fn extract_external_blob_keys(row: &FrameRow) -> Result<Vec<String>> {
 
 /// Fetch a single frame with data via `select_frames`, or error if not found.
 async fn get_frame_with_data(
-    conn: &dyn UnigraphGraphConnection,
+    conn: &mut dyn UnigraphGraphConnection,
     key: &GraphKey,
 ) -> Result<FrameRow> {
     get_frame_with_data_on_conn(conn, key)
@@ -557,7 +561,7 @@ async fn get_frame_with_data(
 /// Fetch a single frame with data via `select_frames`.
 /// Returns `None` if the frame does not exist.
 async fn get_frame_with_data_on_conn(
-    conn: &dyn UnigraphGraphConnection,
+    conn: &mut dyn UnigraphGraphConnection,
     key: &GraphKey,
 ) -> Result<Option<FrameRow>> {
     let mut rows = conn
