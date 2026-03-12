@@ -20,18 +20,13 @@ use crate::Deltable;
 ///
 /// `V` is the full value type, `D` is the inner delta type. When used as a
 /// whole-value replacement (via `diff_option`), `D = V` (the default).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub enum OptionDelta<V, D = V> {
+    #[default]
     Unchanged,
     Cleared,
     Set(V),
     Changed(D),
-}
-
-impl<V, D> Default for OptionDelta<V, D> {
-    fn default() -> Self {
-        OptionDelta::Unchanged
-    }
 }
 
 impl<V: PartialEq, D: PartialEq> PartialEq for OptionDelta<V, D> {
