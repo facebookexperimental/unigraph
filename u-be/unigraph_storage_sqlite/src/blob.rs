@@ -9,6 +9,7 @@ use unigraph_storage_core::traits::UnigraphBlobStorage;
 use unigraph_timestamp::Timestamp;
 
 use crate::SqliteStorage;
+use crate::schema::TABLE_BLOBS;
 
 #[async_trait]
 impl UnigraphBlobStorage for SqliteStorage {
@@ -16,19 +17,21 @@ impl UnigraphBlobStorage for SqliteStorage {
         let conn = self.conn.lock().unwrap();
         let now = Timestamp::now().to_unix_timestamp();
 
-        conn.execute(
-            "INSERT OR REPLACE INTO blobs (blob_key, data, created_at) VALUES (?1, ?2, ?3)",
-            rusqlite::params![key, data, now],
-        )
-        .with_context(|| format!("Failed to put blob: {}", key))?;
+        let sql = format!(
+            "INSERT OR REPLACE INTO {} (blob_key, data, created_at) VALUES (?1, ?2, ?3)",
+            TABLE_BLOBS
+        );
+        conn.execute(&sql, rusqlite::params![key, data, now])
+            .with_context(|| format!("Failed to put blob: {}", key))?;
 
         Ok(())
     }
 
     async fn get_blob(&self, key: &str) -> Result<Option<Vec<u8>>> {
         let conn = self.conn.lock().unwrap();
+        let sql = format!("SELECT data FROM {} WHERE blob_key = ?1", TABLE_BLOBS);
         let mut stmt = conn
-            .prepare("SELECT data FROM blobs WHERE blob_key = ?1")
+            .prepare(&sql)
             .context("Failed to prepare get_blob query")?;
 
         let result = stmt
@@ -42,19 +45,18 @@ impl UnigraphBlobStorage for SqliteStorage {
     async fn delete_blob(&self, key: &str) -> Result<()> {
         let conn = self.conn.lock().unwrap();
 
-        conn.execute(
-            "DELETE FROM blobs WHERE blob_key = ?1",
-            rusqlite::params![key],
-        )
-        .with_context(|| format!("Failed to delete blob: {}", key))?;
+        let sql = format!("DELETE FROM {} WHERE blob_key = ?1", TABLE_BLOBS);
+        conn.execute(&sql, rusqlite::params![key])
+            .with_context(|| format!("Failed to delete blob: {}", key))?;
 
         Ok(())
     }
 
     async fn has_blob(&self, key: &str) -> Result<bool> {
         let conn = self.conn.lock().unwrap();
+        let sql = format!("SELECT 1 FROM {} WHERE blob_key = ?1", TABLE_BLOBS);
         let mut stmt = conn
-            .prepare("SELECT 1 FROM blobs WHERE blob_key = ?1")
+            .prepare(&sql)
             .context("Failed to prepare has_blob query")?;
 
         let exists = stmt
@@ -69,8 +71,12 @@ impl UnigraphBlobStorage for SqliteStorage {
     async fn list_blobs(&self, prefix: &str) -> Result<Vec<String>> {
         let conn = self.conn.lock().unwrap();
         let pattern = format!("{}%", prefix);
+        let sql = format!(
+            "SELECT blob_key FROM {} WHERE blob_key LIKE ?1 ORDER BY blob_key",
+            TABLE_BLOBS
+        );
         let mut stmt = conn
-            .prepare("SELECT blob_key FROM blobs WHERE blob_key LIKE ?1 ORDER BY blob_key")
+            .prepare(&sql)
             .context("Failed to prepare list_blobs query")?;
 
         let rows = stmt

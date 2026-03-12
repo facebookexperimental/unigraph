@@ -2,17 +2,25 @@
 
 //! SQL DDL constants and migrations for the SQLite storage backend.
 
+/// Table names
+pub const TABLE_TIMELINE_CONFIGS: &str = "timeline_configs";
+pub const TABLE_GRAPHS: &str = "graphs";
+pub const TABLE_BLOBS: &str = "blobs";
+pub const TABLE_BLOBS_TO_DELETE: &str = "blobs_to_delete";
+pub const TABLE_EXTERNAL_ID_MAPPINGS: &str = "external_id_mappings";
+pub const TABLE_METRIC_HISTORY: &str = "metric_history";
+
 /// SQL statements to create the storage schema.
 ///
 /// Safe to run multiple times (`IF NOT EXISTS`).
 pub const CREATE_SCHEMA: &str = "
-CREATE TABLE IF NOT EXISTS timelines (
+CREATE TABLE IF NOT EXISTS timeline_configs (
     timeline_id   TEXT PRIMARY KEY,
     config_json   TEXT NOT NULL,
     created_at    INTEGER NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS frames (
+CREATE TABLE IF NOT EXISTS graphs (
     timeline_id   TEXT    NOT NULL,
     timestamp     INTEGER NOT NULL,
     graph_id      INTEGER NOT NULL,
@@ -24,8 +32,8 @@ CREATE TABLE IF NOT EXISTS frames (
     PRIMARY KEY (timeline_id, graph_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_frames_timeline_ts
-    ON frames(timeline_id, timestamp, graph_id);
+CREATE INDEX IF NOT EXISTS idx_graphs_timeline_ts
+    ON graphs(timeline_id, timestamp, graph_id);
 
 CREATE TABLE IF NOT EXISTS blobs (
     blob_key    TEXT PRIMARY KEY,

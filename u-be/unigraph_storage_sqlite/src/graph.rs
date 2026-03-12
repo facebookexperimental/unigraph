@@ -27,6 +27,11 @@ use unigraph_timestamp::Timestamp;
 
 use crate::SqliteConnection;
 use crate::SqliteStorage;
+use crate::schema::TABLE_BLOBS_TO_DELETE;
+use crate::schema::TABLE_EXTERNAL_ID_MAPPINGS;
+use crate::schema::TABLE_GRAPHS;
+use crate::schema::TABLE_METRIC_HISTORY;
+use crate::schema::TABLE_TIMELINE_CONFIGS;
 
 #[async_trait]
 impl UnigraphGraphStorage for SqliteStorage {
@@ -66,11 +71,12 @@ impl UnigraphGraphConnection for SqliteConnection {
         let now = Timestamp::now().to_unix_timestamp();
 
         let conn = self.lock();
-        conn.execute(
-            "INSERT INTO timelines (timeline_id, config_json, created_at) VALUES (?1, ?2, ?3)",
-            rusqlite::params![timeline_id.0, config_json, now],
-        )
-        .context("Failed to insert timeline")?;
+        let sql = format!(
+            "INSERT INTO {} (timeline_id, config_json, created_at) VALUES (?1, ?2, ?3)",
+            TABLE_TIMELINE_CONFIGS
+        );
+        conn.execute(&sql, rusqlite::params![timeline_id.0, config_json, now])
+            .context("Failed to insert timeline")?;
 
         Ok(())
     }
@@ -96,8 +102,12 @@ impl UnigraphGraphConnection for SqliteConnection {
 
     async fn list_timelines(&mut self) -> Result<Vec<TimelineID>> {
         let conn = self.lock();
+        let sql = format!(
+            "SELECT timeline_id FROM {} ORDER BY timeline_id",
+            TABLE_TIMELINE_CONFIGS
+        );
         let mut stmt = conn
-            .prepare("SELECT timeline_id FROM timelines ORDER BY timeline_id")
+            .prepare(&sql)
             .context("Failed to prepare list timelines query")?;
 
         let rows = stmt
@@ -130,15 +140,23 @@ impl UnigraphGraphConnection for SqliteConnection {
         let conn = self.lock();
 
         // Delete an existing Empty frame so we can replace it, then insert.
+        let delete_sql = format!(
+            "DELETE FROM {} WHERE timeline_id = ?1 AND graph_id = ?2 AND frame_type = 'Empty'",
+            TABLE_GRAPHS
+        );
         conn.execute(
-            "DELETE FROM frames WHERE timeline_id = ?1 AND graph_id = ?2 AND frame_type = 'Empty'",
+            &delete_sql,
             rusqlite::params![key.timeline_id.0, key.graph_id.0],
         )
         .context("Failed to delete existing empty frame")?;
 
-        conn.execute(
-            "INSERT INTO frames (timeline_id, timestamp, graph_id, frame_type, manifest_json, inline_blobs, base_key_json, created_at)
+        let insert_sql = format!(
+            "INSERT INTO {} (timeline_id, timestamp, graph_id, frame_type, manifest_json, inline_blobs, base_key_json, created_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            TABLE_GRAPHS
+        );
+        conn.execute(
+            &insert_sql,
             rusqlite::params![
                 key.timeline_id.0,
                 timestamp,
@@ -160,9 +178,13 @@ impl UnigraphGraphConnection for SqliteConnection {
         let timestamp = key.timestamp.to_unix_timestamp();
 
         let conn = self.lock();
-        conn.execute(
-            "INSERT INTO frames (timeline_id, timestamp, graph_id, frame_type, manifest_json, inline_blobs, base_key_json, created_at)
+        let sql = format!(
+            "INSERT INTO {} (timeline_id, timestamp, graph_id, frame_type, manifest_json, inline_blobs, base_key_json, created_at)
              VALUES (?1, ?2, ?3, ?4, NULL, NULL, NULL, ?5)",
+            TABLE_GRAPHS
+        );
+        conn.execute(
+            &sql,
             rusqlite::params![key.timeline_id.0, timestamp, key.graph_id.0, "Empty", now,],
         )
         .context("Failed to insert empty frame")?;
@@ -175,9 +197,15 @@ impl UnigraphGraphConnection for SqliteConnection {
 
         // Build SELECT columns.
         let select = if with_data {
-            "SELECT graph_id, timestamp, frame_type, base_key_json, manifest_json, inline_blobs FROM frames"
+            format!(
+                "SELECT graph_id, timestamp, frame_type, base_key_json, manifest_json, inline_blobs FROM {}",
+                TABLE_GRAPHS
+            )
         } else {
-            "SELECT graph_id, timestamp, frame_type, base_key_json FROM frames"
+            format!(
+                "SELECT graph_id, timestamp, frame_type, base_key_json FROM {}",
+                TABLE_GRAPHS
+            )
         };
 
         // Build WHERE clauses and collect params as strings.
@@ -325,11 +353,12 @@ impl UnigraphGraphConnection for SqliteConnection {
 
     async fn delete_frame(&mut self, key: &GraphKey) -> Result<bool> {
         let conn = self.lock();
+        let sql = format!(
+            "DELETE FROM {} WHERE timeline_id = ?1 AND graph_id = ?2",
+            TABLE_GRAPHS
+        );
         let deleted = conn
-            .execute(
-                "DELETE FROM frames WHERE timeline_id = ?1 AND graph_id = ?2",
-                rusqlite::params![key.timeline_id.0, key.graph_id.0],
-            )
+            .execute(&sql, rusqlite::params![key.timeline_id.0, key.graph_id.0])
             .context("Failed to delete frame")?;
         Ok(deleted > 0)
     }
@@ -337,8 +366,12 @@ impl UnigraphGraphConnection for SqliteConnection {
     async fn register_blobs_for_cleanup(&mut self, blob_keys: &[String]) -> Result<()> {
         let now = Timestamp::now().to_unix_timestamp();
         let conn = self.lock();
+        let sql = format!(
+            "INSERT OR IGNORE INTO {} (blob_key, created_at) VALUES (?1, ?2)",
+            TABLE_BLOBS_TO_DELETE
+        );
         let mut stmt = conn
-            .prepare("INSERT OR IGNORE INTO blobs_to_delete (blob_key, created_at) VALUES (?1, ?2)")
+            .prepare(&sql)
             .context("Failed to prepare register_blobs_for_cleanup")?;
 
         for key in blob_keys {
@@ -350,8 +383,9 @@ impl UnigraphGraphConnection for SqliteConnection {
 
     async fn unregister_blobs_for_cleanup(&mut self, blob_keys: &[String]) -> Result<()> {
         let conn = self.lock();
+        let sql = format!("DELETE FROM {} WHERE blob_key = ?1", TABLE_BLOBS_TO_DELETE);
         let mut stmt = conn
-            .prepare("DELETE FROM blobs_to_delete WHERE blob_key = ?1")
+            .prepare(&sql)
             .context("Failed to prepare unregister_blobs_for_cleanup")?;
 
         for key in blob_keys {
@@ -363,8 +397,12 @@ impl UnigraphGraphConnection for SqliteConnection {
 
     async fn get_blobs_pending_cleanup(&mut self) -> Result<Vec<String>> {
         let conn = self.lock();
+        let sql = format!(
+            "SELECT blob_key FROM {} ORDER BY blob_key",
+            TABLE_BLOBS_TO_DELETE
+        );
         let mut stmt = conn
-            .prepare("SELECT blob_key FROM blobs_to_delete ORDER BY blob_key")
+            .prepare(&sql)
             .context("Failed to prepare get_blobs_pending_cleanup")?;
 
         let rows = stmt
@@ -384,12 +422,14 @@ impl UnigraphGraphConnection for SqliteConnection {
     ) -> Result<Vec<String>> {
         let cutoff = older_than.to_unix_timestamp();
         let conn = self.lock();
+        let sql = format!(
+            "SELECT blob_key FROM {}
+             WHERE created_at <= ?1
+             ORDER BY blob_key",
+            TABLE_BLOBS_TO_DELETE
+        );
         let mut stmt = conn
-            .prepare(
-                "SELECT blob_key FROM blobs_to_delete
-                 WHERE created_at <= ?1
-                 ORDER BY blob_key",
-            )
+            .prepare(&sql)
             .context("Failed to prepare get_blobs_pending_cleanup_older_than")?;
 
         let rows = stmt
@@ -422,11 +462,13 @@ impl UnigraphGraphConnection for SqliteConnection {
         ns: &ExternalIDNamespace,
     ) -> Result<Vec<(ExternalID, GraphID)>> {
         let conn = self.lock();
-        let mut stmt = conn.prepare(
-            "SELECT external_id, graph_id FROM external_id_mappings
+        let sql = format!(
+            "SELECT external_id, graph_id FROM {}
              WHERE external_id_namespace = ?1
              ORDER BY graph_id ASC",
-        )?;
+            TABLE_EXTERNAL_ID_MAPPINGS
+        );
+        let mut stmt = conn.prepare(&sql)?;
         stmt.query_map(rusqlite::params![ns.0], |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
         })?
@@ -444,11 +486,13 @@ impl UnigraphGraphConnection for SqliteConnection {
     ) -> Result<()> {
         let now = Timestamp::now().to_unix_timestamp();
         let conn = self.lock();
-        let mut stmt = conn.prepare(
-            "INSERT INTO external_id_mappings
+        let sql = format!(
+            "INSERT INTO {}
              (external_id_namespace, external_id, graph_id, created_at)
              VALUES (?1, ?2, ?3, ?4)",
-        )?;
+            TABLE_EXTERNAL_ID_MAPPINGS
+        );
+        let mut stmt = conn.prepare(&sql)?;
         for (eid, gid) in mappings {
             stmt.execute(rusqlite::params![ns.0, eid.0, gid.0, now])?;
         }
@@ -461,11 +505,13 @@ impl UnigraphGraphConnection for SqliteConnection {
         graph_id: &GraphID,
     ) -> Result<Option<ExternalID>> {
         let conn = self.lock();
+        let sql = format!(
+            "SELECT external_id FROM {}
+             WHERE external_id_namespace = ?1 AND graph_id = ?2",
+            TABLE_EXTERNAL_ID_MAPPINGS
+        );
         let mut stmt = conn
-            .prepare(
-                "SELECT external_id FROM external_id_mappings
-                 WHERE external_id_namespace = ?1 AND graph_id = ?2",
-            )
+            .prepare(&sql)
             .context("Failed to prepare graph_id_to_external_id query")?;
 
         stmt.query_row(
@@ -484,11 +530,13 @@ impl UnigraphGraphConnection for SqliteConnection {
         graph_ids: &[GraphID],
     ) -> Result<Vec<(GraphID, ExternalID)>> {
         let conn = self.lock();
+        let sql = format!(
+            "SELECT external_id FROM {}
+             WHERE external_id_namespace = ?1 AND graph_id = ?2",
+            TABLE_EXTERNAL_ID_MAPPINGS
+        );
         let mut stmt = conn
-            .prepare(
-                "SELECT external_id FROM external_id_mappings
-                 WHERE external_id_namespace = ?1 AND graph_id = ?2",
-            )
+            .prepare(&sql)
             .context("Failed to prepare graph_ids_to_external_ids query")?;
 
         let mut result = Vec::new();
@@ -513,13 +561,15 @@ impl UnigraphGraphConnection for SqliteConnection {
         external_id_namespace: &ExternalIDNamespace,
     ) -> Result<Option<ExternalID>> {
         let conn = self.lock();
+        let sql = format!(
+            "SELECT external_id FROM {}
+             WHERE external_id_namespace = ?1
+             ORDER BY graph_id DESC
+             LIMIT 1",
+            TABLE_EXTERNAL_ID_MAPPINGS
+        );
         let mut stmt = conn
-            .prepare(
-                "SELECT external_id FROM external_id_mappings
-                 WHERE external_id_namespace = ?1
-                 ORDER BY graph_id DESC
-                 LIMIT 1",
-            )
+            .prepare(&sql)
             .context("Failed to prepare get_latest_external_id query")?;
 
         stmt.query_row(rusqlite::params![external_id_namespace.0], |row| {
@@ -541,12 +591,14 @@ impl UnigraphGraphConnection for SqliteConnection {
     ) -> Result<()> {
         let now = Timestamp::now().to_unix_timestamp();
         let conn = self.lock();
+        let sql = format!(
+            "INSERT OR IGNORE INTO {}
+             (timeline_id, node_name, week_key, data, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            TABLE_METRIC_HISTORY
+        );
         let mut stmt = conn
-            .prepare(
-                "INSERT OR IGNORE INTO metric_history
-                 (timeline_id, node_name, week_key, data, updated_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5)",
-            )
+            .prepare(&sql)
             .context("failed to prepare ensure_metric_history_partitions_exist")?;
 
         let empty_blob: &[u8] = &[];
@@ -569,11 +621,13 @@ impl UnigraphGraphConnection for SqliteConnection {
         week_key: &str,
     ) -> Result<std::collections::BTreeMap<String, Vec<u8>>> {
         let conn = self.lock();
+        let sql = format!(
+            "SELECT node_name, data FROM {}
+             WHERE timeline_id = ?1 AND week_key = ?2",
+            TABLE_METRIC_HISTORY
+        );
         let mut stmt = conn
-            .prepare(
-                "SELECT node_name, data FROM metric_history
-                 WHERE timeline_id = ?1 AND week_key = ?2",
-            )
+            .prepare(&sql)
             .context("failed to prepare get_metric_history_for_week")?;
 
         let rows = stmt
@@ -600,12 +654,14 @@ impl UnigraphGraphConnection for SqliteConnection {
     ) -> Result<()> {
         let now = Timestamp::now().to_unix_timestamp();
         let conn = self.lock();
+        let sql = format!(
+            "INSERT OR REPLACE INTO {}
+             (timeline_id, node_name, week_key, data, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            TABLE_METRIC_HISTORY
+        );
         let mut stmt = conn
-            .prepare(
-                "INSERT OR REPLACE INTO metric_history
-                 (timeline_id, node_name, week_key, data, updated_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5)",
-            )
+            .prepare(&sql)
             .context("failed to prepare upsert_metric_history_batch")?;
 
         for (node_name, data) in entries {
@@ -641,11 +697,12 @@ impl UnigraphGraphConnection for SqliteConnection {
             .collect();
 
         let sql = format!(
-            "SELECT node_name, week_key, data FROM metric_history
+            "SELECT node_name, week_key, data FROM {}
              WHERE timeline_id = ?1 AND week_key >= ?2 AND week_key <= ?3
              AND node_name IN ({})
              AND length(data) > 0
              ORDER BY node_name, week_key",
+            TABLE_METRIC_HISTORY,
             placeholders.join(", ")
         );
 
@@ -684,8 +741,12 @@ fn query_timeline_config(
     conn: &MutexGuard<'_, Connection>,
     timeline_id: &TimelineID,
 ) -> Result<Option<TimelineConfig>> {
+    let sql = format!(
+        "SELECT config_json FROM {} WHERE timeline_id = ?1",
+        TABLE_TIMELINE_CONFIGS
+    );
     let mut stmt = conn
-        .prepare("SELECT config_json FROM timelines WHERE timeline_id = ?1")
+        .prepare(&sql)
         .context("Failed to prepare timeline query")?;
 
     let result = stmt
