@@ -34,16 +34,17 @@ fn tid() -> TimelineID {
 #[tokio::test]
 async fn compact_and_select_frames() -> Result<()> {
     let db = make_db();
-    db.create_timeline(
-        &tid(),
-        &TimelineConfig {
-            schema: TimelineSchema::AdjacentDeltas(AdjacentDeltasConfig {}),
-            external_id_namespace: None,
-            blob_storage: Default::default(),
-            store_metric_history: None,
-        },
-    )
-    .await?;
+    db.timelines
+        .create(
+            &tid(),
+            &TimelineConfig {
+                schema: TimelineSchema::AdjacentDeltas(AdjacentDeltasConfig {}),
+                external_id_namespace: None,
+                blob_storage: Default::default(),
+                store_metric_history: None,
+            },
+        )
+        .await?;
 
     // ---------------------------------------------------------------
     // 1. Store 12 Full frames, graph_ids 0..12, timestamps 1000..1011
@@ -54,13 +55,13 @@ async fn compact_and_select_frames() -> Result<()> {
         .collect();
 
     for (i, key) in keys.iter().enumerate() {
-        db.store_graph_full(key, &graphs[i]).await?;
+        db.graph.store_full(key, &graphs[i]).await?;
     }
 
     // ---------------------------------------------------------------
     // 2. Snapshot: all 12 frames are Full
     // ---------------------------------------------------------------
-    let all = db.list_frames(&tid()).await?;
+    let all = db.frames.list(&tid()).await?;
     snapshot!(
         format_frames_table(&all),
         "
@@ -87,14 +88,15 @@ graph_id             timestamp                type       base
     //    Frame 3 stays Full (first in range), 4–8 become Deltas.
     // ---------------------------------------------------------------
     let converted = db
-        .compact_timeline(&tid(), Some(ts(1003)), Some(ts(1008)))
+        .graph
+        .compact(&tid(), Some(ts(1003)), Some(ts(1008)))
         .await?;
     assert_eq!(converted, 5);
 
     // ---------------------------------------------------------------
     // 4. Snapshot after partial compaction
     // ---------------------------------------------------------------
-    let all = db.list_frames(&tid()).await?;
+    let all = db.frames.list(&tid()).await?;
     snapshot!(
         format_frames_table(&all),
         "
@@ -117,7 +119,7 @@ graph_id             timestamp                type       base
 
     // Verify all 12 graphs are still fetchable after partial compaction
     for (i, key) in keys.iter().enumerate() {
-        let fetched = db.fetch_graph(&key.graph_key()).await?;
+        let fetched = db.graph.fetch(&key.graph_key()).await?;
         assert_graphs_equal(&graphs[i], &fetched);
     }
 

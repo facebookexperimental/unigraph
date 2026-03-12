@@ -15,17 +15,18 @@ fn make_db() -> UnigraphDb {
 }
 
 async fn setup_timeline(db: &UnigraphDb, name: &str) {
-    db.create_timeline(
-        &TimelineID(name.to_string()),
-        &TimelineConfig {
-            schema: TimelineSchema::AdjacentDeltas(AdjacentDeltasConfig {}),
-            external_id_namespace: None,
-            blob_storage: Default::default(),
-            store_metric_history: None,
-        },
-    )
-    .await
-    .unwrap();
+    db.timelines
+        .create(
+            &TimelineID(name.to_string()),
+            &TimelineConfig {
+                schema: TimelineSchema::AdjacentDeltas(AdjacentDeltasConfig {}),
+                external_id_namespace: None,
+                blob_storage: Default::default(),
+                store_metric_history: None,
+            },
+        )
+        .await
+        .unwrap();
 }
 
 #[tokio::test]
@@ -40,14 +41,15 @@ async fn store_full_then_delta_and_fetch() -> Result<()> {
     let key_1 = make_graph_time_key("test", 1, 1001);
 
     // Store full graph
-    db.store_graph_full(&key_0, &graph_0).await?;
+    db.graph.store_full(&key_0, &graph_0).await?;
 
     // Store delta
-    db.store_graph_delta(&key_1, &key_0.graph_key(), &graph_1)
+    db.graph
+        .store_delta(&key_1, &key_0.graph_key(), &graph_1)
         .await?;
 
     // Verify listing
-    let frames = db.list_frames(&TimelineID("test".to_string())).await?;
+    let frames = db.frames.list(&TimelineID("test".to_string())).await?;
     snapshot!(
         format_frames_table(&frames),
         "
@@ -59,7 +61,7 @@ graph_id             timestamp                type       base
     );
 
     // Fetch the delta — should reconstruct graph_1
-    let fetched = db.fetch_graph(&key_1.graph_key()).await?;
+    let fetched = db.graph.fetch(&key_1.graph_key()).await?;
     assert_graphs_equal(&graph_1, &fetched);
 
     Ok(())
@@ -77,16 +79,17 @@ async fn delta_chain_full_d_d_d() -> Result<()> {
         .collect();
 
     // Store Full
-    db.store_graph_full(&keys[0], &graphs[0]).await?;
+    db.graph.store_full(&keys[0], &graphs[0]).await?;
 
     // Store chain of deltas
     for i in 1..4 {
-        db.store_graph_delta(&keys[i], &keys[i - 1].graph_key(), &graphs[i])
+        db.graph
+            .store_delta(&keys[i], &keys[i - 1].graph_key(), &graphs[i])
             .await?;
     }
 
     // Verify listing
-    let frames = db.list_frames(&TimelineID("test".to_string())).await?;
+    let frames = db.frames.list(&TimelineID("test".to_string())).await?;
     snapshot!(
         format_frames_table(&frames),
         "
@@ -100,14 +103,14 @@ graph_id             timestamp                type       base
     );
 
     // Fetch the last delta — should recursively resolve the whole chain
-    let fetched = db.fetch_graph(&keys[3].graph_key()).await?;
+    let fetched = db.graph.fetch(&keys[3].graph_key()).await?;
     assert_graphs_equal(&graphs[3], &fetched);
 
     // Also verify intermediate fetches
-    let fetched_1 = db.fetch_graph(&keys[1].graph_key()).await?;
+    let fetched_1 = db.graph.fetch(&keys[1].graph_key()).await?;
     assert_graphs_equal(&graphs[1], &fetched_1);
 
-    let fetched_2 = db.fetch_graph(&keys[2].graph_key()).await?;
+    let fetched_2 = db.graph.fetch(&keys[2].graph_key()).await?;
     assert_graphs_equal(&graphs[2], &fetched_2);
 
     Ok(())
@@ -124,24 +127,26 @@ async fn delta_chain_with_intermediate_full() -> Result<()> {
         .map(|i| make_graph_time_key("test", i as i64, 1000 + i as i64))
         .collect();
 
-    db.store_graph_full(&keys[0], &graphs[0]).await?;
-    db.store_graph_delta(&keys[1], &keys[0].graph_key(), &graphs[1])
+    db.graph.store_full(&keys[0], &graphs[0]).await?;
+    db.graph
+        .store_delta(&keys[1], &keys[0].graph_key(), &graphs[1])
         .await?;
-    db.store_graph_full(&keys[2], &graphs[2]).await?;
-    db.store_graph_delta(&keys[3], &keys[2].graph_key(), &graphs[3])
+    db.graph.store_full(&keys[2], &graphs[2]).await?;
+    db.graph
+        .store_delta(&keys[3], &keys[2].graph_key(), &graphs[3])
         .await?;
 
     // Fetch from different points
-    let fetched_0 = db.fetch_graph(&keys[0].graph_key()).await?;
+    let fetched_0 = db.graph.fetch(&keys[0].graph_key()).await?;
     assert_graphs_equal(&graphs[0], &fetched_0);
 
-    let fetched_1 = db.fetch_graph(&keys[1].graph_key()).await?;
+    let fetched_1 = db.graph.fetch(&keys[1].graph_key()).await?;
     assert_graphs_equal(&graphs[1], &fetched_1);
 
-    let fetched_2 = db.fetch_graph(&keys[2].graph_key()).await?;
+    let fetched_2 = db.graph.fetch(&keys[2].graph_key()).await?;
     assert_graphs_equal(&graphs[2], &fetched_2);
 
-    let fetched_3 = db.fetch_graph(&keys[3].graph_key()).await?;
+    let fetched_3 = db.graph.fetch(&keys[3].graph_key()).await?;
     assert_graphs_equal(&graphs[3], &fetched_3);
 
     Ok(())
@@ -160,13 +165,14 @@ async fn cross_timeline_delta_reference_rejected() -> Result<()> {
     let key_b = make_graph_time_key("timeline_b", 101, 2000);
 
     // Store full in timeline_a
-    db.store_graph_full(&key_a, &graph_a).await?;
+    db.graph.store_full(&key_a, &graph_a).await?;
 
     // Store delta in timeline_b referencing timeline_a — should fail
     // because AdjacentDeltas requires the base to be the preceding frame
     // in the same timeline.
     let result = db
-        .store_graph_delta(&key_b, &key_a.graph_key(), &graph_b)
+        .graph
+        .store_delta(&key_b, &key_a.graph_key(), &graph_b)
         .await;
     assert!(
         result.is_err(),
@@ -187,18 +193,19 @@ async fn get_preceding_frame() -> Result<()> {
 
     for (i, key) in keys.iter().enumerate() {
         let graph = TestGraphTimeline::get_nth(i as u64);
-        db.store_graph_full(key, &graph).await?;
+        db.graph.store_full(key, &graph).await?;
     }
 
     // Preceding frame of g_2 should be g_1
     let preceding = db
-        .get_preceding_frame(&keys[2])
+        .frames
+        .get_preceding(&keys[2])
         .await?
         .expect("Should have preceding frame");
     assert_eq!(preceding.frame.graph_id.0, 1);
 
     // Preceding frame of g_0 should be None
-    let preceding = db.get_preceding_frame(&keys[0]).await?;
+    let preceding = db.frames.get_preceding(&keys[0]).await?;
     assert!(preceding.is_none());
 
     Ok(())

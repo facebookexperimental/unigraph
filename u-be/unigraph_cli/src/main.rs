@@ -208,7 +208,8 @@ async fn resolve_source(
         unigraph_ingestion::IngestionSourceConfig::AnotherTimeline { source_timeline_id } => {
             let timeline_id = TimelineID(source_timeline_id.clone());
             let timeline_config =
-                db.get_timeline_config(&timeline_id)
+                db.timelines
+                    .get_config(&timeline_id)
                     .await?
                     .with_context(|| {
                         format!(
@@ -248,7 +249,7 @@ impl Frames {
         match &self.timeline_id {
             Some(id) => {
                 let timeline_id = TimelineID(id.clone());
-                let frames = db.list_frames(&timeline_id).await?;
+                let frames = db.frames.list(&timeline_id).await?;
 
                 if frames.is_empty() {
                     eprintln!("No frames found for timeline '{}'", id);
@@ -259,14 +260,14 @@ impl Frames {
                 println!("\nTotal: {} frames", frames.len());
             }
             None => {
-                let timelines = db.list_timelines().await?;
+                let timelines = db.timelines.list().await?;
                 if timelines.is_empty() {
                     eprintln!("No timelines found in database.");
                     return Ok(());
                 }
                 println!("Timelines:");
                 for tl in &timelines {
-                    let frames = db.list_frames(tl).await?;
+                    let frames = db.frames.list(tl).await?;
                     println!("  {} ({} frames)", tl.0, frames.len());
                 }
             }
@@ -301,7 +302,7 @@ impl Compact {
         let end = parse_timestamp(self.end.as_deref())?;
 
         let timeline_id = TimelineID(self.timeline_id.clone());
-        let converted = db.compact_timeline(&timeline_id, start, end).await?;
+        let converted = db.graph.compact(&timeline_id, start, end).await?;
 
         match converted {
             0 => println!("Nothing to compact."),
@@ -347,12 +348,12 @@ impl GraphGet {
         let (key, serializable) = match parsed {
             GraphKeyOrTimelineID::GraphKey(key) => {
                 eprintln!("Fetching graph {}...", key);
-                let graph = db.fetch_graph(&key).await?;
+                let graph = db.graph.fetch(&key).await?;
                 (key, graph)
             }
             GraphKeyOrTimelineID::TimelineID(tid) => {
                 eprintln!("Fetching latest graph from timeline {}...", tid);
-                let (key, graph) = db.fetch_latest_graph(&tid).await?;
+                let (key, graph) = db.graph.fetch_latest(&tid).await?;
                 eprintln!("Resolved to {}", key);
                 (key, graph)
             }
@@ -396,12 +397,12 @@ impl GraphBudget {
         let (_key, serializable) = match parsed {
             GraphKeyOrTimelineID::GraphKey(key) => {
                 eprintln!("Fetching graph {}...", key);
-                let graph = db.fetch_graph(&key).await?;
+                let graph = db.graph.fetch(&key).await?;
                 (key, graph)
             }
             GraphKeyOrTimelineID::TimelineID(tid) => {
                 eprintln!("Fetching latest graph from timeline {}...", tid);
-                let (key, graph) = db.fetch_latest_graph(&tid).await?;
+                let (key, graph) = db.graph.fetch_latest(&tid).await?;
                 eprintln!("Resolved to {}", key);
                 (key, graph)
             }

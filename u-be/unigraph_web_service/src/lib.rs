@@ -188,7 +188,8 @@ async fn api_timelines(
 ) -> Result<impl IntoResponse, http::StatusCode> {
     let db = state.db.as_ref().ok_or(http::StatusCode::NOT_FOUND)?;
     let timelines = db
-        .list_timelines()
+        .timelines
+        .list()
         .await
         .map_err(|_| http::StatusCode::INTERNAL_SERVER_ERROR)?;
 
@@ -216,7 +217,8 @@ async fn api_timeline_frames(
 ) -> Result<impl IntoResponse, http::StatusCode> {
     let db = state.db.as_ref().ok_or(http::StatusCode::NOT_FOUND)?;
     let frames = db
-        .list_frames(&TimelineID(timeline_id))
+        .frames
+        .list(&TimelineID(timeline_id))
         .await
         .map_err(|_| http::StatusCode::INTERNAL_SERVER_ERROR)?;
 
@@ -255,7 +257,8 @@ async fn api_timeline_graph(
     };
 
     let frame = db
-        .get_frame(&key, false)
+        .frames
+        .get(&key, false)
         .await
         .map_err(|_| http::StatusCode::INTERNAL_SERVER_ERROR)?
         .ok_or(http::StatusCode::NOT_FOUND)?;
@@ -265,7 +268,8 @@ async fn api_timeline_graph(
     }
 
     let graph = db
-        .fetch_graph(&key)
+        .graph
+        .fetch(&key)
         .await
         .map_err(|_| http::StatusCode::INTERNAL_SERVER_ERROR)?;
 

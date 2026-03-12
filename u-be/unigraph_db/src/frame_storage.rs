@@ -131,7 +131,7 @@ impl UnigraphStorage {
     /// For AdjacentDeltas: uses a range query + iterative delta application
     /// (no recursion). See [`crate::adjacent_deltas`] for details.
     pub async fn fetch_graph(&self, key: &GraphKey) -> Result<ArrayGraphSerializable> {
-        crate::adjacent_deltas::fetch_graph(self, key).await
+        crate::schemas::adjacent_deltas::fetch_graph(self, key).await
     }
 
     /// Fetch errors for a frame.
@@ -271,9 +271,9 @@ impl UnigraphStorage {
             .await
             .with_context(|| format!("Failed to lock timeline for {:?}", frame_type))?;
 
-        crate::adjacent_deltas::validate_monotonic_append(&mut *conn, key).await?;
+        crate::schemas::adjacent_deltas::validate_monotonic_append(&mut *conn, key).await?;
         if frame_type == FrameType::Delta {
-            crate::adjacent_deltas::validate_delta_base(&mut *conn, key, base).await?;
+            crate::schemas::adjacent_deltas::validate_delta_base(&mut *conn, key, base).await?;
         }
 
         self.store_package_on_conn(

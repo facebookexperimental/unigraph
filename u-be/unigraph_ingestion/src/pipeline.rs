@@ -70,7 +70,7 @@ async fn run_git_ingestion(
 
     let registration_task = task.create("discover_commits");
 
-    let latest_external_id = db.get_latest_external_id(ns).await?;
+    let latest_external_id = db.external_ids.get_latest(ns).await?;
     let since_hash = latest_external_id.map(|eid| eid.0);
 
     let mut new_commits =
@@ -94,14 +94,15 @@ async fn run_git_ingestion(
         .iter()
         .map(|c| ExternalID(c.hash.clone()))
         .collect();
-    let graph_ids = db.add_new_external_ids(ns, &external_ids).await?;
+    let graph_ids = db.external_ids.add_new(ns, &external_ids).await?;
 
     for builder_config in &config.builders {
         let timeline_id = &builder_config.timeline_id;
         ensure_timeline(db, timeline_id, ns).await?;
 
         let existing_graph_ids: HashSet<GraphID> = db
-            .list_frames(timeline_id)
+            .frames
+            .list(timeline_id)
             .await?
             .iter()
             .map(|f| f.frame.graph_id)
@@ -114,7 +115,7 @@ async fn run_git_ingestion(
                     timestamp: commit.timestamp,
                     graph_id,
                 };
-                db.store_frame_empty(&key).await?;
+                db.frames.store_empty(&key).await?;
             }
         }
     }
@@ -127,7 +128,7 @@ async fn run_git_ingestion(
         let timeline_id = &builder_config.timeline_id;
         let builder_task = task.create(&format!("build:{}", timeline_id.0));
 
-        let frames = db.list_frames(timeline_id).await?;
+        let frames = db.frames.list(timeline_id).await?;
         let empty_frames: Vec<_> = frames
             .iter()
             .filter(|f| f.frame_type == FrameType::Empty)
@@ -151,7 +152,8 @@ async fn run_git_ingestion(
 
         for (i, frame) in empty_frames.iter().enumerate() {
             let external_id = db
-                .graph_id_to_external_id(ns, &frame.frame.graph_id)
+                .external_ids
+                .to_external_id(ns, &frame.frame.graph_id)
                 .await?
                 .context("ExternalID mapping must exist for allocated GraphID")?;
             let commit_hash = &external_id.0;
@@ -178,7 +180,8 @@ async fn run_git_ingestion(
             match builder.build(repo_path) {
                 Ok(map_graph) => match map_graph.to_array_graph_serializable() {
                     Ok(array_graph) => {
-                        db.store_graph_full(&key, &array_graph)
+                        db.graph
+                            .store_full(&key, &array_graph)
                             .await
                             .with_context(|| format!("Failed to store graph for {short_hash}"))?;
                         commit_task.data("status", "stored");
@@ -234,7 +237,7 @@ async fn run_timeline_ingestion(
 
     let registration_task = task.create("discover_frames");
 
-    let source_frames = db.list_frames(source_timeline_id).await?;
+    let source_frames = db.frames.list(source_timeline_id).await?;
 
     registration_task.data("source_timeline", &source_timeline_id.0);
     registration_task.data("source_frames", source_frames.len());
@@ -248,7 +251,8 @@ async fn run_timeline_ingestion(
         ensure_timeline(db, timeline_id, ns).await?;
 
         let existing_graph_ids: HashSet<GraphID> = db
-            .list_frames(timeline_id)
+            .frames
+            .list(timeline_id)
             .await?
             .iter()
             .map(|f| f.frame.graph_id)
@@ -262,7 +266,7 @@ async fn run_timeline_ingestion(
                     timestamp: source_frame.frame.timestamp,
                     graph_id,
                 };
-                db.store_frame_empty(&key).await?;
+                db.frames.store_empty(&key).await?;
             }
         }
     }
@@ -275,7 +279,7 @@ async fn run_timeline_ingestion(
         let timeline_id = &builder_config.timeline_id;
         let builder_task = task.create(&format!("build:{}", timeline_id.0));
 
-        let frames = db.list_frames(timeline_id).await?;
+        let frames = db.frames.list(timeline_id).await?;
         let empty_frames: Vec<_> = frames
             .iter()
             .filter(|f| f.frame_type == FrameType::Empty)
@@ -302,7 +306,7 @@ async fn run_timeline_ingestion(
             let graph_id = frame.frame.graph_id;
 
             // Resolve external ID for display
-            let display_id = match db.graph_id_to_external_id(ns, &graph_id).await? {
+            let display_id = match db.external_ids.to_external_id(ns, &graph_id).await? {
                 Some(eid) => {
                     let hash = &eid.0;
                     hash[..cmp::min(8, hash.len())].to_string()
@@ -325,7 +329,7 @@ async fn run_timeline_ingestion(
             };
 
             // Check if the source frame has data
-            let source_frame = db.get_frame(&source_key, false).await?;
+            let source_frame = db.frames.get(&source_key, false).await?;
             match &source_frame {
                 Some(sf)
                     if sf.frame_type == FrameType::Full || sf.frame_type == FrameType::Delta =>
@@ -363,7 +367,7 @@ async fn run_timeline_ingestion(
             }
 
             // Fetch the source graph
-            let source_graph = match db.fetch_graph(&source_key).await {
+            let source_graph = match db.graph.fetch(&source_key).await {
                 Ok(g) => g,
                 Err(e) => {
                     store_error(db, &key, &format!("Failed to fetch source graph: {e:#}")).await?;
@@ -376,7 +380,8 @@ async fn run_timeline_ingestion(
             // Transform
             match budget_builder.build(source_graph) {
                 Ok(result_graph) => {
-                    db.store_graph_full(&key, &result_graph)
+                    db.graph
+                        .store_full(&key, &result_graph)
                         .await
                         .with_context(|| format!("Failed to store graph for {display_id}"))?;
                     frame_task.data("status", "stored");
@@ -408,14 +413,14 @@ async fn ensure_timeline(
     timeline_id: &TimelineID,
     ns: &unigraph_storage_core::ExternalIDNamespace,
 ) -> Result<()> {
-    if db.get_timeline_config(timeline_id).await?.is_none() {
+    if db.timelines.get_config(timeline_id).await?.is_none() {
         let timeline_config = TimelineConfig {
             schema: TimelineSchema::AdjacentDeltas(AdjacentDeltasConfig {}),
             external_id_namespace: Some(ns.clone()),
             blob_storage: Default::default(),
             store_metric_history: None,
         };
-        db.create_timeline(timeline_id, &timeline_config).await?;
+        db.timelines.create(timeline_id, &timeline_config).await?;
     }
     Ok(())
 }
@@ -425,5 +430,5 @@ async fn store_error(db: &UnigraphDb, key: &GraphTimeKey, message: &str) -> Resu
         timestamp: unigraph_timestamp::Timestamp::now(),
         message: message.to_string(),
     }];
-    db.store_error(key, &errors).await
+    db.graph.store_error(key, &errors).await
 }

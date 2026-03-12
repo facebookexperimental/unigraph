@@ -24,11 +24,13 @@ async fn create_and_get_timeline_config() -> Result<()> {
         store_metric_history: None,
     };
 
-    db.create_timeline(&TimelineID("my_timeline".to_string()), &config)
+    db.timelines
+        .create(&TimelineID("my_timeline".to_string()), &config)
         .await?;
 
     let fetched = db
-        .get_timeline_config(&TimelineID("my_timeline".to_string()))
+        .timelines
+        .get_config(&TimelineID("my_timeline".to_string()))
         .await?
         .expect("Timeline should exist");
 
@@ -45,7 +47,8 @@ async fn get_nonexistent_timeline_returns_none() -> Result<()> {
     let db = make_db();
 
     let result = db
-        .get_timeline_config(&TimelineID("nonexistent".to_string()))
+        .timelines
+        .get_config(&TimelineID("nonexistent".to_string()))
         .await?;
     assert!(result.is_none());
 
@@ -63,14 +66,17 @@ async fn list_timelines() -> Result<()> {
         store_metric_history: None,
     };
 
-    db.create_timeline(&TimelineID("beta".to_string()), &config)
+    db.timelines
+        .create(&TimelineID("beta".to_string()), &config)
         .await?;
-    db.create_timeline(&TimelineID("alpha".to_string()), &config)
+    db.timelines
+        .create(&TimelineID("alpha".to_string()), &config)
         .await?;
-    db.create_timeline(&TimelineID("gamma".to_string()), &config)
+    db.timelines
+        .create(&TimelineID("gamma".to_string()), &config)
         .await?;
 
-    let timelines = db.list_timelines().await?;
+    let timelines = db.timelines.list().await?;
     let names: Vec<_> = timelines.iter().map(|t| t.0.as_str()).collect();
 
     // Should be sorted
@@ -88,7 +94,8 @@ async fn frames_ordered_by_timestamp_then_graph_id() -> Result<()> {
         blob_storage: Default::default(),
         store_metric_history: None,
     };
-    db.create_timeline(&TimelineID("test".to_string()), &config)
+    db.timelines
+        .create(&TimelineID("test".to_string()), &config)
         .await?;
 
     // Insert frames at the same timestamp with monotonically increasing graph IDs
@@ -101,10 +108,10 @@ async fn frames_ordered_by_timestamp_then_graph_id() -> Result<()> {
             timestamp: ts,
             graph_id: GraphID(id),
         };
-        db.store_graph_full(&key, &graph).await?;
+        db.graph.store_full(&key, &graph).await?;
     }
 
-    let frames = db.list_frames(&TimelineID("test".to_string())).await?;
+    let frames = db.frames.list(&TimelineID("test".to_string())).await?;
     let ids: Vec<_> = frames.iter().map(|f| f.frame.graph_id.0).collect();
 
     // Same timestamp → ordered by graph_id
@@ -122,13 +129,14 @@ async fn list_frames_range() -> Result<()> {
         blob_storage: Default::default(),
         store_metric_history: None,
     };
-    db.create_timeline(&TimelineID("test".to_string()), &config)
+    db.timelines
+        .create(&TimelineID("test".to_string()), &config)
         .await?;
 
     for i in 0..10 {
         let graph = TestGraphTimeline::get_nth(i);
         let key = make_graph_time_key("test", i as i64, 1000 + i as i64);
-        db.store_graph_full(&key, &graph).await?;
+        db.graph.store_full(&key, &graph).await?;
     }
 
     // Query a range that should include frames 3-7
@@ -136,7 +144,8 @@ async fn list_frames_range() -> Result<()> {
     let end = unigraph_timestamp::Timestamp::from_unix_timestamp(1007);
 
     let frames = db
-        .list_frames_range(&TimelineID("test".to_string()), start, end)
+        .frames
+        .list_range(&TimelineID("test".to_string()), start, end)
         .await?;
 
     let ids: Vec<_> = frames.iter().map(|f| f.frame.graph_id.0).collect();
@@ -156,7 +165,7 @@ async fn add_new_external_ids_allocates_sequentially() -> Result<()> {
         ExternalID("ccc".to_string()),
     ];
 
-    let graph_ids = db.add_new_external_ids(&namespace, &external_ids).await?;
+    let graph_ids = db.external_ids.add_new(&namespace, &external_ids).await?;
 
     assert_eq!(graph_ids.len(), 3);
     assert_eq!(graph_ids[0].0, 1);
@@ -174,10 +183,10 @@ async fn add_new_external_ids_is_idempotent() -> Result<()> {
     let external_ids = vec![ExternalID("aaa".to_string()), ExternalID("bbb".to_string())];
 
     // First call: allocate
-    let first = db.add_new_external_ids(&namespace, &external_ids).await?;
+    let first = db.external_ids.add_new(&namespace, &external_ids).await?;
 
     // Second call: same inputs, same outputs
-    let second = db.add_new_external_ids(&namespace, &external_ids).await?;
+    let second = db.external_ids.add_new(&namespace, &external_ids).await?;
 
     assert_eq!(first, second);
 
@@ -195,21 +204,26 @@ async fn external_id_mapping_roundtrip() -> Result<()> {
     ];
 
     // Allocate
-    let graph_ids = db.add_new_external_ids(&namespace, &external_ids).await?;
+    let graph_ids = db.external_ids.add_new(&namespace, &external_ids).await?;
 
     // Reverse lookup: graph_id → external_id
     let eid_0 = db
-        .graph_id_to_external_id(&namespace, &graph_ids[0])
+        .external_ids
+        .to_external_id(&namespace, &graph_ids[0])
         .await?;
     assert_eq!(eid_0, Some(ExternalID("commit_abc".to_string())));
 
     let eid_1 = db
-        .graph_id_to_external_id(&namespace, &graph_ids[1])
+        .external_ids
+        .to_external_id(&namespace, &graph_ids[1])
         .await?;
     assert_eq!(eid_1, Some(ExternalID("commit_def".to_string())));
 
     // Batch reverse lookup
-    let batch = db.graph_ids_to_external_ids(&namespace, &graph_ids).await?;
+    let batch = db
+        .external_ids
+        .to_external_ids(&namespace, &graph_ids)
+        .await?;
     assert_eq!(batch.len(), 2);
     assert_eq!(
         batch[0],
@@ -231,7 +245,8 @@ async fn add_new_external_ids_with_overlap() -> Result<()> {
 
     // Allocate first two
     let first = db
-        .add_new_external_ids(
+        .external_ids
+        .add_new(
             &namespace,
             &[ExternalID("aaa".to_string()), ExternalID("bbb".to_string())],
         )
@@ -239,7 +254,8 @@ async fn add_new_external_ids_with_overlap() -> Result<()> {
 
     // Now add a batch that overlaps: [aaa, bbb] already exist, "ccc" is new
     let second = db
-        .add_new_external_ids(
+        .external_ids
+        .add_new(
             &namespace,
             &[
                 ExternalID("aaa".to_string()),
@@ -265,22 +281,23 @@ async fn get_latest_external_id() -> Result<()> {
     let namespace = ExternalIDNamespace("test/git".to_string());
 
     // No mappings yet
-    let latest = db.get_latest_external_id(&namespace).await?;
+    let latest = db.external_ids.get_latest(&namespace).await?;
     assert!(latest.is_none());
 
     // Allocate some
-    db.add_new_external_ids(
-        &namespace,
-        &[
-            ExternalID("first".to_string()),
-            ExternalID("second".to_string()),
-            ExternalID("third".to_string()),
-        ],
-    )
-    .await?;
+    db.external_ids
+        .add_new(
+            &namespace,
+            &[
+                ExternalID("first".to_string()),
+                ExternalID("second".to_string()),
+                ExternalID("third".to_string()),
+            ],
+        )
+        .await?;
 
     // Latest should be the one with highest graph_id
-    let latest = db.get_latest_external_id(&namespace).await?;
+    let latest = db.external_ids.get_latest(&namespace).await?;
     assert_eq!(latest, Some(ExternalID("third".to_string())));
 
     Ok(())

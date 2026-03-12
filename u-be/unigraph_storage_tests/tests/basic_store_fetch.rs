@@ -15,17 +15,18 @@ fn make_db() -> UnigraphDb {
 }
 
 async fn setup_timeline(db: &UnigraphDb, name: &str) {
-    db.create_timeline(
-        &TimelineID(name.to_string()),
-        &TimelineConfig {
-            schema: TimelineSchema::AdjacentDeltas(AdjacentDeltasConfig {}),
-            external_id_namespace: None,
-            blob_storage: Default::default(),
-            store_metric_history: None,
-        },
-    )
-    .await
-    .unwrap();
+    db.timelines
+        .create(
+            &TimelineID(name.to_string()),
+            &TimelineConfig {
+                schema: TimelineSchema::AdjacentDeltas(AdjacentDeltasConfig {}),
+                external_id_namespace: None,
+                blob_storage: Default::default(),
+                store_metric_history: None,
+            },
+        )
+        .await
+        .unwrap();
 }
 
 #[tokio::test]
@@ -36,9 +37,9 @@ async fn store_and_fetch_full_graph() -> Result<()> {
     let graph = TestGraphTimeline::get_nth(42);
     let key = make_graph_time_key("test", 42, 1000);
 
-    db.store_graph_full(&key, &graph).await?;
+    db.graph.store_full(&key, &graph).await?;
 
-    let fetched = db.fetch_graph(&key.graph_key()).await?;
+    let fetched = db.graph.fetch(&key.graph_key()).await?;
     assert_graphs_equal(&graph, &fetched);
 
     Ok(())
@@ -52,10 +53,10 @@ async fn store_multiple_graphs_and_list_frames() -> Result<()> {
     for i in 0..5 {
         let graph = TestGraphTimeline::get_nth(i);
         let key = make_graph_time_key("test", i as i64, 1000 + i as i64);
-        db.store_graph_full(&key, &graph).await?;
+        db.graph.store_full(&key, &graph).await?;
     }
 
-    let frames = db.list_frames(&TimelineID("test".to_string())).await?;
+    let frames = db.frames.list(&TimelineID("test".to_string())).await?;
     assert_eq!(frames.len(), 5);
 
     snapshot!(
@@ -74,7 +75,7 @@ graph_id             timestamp                type       base
     // Verify each graph can be fetched and matches
     for i in 0..5 {
         let expected = TestGraphTimeline::get_nth(i);
-        let fetched = db.fetch_graph(&make_graph_key("test", i as i64)).await?;
+        let fetched = db.graph.fetch(&make_graph_key("test", i as i64)).await?;
         assert_graphs_equal(&expected, &fetched);
     }
 
@@ -87,15 +88,15 @@ async fn store_empty_frame() -> Result<()> {
     setup_timeline(&db, "test").await;
 
     let key = make_graph_time_key("test", 1, 1000);
-    db.store_frame_empty(&key).await?;
+    db.frames.store_empty(&key).await?;
 
     // Verify it's listed
-    let frames = db.list_frames(&TimelineID("test".to_string())).await?;
+    let frames = db.frames.list(&TimelineID("test".to_string())).await?;
     assert_eq!(frames.len(), 1);
     assert_eq!(frames[0].frame_type, FrameType::Empty);
 
     // Verify fetch returns an error
-    let result = db.fetch_graph(&key.graph_key()).await;
+    let result = db.graph.fetch(&key.graph_key()).await;
     assert!(result.is_err());
     let err_msg = format!("{}", result.err().unwrap());
     assert!(
@@ -127,19 +128,19 @@ async fn store_error_frame() -> Result<()> {
     ];
 
     let key = make_graph_time_key("test", 1, 1000);
-    db.store_error(&key, &errors).await?;
+    db.graph.store_error(&key, &errors).await?;
 
     // Verify it's listed as Error
-    let frames = db.list_frames(&TimelineID("test".to_string())).await?;
+    let frames = db.frames.list(&TimelineID("test".to_string())).await?;
     assert_eq!(frames.len(), 1);
     assert_eq!(frames[0].frame_type, FrameType::Error);
 
     // Verify fetch_graph returns an error
-    let result = db.fetch_graph(&key.graph_key()).await;
+    let result = db.graph.fetch(&key.graph_key()).await;
     assert!(result.is_err());
 
     // Verify errors can be fetched back
-    let fetched_errors = db.fetch_errors(&key.graph_key()).await?;
+    let fetched_errors = db.graph.fetch_errors(&key.graph_key()).await?;
     assert_eq!(fetched_errors.len(), 2);
     assert_eq!(fetched_errors[0].message, errors[0].message);
     assert_eq!(fetched_errors[1].message, errors[1].message);
@@ -156,10 +157,10 @@ async fn delete_frame() -> Result<()> {
     let key = make_graph_time_key("test", 1, 1000);
     let timeline_id = TimelineID("test".to_string());
 
-    db.store_graph_full(&key, &graph).await?;
+    db.graph.store_full(&key, &graph).await?;
 
     // Before deletion: frame exists, no blobs pending cleanup
-    let frames = db.list_frames(&timeline_id).await?;
+    let frames = db.frames.list(&timeline_id).await?;
     snapshot!(
         format_frames_table(&frames),
         "
@@ -169,15 +170,15 @@ graph_id             timestamp                type       base
 "
     );
 
-    let pending = db.get_blobs_pending_cleanup().await?;
+    let pending = db.blob_storage.get_pending_cleanup().await?;
     snapshot!(format_blob_keys(&pending), "");
 
     // Delete it
-    let deleted = db.delete_frame(&key.graph_key(), &timeline_id).await?;
+    let deleted = db.graph.delete(&key.graph_key(), &timeline_id).await?;
     assert!(deleted);
 
     // After deletion: no frames, no pending blobs (inline blobs disappear with the row)
-    let frames = db.list_frames(&timeline_id).await?;
+    let frames = db.frames.list(&timeline_id).await?;
     snapshot!(
         format_frames_table(&frames),
         "
@@ -186,11 +187,11 @@ graph_id             timestamp                type       base
 "
     );
 
-    let pending = db.get_blobs_pending_cleanup().await?;
+    let pending = db.blob_storage.get_pending_cleanup().await?;
     snapshot!(format_blob_keys(&pending), "");
 
     // Second delete returns false (idempotent)
-    let deleted = db.delete_frame(&key.graph_key(), &timeline_id).await?;
+    let deleted = db.graph.delete(&key.graph_key(), &timeline_id).await?;
     assert!(!deleted);
 
     Ok(())
@@ -204,26 +205,27 @@ async fn delete_frame_with_external_blobs() -> Result<()> {
     let db = UnigraphDb::new(sqlite.clone(), sqlite.clone());
 
     // Create timeline with External blob storage — forces all blobs to external storage
-    db.create_timeline(
-        &TimelineID("test".to_string()),
-        &TimelineConfig {
-            schema: TimelineSchema::AdjacentDeltas(AdjacentDeltasConfig {}),
-            external_id_namespace: None,
-            blob_storage: BlobStorageMode::External,
-            store_metric_history: None,
-        },
-    )
-    .await
-    .unwrap();
+    db.timelines
+        .create(
+            &TimelineID("test".to_string()),
+            &TimelineConfig {
+                schema: TimelineSchema::AdjacentDeltas(AdjacentDeltasConfig {}),
+                external_id_namespace: None,
+                blob_storage: BlobStorageMode::External,
+                store_metric_history: None,
+            },
+        )
+        .await
+        .unwrap();
 
     let graph = TestGraphTimeline::get_nth(1);
     let key = make_graph_time_key("test", 1, 1000);
     let timeline_id = TimelineID("test".to_string());
 
-    db.store_graph_full(&key, &graph).await?;
+    db.graph.store_full(&key, &graph).await?;
 
     // Before deletion: frame exists
-    let frames = db.list_frames(&timeline_id).await?;
+    let frames = db.frames.list(&timeline_id).await?;
     snapshot!(
         format_frames_table(&frames),
         "
@@ -254,19 +256,19 @@ test/1/traversal_config_252579103958576740
     );
 
     // No pending cleanup (blobs were unregistered after successful store)
-    let pending = db.get_blobs_pending_cleanup().await?;
+    let pending = db.blob_storage.get_pending_cleanup().await?;
     snapshot!(format_blob_keys(&pending), "");
 
     // Graph should be fetchable from external blobs
-    let fetched = db.fetch_graph(&key.graph_key()).await?;
+    let fetched = db.graph.fetch(&key.graph_key()).await?;
     assert_graphs_equal(&graph, &fetched);
 
     // Delete the frame
-    let deleted = db.delete_frame(&key.graph_key(), &timeline_id).await?;
+    let deleted = db.graph.delete(&key.graph_key(), &timeline_id).await?;
     assert!(deleted);
 
     // After deletion: no frames
-    let frames = db.list_frames(&timeline_id).await?;
+    let frames = db.frames.list(&timeline_id).await?;
     snapshot!(
         format_frames_table(&frames),
         "
@@ -296,7 +298,7 @@ test/1/traversal_config_252579103958576740
     );
 
     // But blob keys are registered for cleanup
-    let pending = db.get_blobs_pending_cleanup().await?;
+    let pending = db.blob_storage.get_pending_cleanup().await?;
     snapshot!(
         format_blob_keys(&pending),
         "
@@ -325,11 +327,12 @@ async fn get_frame_metadata_only() -> Result<()> {
 
     let graph = TestGraphTimeline::get_nth(0);
     let key = make_graph_time_key("test", 0, 1000);
-    db.store_graph_full(&key, &graph).await?;
+    db.graph.store_full(&key, &graph).await?;
 
     // Fetch without data
     let row = db
-        .get_frame(&key.graph_key(), false)
+        .frames
+        .get(&key.graph_key(), false)
         .await?
         .expect("Frame should exist");
 
@@ -341,7 +344,8 @@ async fn get_frame_metadata_only() -> Result<()> {
 
     // Fetch with data
     let row = db
-        .get_frame(&key.graph_key(), true)
+        .frames
+        .get(&key.graph_key(), true)
         .await?
         .expect("Frame should exist");
 
@@ -359,23 +363,24 @@ async fn sweep_deleted_blobs() -> Result<()> {
     let db = UnigraphDb::new(sqlite.clone(), sqlite.clone());
 
     // Create timeline with External blob storage
-    db.create_timeline(
-        &TimelineID("test".to_string()),
-        &TimelineConfig {
-            schema: TimelineSchema::AdjacentDeltas(AdjacentDeltasConfig {}),
-            external_id_namespace: None,
-            blob_storage: BlobStorageMode::External,
-            store_metric_history: None,
-        },
-    )
-    .await
-    .unwrap();
+    db.timelines
+        .create(
+            &TimelineID("test".to_string()),
+            &TimelineConfig {
+                schema: TimelineSchema::AdjacentDeltas(AdjacentDeltasConfig {}),
+                external_id_namespace: None,
+                blob_storage: BlobStorageMode::External,
+                store_metric_history: None,
+            },
+        )
+        .await
+        .unwrap();
 
     let graph = TestGraphTimeline::get_nth(1);
     let key = make_graph_time_key("test", 1, 1000);
     let timeline_id = TimelineID("test".to_string());
 
-    db.store_graph_full(&key, &graph).await?;
+    db.graph.store_full(&key, &graph).await?;
 
     // After store: blobs exist in external storage, nothing pending cleanup
     let blobs = sqlite.list_blobs("").await?;
@@ -396,11 +401,11 @@ test/1/tagged_6861884023275401222
 test/1/traversal_config_252579103958576740
 "
     );
-    let pending = db.get_blobs_pending_cleanup().await?;
+    let pending = db.blob_storage.get_pending_cleanup().await?;
     snapshot!(format_blob_keys(&pending), "");
 
     // Delete the frame — blobs registered for cleanup but still physically present
-    db.delete_frame(&key.graph_key(), &timeline_id).await?;
+    db.graph.delete(&key.graph_key(), &timeline_id).await?;
 
     let blobs_after_delete = sqlite.list_blobs("").await?;
     snapshot!(
@@ -420,7 +425,7 @@ test/1/tagged_6861884023275401222
 test/1/traversal_config_252579103958576740
 "
     );
-    let pending = db.get_blobs_pending_cleanup().await?;
+    let pending = db.blob_storage.get_pending_cleanup().await?;
     snapshot!(
         format_blob_keys(&pending),
         "
@@ -440,18 +445,18 @@ test/1/traversal_config_252579103958576740
     );
 
     // Sweep with Duration::ZERO — should sweep everything
-    let swept = db.sweep_blobs(std::time::Duration::ZERO).await?;
+    let swept = db.blob_storage.sweep(std::time::Duration::ZERO).await?;
     assert_eq!(swept, 12);
 
     // After sweep: blobs physically gone, cleanup table empty
     let blobs_after_sweep = sqlite.list_blobs("").await?;
     snapshot!(format_blob_keys(&blobs_after_sweep), "");
 
-    let pending_after_sweep = db.get_blobs_pending_cleanup().await?;
+    let pending_after_sweep = db.blob_storage.get_pending_cleanup().await?;
     snapshot!(format_blob_keys(&pending_after_sweep), "");
 
     // Sweeping again is a no-op
-    let swept_again = db.sweep_blobs(std::time::Duration::ZERO).await?;
+    let swept_again = db.blob_storage.sweep(std::time::Duration::ZERO).await?;
     assert_eq!(swept_again, 0);
 
     Ok(())
@@ -463,31 +468,35 @@ async fn sweep_respects_min_age() -> Result<()> {
     let db = UnigraphDb::new(sqlite.clone(), sqlite.clone());
 
     // Create timeline with External blob storage
-    db.create_timeline(
-        &TimelineID("test".to_string()),
-        &TimelineConfig {
-            schema: TimelineSchema::AdjacentDeltas(AdjacentDeltasConfig {}),
-            external_id_namespace: None,
-            blob_storage: BlobStorageMode::External,
-            store_metric_history: None,
-        },
-    )
-    .await
-    .unwrap();
+    db.timelines
+        .create(
+            &TimelineID("test".to_string()),
+            &TimelineConfig {
+                schema: TimelineSchema::AdjacentDeltas(AdjacentDeltasConfig {}),
+                external_id_namespace: None,
+                blob_storage: BlobStorageMode::External,
+                store_metric_history: None,
+            },
+        )
+        .await
+        .unwrap();
 
     let graph = TestGraphTimeline::get_nth(1);
     let key = make_graph_time_key("test", 1, 1000);
     let timeline_id = TimelineID("test".to_string());
 
-    db.store_graph_full(&key, &graph).await?;
-    db.delete_frame(&key.graph_key(), &timeline_id).await?;
+    db.graph.store_full(&key, &graph).await?;
+    db.graph.delete(&key.graph_key(), &timeline_id).await?;
 
     // Sweep with a large min_age (1 hour) — nothing should be old enough
-    let swept = db.sweep_blobs(std::time::Duration::from_secs(3600)).await?;
+    let swept = db
+        .blob_storage
+        .sweep(std::time::Duration::from_secs(3600))
+        .await?;
     assert_eq!(swept, 0);
 
     // Pending cleanup still has entries
-    let pending = db.get_blobs_pending_cleanup().await?;
+    let pending = db.blob_storage.get_pending_cleanup().await?;
     assert!(!pending.is_empty());
 
     Ok(())
@@ -502,10 +511,10 @@ async fn replace_empty_frames_with_full_graphs() -> Result<()> {
     // All graph_ids are allocated up front, so the last frame has graph_id=4.
     for i in 0..5 {
         let key = make_graph_time_key("test", i, 1000 + i);
-        db.store_frame_empty(&key).await?;
+        db.frames.store_empty(&key).await?;
     }
 
-    let frames = db.list_frames(&TimelineID("test".to_string())).await?;
+    let frames = db.frames.list(&TimelineID("test".to_string())).await?;
     assert_eq!(frames.len(), 5);
     assert!(frames.iter().all(|f| f.frame_type == FrameType::Empty));
 
@@ -515,11 +524,11 @@ async fn replace_empty_frames_with_full_graphs() -> Result<()> {
     for i in 0..5 {
         let graph = TestGraphTimeline::get_nth(i as u64);
         let key = make_graph_time_key("test", i, 1000 + i);
-        db.store_graph_full(&key, &graph).await?;
+        db.graph.store_full(&key, &graph).await?;
     }
 
     // Verify all frames are now Full.
-    let frames = db.list_frames(&TimelineID("test".to_string())).await?;
+    let frames = db.frames.list(&TimelineID("test".to_string())).await?;
     snapshot!(
         format_frames_table(&frames),
         "
@@ -536,7 +545,7 @@ graph_id             timestamp                type       base
     // Verify each graph can be fetched back correctly.
     for i in 0..5 {
         let expected = TestGraphTimeline::get_nth(i as u64);
-        let fetched = db.fetch_graph(&make_graph_key("test", i)).await?;
+        let fetched = db.graph.fetch(&make_graph_key("test", i)).await?;
         assert_graphs_equal(&expected, &fetched);
     }
 

@@ -15,17 +15,18 @@ fn make_db() -> UnigraphDb {
 }
 
 async fn setup_timeline(db: &UnigraphDb, name: &str) {
-    db.create_timeline(
-        &TimelineID(name.to_string()),
-        &TimelineConfig {
-            schema: TimelineSchema::AdjacentDeltas(AdjacentDeltasConfig {}),
-            external_id_namespace: None,
-            blob_storage: Default::default(),
-            store_metric_history: None,
-        },
-    )
-    .await
-    .unwrap();
+    db.timelines
+        .create(
+            &TimelineID(name.to_string()),
+            &TimelineConfig {
+                schema: TimelineSchema::AdjacentDeltas(AdjacentDeltasConfig {}),
+                external_id_namespace: None,
+                blob_storage: Default::default(),
+                store_metric_history: None,
+            },
+        )
+        .await
+        .unwrap();
 }
 
 #[tokio::test]
@@ -40,11 +41,11 @@ async fn compact_converts_full_to_delta() -> Result<()> {
         .collect();
 
     for (i, key) in keys.iter().enumerate() {
-        db.store_graph_full(key, &graphs[i]).await?;
+        db.graph.store_full(key, &graphs[i]).await?;
     }
 
     // Before compaction: all Full
-    let frames = db.list_frames(&TimelineID("test".to_string())).await?;
+    let frames = db.frames.list(&TimelineID("test".to_string())).await?;
     snapshot!(
         format_frames_table(&frames),
         "
@@ -60,12 +61,13 @@ graph_id             timestamp                type       base
 
     // Compact
     let converted = db
-        .compact_timeline(&TimelineID("test".to_string()), None, None)
+        .graph
+        .compact(&TimelineID("test".to_string()), None, None)
         .await?;
     assert_eq!(converted, 4);
 
     // After compaction: 1 Full + 4 Delta
-    let frames = db.list_frames(&TimelineID("test".to_string())).await?;
+    let frames = db.frames.list(&TimelineID("test".to_string())).await?;
     snapshot!(
         format_frames_table(&frames),
         "
@@ -81,13 +83,14 @@ graph_id             timestamp                type       base
 
     // All graphs should still be fetchable
     for (i, key) in keys.iter().enumerate() {
-        let fetched = db.fetch_graph(&key.graph_key()).await?;
+        let fetched = db.graph.fetch(&key.graph_key()).await?;
         assert_graphs_equal(&graphs[i], &fetched);
     }
 
     // Idempotent: compacting again should convert 0 frames
     let converted = db
-        .compact_timeline(&TimelineID("test".to_string()), None, None)
+        .graph
+        .compact(&TimelineID("test".to_string()), None, None)
         .await?;
     assert_eq!(converted, 0);
 
@@ -105,25 +108,27 @@ async fn compact_with_error_gap() -> Result<()> {
         .map(|i| make_graph_time_key("test", i as i64, 1000 + i as i64))
         .collect();
 
-    db.store_graph_full(&keys[0], &graphs[0]).await?;
-    db.store_graph_full(&keys[1], &graphs[1]).await?;
-    db.store_error(
-        &keys[2],
-        &[TimestampedError {
-            timestamp: keys[2].timestamp,
-            message: "test error".to_string(),
-        }],
-    )
-    .await?;
-    db.store_graph_full(&keys[3], &graphs[2]).await?;
-    db.store_graph_full(&keys[4], &graphs[3]).await?;
+    db.graph.store_full(&keys[0], &graphs[0]).await?;
+    db.graph.store_full(&keys[1], &graphs[1]).await?;
+    db.graph
+        .store_error(
+            &keys[2],
+            &[TimestampedError {
+                timestamp: keys[2].timestamp,
+                message: "test error".to_string(),
+            }],
+        )
+        .await?;
+    db.graph.store_full(&keys[3], &graphs[2]).await?;
+    db.graph.store_full(&keys[4], &graphs[3]).await?;
 
     let converted = db
-        .compact_timeline(&TimelineID("test".to_string()), None, None)
+        .graph
+        .compact(&TimelineID("test".to_string()), None, None)
         .await?;
     assert_eq!(converted, 2); // keys[1] and keys[4]
 
-    let frames = db.list_frames(&TimelineID("test".to_string())).await?;
+    let frames = db.frames.list(&TimelineID("test".to_string())).await?;
     snapshot!(
         format_frames_table(&frames),
         "
@@ -138,16 +143,16 @@ graph_id             timestamp                type       base
     );
 
     // Both chains should be fetchable
-    let fetched_0 = db.fetch_graph(&keys[0].graph_key()).await?;
+    let fetched_0 = db.graph.fetch(&keys[0].graph_key()).await?;
     assert_graphs_equal(&graphs[0], &fetched_0);
 
-    let fetched_1 = db.fetch_graph(&keys[1].graph_key()).await?;
+    let fetched_1 = db.graph.fetch(&keys[1].graph_key()).await?;
     assert_graphs_equal(&graphs[1], &fetched_1);
 
-    let fetched_3 = db.fetch_graph(&keys[3].graph_key()).await?;
+    let fetched_3 = db.graph.fetch(&keys[3].graph_key()).await?;
     assert_graphs_equal(&graphs[2], &fetched_3);
 
-    let fetched_4 = db.fetch_graph(&keys[4].graph_key()).await?;
+    let fetched_4 = db.graph.fetch(&keys[4].graph_key()).await?;
     assert_graphs_equal(&graphs[3], &fetched_4);
 
     Ok(())
@@ -164,20 +169,23 @@ async fn compact_already_compact() -> Result<()> {
         .map(|i| make_graph_time_key("test", i as i64, 1000 + i as i64))
         .collect();
 
-    db.store_graph_full(&keys[0], &graphs[0]).await?;
-    db.store_graph_delta(&keys[1], &keys[0].graph_key(), &graphs[1])
+    db.graph.store_full(&keys[0], &graphs[0]).await?;
+    db.graph
+        .store_delta(&keys[1], &keys[0].graph_key(), &graphs[1])
         .await?;
-    db.store_graph_delta(&keys[2], &keys[1].graph_key(), &graphs[2])
+    db.graph
+        .store_delta(&keys[2], &keys[1].graph_key(), &graphs[2])
         .await?;
 
     let converted = db
-        .compact_timeline(&TimelineID("test".to_string()), None, None)
+        .graph
+        .compact(&TimelineID("test".to_string()), None, None)
         .await?;
     assert_eq!(converted, 0);
 
     // Still all fetchable
     for (i, key) in keys.iter().enumerate() {
-        let fetched = db.fetch_graph(&key.graph_key()).await?;
+        let fetched = db.graph.fetch(&key.graph_key()).await?;
         assert_graphs_equal(&graphs[i], &fetched);
     }
 

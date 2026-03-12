@@ -26,31 +26,33 @@ fn make_db() -> UnigraphDb {
 }
 
 async fn setup_with_history(db: &UnigraphDb, name: &str) {
-    db.create_timeline(
-        &TimelineID(name.to_string()),
-        &TimelineConfig {
-            schema: TimelineSchema::AdjacentDeltas(AdjacentDeltasConfig {}),
-            external_id_namespace: None,
-            blob_storage: Default::default(),
-            store_metric_history: Some(true),
-        },
-    )
-    .await
-    .unwrap();
+    db.timelines
+        .create(
+            &TimelineID(name.to_string()),
+            &TimelineConfig {
+                schema: TimelineSchema::AdjacentDeltas(AdjacentDeltasConfig {}),
+                external_id_namespace: None,
+                blob_storage: Default::default(),
+                store_metric_history: Some(true),
+            },
+        )
+        .await
+        .unwrap();
 }
 
 async fn setup_without_history(db: &UnigraphDb, name: &str) {
-    db.create_timeline(
-        &TimelineID(name.to_string()),
-        &TimelineConfig {
-            schema: TimelineSchema::AdjacentDeltas(AdjacentDeltasConfig {}),
-            external_id_namespace: None,
-            blob_storage: Default::default(),
-            store_metric_history: None,
-        },
-    )
-    .await
-    .unwrap();
+    db.timelines
+        .create(
+            &TimelineID(name.to_string()),
+            &TimelineConfig {
+                schema: TimelineSchema::AdjacentDeltas(AdjacentDeltasConfig {}),
+                external_id_namespace: None,
+                blob_storage: Default::default(),
+                store_metric_history: None,
+            },
+        )
+        .await
+        .unwrap();
 }
 
 async fn store(db: &UnigraphDb, timeline: &str, graph_id: i64, ts: i64, scene: &Scene) {
@@ -59,7 +61,7 @@ async fn store(db: &UnigraphDb, timeline: &str, graph_id: i64, ts: i64, scene: &
         timestamp: Timestamp::from_unix_timestamp(ts),
         graph_id: GraphID(graph_id),
     };
-    db.store_graph_full(&key, &scene.to_graph()).await.unwrap();
+    db.graph.store_full(&key, &scene.to_graph()).await.unwrap();
 }
 
 async fn fetch_all_history(
@@ -68,14 +70,15 @@ async fn fetch_all_history(
     nodes: &[&str],
 ) -> BTreeMap<String, Vec<(Timestamp, GraphID, NodeMetricSnapshot)>> {
     let names: Vec<String> = nodes.iter().map(|s| s.to_string()).collect();
-    db.fetch_metric_history(
-        &TimelineID(timeline.to_string()),
-        &names,
-        Timestamp::from_unix_timestamp(0),
-        Timestamp::from_unix_timestamp(2_000_000_000), // ~2033
-    )
-    .await
-    .unwrap()
+    db.metric_history
+        .fetch(
+            &TimelineID(timeline.to_string()),
+            &names,
+            Timestamp::from_unix_timestamp(0),
+            Timestamp::from_unix_timestamp(2_000_000_000), // ~2033
+        )
+        .await
+        .unwrap()
 }
 
 fn format_history(
@@ -226,8 +229,8 @@ async fn history_disabled() -> Result<()> {
 
     let graph = TestGraphTimeline::get_nth(0);
     let key = make_graph_time_key("t", 0, 1000);
-    db.store_graph_full(&key, &graph).await?;
-    assert_graphs_equal(&graph, &db.fetch_graph(&key.graph_key()).await?);
+    db.graph.store_full(&key, &graph).await?;
+    assert_graphs_equal(&graph, &db.graph.fetch(&key.graph_key()).await?);
 
     let h = fetch_all_history(&db, "t", &["anything"]).await;
     assert!(h.is_empty());
@@ -241,8 +244,8 @@ async fn graph_storage_unaffected_by_history() -> Result<()> {
 
     let graph = TestGraphTimeline::get_nth(99);
     let key = make_graph_time_key("t", 99, 5000);
-    db.store_graph_full(&key, &graph).await?;
-    assert_graphs_equal(&graph, &db.fetch_graph(&key.graph_key()).await?);
+    db.graph.store_full(&key, &graph).await?;
+    assert_graphs_equal(&graph, &db.graph.fetch(&key.graph_key()).await?);
     Ok(())
 }
 
