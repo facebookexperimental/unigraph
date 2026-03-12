@@ -125,7 +125,7 @@ fn leaf_merge_f32() {
 
 #[test]
 fn leaf_merge_bool() {
-    assert_eq!(bool::merge_delta(true, false), false);
+    assert!(!bool::merge_delta(true, false));
 }
 
 #[test]
