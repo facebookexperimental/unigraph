@@ -192,6 +192,7 @@ pub enum SidebarPanel {
     None,
     Simulation,
     GraphInfo,
+    TraversalConfigEditor,
 }
 
 /// Enum that defines whether an option is enabled or not depending

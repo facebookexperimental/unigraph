@@ -61,6 +61,15 @@ export function useExplorerKeyboardShortcutsHandler(): (
 
   const keyboardEventHandler = useCallback(
     (e: KeyboardEvent) => {
+      const target = e.target;
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        (target instanceof HTMLElement && target.isContentEditable)
+      ) {
+        return;
+      }
+
       const key = e.key.toLowerCase();
 
       const cmdPressed = e.ctrlKey || e.metaKey;

@@ -154,6 +154,12 @@ def build_all() -> None:
     build_haste()
 
 
+@app.command()
+def typegen() -> None:
+    """Regenerate TypeScript/Flow/Hack types from Rust structs (runs tests with TYPEGEN=1)."""
+    run(["cargo", "nextest", "run"], env={"TYPEGEN": "1"})
+
+
 @app.command(
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True}
 )

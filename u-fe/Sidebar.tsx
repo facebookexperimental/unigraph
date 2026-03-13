@@ -1,6 +1,6 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-import { Info, Waypoints, Wrench } from "lucide-react";
+import { Info, SlidersHorizontal, Waypoints, Wrench } from "lucide-react";
 import type { SidebarPanel } from "./__generated__/ts/SidebarPanel";
 import UTooltip from "./components/UTooltip";
 import { Button } from "./components/ui/button";
@@ -24,6 +24,12 @@ export default function Sidebar({
         </TabSelector>
         <TabSelector tabName="GraphInfo" selectedPanelTab={selectedPanelTab}>
           <Info />
+        </TabSelector>
+        <TabSelector
+          tabName="TraversalConfigEditor"
+          selectedPanelTab={selectedPanelTab}
+        >
+          <SlidersHorizontal />
         </TabSelector>
         {debugMode && <TraversalConfigInspector />}
       </div>

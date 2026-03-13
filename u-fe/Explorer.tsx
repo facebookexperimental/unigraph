@@ -37,6 +37,7 @@ import NativeGraph from "./native/NativeGraph";
 import Sidebar from "./Sidebar";
 import Simulation from "./Simulation";
 import GraphInfoPanel from "./sidebar_panels/GraphInfoPanel";
+import TraversalConfigEditorPanel from "./sidebar_panels/TraversalConfigEditorPanel";
 import GraphTreeTable from "./tree_table/GraphTreeTable";
 import type { NodeIDX } from "./types";
 
@@ -178,6 +179,8 @@ function Page() {
         return null;
       case "GraphInfo":
         return <GraphInfoPanel />;
+      case "TraversalConfigEditor":
+        return <TraversalConfigEditorPanel />;
       default: {
         const exhaustiveCheck: never = selectedSidebarPanel;
         throw new Error(`Unexpected panel tab: ${exhaustiveCheck}`);
