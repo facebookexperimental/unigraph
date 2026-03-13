@@ -248,7 +248,7 @@ pub async fn store_metric_history_on_conn(
     timeline_id: &TimelineID,
     mut prepared: PreparedHistoryEntries,
 ) -> Result<()> {
-    for (_week_key, week_entry) in &mut prepared.by_week {
+    for week_entry in prepared.by_week.values_mut() {
         store_week(conn, timeline_id, week_entry).await?;
     }
     Ok(())
