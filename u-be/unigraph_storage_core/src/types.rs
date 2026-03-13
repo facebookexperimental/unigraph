@@ -304,19 +304,28 @@ pub struct TimestampedError {
 }
 
 /// Schema that governs how frames in a timeline relate to each other.
-///
-/// Currently only [`AdjacentDeltas`](AdjacentDeltasConfig) is supported:
-/// deltas must reference the immediately preceding frame as their base.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, typegen::TypeGen)]
 pub enum TimelineSchema {
     /// Linear history where deltas derive from the immediately preceding graph.
+    ///
+    /// Enforces monotonic `(timestamp, graph_id)` ordering and adjacent delta
+    /// base references. Supports compaction (replacing Full frames with Deltas).
+    /// Optimized for high-throughput timelines with iterative range-query fetch.
     AdjacentDeltas(AdjacentDeltasConfig),
+
+    /// Simple schema where deltas can reference any graph as a base.
+    ///
+    /// No ordering constraints, no adjacent-base requirements. Deltas are
+    /// created explicitly via `store_as_delta_from` and can reference graphs
+    /// in other timelines. Compaction is not supported.
+    FullOrDelta(FullOrDeltaConfig),
 }
 
 impl fmt::Display for TimelineSchema {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             TimelineSchema::AdjacentDeltas(_) => write!(f, "AdjacentDeltas"),
+            TimelineSchema::FullOrDelta(_) => write!(f, "FullOrDelta"),
         }
     }
 }
@@ -327,6 +336,12 @@ impl fmt::Display for TimelineSchema {
 /// (e.g. max delta chain length, compaction policy).
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, typegen::TypeGen)]
 pub struct AdjacentDeltasConfig {}
+
+/// Configuration for the [`TimelineSchema::FullOrDelta`] schema.
+///
+/// Empty for now — the schema has no configuration knobs yet.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, typegen::TypeGen)]
+pub struct FullOrDeltaConfig {}
 
 /// Controls where graph blobs are stored for a timeline.
 ///

@@ -28,6 +28,21 @@ async fn setup_timeline(db: &UnigraphDb, name: &str) {
         .unwrap();
 }
 
+async fn setup_timeline_full_or_delta(db: &UnigraphDb, name: &str) {
+    db.timelines
+        .create(
+            &TimelineID(name.to_string()),
+            &TimelineConfig {
+                schema: TimelineSchema::FullOrDelta(FullOrDeltaConfig {}),
+                external_id_namespace: None,
+                blob_storage: Default::default(),
+                store_metric_history: None,
+            },
+        )
+        .await
+        .unwrap();
+}
+
 #[tokio::test]
 async fn randomized_full_graph_roundtrip_1000() -> Result<()> {
     let db = make_db();
@@ -41,7 +56,7 @@ async fn randomized_full_graph_roundtrip_1000() -> Result<()> {
     // Store in monotonic order (required by AdjacentDeltas invariant)
     for &(i, ref graph) in &graphs {
         let key = make_graph_time_key("test", i as i64, 1000 + i as i64);
-        db.graph.store_full(&key, graph).await?;
+        db.graph.store(&key, graph).await?;
     }
 
     // Verify all 1000 graphs round-trip correctly
@@ -56,20 +71,20 @@ async fn randomized_full_graph_roundtrip_1000() -> Result<()> {
 #[tokio::test]
 async fn randomized_delta_chain_100() -> Result<()> {
     let db = make_db();
-    setup_timeline(&db, "test").await;
+    setup_timeline_full_or_delta(&db, "test").await;
 
     let count = 100;
     let graphs: Vec<_> = (0..count).map(TestGraphTimeline::get_nth).collect();
 
     // Store first as full
     let key_0 = make_graph_time_key("test", 0, 1000);
-    db.graph.store_full(&key_0, &graphs[0]).await?;
+    db.graph.store(&key_0, &graphs[0]).await?;
 
     // Store the rest as sequential deltas
     for (i, graph) in graphs.iter().enumerate().skip(1) {
         let key = make_graph_time_key("test", i as i64, 1000 + i as i64);
         let base_key = make_graph_key("test", (i - 1) as i64);
-        db.graph.store_delta(&key, &base_key, graph).await?;
+        db.graph.store_as_delta_from(&key, graph, &base_key).await?;
     }
 
     // Verify all 100 graphs round-trip correctly

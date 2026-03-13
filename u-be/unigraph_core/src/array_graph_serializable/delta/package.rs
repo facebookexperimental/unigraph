@@ -49,7 +49,7 @@ pub struct DeltaManifestStats {
     pub nodes_added: u32,
     /// Number of nodes removed in this delta.
     pub nodes_removed: u32,
-    /// Number of nodes with any edge, metric, or tag_set change.
+    /// Number of nodes with any edge, metric, label, or property change.
     pub nodes_changed: u32,
     /// Number of directed edges added across all nodes.
     pub directed_edges_added: u32,
@@ -61,8 +61,10 @@ pub struct DeltaManifestStats {
     pub dynamic_edges_changed: u32,
     /// Number of (metric_name, node) pairs changed.
     pub metrics_changed: u32,
-    /// Number of nodes with tag set changes.
-    pub tag_sets_changed: u32,
+    /// Number of nodes with label changes.
+    pub labels_changed: u32,
+    /// Number of nodes with property changes.
+    pub properties_changed: u32,
 }
 
 /// A fully self-contained delta package: the manifest plus all blob data.
@@ -93,7 +95,8 @@ impl DeltaManifestStats {
         let mut tagged_edges_changed: u32 = 0;
         let mut dynamic_edges_changed: u32 = 0;
         let mut metrics_changed: u32 = 0;
-        let mut tag_sets_changed: u32 = 0;
+        let mut labels_changed: u32 = 0;
+        let mut properties_changed: u32 = 0;
 
         for node_delta in nodes.changed.values() {
             if let Some(ref dir) = node_delta.edges_directed {
@@ -112,7 +115,10 @@ impl DeltaManifestStats {
                 metrics_changed += 1;
             }
             if node_delta.labels.is_some() {
-                tag_sets_changed += 1;
+                labels_changed += 1;
+            }
+            if node_delta.properties.is_some() {
+                properties_changed += 1;
             }
         }
 
@@ -128,7 +134,8 @@ impl DeltaManifestStats {
             tagged_edges_changed,
             dynamic_edges_changed,
             metrics_changed,
-            tag_sets_changed,
+            labels_changed,
+            properties_changed,
         }
     }
 }

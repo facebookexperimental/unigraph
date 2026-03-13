@@ -37,6 +37,7 @@ async fn create_and_get_timeline_config() -> Result<()> {
     // Verify the schema type survived round-trip
     match fetched.schema {
         TimelineSchema::AdjacentDeltas(_) => {} // expected
+        _ => panic!("unexpected schema type"),
     }
 
     Ok(())
@@ -108,7 +109,7 @@ async fn frames_ordered_by_timestamp_then_graph_id() -> Result<()> {
             timestamp: ts,
             graph_id: GraphID(id),
         };
-        db.graph.store_full(&key, &graph).await?;
+        db.graph.store(&key, &graph).await?;
     }
 
     let frames = db.frames.list(&TimelineID("test".to_string())).await?;
@@ -136,7 +137,7 @@ async fn list_frames_range() -> Result<()> {
     for i in 0..10 {
         let graph = TestGraphTimeline::get_nth(i);
         let key = make_graph_time_key("test", i as i64, 1000 + i as i64);
-        db.graph.store_full(&key, &graph).await?;
+        db.graph.store(&key, &graph).await?;
     }
 
     // Query a range that should include frames 3-7

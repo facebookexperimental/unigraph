@@ -260,7 +260,6 @@ pub fn remap_node_metadata(
     ctx: &RemapContext,
 ) -> Result<ArrayGraphSerializableNodeMetadata> {
     let mut new_metrics = BTreeMap::new();
-    let mut new_tag_sets = BTreeMap::new();
 
     for (metric_name, metrics) in &metadata.metrics {
         let mut new_vec = Vec::with_capacity(metrics.len());
@@ -275,17 +274,38 @@ pub fn remap_node_metadata(
         new_metrics.insert(metric_name.clone(), new_vec);
     }
 
-    for (old_node_idx, tag_sets) in &metadata.tag_sets {
-        if let Some(new_node_idx) = ctx.mappings[*old_node_idx] {
-            // If the node was remapped, we need to insert it into the new tag sets.
-            // We will use the new node index as the key.
-            new_tag_sets.insert(new_node_idx, tag_sets.clone());
+    // Remap labels: iterate by label name, remap node indices within each
+    let mut new_labels = BTreeMap::new();
+    for (label_name, node_map) in &metadata.labels {
+        let mut new_node_map = BTreeMap::new();
+        for (old_node_idx, values) in node_map {
+            if let Some(new_node_idx) = ctx.mappings[*old_node_idx] {
+                new_node_map.insert(new_node_idx, values.clone());
+            }
+        }
+        if !new_node_map.is_empty() {
+            new_labels.insert(label_name.clone(), new_node_map);
+        }
+    }
+
+    // Remap properties: iterate by property name, remap node indices within each
+    let mut new_properties = BTreeMap::new();
+    for (prop_name, node_map) in &metadata.properties {
+        let mut new_node_map = BTreeMap::new();
+        for (old_node_idx, value) in node_map {
+            if let Some(new_node_idx) = ctx.mappings[*old_node_idx] {
+                new_node_map.insert(new_node_idx, value.clone());
+            }
+        }
+        if !new_node_map.is_empty() {
+            new_properties.insert(prop_name.clone(), new_node_map);
         }
     }
 
     Ok(ArrayGraphSerializableNodeMetadata {
         metrics: new_metrics,
-        tag_sets: new_tag_sets,
+        labels: new_labels,
+        properties: new_properties,
     })
 }
 
@@ -336,7 +356,7 @@ A:
 B:
   - C [T]
   - J [T]
-C (tag sets: disallow_tags: [b, c]):
+C (labels: disallow_tags: [b, c]):
 D:
   - F
   - E [T]
@@ -348,7 +368,7 @@ F:
 G:
 H:
 I:
-J (tag sets: assert_tags: [a, b]):
+J (labels: assert_tags: [a, b]):
 "
         );
 
@@ -388,7 +408,7 @@ J (tag sets: assert_tags: [a, b]):
         snapshot!(
             new_g.debug().to_forward_edges_string()?,
             "
-0_J (tag sets: assert_tags: [a, b]):
+0_J (labels: assert_tags: [a, b]):
 1_I:
 2_H:
 3_G:
@@ -400,7 +420,7 @@ J (tag sets: assert_tags: [a, b]):
 6_D:
   - 4_F
   - 5_E [T]
-7_C (tag sets: disallow_tags: [b, c]):
+7_C (labels: disallow_tags: [b, c]):
 8_B:
   - 7_C [T]
   - 0_J [T]

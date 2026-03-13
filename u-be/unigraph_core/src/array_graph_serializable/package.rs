@@ -105,8 +105,11 @@ pub struct ManifestBlobs {
     /* METADATA */
     /// Per-metric float vectors (one `f32` per node for each named metric).
     pub metrics: Vec<BlobID>,
-    /// Per-node tag-set maps (node → tag-set-name → tags).
-    pub tag_sets: Vec<BlobID>,
+    /// Per-label-name index (label-name → node → set of values).
+    pub labels: Vec<BlobID>,
+    /// Per-property-name index (property-name → node → value).
+    #[serde(default)]
+    pub properties: Vec<BlobID>,
 
     /// Optional traversal configuration (entry points, tier rules, etc.).
     pub traversal_config: Vec<BlobID>,
@@ -166,7 +169,8 @@ impl ManifestBlobs {
             tagged,
             dynamic,
             metrics,
-            tag_sets,
+            labels,
+            properties,
             traversal_config,
             budget_configs,
             entry_points,
@@ -180,7 +184,8 @@ impl ManifestBlobs {
             tagged,
             dynamic,
             metrics,
-            tag_sets,
+            labels,
+            properties,
             traversal_config,
             budget_configs,
             entry_points,
@@ -302,7 +307,11 @@ pub fn pack(
         dynamic,
     } = &edges;
 
-    let ArrayGraphSerializableNodeMetadata { metrics, tag_sets } = &node_metadata;
+    let ArrayGraphSerializableNodeMetadata {
+        metrics,
+        labels,
+        properties,
+    } = &node_metadata;
 
     let (node_names, node_names_offsets) = node_names_ordered.as_parts();
 
@@ -313,7 +322,8 @@ pub fn pack(
     let tagged = into_blobs(&tagged, "tagged", &mut b, c)?;
     let dynamic = into_blobs(&dynamic, "dynamic", &mut b, c)?;
     let metrics = into_blobs(&metrics, "metrics", &mut b, c)?;
-    let tag_sets = into_blobs(&tag_sets, "tag_sets", &mut b, c)?;
+    let labels = into_blobs(&labels, "labels", &mut b, c)?;
+    let properties = into_blobs(&properties, "properties", &mut b, c)?;
     let traversal_config = into_blobs(&traversal_config, "traversal_config", &mut b, c)?;
     let budget_configs = into_blobs(&budget_configs, "budget_configs", &mut b, c)?;
     let entry_points = into_blobs(&entry_points, "entry_points", &mut b, c)?;
@@ -326,7 +336,8 @@ pub fn pack(
         tagged,
         dynamic,
         metrics,
-        tag_sets,
+        labels,
+        properties,
         traversal_config,
         budget_configs,
         entry_points,
@@ -373,13 +384,14 @@ pub fn unpack(package: &ArrayGraphSerializablePackage) -> Result<ArrayGraphSeria
 
         let ManifestBlobs {
             node_names,
-            node_names_offsets, // This is the same data as node_names, so we ignore it
+            node_names_offsets,
             directed,
             directed_offsets,
             tagged,
             dynamic,
             metrics,
-            tag_sets,
+            labels,
+            properties,
             traversal_config,
             budget_configs,
             entry_points,
@@ -396,7 +408,12 @@ pub fn unpack(package: &ArrayGraphSerializablePackage) -> Result<ArrayGraphSeria
         let tagged = from_blobs_field(tagged, b)?;
         let dynamic = from_blobs_field(dynamic, b)?;
         let metrics = from_blobs_field(metrics, b)?;
-        let tag_sets = from_blobs_field(tag_sets, b)?;
+        let labels = from_blobs_field(labels, b)?;
+        let properties = if properties.is_empty() {
+            BTreeMap::new()
+        } else {
+            from_blobs_field(properties, b)?
+        };
         let traversal_config = from_blobs_field(traversal_config, b)?;
         let budget_configs: BTreeMap<String, BudgetConfig> = if budget_configs.is_empty() {
             BTreeMap::new()
@@ -412,7 +429,11 @@ pub fn unpack(package: &ArrayGraphSerializablePackage) -> Result<ArrayGraphSeria
             dynamic,
         };
 
-        let node_metadata = ArrayGraphSerializableNodeMetadata { metrics, tag_sets };
+        let node_metadata = ArrayGraphSerializableNodeMetadata {
+            metrics,
+            labels,
+            properties,
+        };
 
         anyhow::Ok(ArrayGraphSerializable {
             node_names_ordered: Arc::new(ArrayGraphNodes::from_parts(
@@ -589,8 +610,8 @@ mod tests {
 {
   "self_reference": "_manifest.json",
   "stats": {
-    "total_blobs": 14,
-    "total_size_bytes": 396,
+    "total_blobs": 15,
+    "total_size_bytes": 407,
     "blob_sizes_bytes": {
       "budget_configs_4370653166743570923": 11,
       "directed_1506826171969472540": 35,
@@ -598,11 +619,12 @@ mod tests {
       "dynamic_chunk_0_16704539601918712447": 50,
       "dynamic_chunk_1_14093561304655809570": 11,
       "entry_points_9535545603450022154": 13,
+      "labels_chunk_0_13613338088011413788": 50,
+      "labels_chunk_1_15517762289522568128": 14,
       "metrics_6304071051133242967": 30,
       "node_names_10311418653884441124": 27,
       "node_names_offsets_15446562321729131330": 43,
-      "tag_sets_chunk_0_2696313957685523905": 50,
-      "tag_sets_chunk_1_121953578755559923": 14,
+      "properties_4370653166743570923": 11,
       "tagged_chunk_0_3600822166880560972": 50,
       "tagged_chunk_1_8048188434168318281": 9,
       "traversal_config_9535545603450022154": 13
@@ -634,9 +656,12 @@ mod tests {
     "metrics": [
       "metrics_6304071051133242967"
     ],
-    "tag_sets": [
-      "tag_sets_chunk_0_2696313957685523905",
-      "tag_sets_chunk_1_121953578755559923"
+    "labels": [
+      "labels_chunk_0_13613338088011413788",
+      "labels_chunk_1_15517762289522568128"
+    ],
+    "properties": [
+      "properties_4370653166743570923"
     ],
     "traversal_config": [
       "traversal_config_9535545603450022154"
@@ -669,11 +694,12 @@ mod tests {
     "dynamic_chunk_0_16704539601918712447",
     "dynamic_chunk_1_14093561304655809570",
     "entry_points_9535545603450022154",
+    "labels_chunk_0_13613338088011413788",
+    "labels_chunk_1_15517762289522568128",
     "metrics_6304071051133242967",
     "node_names_10311418653884441124",
     "node_names_offsets_15446562321729131330",
-    "tag_sets_chunk_0_2696313957685523905",
-    "tag_sets_chunk_1_121953578755559923",
+    "properties_4370653166743570923",
     "tagged_chunk_0_3600822166880560972",
     "tagged_chunk_1_8048188434168318281",
     "traversal_config_9535545603450022154",

@@ -37,7 +37,7 @@ async fn store_and_fetch_full_graph() -> Result<()> {
     let graph = TestGraphTimeline::get_nth(42);
     let key = make_graph_time_key("test", 42, 1000);
 
-    db.graph.store_full(&key, &graph).await?;
+    db.graph.store(&key, &graph).await?;
 
     let fetched = db.graph.fetch(&key.graph_key()).await?;
     assert_graphs_equal(&graph, &fetched);
@@ -53,7 +53,7 @@ async fn store_multiple_graphs_and_list_frames() -> Result<()> {
     for i in 0..5 {
         let graph = TestGraphTimeline::get_nth(i);
         let key = make_graph_time_key("test", i as i64, 1000 + i as i64);
-        db.graph.store_full(&key, &graph).await?;
+        db.graph.store(&key, &graph).await?;
     }
 
     let frames = db.frames.list(&TimelineID("test".to_string())).await?;
@@ -157,7 +157,7 @@ async fn delete_frame() -> Result<()> {
     let key = make_graph_time_key("test", 1, 1000);
     let timeline_id = TimelineID("test".to_string());
 
-    db.graph.store_full(&key, &graph).await?;
+    db.graph.store(&key, &graph).await?;
 
     // Before deletion: frame exists, no blobs pending cleanup
     let frames = db.frames.list(&timeline_id).await?;
@@ -222,7 +222,7 @@ async fn delete_frame_with_external_blobs() -> Result<()> {
     let key = make_graph_time_key("test", 1, 1000);
     let timeline_id = TimelineID("test".to_string());
 
-    db.graph.store_full(&key, &graph).await?;
+    db.graph.store(&key, &graph).await?;
 
     // Before deletion: frame exists
     let frames = db.frames.list(&timeline_id).await?;
@@ -246,10 +246,11 @@ test/1/directed_6393609996011794433
 test/1/directed_offsets_194495599743061723
 test/1/dynamic_5399181262045623723
 test/1/entry_points_252579103958576740
+test/1/labels_16937333422238396797
 test/1/metrics_16688319674661559295
 test/1/node_names_14937681792348936820
 test/1/node_names_offsets_5236345249475374570
-test/1/tag_sets_15326796702629799067
+test/1/properties_5399181262045623723
 test/1/tagged_6861884023275401222
 test/1/traversal_config_252579103958576740
 "
@@ -288,10 +289,11 @@ test/1/directed_6393609996011794433
 test/1/directed_offsets_194495599743061723
 test/1/dynamic_5399181262045623723
 test/1/entry_points_252579103958576740
+test/1/labels_16937333422238396797
 test/1/metrics_16688319674661559295
 test/1/node_names_14937681792348936820
 test/1/node_names_offsets_5236345249475374570
-test/1/tag_sets_15326796702629799067
+test/1/properties_5399181262045623723
 test/1/tagged_6861884023275401222
 test/1/traversal_config_252579103958576740
 "
@@ -308,10 +310,11 @@ test/1/directed_6393609996011794433
 test/1/directed_offsets_194495599743061723
 test/1/dynamic_5399181262045623723
 test/1/entry_points_252579103958576740
+test/1/labels_16937333422238396797
 test/1/metrics_16688319674661559295
 test/1/node_names_14937681792348936820
 test/1/node_names_offsets_5236345249475374570
-test/1/tag_sets_15326796702629799067
+test/1/properties_5399181262045623723
 test/1/tagged_6861884023275401222
 test/1/traversal_config_252579103958576740
 "
@@ -327,7 +330,7 @@ async fn get_frame_metadata_only() -> Result<()> {
 
     let graph = TestGraphTimeline::get_nth(0);
     let key = make_graph_time_key("test", 0, 1000);
-    db.graph.store_full(&key, &graph).await?;
+    db.graph.store(&key, &graph).await?;
 
     // Fetch without data
     let row = db
@@ -380,7 +383,7 @@ async fn sweep_deleted_blobs() -> Result<()> {
     let key = make_graph_time_key("test", 1, 1000);
     let timeline_id = TimelineID("test".to_string());
 
-    db.graph.store_full(&key, &graph).await?;
+    db.graph.store(&key, &graph).await?;
 
     // After store: blobs exist in external storage, nothing pending cleanup
     let blobs = sqlite.list_blobs("").await?;
@@ -393,10 +396,11 @@ test/1/directed_6393609996011794433
 test/1/directed_offsets_194495599743061723
 test/1/dynamic_5399181262045623723
 test/1/entry_points_252579103958576740
+test/1/labels_16937333422238396797
 test/1/metrics_16688319674661559295
 test/1/node_names_14937681792348936820
 test/1/node_names_offsets_5236345249475374570
-test/1/tag_sets_15326796702629799067
+test/1/properties_5399181262045623723
 test/1/tagged_6861884023275401222
 test/1/traversal_config_252579103958576740
 "
@@ -417,10 +421,11 @@ test/1/directed_6393609996011794433
 test/1/directed_offsets_194495599743061723
 test/1/dynamic_5399181262045623723
 test/1/entry_points_252579103958576740
+test/1/labels_16937333422238396797
 test/1/metrics_16688319674661559295
 test/1/node_names_14937681792348936820
 test/1/node_names_offsets_5236345249475374570
-test/1/tag_sets_15326796702629799067
+test/1/properties_5399181262045623723
 test/1/tagged_6861884023275401222
 test/1/traversal_config_252579103958576740
 "
@@ -435,10 +440,11 @@ test/1/directed_6393609996011794433
 test/1/directed_offsets_194495599743061723
 test/1/dynamic_5399181262045623723
 test/1/entry_points_252579103958576740
+test/1/labels_16937333422238396797
 test/1/metrics_16688319674661559295
 test/1/node_names_14937681792348936820
 test/1/node_names_offsets_5236345249475374570
-test/1/tag_sets_15326796702629799067
+test/1/properties_5399181262045623723
 test/1/tagged_6861884023275401222
 test/1/traversal_config_252579103958576740
 "
@@ -446,7 +452,7 @@ test/1/traversal_config_252579103958576740
 
     // Sweep with Duration::ZERO — should sweep everything
     let swept = db.blob_storage.sweep(std::time::Duration::ZERO).await?;
-    assert_eq!(swept, 12);
+    assert_eq!(swept, 13);
 
     // After sweep: blobs physically gone, cleanup table empty
     let blobs_after_sweep = sqlite.list_blobs("").await?;
@@ -485,7 +491,7 @@ async fn sweep_respects_min_age() -> Result<()> {
     let key = make_graph_time_key("test", 1, 1000);
     let timeline_id = TimelineID("test".to_string());
 
-    db.graph.store_full(&key, &graph).await?;
+    db.graph.store(&key, &graph).await?;
     db.graph.delete(&key.graph_key(), &timeline_id).await?;
 
     // Sweep with a large min_age (1 hour) — nothing should be old enough
@@ -524,7 +530,7 @@ async fn replace_empty_frames_with_full_graphs() -> Result<()> {
     for i in 0..5 {
         let graph = TestGraphTimeline::get_nth(i as u64);
         let key = make_graph_time_key("test", i, 1000 + i);
-        db.graph.store_full(&key, &graph).await?;
+        db.graph.store(&key, &graph).await?;
     }
 
     // Verify all frames are now Full.

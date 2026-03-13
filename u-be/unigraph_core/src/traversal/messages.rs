@@ -148,8 +148,8 @@ impl BuiltInMessages {
     pub const FORCE_TAGGED_EXCLUDED_ID: &str = "force_tagged_excluded";
     pub const FORCE_DYNAMIC_INCLUDED_ID: &str = "force_dynamic_included";
     pub const FORCE_DYNAMIC_EXCLUDED_ID: &str = "force_dynamic_excluded";
-    pub const FORCE_TAG_SETS_INCLUDED_ID: &str = "force_tag_sets_included";
-    pub const FORCE_TAG_SETS_EXCLUDED_ID: &str = "force_tag_sets_excluded";
+    pub const FORCE_LABELS_INCLUDED_ID: &str = "force_labels_included";
+    pub const FORCE_LABELS_EXCLUDED_ID: &str = "force_labels_excluded";
     pub const FORCED_CHILDREN_OF_EXCLUDED_ID: &str = "forced_children_of_excluded";
     pub const FORCED_CHILDREN_OF_INCLUDED_ID: &str = "forced_children_of_included";
     pub const EDGE_EXCLUDED_BECAUSE_GREATER_THAN_MAX_TIER_ID: &str =
@@ -165,8 +165,8 @@ impl BuiltInMessages {
         "This edge was EXCLUDED because `force_tagged` config for the tag `%edge_tag%`";
     const FORCE_DYNAMIC_INCLUDED_MESSAGE: &str = "This edge was INCLUDED because it matched the `force_dynamic` config for type_key `%edge_properties%` on branch `%edge_branch%`.";
     const FORCE_DYNAMIC_EXCLUDED_MESSAGE: &str = "This edge was EXCLUDED because it matched the `force_dynamic` config for type_key `%edge_properties%` on branch `%edge_branch%`.";
-    const FORCE_TAG_SETS_INCLUDED_MESSAGE: &str = "This edge was INCLUDED because it contained tag sets that matched an entry in the `tag_sets` config`.";
-    const FORCE_TAG_SETS_EXCLUDED_MESSAGE: &str = "This edge was EXCLUDED because it contained tag sets that matched an entry in the `tag_sets` config`.";
+    const FORCE_LABELS_INCLUDED_MESSAGE: &str = "This edge was INCLUDED because it contained labels that matched an entry in the `label_predicates` config.";
+    const FORCE_LABELS_EXCLUDED_MESSAGE: &str = "This edge was EXCLUDED because it contained labels that matched an entry in the `label_predicates` config.";
     const FORCED_CHILDREN_OF_EXCLUDED_MESSAGE: &str = "This edge was EXCLUDED because the node `%points_to%` is a child of a node whose children were excluded from the traversal using `force_children_of` config.";
     const FORCED_CHILDREN_OF_INCLUDED_MESSAGE: &str = "This edge was INCLUDED because the node `%points_to%` is a child of a node whose children were included from the traversal using `force_children_of` config.";
     const EDGE_EXCLUDED_BECAUSE_GREATER_THAN_MAX_TIER_MESSAGE: &str = "This edge was EXCLUDED because its tag `%edge_tag%` is transitions to a tier that is greater than the maximum tier configured in the `tiered_traversal` config.";
@@ -205,12 +205,12 @@ impl BuiltInMessages {
             Self::FORCE_DYNAMIC_EXCLUDED_MESSAGE,
         ),
         (
-            Self::FORCE_TAG_SETS_INCLUDED_ID,
-            Self::FORCE_TAG_SETS_INCLUDED_MESSAGE,
+            Self::FORCE_LABELS_INCLUDED_ID,
+            Self::FORCE_LABELS_INCLUDED_MESSAGE,
         ),
         (
-            Self::FORCE_TAG_SETS_EXCLUDED_ID,
-            Self::FORCE_TAG_SETS_EXCLUDED_MESSAGE,
+            Self::FORCE_LABELS_EXCLUDED_ID,
+            Self::FORCE_LABELS_EXCLUDED_MESSAGE,
         ),
         (
             Self::FORCED_CHILDREN_OF_INCLUDED_ID,

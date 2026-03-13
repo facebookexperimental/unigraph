@@ -29,10 +29,25 @@ async fn setup_timeline(db: &UnigraphDb, name: &str) {
         .unwrap();
 }
 
+async fn setup_timeline_full_or_delta(db: &UnigraphDb, name: &str) {
+    db.timelines
+        .create(
+            &TimelineID(name.to_string()),
+            &TimelineConfig {
+                schema: TimelineSchema::FullOrDelta(FullOrDeltaConfig {}),
+                external_id_namespace: None,
+                blob_storage: Default::default(),
+                store_metric_history: None,
+            },
+        )
+        .await
+        .unwrap();
+}
+
 #[tokio::test]
-async fn store_full_then_delta_and_fetch() -> Result<()> {
+async fn store_then_delta_and_fetch() -> Result<()> {
     let db = make_db();
-    setup_timeline(&db, "test").await;
+    setup_timeline_full_or_delta(&db, "test").await;
 
     let graph_0 = TestGraphTimeline::get_nth(0);
     let graph_1 = TestGraphTimeline::get_nth(1);
@@ -41,11 +56,11 @@ async fn store_full_then_delta_and_fetch() -> Result<()> {
     let key_1 = make_graph_time_key("test", 1, 1001);
 
     // Store full graph
-    db.graph.store_full(&key_0, &graph_0).await?;
+    db.graph.store(&key_0, &graph_0).await?;
 
     // Store delta
     db.graph
-        .store_delta(&key_1, &key_0.graph_key(), &graph_1)
+        .store_as_delta_from(&key_1, &graph_1, &key_0.graph_key())
         .await?;
 
     // Verify listing
@@ -70,7 +85,7 @@ graph_id             timestamp                type       base
 #[tokio::test]
 async fn delta_chain_full_d_d_d() -> Result<()> {
     let db = make_db();
-    setup_timeline(&db, "test").await;
+    setup_timeline_full_or_delta(&db, "test").await;
 
     // Full ← Delta ← Delta ← Delta
     let graphs: Vec<_> = (0..4).map(TestGraphTimeline::get_nth).collect();
@@ -79,12 +94,12 @@ async fn delta_chain_full_d_d_d() -> Result<()> {
         .collect();
 
     // Store Full
-    db.graph.store_full(&keys[0], &graphs[0]).await?;
+    db.graph.store(&keys[0], &graphs[0]).await?;
 
     // Store chain of deltas
     for i in 1..4 {
         db.graph
-            .store_delta(&keys[i], &keys[i - 1].graph_key(), &graphs[i])
+            .store_as_delta_from(&keys[i], &graphs[i], &keys[i - 1].graph_key())
             .await?;
     }
 
@@ -119,7 +134,7 @@ graph_id             timestamp                type       base
 #[tokio::test]
 async fn delta_chain_with_intermediate_full() -> Result<()> {
     let db = make_db();
-    setup_timeline(&db, "test").await;
+    setup_timeline_full_or_delta(&db, "test").await;
 
     // Full ← Delta ← Full ← Delta
     let graphs: Vec<_> = (10..14).map(TestGraphTimeline::get_nth).collect();
@@ -127,13 +142,13 @@ async fn delta_chain_with_intermediate_full() -> Result<()> {
         .map(|i| make_graph_time_key("test", i as i64, 1000 + i as i64))
         .collect();
 
-    db.graph.store_full(&keys[0], &graphs[0]).await?;
+    db.graph.store(&keys[0], &graphs[0]).await?;
     db.graph
-        .store_delta(&keys[1], &keys[0].graph_key(), &graphs[1])
+        .store_as_delta_from(&keys[1], &graphs[1], &keys[0].graph_key())
         .await?;
-    db.graph.store_full(&keys[2], &graphs[2]).await?;
+    db.graph.store(&keys[2], &graphs[2]).await?;
     db.graph
-        .store_delta(&keys[3], &keys[2].graph_key(), &graphs[3])
+        .store_as_delta_from(&keys[3], &graphs[3], &keys[2].graph_key())
         .await?;
 
     // Fetch from different points
@@ -165,14 +180,13 @@ async fn cross_timeline_delta_reference_rejected() -> Result<()> {
     let key_b = make_graph_time_key("timeline_b", 101, 2000);
 
     // Store full in timeline_a
-    db.graph.store_full(&key_a, &graph_a).await?;
+    db.graph.store(&key_a, &graph_a).await?;
 
-    // Store delta in timeline_b referencing timeline_a — should fail
-    // because AdjacentDeltas requires the base to be the preceding frame
-    // in the same timeline.
+    // store_as_delta_from is not supported for AdjacentDeltas timelines
+    // (deltas are managed exclusively via compaction).
     let result = db
         .graph
-        .store_delta(&key_b, &key_a.graph_key(), &graph_b)
+        .store_as_delta_from(&key_b, &graph_b, &key_a.graph_key())
         .await;
     assert!(
         result.is_err(),
@@ -193,7 +207,7 @@ async fn get_preceding_frame() -> Result<()> {
 
     for (i, key) in keys.iter().enumerate() {
         let graph = TestGraphTimeline::get_nth(i as u64);
-        db.graph.store_full(key, &graph).await?;
+        db.graph.store(key, &graph).await?;
     }
 
     // Preceding frame of g_2 should be g_1

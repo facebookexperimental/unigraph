@@ -15,10 +15,10 @@ use crate::traversal::messages::Message;
 use crate::traversal::messages::MessageID;
 use crate::types::DynamicEdgeName;
 use crate::types::DynamicTypeKey;
+use crate::types::LabelName;
 use crate::types::NodeIDX;
 use crate::types::NodeName;
 use crate::types::Tag;
-use crate::types::TagSetName;
 use crate::types::TierIDX;
 use crate::types::TierName;
 
@@ -147,24 +147,24 @@ pub struct DynamicEdgeOverride {
 }
 
 /// These predicates are used to decide whether to follow an edge to a node based
-/// on node's tag sets, which will contain some annotations about the node.
+/// on node's labels, which will contain some annotations about the node.
 ///
 /// Specifically there are two concepts here:
-///        @assert_value v1 v2 v3: if the tag set is present, we ONLY follow the edge
-///          if the tagset contains a passed value (set globally). Otherwise we do not
+///        @assert_value v1 v2 v3: if the label is present, we ONLY follow the edge
+///          if the label contains a passed value (set globally). Otherwise we do not
 ///          follow the edge.
-///        @disallow_value v1 v2 v3: if the tagset is present, we do NOT follow the edge
-///          if the tagset contains a passed value (set globally). Otherwise we do follow
+///        @disallow_value v1 v2 v3: if the label is present, we do NOT follow the edge
+///          if the label contains a passed value (set globally). Otherwise we do follow
 ///          the edge (unless other predicates disallow it).
 ///
 /// assuming current route is "homepage".
 /// this produces these predicates:
 ///
 /// [
-///    { tag_set_name: "assert_route", tag_name: "homepage", contains: true, decision: { include: true } },
-///    { tag_set_name: "assert_route", tag_name: "homepage", contains: false, decision: { include: false } },
-///    { tag_set_name: "disallow_route", tag_name: "homepage", contains: true, decision: { include: false } },
-///    { tag_set_name: "disallow_route", tag_name: "homepage", contains: false, decision: { include: true } },
+///    { label_name: "assert_route", label_value: "homepage", contains: true, decision: { include: true } },
+///    { label_name: "assert_route", label_value: "homepage", contains: false, decision: { include: false } },
+///    { label_name: "disallow_route", label_value: "homepage", contains: true, decision: { include: false } },
+///    { label_name: "disallow_route", label_value: "homepage", contains: false, decision: { include: true } },
 /// ]
 #[derive(
     Debug,
@@ -177,8 +177,8 @@ pub struct DynamicEdgeOverride {
 )]
 #[deltable(replace)]
 pub struct NodeLabelPredicate {
-    pub tag_set_name: TagSetName,
-    pub tag_name: Tag,
+    pub label_name: LabelName,
+    pub label_value: String,
     pub contains: bool,
     pub decision: Decision,
 }

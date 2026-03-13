@@ -61,7 +61,7 @@ async fn store(db: &UnigraphDb, timeline: &str, graph_id: i64, ts: i64, scene: &
         timestamp: Timestamp::from_unix_timestamp(ts),
         graph_id: GraphID(graph_id),
     };
-    db.graph.store_full(&key, &scene.to_graph()).await.unwrap();
+    db.graph.store(&key, &scene.to_graph()).await.unwrap();
 }
 
 async fn fetch_all_history(
@@ -159,7 +159,8 @@ impl Scene {
             },
             node_metadata: ArrayGraphSerializableNodeMetadata {
                 metrics: all_metrics,
-                tag_sets: BTreeMap::new(),
+                labels: BTreeMap::new(),
+                properties: BTreeMap::new(),
             },
             graph_settings: None,
             traversal_config: None,
@@ -229,7 +230,7 @@ async fn history_disabled() -> Result<()> {
 
     let graph = TestGraphTimeline::get_nth(0);
     let key = make_graph_time_key("t", 0, 1000);
-    db.graph.store_full(&key, &graph).await?;
+    db.graph.store(&key, &graph).await?;
     assert_graphs_equal(&graph, &db.graph.fetch(&key.graph_key()).await?);
 
     let h = fetch_all_history(&db, "t", &["anything"]).await;
@@ -244,7 +245,7 @@ async fn graph_storage_unaffected_by_history() -> Result<()> {
 
     let graph = TestGraphTimeline::get_nth(99);
     let key = make_graph_time_key("t", 99, 5000);
-    db.graph.store_full(&key, &graph).await?;
+    db.graph.store(&key, &graph).await?;
     assert_graphs_equal(&graph, &db.graph.fetch(&key.graph_key()).await?);
     Ok(())
 }

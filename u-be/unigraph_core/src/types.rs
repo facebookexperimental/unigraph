@@ -18,7 +18,10 @@ pub use map_graph::MapGraph;
 pub type NodeName = String;
 
 pub type MetricName = String;
-pub type TagSetName = String;
+pub type LabelName = String;
+pub type LabelValue = String;
+pub type PropertyName = String;
+pub type PropertyValue = String;
 pub type Tag = String;
 pub type DynamicBranchName = String;
 pub type DynamicTypeKey = String;

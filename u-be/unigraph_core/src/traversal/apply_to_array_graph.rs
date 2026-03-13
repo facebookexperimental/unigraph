@@ -17,6 +17,8 @@ use crate::traversal::messages::BuiltInMessages;
 use crate::traversal::messages::IndexedMessages;
 use crate::traversal::tiered_traversal::TieredTraversalConfig;
 use crate::types::DynamicTypeKey;
+use crate::types::LabelName;
+use crate::types::LabelValue;
 use crate::types::Tag;
 use crate::types::TierName;
 use crate::types::array_graph::NodeFlags;
@@ -51,6 +53,7 @@ pub fn apply_traversal_config_to_array_graph(
     } = &indexed_config;
 
     let exclude_tags = exclude_tags_for_tier_above_the_max(tiered_traversal);
+    let labels = &ag.labels;
 
     for (parent_idx, edge, md) in ag.edges_forward.iter_edges_mut() {
         // we need to start fresh and make sure all edges that were previously excluded
@@ -59,8 +62,9 @@ pub fn apply_traversal_config_to_array_graph(
 
         match_dynamic_edges(force_dynamic, parent_idx, edge, md, &m)?;
         match_tagged(force_tagged, &exclude_tags, edge, md, &tag_to_tier, &m)?;
-        if let Some(tag_sets_for_node) = ag.tag_sets.get(&edge.points_to) {
-            match_label_predicates(label_predicates, edge, tag_sets_for_node, &m)?;
+        let labels_for_node = collect_labels_for_node(labels, edge.points_to);
+        if !labels_for_node.is_empty() {
+            match_label_predicates(label_predicates, edge, &labels_for_node, &m)?;
         }
         match_force_edges(force_edges, parent_idx, edge, &m)?;
         match_force_nodes(force_nodes, edge, &m)?;
@@ -197,25 +201,25 @@ fn match_force_edges(
 fn match_label_predicates(
     label_predicates: &BTreeMap<String, NodeLabelPredicate>,
     edge: &mut Edge,
-    tag_sets_for_node: &std::collections::BTreeMap<String, std::collections::BTreeSet<String>>,
+    labels_for_node: &BTreeMap<&str, &BTreeSet<String>>,
     indexed_messages: &IndexedMessages,
 ) -> Result<()> {
     for predicate in label_predicates.values() {
         #[allow(clippy::collapsible_if)]
-        if let Some(tags) = tag_sets_for_node.get(&predicate.tag_set_name) {
-            if tags.contains(&predicate.tag_name) == predicate.contains {
+        if let Some(values) = labels_for_node.get(predicate.label_name.as_str()) {
+            if values.contains(&predicate.label_value) == predicate.contains {
                 match predicate.decision.include {
                     true => edge
                         .flags
                         .include_with_message(indexed_messages.get_or_default(
                             &predicate.decision.message_id,
-                            BuiltInMessages::FORCE_TAG_SETS_INCLUDED_ID,
+                            BuiltInMessages::FORCE_LABELS_INCLUDED_ID,
                         ))?,
                     false => edge
                         .flags
                         .exclude_with_message(indexed_messages.get_or_default(
                             &predicate.decision.message_id,
-                            BuiltInMessages::FORCE_TAG_SETS_EXCLUDED_ID,
+                            BuiltInMessages::FORCE_LABELS_EXCLUDED_ID,
                         ))?,
                 }
             }
@@ -351,4 +355,21 @@ fn match_tagged(
         }
     }
     Ok(())
+}
+
+/// Collect all labels for a specific node from the inverted labels index.
+/// This is a free function (not a method on ArrayGraph) to avoid borrow conflicts
+/// when used inside `iter_edges_mut()`.
+fn collect_labels_for_node(
+    labels: &BTreeMap<LabelName, BTreeMap<NodeIDX, BTreeSet<LabelValue>>>,
+    node_idx: NodeIDX,
+) -> BTreeMap<&str, &BTreeSet<String>> {
+    labels
+        .iter()
+        .filter_map(|(label_name, node_map)| {
+            node_map
+                .get(&node_idx)
+                .map(|values| (label_name.as_str(), values))
+        })
+        .collect()
 }

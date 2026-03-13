@@ -26,14 +26,22 @@ pub struct Frames {
 impl Frames {
     /// Store an empty frame (placeholder with no data).
     ///
-    /// Transactional: locks the timeline, validates monotonic ordering,
-    /// stores the frame, and commits.
+    /// Transactional: locks the timeline, validates ordering (AdjacentDeltas
+    /// only), stores the frame, and commits.
     pub async fn store_empty(&self, key: &GraphTimeKey) -> Result<()> {
         let mut conn = self.storage.graph.conn().await?;
         conn.start_transaction().await?;
-        conn.get_timeline_config_and_lock(&key.timeline_id).await?;
+        let config = conn
+            .get_timeline_config_and_lock(&key.timeline_id)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("Timeline not found: {:?}", key.timeline_id))?;
 
-        crate::schemas::adjacent_deltas::validate_monotonic_append(&mut *conn, key).await?;
+        if matches!(
+            config.schema,
+            unigraph_storage_core::TimelineSchema::AdjacentDeltas(_)
+        ) {
+            crate::schemas::adjacent_deltas::validate_monotonic_append(&mut *conn, key).await?;
+        }
 
         conn.store_frame_empty(key).await?;
         conn.commit_transaction().await?;

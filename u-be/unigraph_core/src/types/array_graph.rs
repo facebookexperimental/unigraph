@@ -29,10 +29,13 @@ use offset_graph::OffsetGraph;
 use super::DynamicBranchName;
 use super::DynamicEdgeName;
 use super::DynamicTypeKey;
+use super::LabelName;
+use super::LabelValue;
 use super::MetricName;
 use super::NodeIDX;
+use super::PropertyName;
+use super::PropertyValue;
 use super::Tag;
-use super::TagSetName;
 use crate::ArrayGraphDebugUtils;
 use crate::ArrayGraphSerializable;
 use crate::GraphBuilder;
@@ -84,7 +87,8 @@ pub struct ArrayGraph {
     >,
 
     pub metrics: BTreeMap<MetricName, Vec<f32>>,
-    pub tag_sets: BTreeMap<NodeIDX, BTreeMap<TagSetName, BTreeSet<Tag>>>,
+    pub labels: BTreeMap<LabelName, BTreeMap<NodeIDX, BTreeSet<LabelValue>>>,
+    pub properties: BTreeMap<PropertyName, BTreeMap<NodeIDX, PropertyValue>>,
 
     pub graph_settings: Option<GraphSettings>,
 
@@ -227,6 +231,18 @@ impl ArrayGraph {
         I: Into<NodeIDX> + Copy,
     {
         self.nodes.idx_to_name(node_idx.into())
+    }
+
+    /// Collect all labels for a specific node from the inverted labels index.
+    pub fn labels_for_node(&self, node_idx: NodeIDX) -> BTreeMap<&str, &BTreeSet<LabelValue>> {
+        self.labels
+            .iter()
+            .filter_map(|(label_name, node_map)| {
+                node_map
+                    .get(&node_idx)
+                    .map(|values| (label_name.as_str(), values))
+            })
+            .collect()
     }
 
     #[inline(always)]

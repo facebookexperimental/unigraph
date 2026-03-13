@@ -126,6 +126,61 @@ use crate::frame_storage::prepare_inline_blobs;
 use crate::storage::UnigraphStorage;
 
 // ---------------------------------------------------------------------------
+// Store
+// ---------------------------------------------------------------------------
+
+/// Store a full graph snapshot in an AdjacentDeltas timeline.
+///
+/// Prepares metric history (if enabled), packs the graph, prepares blobs,
+/// then stores everything in a single transaction with monotonic ordering
+/// validation.
+pub async fn store_full(
+    storage: &UnigraphStorage,
+    key: &GraphTimeKey,
+    graph: &ArrayGraphSerializable,
+) -> Result<()> {
+    let prepared_history = storage.prepare_history_if_enabled(key, graph).await?;
+
+    let config = make_pack_config(key);
+    let package = graph.pack(&config).context("Failed to pack graph")?;
+    let manifest_json =
+        serde_json::to_string(&package.manifest).context("Failed to serialize graph manifest")?;
+
+    let prepared = storage
+        .prepare_blobs_for_storage(&key.timeline_id, &package.blobs)
+        .await?;
+
+    let mut conn = storage.graph.conn().await?;
+    conn.start_transaction().await?;
+    conn.get_timeline_config_and_lock(&key.timeline_id).await?;
+    validate_monotonic_append(&mut *conn, key).await?;
+
+    storage
+        .store_package_on_conn(
+            &mut *conn,
+            key,
+            FrameType::Full,
+            None,
+            &manifest_json,
+            prepared.inline.as_deref(),
+            prepared.external_keys.as_deref(),
+        )
+        .await?;
+
+    if let Some(prepared_history) = prepared_history {
+        crate::metric_history::store_metric_history_on_conn(
+            &mut *conn,
+            &key.timeline_id,
+            prepared_history,
+        )
+        .await?;
+    }
+
+    conn.commit_transaction().await?;
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
 // Fetch
 // ---------------------------------------------------------------------------
 
@@ -477,6 +532,7 @@ pub(crate) async fn validate_monotonic_append(
 /// Validate that a Delta frame's base key references the immediately preceding frame.
 ///
 /// Must be called inside an exclusive transaction on the timeline.
+#[allow(dead_code)]
 pub(crate) async fn validate_delta_base(
     conn: &mut dyn UnigraphGraphConnection,
     key: &GraphTimeKey,

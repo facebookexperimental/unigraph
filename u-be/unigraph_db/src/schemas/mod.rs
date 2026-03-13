@@ -8,3 +8,4 @@
 //! to the appropriate schema at runtime.
 
 pub(crate) mod adjacent_deltas;
+pub(crate) mod full_or_delta;

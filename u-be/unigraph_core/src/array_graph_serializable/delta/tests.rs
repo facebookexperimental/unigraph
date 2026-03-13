@@ -125,19 +125,30 @@ fn format_graph(g: &ArrayGraphSerializable) -> String {
         }
     }
 
-    // Tag sets
-    if !g.node_metadata.tag_sets.is_empty() {
-        out.push_str("Tag sets:\n");
-        for (node_idx, ts_map) in &g.node_metadata.tag_sets {
-            let name = g.node_names_ordered.idx_to_name(*node_idx);
-            for (ts_name, tags) in ts_map {
-                let tag_list: Vec<&str> = tags.iter().map(|s| s.as_str()).collect();
+    // Labels
+    if !g.node_metadata.labels.is_empty() {
+        out.push_str("Labels:\n");
+        for (label_name, node_map) in &g.node_metadata.labels {
+            for (node_idx, values) in node_map {
+                let name = g.node_names_ordered.idx_to_name(*node_idx);
+                let value_list: Vec<&str> = values.iter().map(|s| s.as_str()).collect();
                 out.push_str(&format!(
                     "  {}: {}=[{}]\n",
                     name,
-                    ts_name,
-                    tag_list.join(", ")
+                    label_name,
+                    value_list.join(", ")
                 ));
+            }
+        }
+    }
+
+    // Properties
+    if !g.node_metadata.properties.is_empty() {
+        out.push_str("Properties:\n");
+        for (prop_name, node_map) in &g.node_metadata.properties {
+            for (node_idx, value) in node_map {
+                let name = g.node_names_ordered.idx_to_name(*node_idx);
+                out.push_str(&format!("  {}: {}={}\n", name, prop_name, value));
             }
         }
     }
@@ -179,6 +190,9 @@ fn format_delta(d: &MapGraphDelta) -> String {
                 }
                 if node_delta.labels.is_some() {
                     parts.push("labels");
+                }
+                if node_delta.properties.is_some() {
+                    parts.push("properties");
                 }
                 out.push_str(&format!("  {}: {}\n", name, parts.join(", ")));
             }
@@ -1538,8 +1552,8 @@ fn test_traversal_config_delta_comprehensive() -> Result<()> {
             (
                 "route_homepage_contains".to_string(),
                 NodeLabelPredicate {
-                    tag_set_name: "route".to_string(),
-                    tag_name: "homepage".to_string(),
+                    label_name: "route".to_string(),
+                    label_value: "homepage".to_string(),
                     contains: true,
                     decision: Decision::include(),
                 },
@@ -1547,8 +1561,8 @@ fn test_traversal_config_delta_comprehensive() -> Result<()> {
             (
                 "route_homepage_not_contains".to_string(),
                 NodeLabelPredicate {
-                    tag_set_name: "route".to_string(),
-                    tag_name: "homepage".to_string(),
+                    label_name: "route".to_string(),
+                    label_value: "homepage".to_string(),
                     contains: false,
                     decision: Decision::exclude(),
                 },
@@ -1637,8 +1651,8 @@ fn test_traversal_config_delta_comprehensive() -> Result<()> {
         label_predicates: Some(BTreeMap::from([(
             "route_homepage_contains".to_string(),
             NodeLabelPredicate {
-                tag_set_name: "platform".to_string(),
-                tag_name: "ios".to_string(),
+                label_name: "platform".to_string(),
+                label_value: "ios".to_string(),
                 contains: true,
                 decision: Decision::include(),
             },
@@ -1777,8 +1791,8 @@ fn test_traversal_config_delta_comprehensive() -> Result<()> {
     ],
     "changed": {
       "route_homepage_contains": {
-        "tag_set_name": "platform",
-        "tag_name": "ios",
+        "label_name": "platform",
+        "label_value": "ios",
         "contains": true,
         "decision": {
           "include": true,

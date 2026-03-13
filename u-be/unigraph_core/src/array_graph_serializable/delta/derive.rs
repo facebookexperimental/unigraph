@@ -17,8 +17,12 @@ use crate::ArrayGraphSerializable;
 use crate::NodeIDX;
 use crate::types::DynamicEdgeName;
 use crate::types::DynamicTypeKey;
+use crate::types::LabelName;
+use crate::types::LabelValue;
 use crate::types::MetricName;
 use crate::types::NodeName;
+use crate::types::PropertyName;
+use crate::types::PropertyValue;
 use crate::types::Tag;
 use crate::types::map_graph::DynamicEdge;
 use crate::types::map_graph::GraphNode;
@@ -72,7 +76,8 @@ pub fn derive_delta(
                     &target_remapped.tagged,
                     &target_remapped.dynamic,
                     &target_metadata_remapped.metrics,
-                    &target_metadata_remapped.tag_sets,
+                    &target_metadata_remapped.labels,
+                    &target_metadata_remapped.properties,
                     &merged_nodes,
                 );
                 nodes_added.insert(name, graph_node);
@@ -94,8 +99,10 @@ pub fn derive_delta(
                     &target_remapped.dynamic,
                     &base_metadata_remapped.metrics,
                     &target_metadata_remapped.metrics,
-                    &base_metadata_remapped.tag_sets,
-                    &target_metadata_remapped.tag_sets,
+                    &base_metadata_remapped.labels,
+                    &target_metadata_remapped.labels,
+                    &base_metadata_remapped.properties,
+                    &target_metadata_remapped.properties,
                     &merged_nodes,
                 ) {
                     nodes_changed.insert(name, node_delta);
@@ -143,7 +150,8 @@ fn collect_graph_node(
         BTreeMap<DynamicTypeKey, BTreeMap<DynamicEdgeName, ArrayGraphDynamicEdge>>,
     >,
     metrics: &BTreeMap<MetricName, Vec<f32>>,
-    tag_sets: &BTreeMap<NodeIDX, BTreeMap<String, BTreeSet<String>>>,
+    labels_inverted: &BTreeMap<LabelName, BTreeMap<NodeIDX, BTreeSet<LabelValue>>>,
+    properties_inverted: &BTreeMap<PropertyName, BTreeMap<NodeIDX, PropertyValue>>,
     nodes: &ArrayGraphNodes,
 ) -> GraphNode {
     // Directed edges
@@ -199,11 +207,38 @@ fn collect_graph_node(
         Some(node_metrics)
     };
 
-    // Labels (tag sets)
-    let labels = tag_sets.get(&node_idx).cloned();
+    // Labels — collect from inverted index
+    let node_labels: BTreeMap<String, BTreeSet<String>> = labels_inverted
+        .iter()
+        .filter_map(|(label_name, node_map)| {
+            node_map
+                .get(&node_idx)
+                .map(|values| (label_name.clone(), values.clone()))
+        })
+        .collect();
+    let labels = if node_labels.is_empty() {
+        None
+    } else {
+        Some(node_labels)
+    };
+
+    // Properties — collect from inverted index
+    let node_properties: BTreeMap<String, String> = properties_inverted
+        .iter()
+        .filter_map(|(prop_name, node_map)| {
+            node_map
+                .get(&node_idx)
+                .map(|value| (prop_name.clone(), value.clone()))
+        })
+        .collect();
+    let properties = if node_properties.is_empty() {
+        None
+    } else {
+        Some(node_properties)
+    };
 
     GraphNode {
-        properties: None,
+        properties,
         labels,
         metrics,
         edges_directed,
@@ -233,8 +268,10 @@ fn diff_graph_node(
     >,
     base_metrics: &BTreeMap<MetricName, Vec<f32>>,
     target_metrics: &BTreeMap<MetricName, Vec<f32>>,
-    base_tag_sets: &BTreeMap<NodeIDX, BTreeMap<String, BTreeSet<String>>>,
-    target_tag_sets: &BTreeMap<NodeIDX, BTreeMap<String, BTreeSet<String>>>,
+    base_labels: &BTreeMap<LabelName, BTreeMap<NodeIDX, BTreeSet<LabelValue>>>,
+    target_labels: &BTreeMap<LabelName, BTreeMap<NodeIDX, BTreeSet<LabelValue>>>,
+    base_properties: &BTreeMap<PropertyName, BTreeMap<NodeIDX, PropertyValue>>,
+    target_properties: &BTreeMap<PropertyName, BTreeMap<NodeIDX, PropertyValue>>,
     nodes: &ArrayGraphNodes,
 ) -> Option<GraphNodeDelta> {
     let edges_directed = diff_directed_edges(
@@ -255,19 +292,23 @@ fn diff_graph_node(
 
     let metrics = diff_metrics(node_idx, base_metrics, target_metrics).map(OptionDelta::Changed);
 
-    let labels = diff_tag_sets(node_idx, base_tag_sets, target_tag_sets).map(OptionDelta::Changed);
+    let labels = diff_labels(node_idx, base_labels, target_labels).map(OptionDelta::Changed);
+
+    let properties =
+        diff_properties(node_idx, base_properties, target_properties).map(OptionDelta::Changed);
 
     if edges_directed.is_none()
         && edges_tagged.is_none()
         && edges_dynamic.is_none()
         && metrics.is_none()
         && labels.is_none()
+        && properties.is_none()
     {
         return None;
     }
 
     Some(GraphNodeDelta {
-        properties: None,
+        properties,
         labels,
         metrics,
         edges_directed,
@@ -403,13 +444,54 @@ fn diff_metrics(
     base.derive_delta(&target)
 }
 
-fn diff_tag_sets(
+/// Diff labels for a single node using the inverted label index.
+fn diff_labels(
     node_idx: NodeIDX,
-    base_tag_sets: &BTreeMap<NodeIDX, BTreeMap<String, BTreeSet<String>>>,
-    target_tag_sets: &BTreeMap<NodeIDX, BTreeMap<String, BTreeSet<String>>>,
+    base_labels: &BTreeMap<LabelName, BTreeMap<NodeIDX, BTreeSet<LabelValue>>>,
+    target_labels: &BTreeMap<LabelName, BTreeMap<NodeIDX, BTreeSet<LabelValue>>>,
 ) -> Option<<BTreeMap<String, BTreeSet<String>> as Deltable>::Delta> {
-    let base = base_tag_sets.get(&node_idx).cloned().unwrap_or_default();
-    let target = target_tag_sets.get(&node_idx).cloned().unwrap_or_default();
+    let base: BTreeMap<String, BTreeSet<String>> = base_labels
+        .iter()
+        .filter_map(|(label_name, node_map)| {
+            node_map
+                .get(&node_idx)
+                .map(|values| (label_name.clone(), values.clone()))
+        })
+        .collect();
+    let target: BTreeMap<String, BTreeSet<String>> = target_labels
+        .iter()
+        .filter_map(|(label_name, node_map)| {
+            node_map
+                .get(&node_idx)
+                .map(|values| (label_name.clone(), values.clone()))
+        })
+        .collect();
+
+    base.derive_delta(&target)
+}
+
+/// Diff properties for a single node using the inverted property index.
+fn diff_properties(
+    node_idx: NodeIDX,
+    base_properties: &BTreeMap<PropertyName, BTreeMap<NodeIDX, PropertyValue>>,
+    target_properties: &BTreeMap<PropertyName, BTreeMap<NodeIDX, PropertyValue>>,
+) -> Option<<BTreeMap<String, String> as Deltable>::Delta> {
+    let base: BTreeMap<String, String> = base_properties
+        .iter()
+        .filter_map(|(prop_name, node_map)| {
+            node_map
+                .get(&node_idx)
+                .map(|value| (prop_name.clone(), value.clone()))
+        })
+        .collect();
+    let target: BTreeMap<String, String> = target_properties
+        .iter()
+        .filter_map(|(prop_name, node_map)| {
+            node_map
+                .get(&node_idx)
+                .map(|value| (prop_name.clone(), value.clone()))
+        })
+        .collect();
 
     base.derive_delta(&target)
 }

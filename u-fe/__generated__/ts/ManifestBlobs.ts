@@ -27,8 +27,10 @@ export interface ManifestBlobs {
   dynamic: BlobID[];
   /** Per-metric float vectors (one `f32` per node for each named metric). */
   metrics: BlobID[];
-  /** Per-node tag-set maps (node → tag-set-name → tags). */
-  tag_sets: BlobID[];
+  /** Per-label-name index (label-name → node → set of values). */
+  labels: BlobID[];
+  /** Per-property-name index (property-name → node → value). */
+  properties: BlobID[];
   /** Optional traversal configuration (entry points, tier rules, etc.). */
   traversal_config: BlobID[];
   /** Budget configurations keyed by project name. */

@@ -74,22 +74,52 @@ pub fn to_map_graph(graph: &ArrayGraph) -> Result<MapGraph> {
                 .collect::<BTreeMap<_, _>>()
         });
 
-        let labels = graph.tag_sets.get(&node_idx).cloned().unwrap_or_default();
+        // Collect labels for this node from the inverted index
+        let mut node_labels: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+        for (label_name, node_map) in &graph.labels {
+            if let Some(values) = node_map.get(&node_idx) {
+                node_labels.insert(label_name.clone(), values.clone());
+            }
+        }
 
-        let metrics = graph
+        // Collect properties for this node from the inverted index
+        let mut node_properties: BTreeMap<String, String> = BTreeMap::new();
+        for (prop_name, node_map) in &graph.properties {
+            if let Some(value) = node_map.get(&node_idx) {
+                node_properties.insert(prop_name.clone(), value.clone());
+            }
+        }
+
+        // Filter out zero-valued metrics for lossless roundtrip
+        let metrics: BTreeMap<String, f32> = graph
             .metrics
             .iter()
-            .map(|(name, values)| (name.to_string(), values[node_idx]))
-            .collect::<BTreeMap<_, _>>();
+            .filter_map(|(name, values)| {
+                let v = values[node_idx];
+                if v != 0.0 {
+                    Some((name.to_string(), v))
+                } else {
+                    None
+                }
+            })
+            .collect();
 
         let map_node = GraphNode {
-            properties: None,
-            labels: if labels.is_empty() {
+            properties: if node_properties.is_empty() {
                 None
             } else {
-                Some(labels)
+                Some(node_properties)
             },
-            metrics: Some(metrics),
+            labels: if node_labels.is_empty() {
+                None
+            } else {
+                Some(node_labels)
+            },
+            metrics: if metrics.is_empty() {
+                None
+            } else {
+                Some(metrics)
+            },
             edges_directed: if directed.is_empty() {
                 None
             } else {

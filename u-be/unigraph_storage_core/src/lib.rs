@@ -30,6 +30,7 @@ pub use types::ExternalID;
 pub use types::ExternalIDNamespace;
 pub use types::FrameQuery;
 pub use types::FrameType;
+pub use types::FullOrDeltaConfig;
 pub use types::GraphID;
 pub use types::GraphKey;
 pub use types::GraphKeyOrTimelineID;

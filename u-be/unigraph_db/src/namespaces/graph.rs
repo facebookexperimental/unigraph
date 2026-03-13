@@ -21,6 +21,7 @@ use unigraph_storage_core::Timestamp;
 use unigraph_storage_core::TimestampedError;
 
 use crate::schemas::adjacent_deltas;
+use crate::schemas::full_or_delta;
 use crate::storage::UnigraphStorage;
 
 /// Handle for graph domain operations.
@@ -34,25 +35,48 @@ pub struct Graph {
 // -- Public API --
 
 impl Graph {
-    /// Store a full graph snapshot.
-    pub async fn store_full(
+    /// Store a graph snapshot.
+    ///
+    /// Dispatches to the schema-specific store implementation:
+    /// - AdjacentDeltas: validates monotonic ordering, stores as Full
+    /// - FullOrDelta: stores as Full with no ordering validation
+    pub async fn store(&self, key: &GraphTimeKey, graph: &ArrayGraphSerializable) -> Result<()> {
+        let schema = self.get_timeline_schema(&key.timeline_id).await?;
+        match schema {
+            TimelineSchema::AdjacentDeltas(_) => {
+                adjacent_deltas::store_full(&self.storage, key, graph).await
+            }
+            TimelineSchema::FullOrDelta(_) => {
+                full_or_delta::store_full(&self.storage, key, graph).await
+            }
+        }
+    }
+
+    /// Explicitly store a graph as a delta from another graph.
+    ///
+    /// Fetches the base graph, derives the delta internally, and stores it.
+    /// Cross-timeline bases are allowed for FullOrDelta timelines.
+    ///
+    /// Only supported for FullOrDelta timelines. AdjacentDeltas manages
+    /// deltas via compaction — explicit delta storage is not allowed.
+    pub async fn store_as_delta_from(
         &self,
         key: &GraphTimeKey,
         graph: &ArrayGraphSerializable,
+        from_key: &GraphKey,
     ) -> Result<()> {
-        self.storage.store_graph_full(key, graph).await
-    }
-
-    /// Store a delta-compressed graph.
-    pub async fn store_delta(
-        &self,
-        key: &GraphTimeKey,
-        base_key: &GraphKey,
-        target_graph: &ArrayGraphSerializable,
-    ) -> Result<()> {
-        self.storage
-            .store_graph_delta(key, base_key, target_graph)
-            .await
+        let schema = self.get_timeline_schema(&key.timeline_id).await?;
+        match schema {
+            TimelineSchema::AdjacentDeltas(_) => {
+                anyhow::bail!(
+                    "store_as_delta_from is not supported for AdjacentDeltas timelines \
+                     (deltas are managed via compaction)"
+                )
+            }
+            TimelineSchema::FullOrDelta(_) => {
+                full_or_delta::store_delta(&self.storage, key, from_key, graph).await
+            }
+        }
     }
 
     /// Store error data for a failed graph computation.
@@ -65,12 +89,7 @@ impl Graph {
     /// Dispatches to the schema-specific fetch implementation based on the
     /// timeline's configuration.
     pub async fn fetch(&self, key: &GraphKey) -> Result<ArrayGraphSerializable> {
-        let schema = self.get_timeline_schema(&key.timeline_id).await?;
-        match schema {
-            TimelineSchema::AdjacentDeltas(_) => {
-                adjacent_deltas::fetch_graph(&self.storage, key).await
-            }
-        }
+        self.storage.fetch_graph(key).await
     }
 
     /// Fetch the latest reconstructable graph from a timeline.
@@ -110,6 +129,9 @@ impl Graph {
             TimelineSchema::AdjacentDeltas(_) => {
                 adjacent_deltas::compact_timeline(&self.storage, timeline_id, start, end).await
             }
+            TimelineSchema::FullOrDelta(_) => {
+                full_or_delta::compact_timeline(&self.storage, timeline_id, start, end).await
+            }
         }
     }
 
@@ -119,8 +141,8 @@ impl Graph {
     pub async fn delete(&self, key: &GraphKey, timeline_id: &TimelineID) -> Result<bool> {
         let schema = self.get_timeline_schema(timeline_id).await?;
         match schema {
-            TimelineSchema::AdjacentDeltas(_) => {
-                self.delete_adjacent_deltas(key, timeline_id).await
+            TimelineSchema::AdjacentDeltas(_) | TimelineSchema::FullOrDelta(_) => {
+                self.delete_with_lock(key, timeline_id).await
             }
         }
     }
@@ -162,11 +184,7 @@ impl Graph {
         })
     }
 
-    async fn delete_adjacent_deltas(
-        &self,
-        key: &GraphKey,
-        timeline_id: &TimelineID,
-    ) -> Result<bool> {
+    async fn delete_with_lock(&self, key: &GraphKey, timeline_id: &TimelineID) -> Result<bool> {
         let mut conn = self.storage.graph.conn().await?;
         conn.start_transaction().await?;
         conn.get_timeline_config_and_lock(timeline_id).await?;

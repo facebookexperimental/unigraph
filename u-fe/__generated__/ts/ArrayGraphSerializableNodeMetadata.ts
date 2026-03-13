@@ -7,7 +7,7 @@
 
 import type { NodeIDX } from './NodeIDX.ts';
 
-/** Serializable per-node metadata: numeric metrics and categorical tag sets. */
+/** Serializable per-node metadata: numeric metrics, categorical labels, and string properties. */
 export interface ArrayGraphSerializableNodeMetadata {
   /**
    * Named metrics — each entry maps a metric name to a `Vec<f32>` with one
@@ -15,8 +15,13 @@ export interface ArrayGraphSerializableNodeMetadata {
    */
   metrics: { [key: string]: number[] };
   /**
-   * Per-node tag sets — maps a node index to its named tag sets, where each
-   * tag set contains a collection of string tags.
+   * Per-label-name index — maps a label name to the set of nodes that have it,
+   * and for each node the set of values for that label.
    */
-  tag_sets: { [key: NodeIDX]: { [key: string]: string[] } };
+  labels: { [key: string]: { [key: NodeIDX]: string[] } };
+  /**
+   * Per-property-name index — maps a property name to the set of nodes that have it,
+   * and for each node the single value for that property.
+   */
+  properties: { [key: string]: { [key: NodeIDX]: string } };
 }

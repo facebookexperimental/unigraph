@@ -181,7 +181,7 @@ async fn run_git_ingestion(
                 Ok(map_graph) => match map_graph.to_array_graph_serializable() {
                     Ok(array_graph) => {
                         db.graph
-                            .store_full(&key, &array_graph)
+                            .store(&key, &array_graph)
                             .await
                             .with_context(|| format!("Failed to store graph for {short_hash}"))?;
                         commit_task.data("status", "stored");
@@ -381,7 +381,7 @@ async fn run_timeline_ingestion(
             match budget_builder.build(source_graph) {
                 Ok(result_graph) => {
                     db.graph
-                        .store_full(&key, &result_graph)
+                        .store(&key, &result_graph)
                         .await
                         .with_context(|| format!("Failed to store graph for {display_id}"))?;
                     frame_task.data("status", "stored");

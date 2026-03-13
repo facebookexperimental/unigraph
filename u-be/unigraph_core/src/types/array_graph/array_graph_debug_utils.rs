@@ -26,17 +26,16 @@ impl<'a> ArrayGraphDebugUtils<'a> {
         for node_idx in self.0.node_idx_iter() {
             let node_name = self.0.idx_to_name(node_idx);
 
-            let mut tag_sets_str = String::new();
-            if let Some(tag_sets) = self.0.tag_sets.get(&node_idx) {
-                let mut tag_sets_strs = Vec::new();
-                if !tag_sets.is_empty() {
-                    for (tag_set, tags) in tag_sets {
-                        let tags_str = tags.iter().cloned().collect::<Vec<_>>().join(", ");
-                        tag_sets_strs.push(format!("{tag_set}: [{tags_str}]"));
-                    }
-                    tag_sets_str = tag_sets_strs.join(", ");
-                    tag_sets_str = format!(" (tag sets: {tag_sets_str})");
+            let mut labels_str = String::new();
+            let node_labels = self.0.labels_for_node(node_idx);
+            if !node_labels.is_empty() {
+                let mut label_strs = Vec::new();
+                for (label_name, values) in &node_labels {
+                    let values_str = values.iter().cloned().collect::<Vec<_>>().join(", ");
+                    label_strs.push(format!("{label_name}: [{values_str}]"));
                 }
+                labels_str = label_strs.join(", ");
+                labels_str = format!(" (labels: {labels_str})");
             }
 
             let unreachable_str = if self.0.node_flags[node_idx].contains(NodeFlags::UNREACHABLE) {
@@ -45,7 +44,7 @@ impl<'a> ArrayGraphDebugUtils<'a> {
                 ""
             };
 
-            result.push_str(&format!("{node_name}{unreachable_str}{tag_sets_str}:\n"));
+            result.push_str(&format!("{node_name}{unreachable_str}{labels_str}:\n"));
 
             for edge in edges_fn(self.0, node_idx) {
                 let points_to = self.0.idx_to_name(edge.points_to);

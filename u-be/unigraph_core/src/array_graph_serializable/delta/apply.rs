@@ -19,6 +19,10 @@ use crate::NodeIDX;
 use crate::remap_utils::RemapContext;
 use crate::types::DynamicEdgeName;
 use crate::types::DynamicTypeKey;
+use crate::types::LabelName;
+use crate::types::LabelValue;
+use crate::types::PropertyName;
+use crate::types::PropertyValue;
 use crate::types::Tag;
 use crate::types::map_graph::DynamicEdge;
 use crate::types::map_graph::GraphNode;
@@ -112,7 +116,8 @@ pub fn apply_deltas(
     let mut tagged = remapped_edges.tagged;
     let mut dynamic = remapped_edges.dynamic;
     let mut metrics = remapped_metadata.metrics;
-    let mut tag_sets = remapped_metadata.tag_sets;
+    let mut labels = remapped_metadata.labels;
+    let mut properties = remapped_metadata.properties;
 
     // Phase 4: Apply each delta's changes in order
     for delta in deltas {
@@ -124,7 +129,8 @@ pub fn apply_deltas(
             &mut tagged,
             &mut dynamic,
             &mut metrics,
-            &mut tag_sets,
+            &mut labels,
+            &mut properties,
             node_count,
         )?;
     }
@@ -161,7 +167,11 @@ pub fn apply_deltas(
             tagged,
             dynamic,
         },
-        node_metadata: ArrayGraphSerializableNodeMetadata { metrics, tag_sets },
+        node_metadata: ArrayGraphSerializableNodeMetadata {
+            metrics,
+            labels,
+            properties,
+        },
         graph_settings,
         traversal_config,
         budget_configs,
@@ -181,7 +191,8 @@ fn apply_node_changes(
         BTreeMap<DynamicTypeKey, BTreeMap<DynamicEdgeName, ArrayGraphDynamicEdge>>,
     >,
     metrics: &mut BTreeMap<String, Vec<f32>>,
-    tag_sets: &mut BTreeMap<NodeIDX, BTreeMap<String, BTreeSet<String>>>,
+    labels: &mut BTreeMap<LabelName, BTreeMap<NodeIDX, BTreeSet<LabelValue>>>,
+    properties: &mut BTreeMap<PropertyName, BTreeMap<NodeIDX, PropertyValue>>,
     node_count: usize,
 ) -> Result<()> {
     // Clear removed nodes
@@ -193,8 +204,8 @@ fn apply_node_changes(
                 tagged,
                 dynamic,
                 metrics,
-                tag_sets,
-                node_count,
+                labels,
+                properties,
             );
         }
     }
@@ -212,7 +223,8 @@ fn apply_node_changes(
             tagged,
             dynamic,
             metrics,
-            tag_sets,
+            labels,
+            properties,
             node_count,
         );
     }
@@ -230,7 +242,8 @@ fn apply_node_changes(
             tagged,
             dynamic,
             metrics,
-            tag_sets,
+            labels,
+            properties,
             node_count,
         )?;
     }
@@ -369,16 +382,27 @@ fn clear_node(
         BTreeMap<DynamicTypeKey, BTreeMap<DynamicEdgeName, ArrayGraphDynamicEdge>>,
     >,
     metrics: &mut BTreeMap<String, Vec<f32>>,
-    tag_sets: &mut BTreeMap<NodeIDX, BTreeMap<String, BTreeSet<String>>>,
-    _node_count: usize,
+    labels: &mut BTreeMap<LabelName, BTreeMap<NodeIDX, BTreeSet<LabelValue>>>,
+    properties: &mut BTreeMap<PropertyName, BTreeMap<NodeIDX, PropertyValue>>,
 ) {
     directed_adj[idx].clear();
     tagged.remove(&idx);
     dynamic.remove(&idx);
-    tag_sets.remove(&idx);
     for metric_vec in metrics.values_mut() {
         metric_vec[idx] = 0.0;
     }
+
+    // Clear labels for this node from inverted index
+    for node_map in labels.values_mut() {
+        node_map.remove(&idx);
+    }
+    labels.retain(|_, node_map| !node_map.is_empty());
+
+    // Clear properties for this node from inverted index
+    for node_map in properties.values_mut() {
+        node_map.remove(&idx);
+    }
+    properties.retain(|_, node_map| !node_map.is_empty());
 
     // Clear incoming directed edges from all other nodes
     for adj in directed_adj.iter_mut() {
@@ -406,7 +430,7 @@ fn clear_node(
     }
 }
 
-/// Apply a full GraphNode (for added nodes) — set all edges, metrics, labels.
+/// Apply a full GraphNode (for added nodes) — set all edges, metrics, labels, properties.
 #[allow(clippy::too_many_arguments)]
 fn apply_graph_node(
     src_idx: NodeIDX,
@@ -419,7 +443,8 @@ fn apply_graph_node(
         BTreeMap<DynamicTypeKey, BTreeMap<DynamicEdgeName, ArrayGraphDynamicEdge>>,
     >,
     metrics: &mut BTreeMap<String, Vec<f32>>,
-    tag_sets: &mut BTreeMap<NodeIDX, BTreeMap<String, BTreeSet<String>>>,
+    labels: &mut BTreeMap<LabelName, BTreeMap<NodeIDX, BTreeSet<LabelValue>>>,
+    properties: &mut BTreeMap<PropertyName, BTreeMap<NodeIDX, PropertyValue>>,
     node_count: usize,
 ) {
     // Directed edges
@@ -471,13 +496,28 @@ fn apply_graph_node(
         }
     }
 
-    // Labels
-    if let Some(ref labels) = graph_node.labels {
-        tag_sets.insert(src_idx, labels.clone());
+    // Labels — write to inverted index
+    if let Some(ref node_labels) = graph_node.labels {
+        for (label_name, label_values) in node_labels {
+            labels
+                .entry(label_name.clone())
+                .or_default()
+                .insert(src_idx, label_values.clone());
+        }
+    }
+
+    // Properties — write to inverted index
+    if let Some(ref node_properties) = graph_node.properties {
+        for (prop_name, prop_value) in node_properties {
+            properties
+                .entry(prop_name.clone())
+                .or_default()
+                .insert(src_idx, prop_value.clone());
+        }
     }
 }
 
-/// Apply a GraphNodeDelta (for changed nodes) — apply edge/metric/label deltas.
+/// Apply a GraphNodeDelta (for changed nodes) — apply edge/metric/label/property deltas.
 #[allow(clippy::too_many_arguments)]
 fn apply_graph_node_delta(
     src_idx: NodeIDX,
@@ -490,7 +530,8 @@ fn apply_graph_node_delta(
         BTreeMap<DynamicTypeKey, BTreeMap<DynamicEdgeName, ArrayGraphDynamicEdge>>,
     >,
     metrics: &mut BTreeMap<String, Vec<f32>>,
-    tag_sets: &mut BTreeMap<NodeIDX, BTreeMap<String, BTreeSet<String>>>,
+    labels: &mut BTreeMap<LabelName, BTreeMap<NodeIDX, BTreeSet<LabelValue>>>,
+    properties: &mut BTreeMap<PropertyName, BTreeMap<NodeIDX, PropertyValue>>,
     node_count: usize,
 ) -> Result<()> {
     // Directed edges
@@ -671,35 +712,156 @@ fn apply_graph_node_delta(
         }
     }
 
-    // Labels (tag sets)
+    // Labels — collect per-node view from inverted index, apply delta, write back
     if let Some(ref labels_delta) = node_delta.labels {
         match labels_delta {
             OptionDelta::Changed(map_delta) => {
-                let ts_map = tag_sets.entry(src_idx).or_default();
+                let mut per_node = collect_labels_for_node(labels, src_idx);
                 for k in map_delta.changed.keys().chain(map_delta.removed.iter()) {
-                    ts_map.entry(k.clone()).or_default();
+                    per_node.entry(k.clone()).or_default();
                 }
-                ts_map.apply_delta(map_delta.clone())?;
-                ts_map.retain(|_, tags| !tags.is_empty());
-                if ts_map.is_empty() {
-                    tag_sets.remove(&src_idx);
-                }
+                per_node.apply_delta(map_delta.clone())?;
+                per_node.retain(|_, values| !values.is_empty());
+                write_labels_for_node(labels, src_idx, per_node);
             }
-            OptionDelta::Set(labels) => {
-                if labels.is_empty() {
-                    tag_sets.remove(&src_idx);
-                } else {
-                    tag_sets.insert(src_idx, labels.clone());
+            OptionDelta::Set(new_labels) => {
+                clear_labels_for_node(labels, src_idx);
+                if !new_labels.is_empty() {
+                    for (label_name, label_values) in new_labels {
+                        labels
+                            .entry(label_name.clone())
+                            .or_default()
+                            .insert(src_idx, label_values.clone());
+                    }
                 }
             }
             OptionDelta::Cleared => {
-                tag_sets.remove(&src_idx);
+                clear_labels_for_node(labels, src_idx);
+            }
+            OptionDelta::Unchanged => {}
+        }
+    }
+
+    // Properties — collect per-node view from inverted index, apply delta, write back
+    if let Some(ref props_delta) = node_delta.properties {
+        match props_delta {
+            OptionDelta::Changed(map_delta) => {
+                let mut per_node = collect_properties_for_node(properties, src_idx);
+                for k in map_delta.changed.keys().chain(map_delta.removed.iter()) {
+                    per_node.entry(k.clone()).or_default();
+                }
+                per_node.apply_delta(map_delta.clone())?;
+                write_properties_for_node(properties, src_idx, per_node);
+            }
+            OptionDelta::Set(new_props) => {
+                clear_properties_for_node(properties, src_idx);
+                if !new_props.is_empty() {
+                    for (prop_name, prop_value) in new_props {
+                        properties
+                            .entry(prop_name.clone())
+                            .or_default()
+                            .insert(src_idx, prop_value.clone());
+                    }
+                }
+            }
+            OptionDelta::Cleared => {
+                clear_properties_for_node(properties, src_idx);
             }
             OptionDelta::Unchanged => {}
         }
     }
 
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Inverted-index helpers for labels and properties
+// ---------------------------------------------------------------------------
+
+/// Collect all labels for a specific node from the inverted labels index.
+fn collect_labels_for_node(
+    labels: &BTreeMap<LabelName, BTreeMap<NodeIDX, BTreeSet<LabelValue>>>,
+    node_idx: NodeIDX,
+) -> BTreeMap<String, BTreeSet<String>> {
+    labels
+        .iter()
+        .filter_map(|(label_name, node_map)| {
+            node_map
+                .get(&node_idx)
+                .map(|values| (label_name.clone(), values.clone()))
+        })
+        .collect()
+}
+
+/// Clear all labels for a specific node from the inverted labels index.
+fn clear_labels_for_node(
+    labels: &mut BTreeMap<LabelName, BTreeMap<NodeIDX, BTreeSet<LabelValue>>>,
+    node_idx: NodeIDX,
+) {
+    for node_map in labels.values_mut() {
+        node_map.remove(&node_idx);
+    }
+    labels.retain(|_, node_map| !node_map.is_empty());
+}
+
+/// Write per-node labels back to the inverted labels index.
+fn write_labels_for_node(
+    labels: &mut BTreeMap<LabelName, BTreeMap<NodeIDX, BTreeSet<LabelValue>>>,
+    node_idx: NodeIDX,
+    per_node: BTreeMap<String, BTreeSet<String>>,
+) {
+    // First clear existing entries for this node
+    clear_labels_for_node(labels, node_idx);
+    // Then write new entries
+    for (label_name, label_values) in per_node {
+        if !label_values.is_empty() {
+            labels
+                .entry(label_name)
+                .or_default()
+                .insert(node_idx, label_values);
+        }
+    }
+}
+
+/// Collect all properties for a specific node from the inverted properties index.
+fn collect_properties_for_node(
+    properties: &BTreeMap<PropertyName, BTreeMap<NodeIDX, PropertyValue>>,
+    node_idx: NodeIDX,
+) -> BTreeMap<String, String> {
+    properties
+        .iter()
+        .filter_map(|(prop_name, node_map)| {
+            node_map
+                .get(&node_idx)
+                .map(|value| (prop_name.clone(), value.clone()))
+        })
+        .collect()
+}
+
+/// Clear all properties for a specific node from the inverted properties index.
+fn clear_properties_for_node(
+    properties: &mut BTreeMap<PropertyName, BTreeMap<NodeIDX, PropertyValue>>,
+    node_idx: NodeIDX,
+) {
+    for node_map in properties.values_mut() {
+        node_map.remove(&node_idx);
+    }
+    properties.retain(|_, node_map| !node_map.is_empty());
+}
+
+/// Write per-node properties back to the inverted properties index.
+fn write_properties_for_node(
+    properties: &mut BTreeMap<PropertyName, BTreeMap<NodeIDX, PropertyValue>>,
+    node_idx: NodeIDX,
+    per_node: BTreeMap<String, String>,
+) {
+    clear_properties_for_node(properties, node_idx);
+    for (prop_name, prop_value) in per_node {
+        properties
+            .entry(prop_name)
+            .or_default()
+            .insert(node_idx, prop_value);
+    }
 }
 
 // ---------------------------------------------------------------------------

@@ -55,7 +55,7 @@ async fn compact_and_select_frames() -> Result<()> {
         .collect();
 
     for (i, key) in keys.iter().enumerate() {
-        db.graph.store_full(key, &graphs[i]).await?;
+        db.graph.store(key, &graphs[i]).await?;
     }
 
     // ---------------------------------------------------------------

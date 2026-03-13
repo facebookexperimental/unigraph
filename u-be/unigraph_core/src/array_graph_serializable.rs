@@ -36,11 +36,14 @@ use crate::remap_utils::remap_node_metadata;
 use crate::remap_utils::remap_node_names_ordered;
 use crate::types::DynamicEdgeName;
 use crate::types::DynamicTypeKey;
+use crate::types::LabelName;
+use crate::types::LabelValue;
 use crate::types::MetricName;
 use crate::types::NodeIDX;
 use crate::types::NodeName;
+use crate::types::PropertyName;
+use crate::types::PropertyValue;
 use crate::types::Tag;
-use crate::types::TagSetName;
 use crate::types::array_graph::NodeFlags;
 use crate::types::array_graph::array_graph_derived_state::ArrayGraphDerivedState;
 use crate::types::array_graph::array_graph_nodes::ArrayGraphNodesForGraphSide;
@@ -118,21 +121,49 @@ impl ArrayGraphSerializableEdges {
     }
 }
 
-/// Serializable per-node metadata: numeric metrics and categorical tag sets.
+/// Serializable per-node metadata: numeric metrics, categorical labels, and string properties.
 #[derive(serde::Serialize, serde::Deserialize, typegen::TypeGen)]
 pub struct ArrayGraphSerializableNodeMetadata {
     /// Named metrics — each entry maps a metric name to a `Vec<f32>` with one
     /// value per node (indexed by [`NodeIDX`]).
     pub metrics: BTreeMap<MetricName, Vec<f32>>,
-    /// Per-node tag sets — maps a node index to its named tag sets, where each
-    /// tag set contains a collection of string tags.
-    pub tag_sets: BTreeMap<NodeIDX, BTreeMap<TagSetName, BTreeSet<Tag>>>,
+    /// Per-label-name index — maps a label name to the set of nodes that have it,
+    /// and for each node the set of values for that label.
+    pub labels: BTreeMap<LabelName, BTreeMap<NodeIDX, BTreeSet<LabelValue>>>,
+    /// Per-property-name index — maps a property name to the set of nodes that have it,
+    /// and for each node the single value for that property.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub properties: BTreeMap<PropertyName, BTreeMap<NodeIDX, PropertyValue>>,
 }
 
 impl ArrayGraphSerializableNodeMetadata {
     /// Remaps all node indices in the metadata according to the given context.
     pub fn remap(&self, ctx: &RemapContext) -> Result<Self> {
         remap_node_metadata(self, ctx).context("Failed to remap ArrayGraphSerializableNodeMetadata")
+    }
+
+    /// Collect all labels for a specific node from the inverted labels index.
+    pub fn labels_for_node(&self, node_idx: NodeIDX) -> BTreeMap<&str, &BTreeSet<LabelValue>> {
+        self.labels
+            .iter()
+            .filter_map(|(label_name, node_map)| {
+                node_map
+                    .get(&node_idx)
+                    .map(|values| (label_name.as_str(), values))
+            })
+            .collect()
+    }
+
+    /// Collect all properties for a specific node from the inverted properties index.
+    pub fn properties_for_node(&self, node_idx: NodeIDX) -> BTreeMap<&str, &str> {
+        self.properties
+            .iter()
+            .filter_map(|(prop_name, node_map)| {
+                node_map
+                    .get(&node_idx)
+                    .map(|value| (prop_name.as_str(), value.as_str()))
+            })
+            .collect()
     }
 }
 
@@ -226,7 +257,8 @@ impl From<ArrayGraph> for ArrayGraphSerializable {
             },
             node_metadata: ArrayGraphSerializableNodeMetadata {
                 metrics: graph.metrics,
-                tag_sets: graph.tag_sets,
+                labels: graph.labels,
+                properties: graph.properties,
             },
             graph_settings: graph.graph_settings,
             traversal_config: graph.state.traversal_config,
@@ -325,7 +357,8 @@ impl From<ArrayGraphSerializable> for ArrayGraph {
             edges_tagged: serializable.edges.tagged,
             edges_dynamic: serializable.edges.dynamic,
             metrics: serializable.node_metadata.metrics,
-            tag_sets: serializable.node_metadata.tag_sets,
+            labels: serializable.node_metadata.labels,
+            properties: serializable.node_metadata.properties,
             node_flags,
             state: ArrayGraphState {
                 traversal_config: serializable.traversal_config.clone(),

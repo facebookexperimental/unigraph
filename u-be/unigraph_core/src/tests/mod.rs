@@ -1,5 +1,6 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
+mod conversion_test;
 pub(crate) mod test_graphs;
 pub(crate) mod test_utils;
 mod traversal_test;
@@ -359,8 +360,8 @@ fn test_dfs_with_traversal_config_tag_sets() -> Result<()> {
             (
                 "assert_not_contains".to_string(),
                 NodeLabelPredicate {
-                    tag_set_name: "assert_tags".into(),
-                    tag_name: value.into(),
+                    label_name: "assert_tags".into(),
+                    label_value: value.into(),
                     contains: false,
                     decision: Decision::exclude(),
                 },
@@ -368,8 +369,8 @@ fn test_dfs_with_traversal_config_tag_sets() -> Result<()> {
             (
                 "assert_contains".to_string(),
                 NodeLabelPredicate {
-                    tag_set_name: "assert_tags".into(),
-                    tag_name: value.into(),
+                    label_name: "assert_tags".into(),
+                    label_value: value.into(),
                     contains: true,
                     decision: Decision::include(),
                 },
@@ -377,8 +378,8 @@ fn test_dfs_with_traversal_config_tag_sets() -> Result<()> {
             (
                 "disallow_contains".to_string(),
                 NodeLabelPredicate {
-                    tag_set_name: "disallow_tags".into(),
-                    tag_name: value.into(),
+                    label_name: "disallow_tags".into(),
+                    label_value: value.into(),
                     contains: true,
                     decision: Decision::exclude(),
                 },
@@ -386,8 +387,8 @@ fn test_dfs_with_traversal_config_tag_sets() -> Result<()> {
             (
                 "disallow_not_contains".to_string(),
                 NodeLabelPredicate {
-                    tag_set_name: "disallow_tags".into(),
-                    tag_name: value.into(),
+                    label_name: "disallow_tags".into(),
+                    label_value: value.into(),
                     contains: false,
                     decision: Decision::include(),
                 },
@@ -417,7 +418,7 @@ A:
 B:
   - C [T]
   - J [T]
-C [UNREACHABLE] (tag sets: disallow_tags: [b, c]):
+C [UNREACHABLE] (labels: disallow_tags: [b, c]):
 D:
   - F
   - E [T]
@@ -429,7 +430,7 @@ F:
 G:
 H:
 I:
-J [UNREACHABLE] (tag sets: assert_tags: [a, b]):
+J [UNREACHABLE] (labels: assert_tags: [a, b]):
 "
     );
 

@@ -21,8 +21,6 @@ use unigraph_core::DeltaManifest;
 use unigraph_core::DeltaPackage;
 use unigraph_core::ErrorManifest;
 use unigraph_core::ErrorPackage;
-use unigraph_core::derive_delta;
-use unigraph_core::pack_delta;
 use unigraph_core::pack_errors;
 use unigraph_core::unpack_delta;
 use unigraph_core::unpack_errors;
@@ -41,70 +39,21 @@ use unigraph_storage_core::UnigraphGraphConnection;
 
 use crate::storage::UnigraphStorage;
 
+/// Pre-processed blobs ready for storage — either compressed inline bytes
+/// or external blob keys (already uploaded).
+pub(crate) struct PreparedBlobs {
+    /// Compressed inline bytes (if total size ≤ threshold).
+    pub inline: Option<Vec<u8>>,
+    /// External blob keys (if uploaded to external storage).
+    /// These need to be unregistered from the cleanup table inside the
+    /// frame transaction after a successful write.
+    pub external_keys: Option<Vec<String>>,
+}
+
 impl UnigraphStorage {
-    /// Store a full graph snapshot.
-    ///
-    /// Packs the graph into a manifest + blobs, prepares metric history
-    /// (if enabled), then stores everything in a single transaction.
-    pub async fn store_graph_full(
-        &self,
-        key: &GraphTimeKey,
-        graph: &ArrayGraphSerializable,
-    ) -> Result<()> {
-        let prepared_history = self.prepare_history_if_enabled(key, graph).await?;
-
-        let config = make_pack_config(key);
-        let package = graph.pack(&config).context("Failed to pack graph")?;
-        let manifest_json = serde_json::to_string(&package.manifest)
-            .context("Failed to serialize graph manifest")?;
-
-        self.store_package(
-            key,
-            FrameType::Full,
-            None,
-            &manifest_json,
-            &package.blobs,
-            prepared_history,
-        )
-        .await
-    }
-
-    /// Store a delta-compressed graph.
-    ///
-    /// Fetches the base graph, derives the delta, packs it, prepares metric
-    /// history (if enabled), then stores everything in a single transaction.
-    pub async fn store_graph_delta(
-        &self,
-        key: &GraphTimeKey,
-        base_key: &GraphKey,
-        target_graph: &ArrayGraphSerializable,
-    ) -> Result<()> {
-        let prepared_history = self.prepare_history_if_enabled(key, target_graph).await?;
-
-        let base_graph = self
-            .fetch_graph(base_key)
-            .await
-            .with_context(|| format!("Failed to fetch base graph {:?}", base_key))?;
-
-        let delta = derive_delta(&base_graph, target_graph).context("Failed to derive delta")?;
-
-        let config = make_pack_config(key);
-        let package = pack_delta(&delta, &config).context("Failed to pack delta")?;
-        let manifest_json = serde_json::to_string(&package.manifest)
-            .context("Failed to serialize delta manifest")?;
-
-        self.store_package(
-            key,
-            FrameType::Delta,
-            Some(base_key),
-            &manifest_json,
-            &package.blobs,
-            prepared_history,
-        )
-        .await
-    }
-
     /// Store error data for a failed graph computation.
+    ///
+    /// Schema-agnostic — no validation, no history.
     pub async fn store_error(&self, key: &GraphTimeKey, errors: &[TimestampedError]) -> Result<()> {
         let config = make_pack_config(key);
         let error_count = errors.len() as u32;
@@ -114,24 +63,61 @@ impl UnigraphStorage {
         let manifest_json = serde_json::to_string(&package.manifest)
             .context("Failed to serialize error manifest")?;
 
-        self.store_package(
+        let prepared = self
+            .prepare_blobs_for_storage(&key.timeline_id, &package.blobs)
+            .await?;
+
+        let mut conn = self.graph.conn().await?;
+        conn.start_transaction().await?;
+        conn.get_timeline_config_and_lock(&key.timeline_id).await?;
+
+        self.store_package_on_conn(
+            &mut *conn,
             key,
             FrameType::Error,
             None,
             &manifest_json,
-            &package.blobs,
-            None,
+            prepared.inline.as_deref(),
+            prepared.external_keys.as_deref(),
         )
-        .await
+        .await?;
+
+        conn.commit_transaction().await?;
+        Ok(())
     }
 
     /// Fetch and reconstruct a graph from storage.
     ///
     /// Dispatches to the appropriate fetch strategy based on the timeline schema.
-    /// For AdjacentDeltas: uses a range query + iterative delta application
-    /// (no recursion). See [`crate::adjacent_deltas`] for details.
-    pub async fn fetch_graph(&self, key: &GraphKey) -> Result<ArrayGraphSerializable> {
-        crate::schemas::adjacent_deltas::fetch_graph(self, key).await
+    ///
+    /// Returns a boxed future because FullOrDelta's cross-timeline delta
+    /// chain walker can recurse back into this method (the base graph may
+    /// live in a different timeline with a different schema).
+    pub fn fetch_graph(
+        &self,
+        key: &GraphKey,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<ArrayGraphSerializable>> + Send + '_>,
+    > {
+        let key = key.clone();
+        Box::pin(async move {
+            let schema = {
+                let mut conn = self.graph.conn().await?;
+                let config = conn
+                    .get_timeline_config(&key.timeline_id)
+                    .await?
+                    .ok_or_else(|| anyhow::anyhow!("Timeline not found: {:?}", key.timeline_id))?;
+                config.schema
+            };
+            match schema {
+                unigraph_storage_core::TimelineSchema::AdjacentDeltas(_) => {
+                    crate::schemas::adjacent_deltas::fetch_graph(self, &key).await
+                }
+                unigraph_storage_core::TimelineSchema::FullOrDelta(_) => {
+                    crate::schemas::full_or_delta::fetch_graph(self, &key).await
+                }
+            }
+        })
     }
 
     /// Fetch errors for a frame.
@@ -222,85 +208,6 @@ impl UnigraphStorage {
 
     // --- internal helpers ---
 
-    /// Store a packed package (standalone — owns its own transaction).
-    ///
-    /// Handles the inline-vs-external decision and ensures correct
-    /// transactional ordering:
-    /// 1. Fetch timeline config to determine inline threshold
-    /// 2. If external: register blob keys for cleanup and upload blobs
-    ///    (OUTSIDE the db transaction)
-    /// 3. Start transaction, lock timeline, write frame
-    /// 4. If prepared history provided: store it (INSIDE the transaction)
-    /// 5. If external: unregister blob keys (INSIDE the transaction)
-    /// 6. Commit
-    ///
-    /// History preparation (extracting metrics, ensuring partitions) happens
-    /// in the caller (`store_graph_full` / `store_graph_delta`) BEFORE this
-    /// method is called.
-    async fn store_package(
-        &self,
-        key: &GraphTimeKey,
-        frame_type: FrameType,
-        base: Option<&GraphKey>,
-        manifest_json: &str,
-        blobs: &BTreeMap<BlobID, Vec<u8>>,
-        prepared_history: Option<crate::metric_history::PreparedHistoryEntries>,
-    ) -> Result<()> {
-        let threshold = {
-            let mut conn = self.graph.conn().await?;
-            let config = conn
-                .get_timeline_config(&key.timeline_id)
-                .await?
-                .ok_or_else(|| anyhow::anyhow!("Timeline not found: {:?}", key.timeline_id))?;
-            config.inline_blob_threshold()
-        };
-
-        let inline_blobs = prepare_inline_blobs(blobs, threshold)?;
-
-        // If external, register for cleanup and upload BEFORE the transaction.
-        let blob_keys_to_unregister = if inline_blobs.is_none() {
-            Some(self.upload_blobs(blobs).await?)
-        } else {
-            None
-        };
-
-        // Start transaction, lock timeline, write frame.
-        let mut conn = self.graph.conn().await?;
-        conn.start_transaction().await?;
-        conn.get_timeline_config_and_lock(&key.timeline_id)
-            .await
-            .with_context(|| format!("Failed to lock timeline for {:?}", frame_type))?;
-
-        crate::schemas::adjacent_deltas::validate_monotonic_append(&mut *conn, key).await?;
-        if frame_type == FrameType::Delta {
-            crate::schemas::adjacent_deltas::validate_delta_base(&mut *conn, key, base).await?;
-        }
-
-        self.store_package_on_conn(
-            &mut *conn,
-            key,
-            frame_type,
-            base,
-            manifest_json,
-            inline_blobs.as_deref(),
-            blob_keys_to_unregister.as_deref(),
-        )
-        .await?;
-
-        // Store metric history INSIDE the same transaction.
-        if let Some(prepared) = prepared_history {
-            crate::metric_history::store_metric_history_on_conn(
-                &mut *conn,
-                &key.timeline_id,
-                prepared,
-            )
-            .await?;
-        }
-
-        conn.commit_transaction().await?;
-        Ok(())
-    }
-
     /// Prepare metric history if enabled for this timeline.
     ///
     /// Reads the timeline config, checks `store_metric_history`, extracts
@@ -308,7 +215,7 @@ impl UnigraphStorage {
     /// Must be called BEFORE the transaction (MySQL row-locking bug workaround).
     ///
     /// Returns `None` if history is disabled or the timeline doesn't exist.
-    async fn prepare_history_if_enabled(
+    pub(crate) async fn prepare_history_if_enabled(
         &self,
         key: &GraphTimeKey,
         graph: &ArrayGraphSerializable,
@@ -464,6 +371,44 @@ impl UnigraphStorage {
         }
 
         Ok(blob_keys)
+    }
+
+    /// Look up the timeline's inline threshold, prepare inline bytes or upload
+    /// to external storage. Returns a [`PreparedBlobs`] ready for
+    /// `store_package_on_conn`.
+    pub(crate) async fn prepare_blobs_for_storage(
+        &self,
+        timeline_id: &unigraph_storage_core::TimelineID,
+        blobs: &BTreeMap<BlobID, Vec<u8>>,
+    ) -> Result<PreparedBlobs> {
+        let threshold = {
+            let mut conn = self.graph.conn().await?;
+            let config = conn
+                .get_timeline_config(timeline_id)
+                .await?
+                .ok_or_else(|| anyhow::anyhow!("Timeline not found: {:?}", timeline_id))?;
+            config.inline_blob_threshold()
+        };
+
+        let inline = prepare_inline_blobs(blobs, threshold)?;
+        let external_keys = if inline.is_none() {
+            Some(self.upload_blobs(blobs).await?)
+        } else {
+            None
+        };
+
+        Ok(PreparedBlobs {
+            inline,
+            external_keys,
+        })
+    }
+
+    /// Fetch a single frame with data, or error if not found.
+    ///
+    /// Convenience wrapper around `select_frames` for use by schema modules.
+    pub(crate) async fn get_frame_with_data(&self, key: &GraphKey) -> Result<FrameRow> {
+        let mut conn = self.graph.conn().await?;
+        get_frame_with_data(&mut *conn, key).await
     }
 }
 

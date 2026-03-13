@@ -91,18 +91,18 @@ impl TestGraphTimeline {
             }
         }
 
-        // Tag sets: ~20% chance per node
-        let mut tag_sets: BTreeMap<NodeIDX, BTreeMap<String, BTreeSet<String>>> = BTreeMap::new();
+        // Labels: ~20% chance per node (inverted index: label_name → node → values)
+        let mut labels: BTreeMap<String, BTreeMap<NodeIDX, BTreeSet<String>>> = BTreeMap::new();
         for node in 0..node_count {
             if rng.next() % 100 < 20 {
-                let set_name = format!("set_{}", rng.next() % 3);
-                let tag_value = format!("value_{}", rng.next() % 10);
-                tag_sets
+                let label_name = format!("set_{}", rng.next() % 3);
+                let label_value = format!("value_{}", rng.next() % 10);
+                labels
+                    .entry(label_name)
+                    .or_default()
                     .entry(NodeIDX::from(node))
                     .or_default()
-                    .entry(set_name)
-                    .or_default()
-                    .insert(tag_value);
+                    .insert(label_value);
             }
         }
 
@@ -117,7 +117,11 @@ impl TestGraphTimeline {
                 tagged,
                 dynamic: BTreeMap::new(),
             },
-            node_metadata: ArrayGraphSerializableNodeMetadata { metrics, tag_sets },
+            node_metadata: ArrayGraphSerializableNodeMetadata {
+                metrics,
+                labels,
+                properties: BTreeMap::new(),
+            },
             graph_settings: None,
             traversal_config: None,
             budget_configs: BTreeMap::new(),

@@ -41,7 +41,7 @@ async fn compact_converts_full_to_delta() -> Result<()> {
         .collect();
 
     for (i, key) in keys.iter().enumerate() {
-        db.graph.store_full(key, &graphs[i]).await?;
+        db.graph.store(key, &graphs[i]).await?;
     }
 
     // Before compaction: all Full
@@ -108,8 +108,8 @@ async fn compact_with_error_gap() -> Result<()> {
         .map(|i| make_graph_time_key("test", i as i64, 1000 + i as i64))
         .collect();
 
-    db.graph.store_full(&keys[0], &graphs[0]).await?;
-    db.graph.store_full(&keys[1], &graphs[1]).await?;
+    db.graph.store(&keys[0], &graphs[0]).await?;
+    db.graph.store(&keys[1], &graphs[1]).await?;
     db.graph
         .store_error(
             &keys[2],
@@ -119,8 +119,8 @@ async fn compact_with_error_gap() -> Result<()> {
             }],
         )
         .await?;
-    db.graph.store_full(&keys[3], &graphs[2]).await?;
-    db.graph.store_full(&keys[4], &graphs[3]).await?;
+    db.graph.store(&keys[3], &graphs[2]).await?;
+    db.graph.store(&keys[4], &graphs[3]).await?;
 
     let converted = db
         .graph
@@ -163,20 +163,24 @@ async fn compact_already_compact() -> Result<()> {
     let db = make_db();
     setup_timeline(&db, "test").await;
 
-    // Store Full ← Delta ← Delta (already compact)
+    // Store 3 Full frames, compact once, then verify second compact is a no-op
     let graphs: Vec<_> = (0..3).map(TestGraphTimeline::get_nth).collect();
     let keys: Vec<_> = (0..3)
         .map(|i| make_graph_time_key("test", i as i64, 1000 + i as i64))
         .collect();
 
-    db.graph.store_full(&keys[0], &graphs[0]).await?;
-    db.graph
-        .store_delta(&keys[1], &keys[0].graph_key(), &graphs[1])
-        .await?;
-    db.graph
-        .store_delta(&keys[2], &keys[1].graph_key(), &graphs[2])
-        .await?;
+    for (i, key) in keys.iter().enumerate() {
+        db.graph.store(key, &graphs[i]).await?;
+    }
 
+    // First compact: converts 2 Full → Delta
+    let converted = db
+        .graph
+        .compact(&TimelineID("test".to_string()), None, None)
+        .await?;
+    assert_eq!(converted, 2);
+
+    // Second compact: already compact, should be a no-op
     let converted = db
         .graph
         .compact(&TimelineID("test".to_string()), None, None)

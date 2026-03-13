@@ -163,18 +163,31 @@ mod tests {
             }
         }
 
-        // Tag sets: ~20% of nodes
-        let mut tag_sets: BTreeMap<NodeIDX, BTreeMap<String, BTreeSet<String>>> = BTreeMap::new();
+        // Labels: ~20% of nodes (inverted index: label_name → node → values)
+        let mut labels: BTreeMap<String, BTreeMap<NodeIDX, BTreeSet<String>>> = BTreeMap::new();
         for node in 0..node_count {
             if rng.next_bool(20) {
-                let set_name = format!("set_{}", rng.next() % 3);
-                let tag_value = format!("val_{}", rng.next() % 10);
-                tag_sets
+                let label_name = format!("set_{}", rng.next() % 3);
+                let label_value = format!("val_{}", rng.next() % 10);
+                labels
+                    .entry(label_name)
+                    .or_default()
                     .entry(NodeIDX::from(node))
                     .or_default()
-                    .entry(set_name)
+                    .insert(label_value);
+            }
+        }
+
+        // Properties: ~15% of nodes (inverted index: prop_name → node → value)
+        let mut properties: BTreeMap<String, BTreeMap<NodeIDX, String>> = BTreeMap::new();
+        for node in 0..node_count {
+            if rng.next_bool(15) {
+                let prop_name = format!("prop_{}", rng.next() % 3);
+                let prop_value = format!("pval_{}", rng.next() % 10);
+                properties
+                    .entry(prop_name)
                     .or_default()
-                    .insert(tag_value);
+                    .insert(NodeIDX::from(node), prop_value);
             }
         }
 
@@ -217,7 +230,11 @@ mod tests {
                 tagged,
                 dynamic,
             },
-            node_metadata: ArrayGraphSerializableNodeMetadata { metrics, tag_sets },
+            node_metadata: ArrayGraphSerializableNodeMetadata {
+                metrics,
+                labels,
+                properties,
+            },
             graph_settings,
             traversal_config,
             budget_configs,
@@ -558,16 +575,16 @@ mod tests {
         k9::snapshot!(
             hashes.join("\n"),
             "
-pair_00: de27886cdba3b1b1
-pair_01: 76f23a60608ef4f3
-pair_02: 75f00769545be1dd
-pair_03: d72036b6636a3557
-pair_04: 469d4a68dbe62b16
-pair_05: 2783a91a65612e3b
-pair_06: 6861e208c2457bbb
-pair_07: da6f020d4e3ee0b0
-pair_08: 5018ce4a763feeea
-pair_09: 9a66fb68d5d6f828
+pair_00: b8f1692353b3b45f
+pair_01: a02df8dfe55f8271
+pair_02: c25b51c3f5f82221
+pair_03: 850f5ca4d12a621c
+pair_04: cff5a907da06f6ca
+pair_05: fc87c61336805b32
+pair_06: 8458bb4dbe5ef5cc
+pair_07: 42b11e07603a1879
+pair_08: fc514a83ea82b9ad
+pair_09: e43733f9c1b5c7a6
 "
         );
         Ok(())

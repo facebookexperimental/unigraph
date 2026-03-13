@@ -87,7 +87,11 @@ pub fn pack_parallel(
         dynamic,
     } = &edges;
 
-    let ArrayGraphSerializableNodeMetadata { metrics, tag_sets } = &node_metadata;
+    let ArrayGraphSerializableNodeMetadata {
+        metrics,
+        labels,
+        properties,
+    } = &node_metadata;
 
     let (node_names, node_names_offsets) = node_names_ordered.as_parts();
 
@@ -99,7 +103,8 @@ pub fn pack_parallel(
         tagged,
         dynamic,
         metrics,
-        tag_sets,
+        labels,
+        properties,
         traversal_config,
         budget_configs,
         entry_points,
@@ -111,7 +116,8 @@ pub fn pack_parallel(
         tagged,
         dynamic,
         metrics,
-        tag_sets,
+        labels,
+        properties,
         traversal_config,
         budget_configs,
         entry_points;
@@ -126,7 +132,8 @@ pub fn pack_parallel(
         tagged,
         dynamic,
         metrics,
-        tag_sets,
+        labels,
+        properties,
         traversal_config,
         budget_configs,
         entry_points,

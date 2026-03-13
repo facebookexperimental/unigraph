@@ -194,7 +194,7 @@ A:
 B:
   - J
   - C
-C (tag sets: disallow_tags: [b, c]):
+C (labels: disallow_tags: [b, c]):
 D:
   - E
 E:
@@ -205,7 +205,7 @@ F:
 G:
 H:
 I:
-J (tag sets: assert_tags: [a, b]):
+J (labels: assert_tags: [a, b]):
 K:
 L:
   - M

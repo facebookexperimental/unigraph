@@ -10,9 +10,12 @@ use anyhow::Result;
 
 use super::DynamicEdgeName;
 use super::DynamicTypeKey;
+use super::LabelName;
+use super::LabelValue;
 use super::NodeIDX;
+use super::PropertyName;
+use super::PropertyValue;
 use super::Tag;
-use super::TagSetName;
 use super::array_graph::ArrayGraph;
 use super::array_graph::ArrayGraphDynamicEdge;
 use super::array_graph::array_graph_nodes::NodeNamesOrderedBuilder;
@@ -127,7 +130,9 @@ impl MapGraph {
             .map(|name| (name.clone(), vec![]))
             .collect();
 
-        let mut all_tag_sets: BTreeMap<NodeIDX, BTreeMap<TagSetName, BTreeSet<Tag>>> =
+        let mut all_labels: BTreeMap<LabelName, BTreeMap<NodeIDX, BTreeSet<LabelValue>>> =
+            BTreeMap::new();
+        let mut all_properties: BTreeMap<PropertyName, BTreeMap<NodeIDX, PropertyValue>> =
             BTreeMap::new();
         let mut all_node_names_set = self.nodes.keys().cloned().collect::<HashSet<_>>();
         for node in self.nodes.values() {
@@ -203,9 +208,9 @@ impl MapGraph {
                 }
                 directed_offsets.push(directed_edges.len());
 
-                for (metrc_name, metric_values) in metrics.iter_mut() {
+                for (metric_name, metric_values) in metrics.iter_mut() {
                     if let Some(metric_value) =
-                        node.metrics.as_ref().and_then(|m| m.get(metrc_name))
+                        node.metrics.as_ref().and_then(|m| m.get(metric_name))
                     {
                         metric_values.push(*metric_value);
                     } else {
@@ -213,7 +218,20 @@ impl MapGraph {
                     }
                 }
                 if let Some(labels) = &node.labels {
-                    all_tag_sets.insert(node_idx, labels.clone());
+                    for (label_name, label_values) in labels {
+                        all_labels
+                            .entry(label_name.clone())
+                            .or_default()
+                            .insert(node_idx, label_values.clone());
+                    }
+                }
+                if let Some(properties) = &node.properties {
+                    for (prop_name, prop_value) in properties {
+                        all_properties
+                            .entry(prop_name.clone())
+                            .or_default()
+                            .insert(node_idx, prop_value.clone());
+                    }
                 }
             } else {
                 directed_offsets.push(directed_edges.len());
@@ -233,7 +251,8 @@ impl MapGraph {
             },
             node_metadata: crate::ArrayGraphSerializableNodeMetadata {
                 metrics,
-                tag_sets: all_tag_sets,
+                labels: all_labels,
+                properties: all_properties,
             },
             graph_settings: self.graph_settings.clone(),
             traversal_config: self.traversal_config.clone(),
