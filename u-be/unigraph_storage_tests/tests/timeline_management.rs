@@ -16,6 +16,7 @@ fn make_db() -> UnigraphDb {
 #[tokio::test]
 async fn create_and_get_timeline_config() -> Result<()> {
     let db = make_db();
+    let task = ll::Task::create_new("test");
 
     let config = TimelineConfig {
         schema: TimelineSchema::AdjacentDeltas(AdjacentDeltasConfig {}),
@@ -25,12 +26,12 @@ async fn create_and_get_timeline_config() -> Result<()> {
     };
 
     db.timelines
-        .create(&TimelineID("my_timeline".to_string()), &config)
+        .create(&TimelineID("my_timeline".to_string()), &config, &task)
         .await?;
 
     let fetched = db
         .timelines
-        .get_config(&TimelineID("my_timeline".to_string()))
+        .get_config(&TimelineID("my_timeline".to_string()), &task)
         .await?
         .expect("Timeline should exist");
 
@@ -46,10 +47,11 @@ async fn create_and_get_timeline_config() -> Result<()> {
 #[tokio::test]
 async fn get_nonexistent_timeline_returns_none() -> Result<()> {
     let db = make_db();
+    let task = ll::Task::create_new("test");
 
     let result = db
         .timelines
-        .get_config(&TimelineID("nonexistent".to_string()))
+        .get_config(&TimelineID("nonexistent".to_string()), &task)
         .await?;
     assert!(result.is_none());
 
@@ -59,6 +61,7 @@ async fn get_nonexistent_timeline_returns_none() -> Result<()> {
 #[tokio::test]
 async fn list_timelines() -> Result<()> {
     let db = make_db();
+    let task = ll::Task::create_new("test");
 
     let config = TimelineConfig {
         schema: TimelineSchema::AdjacentDeltas(AdjacentDeltasConfig {}),
@@ -68,16 +71,16 @@ async fn list_timelines() -> Result<()> {
     };
 
     db.timelines
-        .create(&TimelineID("beta".to_string()), &config)
+        .create(&TimelineID("beta".to_string()), &config, &task)
         .await?;
     db.timelines
-        .create(&TimelineID("alpha".to_string()), &config)
+        .create(&TimelineID("alpha".to_string()), &config, &task)
         .await?;
     db.timelines
-        .create(&TimelineID("gamma".to_string()), &config)
+        .create(&TimelineID("gamma".to_string()), &config, &task)
         .await?;
 
-    let timelines = db.timelines.list().await?;
+    let timelines = db.timelines.list(&task).await?;
     let names: Vec<_> = timelines.iter().map(|t| t.0.as_str()).collect();
 
     // Should be sorted
@@ -89,6 +92,7 @@ async fn list_timelines() -> Result<()> {
 #[tokio::test]
 async fn frames_ordered_by_timestamp_then_graph_id() -> Result<()> {
     let db = make_db();
+    let task = ll::Task::create_new("test");
     let config = TimelineConfig {
         schema: TimelineSchema::AdjacentDeltas(AdjacentDeltasConfig {}),
         external_id_namespace: None,
@@ -96,7 +100,7 @@ async fn frames_ordered_by_timestamp_then_graph_id() -> Result<()> {
         store_metric_history: None,
     };
     db.timelines
-        .create(&TimelineID("test".to_string()), &config)
+        .create(&TimelineID("test".to_string()), &config, &task)
         .await?;
 
     // Insert frames at the same timestamp with monotonically increasing graph IDs
@@ -109,10 +113,13 @@ async fn frames_ordered_by_timestamp_then_graph_id() -> Result<()> {
             timestamp: ts,
             graph_id: GraphID(id),
         };
-        db.graph.store(&key, &graph).await?;
+        db.graph.store(&key, &graph, &task).await?;
     }
 
-    let frames = db.frames.list(&TimelineID("test".to_string())).await?;
+    let frames = db
+        .frames
+        .list(&TimelineID("test".to_string()), &task)
+        .await?;
     let ids: Vec<_> = frames.iter().map(|f| f.frame.graph_id.0).collect();
 
     // Same timestamp → ordered by graph_id
@@ -124,6 +131,7 @@ async fn frames_ordered_by_timestamp_then_graph_id() -> Result<()> {
 #[tokio::test]
 async fn list_frames_range() -> Result<()> {
     let db = make_db();
+    let task = ll::Task::create_new("test");
     let config = TimelineConfig {
         schema: TimelineSchema::AdjacentDeltas(AdjacentDeltasConfig {}),
         external_id_namespace: None,
@@ -131,13 +139,13 @@ async fn list_frames_range() -> Result<()> {
         store_metric_history: None,
     };
     db.timelines
-        .create(&TimelineID("test".to_string()), &config)
+        .create(&TimelineID("test".to_string()), &config, &task)
         .await?;
 
     for i in 0..10 {
         let graph = TestGraphTimeline::get_nth(i);
         let key = make_graph_time_key("test", i as i64, 1000 + i as i64);
-        db.graph.store(&key, &graph).await?;
+        db.graph.store(&key, &graph, &task).await?;
     }
 
     // Query a range that should include frames 3-7
@@ -146,7 +154,7 @@ async fn list_frames_range() -> Result<()> {
 
     let frames = db
         .frames
-        .list_range(&TimelineID("test".to_string()), start, end)
+        .list_range(&TimelineID("test".to_string()), start, end, &task)
         .await?;
 
     let ids: Vec<_> = frames.iter().map(|f| f.frame.graph_id.0).collect();
@@ -158,6 +166,7 @@ async fn list_frames_range() -> Result<()> {
 #[tokio::test]
 async fn add_new_external_ids_allocates_sequentially() -> Result<()> {
     let db = make_db();
+    let task = ll::Task::create_new("test");
 
     let namespace = ExternalIDNamespace("test/git".to_string());
     let external_ids = vec![
@@ -166,7 +175,10 @@ async fn add_new_external_ids_allocates_sequentially() -> Result<()> {
         ExternalID("ccc".to_string()),
     ];
 
-    let graph_ids = db.external_ids.add_new(&namespace, &external_ids).await?;
+    let graph_ids = db
+        .external_ids
+        .add_new(&namespace, &external_ids, &task)
+        .await?;
 
     assert_eq!(graph_ids.len(), 3);
     assert_eq!(graph_ids[0].0, 1);
@@ -179,15 +191,22 @@ async fn add_new_external_ids_allocates_sequentially() -> Result<()> {
 #[tokio::test]
 async fn add_new_external_ids_is_idempotent() -> Result<()> {
     let db = make_db();
+    let task = ll::Task::create_new("test");
 
     let namespace = ExternalIDNamespace("test/git".to_string());
     let external_ids = vec![ExternalID("aaa".to_string()), ExternalID("bbb".to_string())];
 
     // First call: allocate
-    let first = db.external_ids.add_new(&namespace, &external_ids).await?;
+    let first = db
+        .external_ids
+        .add_new(&namespace, &external_ids, &task)
+        .await?;
 
     // Second call: same inputs, same outputs
-    let second = db.external_ids.add_new(&namespace, &external_ids).await?;
+    let second = db
+        .external_ids
+        .add_new(&namespace, &external_ids, &task)
+        .await?;
 
     assert_eq!(first, second);
 
@@ -197,6 +216,7 @@ async fn add_new_external_ids_is_idempotent() -> Result<()> {
 #[tokio::test]
 async fn external_id_mapping_roundtrip() -> Result<()> {
     let db = make_db();
+    let task = ll::Task::create_new("test");
 
     let namespace = ExternalIDNamespace("test/git".to_string());
     let external_ids = vec![
@@ -205,25 +225,28 @@ async fn external_id_mapping_roundtrip() -> Result<()> {
     ];
 
     // Allocate
-    let graph_ids = db.external_ids.add_new(&namespace, &external_ids).await?;
+    let graph_ids = db
+        .external_ids
+        .add_new(&namespace, &external_ids, &task)
+        .await?;
 
     // Reverse lookup: graph_id → external_id
     let eid_0 = db
         .external_ids
-        .to_external_id(&namespace, &graph_ids[0])
+        .to_external_id(&namespace, &graph_ids[0], &task)
         .await?;
     assert_eq!(eid_0, Some(ExternalID("commit_abc".to_string())));
 
     let eid_1 = db
         .external_ids
-        .to_external_id(&namespace, &graph_ids[1])
+        .to_external_id(&namespace, &graph_ids[1], &task)
         .await?;
     assert_eq!(eid_1, Some(ExternalID("commit_def".to_string())));
 
     // Batch reverse lookup
     let batch = db
         .external_ids
-        .to_external_ids(&namespace, &graph_ids)
+        .to_external_ids(&namespace, &graph_ids, &task)
         .await?;
     assert_eq!(batch.len(), 2);
     assert_eq!(
@@ -241,6 +264,7 @@ async fn external_id_mapping_roundtrip() -> Result<()> {
 #[tokio::test]
 async fn add_new_external_ids_with_overlap() -> Result<()> {
     let db = make_db();
+    let task = ll::Task::create_new("test");
 
     let namespace = ExternalIDNamespace("test/git".to_string());
 
@@ -250,6 +274,7 @@ async fn add_new_external_ids_with_overlap() -> Result<()> {
         .add_new(
             &namespace,
             &[ExternalID("aaa".to_string()), ExternalID("bbb".to_string())],
+            &task,
         )
         .await?;
 
@@ -263,6 +288,7 @@ async fn add_new_external_ids_with_overlap() -> Result<()> {
                 ExternalID("bbb".to_string()),
                 ExternalID("ccc".to_string()),
             ],
+            &task,
         )
         .await?;
 
@@ -278,11 +304,12 @@ async fn add_new_external_ids_with_overlap() -> Result<()> {
 #[tokio::test]
 async fn get_latest_external_id() -> Result<()> {
     let db = make_db();
+    let task = ll::Task::create_new("test");
 
     let namespace = ExternalIDNamespace("test/git".to_string());
 
     // No mappings yet
-    let latest = db.external_ids.get_latest(&namespace).await?;
+    let latest = db.external_ids.get_latest(&namespace, &task).await?;
     assert!(latest.is_none());
 
     // Allocate some
@@ -294,11 +321,12 @@ async fn get_latest_external_id() -> Result<()> {
                 ExternalID("second".to_string()),
                 ExternalID("third".to_string()),
             ],
+            &task,
         )
         .await?;
 
     // Latest should be the one with highest graph_id
-    let latest = db.external_ids.get_latest(&namespace).await?;
+    let latest = db.external_ids.get_latest(&namespace, &task).await?;
     assert_eq!(latest, Some(ExternalID("third".to_string())));
 
     Ok(())

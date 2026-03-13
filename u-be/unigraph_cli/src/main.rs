@@ -90,7 +90,7 @@ struct Ingest {
 }
 
 impl Ingest {
-    async fn run(&self, sqlite_path: &Path) -> anyhow::Result<()> {
+    async fn run(&self, sqlite_path: &Path, task: &ll::Task) -> anyhow::Result<()> {
         let path = resolve_sqlite_path(sqlite_path);
         let sqlite = Arc::new(unigraph_storage_sqlite::SqliteStorage::new(path)?);
         let db = unigraph_db::UnigraphDb::new(sqlite.clone(), sqlite);
@@ -108,7 +108,7 @@ impl Ingest {
 
         for (i, ingestion_config) in configs.iter().enumerate() {
             eprintln!("\n=== Ingestion config {}/{} ===", i + 1, configs.len());
-            run_one_config(ingestion_config, &db, &options).await?;
+            run_one_config(ingestion_config, &db, &options, task).await?;
         }
 
         Ok(())
@@ -119,9 +119,10 @@ async fn run_one_config(
     config: &unigraph_ingestion::IngestionConfig,
     db: &unigraph_db::UnigraphDb,
     options: &unigraph_ingestion::IngestionOptions,
+    task: &ll::Task,
 ) -> anyhow::Result<()> {
     // Resolve the source
-    let source = resolve_source(&config.source, db).await?;
+    let source = resolve_source(&config.source, db, task).await?;
 
     // Resolve and own the builders
     let mut cargo_builders = Vec::new();
@@ -190,6 +191,7 @@ async fn run_one_config(
 async fn resolve_source(
     source_config: &unigraph_ingestion::IngestionSourceConfig,
     db: &unigraph_db::UnigraphDb,
+    task: &ll::Task,
 ) -> anyhow::Result<unigraph_ingestion::IngestionSource> {
     match source_config {
         unigraph_ingestion::IngestionSourceConfig::Git {
@@ -207,16 +209,16 @@ async fn resolve_source(
         }
         unigraph_ingestion::IngestionSourceConfig::AnotherTimeline { source_timeline_id } => {
             let timeline_id = TimelineID(source_timeline_id.clone());
-            let timeline_config =
-                db.timelines
-                    .get_config(&timeline_id)
-                    .await?
-                    .with_context(|| {
-                        format!(
-                            "Source timeline '{}' not found in database",
-                            source_timeline_id
-                        )
-                    })?;
+            let timeline_config = db
+                .timelines
+                .get_config(&timeline_id, task)
+                .await?
+                .with_context(|| {
+                    format!(
+                        "Source timeline '{}' not found in database",
+                        source_timeline_id
+                    )
+                })?;
             let ns = timeline_config.external_id_namespace.with_context(|| {
                 format!(
                     "Source timeline '{}' has no external_id_namespace",
@@ -239,7 +241,7 @@ struct Frames {
 }
 
 impl Frames {
-    async fn run(&self, sqlite_path: &Path) -> anyhow::Result<()> {
+    async fn run(&self, sqlite_path: &Path, task: &ll::Task) -> anyhow::Result<()> {
         use unigraph_storage_core::format_frames_table;
 
         let path = resolve_sqlite_path(sqlite_path);
@@ -249,7 +251,7 @@ impl Frames {
         match &self.timeline_id {
             Some(id) => {
                 let timeline_id = TimelineID(id.clone());
-                let frames = db.frames.list(&timeline_id).await?;
+                let frames = db.frames.list(&timeline_id, task).await?;
 
                 if frames.is_empty() {
                     eprintln!("No frames found for timeline '{}'", id);
@@ -260,14 +262,14 @@ impl Frames {
                 println!("\nTotal: {} frames", frames.len());
             }
             None => {
-                let timelines = db.timelines.list().await?;
+                let timelines = db.timelines.list(task).await?;
                 if timelines.is_empty() {
                     eprintln!("No timelines found in database.");
                     return Ok(());
                 }
                 println!("Timelines:");
                 for tl in &timelines {
-                    let frames = db.frames.list(tl).await?;
+                    let frames = db.frames.list(tl, task).await?;
                     println!("  {} ({} frames)", tl.0, frames.len());
                 }
             }
@@ -293,7 +295,7 @@ struct Compact {
 }
 
 impl Compact {
-    async fn run(&self, sqlite_path: &Path) -> anyhow::Result<()> {
+    async fn run(&self, sqlite_path: &Path, task: &ll::Task) -> anyhow::Result<()> {
         let path = resolve_sqlite_path(sqlite_path);
         let sqlite = Arc::new(unigraph_storage_sqlite::SqliteStorage::new(path)?);
         let db = unigraph_db::UnigraphDb::new(sqlite.clone(), sqlite);
@@ -302,7 +304,7 @@ impl Compact {
         let end = parse_timestamp(self.end.as_deref())?;
 
         let timeline_id = TimelineID(self.timeline_id.clone());
-        let converted = db.graph.compact(&timeline_id, start, end).await?;
+        let converted = db.graph.compact(&timeline_id, start, end, task).await?;
 
         match converted {
             0 => println!("Nothing to compact."),
@@ -338,7 +340,7 @@ struct GraphGet {
 }
 
 impl GraphGet {
-    async fn run(&self, sqlite_path: &Path) -> anyhow::Result<()> {
+    async fn run(&self, sqlite_path: &Path, task: &ll::Task) -> anyhow::Result<()> {
         let path = resolve_sqlite_path(sqlite_path);
         let sqlite = Arc::new(unigraph_storage_sqlite::SqliteStorage::new(path)?);
         let db = unigraph_db::UnigraphDb::new(sqlite.clone(), sqlite);
@@ -348,12 +350,12 @@ impl GraphGet {
         let (key, serializable) = match parsed {
             GraphKeyOrTimelineID::GraphKey(key) => {
                 eprintln!("Fetching graph {}...", key);
-                let graph = db.graph.fetch(&key).await?;
+                let graph = db.graph.fetch(&key, task).await?;
                 (key, graph)
             }
             GraphKeyOrTimelineID::TimelineID(tid) => {
                 eprintln!("Fetching latest graph from timeline {}...", tid);
-                let (key, graph) = db.graph.fetch_latest(&tid).await?;
+                let (key, graph) = db.graph.fetch_latest(&tid, task).await?;
                 eprintln!("Resolved to {}", key);
                 (key, graph)
             }
@@ -385,7 +387,7 @@ struct GraphBudget {
 }
 
 impl GraphBudget {
-    async fn run(&self, sqlite_path: &Path) -> anyhow::Result<()> {
+    async fn run(&self, sqlite_path: &Path, task: &ll::Task) -> anyhow::Result<()> {
         let path = resolve_sqlite_path(sqlite_path);
         let sqlite = Arc::new(unigraph_storage_sqlite::SqliteStorage::new(path)?);
         let db = unigraph_db::UnigraphDb::new(sqlite.clone(), sqlite);
@@ -397,12 +399,12 @@ impl GraphBudget {
         let (_key, serializable) = match parsed {
             GraphKeyOrTimelineID::GraphKey(key) => {
                 eprintln!("Fetching graph {}...", key);
-                let graph = db.graph.fetch(&key).await?;
+                let graph = db.graph.fetch(&key, task).await?;
                 (key, graph)
             }
             GraphKeyOrTimelineID::TimelineID(tid) => {
                 eprintln!("Fetching latest graph from timeline {}...", tid);
-                let (key, graph) = db.graph.fetch_latest(&tid).await?;
+                let (key, graph) = db.graph.fetch_latest(&tid, task).await?;
                 eprintln!("Resolved to {}", key);
                 (key, graph)
             }
@@ -466,17 +468,19 @@ async fn main() {
         ll::reporters::term_status::show();
     }
 
+    let task = ll::Task::create_new("unigraph");
+
     let result = match args.command {
         Commands::Serve(serve) => {
             serve.run(sqlite_path).await;
             Ok(())
         }
-        Commands::Ingest(ingest) => ingest.run(sqlite_path).await,
-        Commands::Frames(frames) => frames.run(sqlite_path).await,
-        Commands::Compact(compact) => compact.run(sqlite_path).await,
+        Commands::Ingest(ingest) => ingest.run(sqlite_path, &task).await,
+        Commands::Frames(frames) => frames.run(sqlite_path, &task).await,
+        Commands::Compact(compact) => compact.run(sqlite_path, &task).await,
         Commands::Graph(g) => match g.command {
-            GraphCommands::Get(get) => get.run(sqlite_path).await,
-            GraphCommands::Budget(budget) => budget.run(sqlite_path).await,
+            GraphCommands::Get(get) => get.run(sqlite_path, &task).await,
+            GraphCommands::Budget(budget) => budget.run(sqlite_path, &task).await,
         },
     };
 

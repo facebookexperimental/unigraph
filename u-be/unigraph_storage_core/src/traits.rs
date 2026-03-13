@@ -8,6 +8,7 @@
 
 use anyhow::Result;
 use async_trait::async_trait;
+use ll;
 
 use crate::frame::FrameRow;
 use crate::types::ExternalID;
@@ -33,16 +34,17 @@ pub trait UnigraphGraphConnection: Send {
     /// Begin a transaction. All subsequent operations on this connection
     /// will be part of the transaction until [`commit_transaction`](Self::commit_transaction)
     /// is called or the connection is dropped (which rolls back).
-    async fn start_transaction(&mut self) -> Result<()>;
+    async fn start_transaction(&mut self, task: &ll::Task) -> Result<()>;
 
     /// Commit the active transaction.
-    async fn commit_transaction(&mut self) -> Result<()>;
+    async fn commit_transaction(&mut self, task: &ll::Task) -> Result<()>;
 
     /// Create a new timeline with the given configuration.
     async fn create_timeline(
         &mut self,
         timeline_id: &TimelineID,
         config: &TimelineConfig,
+        task: &ll::Task,
     ) -> Result<()>;
 
     /// Get the configuration for an existing timeline.
@@ -50,6 +52,7 @@ pub trait UnigraphGraphConnection: Send {
     async fn get_timeline_config(
         &mut self,
         timeline_id: &TimelineID,
+        task: &ll::Task,
     ) -> Result<Option<TimelineConfig>>;
 
     /// Get the timeline configuration and acquire an exclusive lock on it.
@@ -67,10 +70,11 @@ pub trait UnigraphGraphConnection: Send {
     async fn get_timeline_config_and_lock(
         &mut self,
         timeline_id: &TimelineID,
+        task: &ll::Task,
     ) -> Result<Option<TimelineConfig>>;
 
     /// List all timeline IDs.
-    async fn list_timelines(&mut self) -> Result<Vec<TimelineID>>;
+    async fn list_timelines(&mut self, task: &ll::Task) -> Result<Vec<TimelineID>>;
 
     /// Store a frame with data (Full, Delta, or Error).
     ///
@@ -86,16 +90,18 @@ pub trait UnigraphGraphConnection: Send {
         base: Option<&GraphKey>,
         manifest_json: &str,
         inline_blobs: Option<&[u8]>,
+        task: &ll::Task,
     ) -> Result<()>;
 
     /// Store an empty frame (placeholder with no data).
-    async fn store_frame_empty(&mut self, key: &GraphTimeKey) -> Result<()>;
+    async fn store_frame_empty(&mut self, key: &GraphTimeKey, task: &ll::Task) -> Result<()>;
 
     /// Select frames matching a structured query.
     ///
     /// The implementation compiles the [`FrameQuery`] into a single SQL
     /// statement with conditional WHERE clauses, ORDER BY, and LIMIT.
-    async fn select_frames(&mut self, query: &FrameQuery) -> Result<Vec<FrameRow>>;
+    async fn select_frames(&mut self, query: &FrameQuery, task: &ll::Task)
+    -> Result<Vec<FrameRow>>;
 
     /// Delete a frame row by its graph key.
     ///
@@ -104,19 +110,27 @@ pub trait UnigraphGraphConnection: Send {
     /// registering external blob keys for cleanup before calling this.
     ///
     /// Returns `true` if a frame was deleted, `false` if it didn't exist.
-    async fn delete_frame(&mut self, key: &GraphKey) -> Result<bool>;
+    async fn delete_frame(&mut self, key: &GraphKey, task: &ll::Task) -> Result<bool>;
 
     /// Register blob keys for deferred cleanup.
     ///
     /// Used during store operations: if the transaction fails after blobs
     /// have been uploaded to external storage, these keys can be cleaned up later.
-    async fn register_blobs_for_cleanup(&mut self, blob_keys: &[String]) -> Result<()>;
+    async fn register_blobs_for_cleanup(
+        &mut self,
+        blob_keys: &[String],
+        task: &ll::Task,
+    ) -> Result<()>;
 
     /// Unregister blob keys from the cleanup list (transaction succeeded).
-    async fn unregister_blobs_for_cleanup(&mut self, blob_keys: &[String]) -> Result<()>;
+    async fn unregister_blobs_for_cleanup(
+        &mut self,
+        blob_keys: &[String],
+        task: &ll::Task,
+    ) -> Result<()>;
 
     /// Get all blob keys that are pending cleanup.
-    async fn get_blobs_pending_cleanup(&mut self) -> Result<Vec<String>>;
+    async fn get_blobs_pending_cleanup(&mut self, task: &ll::Task) -> Result<Vec<String>>;
 
     /// Get blob keys pending cleanup that were registered before `older_than`.
     ///
@@ -126,6 +140,7 @@ pub trait UnigraphGraphConnection: Send {
     async fn get_blobs_pending_cleanup_older_than(
         &mut self,
         older_than: Timestamp,
+        task: &ll::Task,
     ) -> Result<Vec<String>>;
 
     // -- Named locks --
@@ -138,13 +153,13 @@ pub trait UnigraphGraphConnection: Send {
     ///
     /// - SQLite: no-op (`BEGIN EXCLUSIVE` in `start_transaction` already serializes writers)
     /// - MySQL: `GET_LOCK(name, timeout)`, released on connection drop
-    async fn acquire_named_lock(&mut self, name: &str) -> Result<()>;
+    async fn acquire_named_lock(&mut self, name: &str, task: &ll::Task) -> Result<()>;
 
     /// Release a named advisory lock.
     ///
     /// - SQLite: no-op
     /// - MySQL: `RELEASE_LOCK(name)`
-    async fn release_named_lock(&mut self, name: &str) -> Result<()>;
+    async fn release_named_lock(&mut self, name: &str, task: &ll::Task) -> Result<()>;
 
     // -- External ID mappings --
 
@@ -152,6 +167,7 @@ pub trait UnigraphGraphConnection: Send {
     async fn list_external_id_mappings(
         &mut self,
         ns: &ExternalIDNamespace,
+        task: &ll::Task,
     ) -> Result<Vec<(ExternalID, GraphID)>>;
 
     /// Insert a batch of new external ID → graph ID mappings.
@@ -160,6 +176,7 @@ pub trait UnigraphGraphConnection: Send {
         &mut self,
         ns: &ExternalIDNamespace,
         mappings: &[(ExternalID, GraphID)],
+        task: &ll::Task,
     ) -> Result<()>;
 
     /// Look up the ExternalID for a GraphID within a namespace.
@@ -167,6 +184,7 @@ pub trait UnigraphGraphConnection: Send {
         &mut self,
         external_id_namespace: &ExternalIDNamespace,
         graph_id: &GraphID,
+        task: &ll::Task,
     ) -> Result<Option<ExternalID>>;
 
     /// Look up ExternalIDs for multiple GraphIDs within a namespace (batch).
@@ -174,6 +192,7 @@ pub trait UnigraphGraphConnection: Send {
         &mut self,
         external_id_namespace: &ExternalIDNamespace,
         graph_ids: &[GraphID],
+        task: &ll::Task,
     ) -> Result<Vec<(GraphID, ExternalID)>>;
 
     /// Get the ExternalID with the highest GraphID in a namespace.
@@ -183,6 +202,7 @@ pub trait UnigraphGraphConnection: Send {
     async fn get_latest_external_id(
         &mut self,
         external_id_namespace: &ExternalIDNamespace,
+        task: &ll::Task,
     ) -> Result<Option<ExternalID>>;
 
     // -- Metric history --
@@ -198,6 +218,7 @@ pub trait UnigraphGraphConnection: Send {
         timeline_id: &TimelineID,
         week_key: &str,
         node_names: &[String],
+        task: &ll::Task,
     ) -> Result<()>;
 
     /// Batch-fetch all metric history blobs for a timeline + ISO week.
@@ -208,6 +229,7 @@ pub trait UnigraphGraphConnection: Send {
         &mut self,
         timeline_id: &TimelineID,
         week_key: &str,
+        task: &ll::Task,
     ) -> Result<std::collections::BTreeMap<String, Vec<u8>>>;
 
     /// Batch-upsert metric history blobs for a timeline + ISO week.
@@ -219,6 +241,7 @@ pub trait UnigraphGraphConnection: Send {
         timeline_id: &TimelineID,
         week_key: &str,
         entries: &[(String, Vec<u8>)],
+        task: &ll::Task,
     ) -> Result<()>;
 
     /// Fetch metric history blobs for specific nodes within a week range.
@@ -232,6 +255,7 @@ pub trait UnigraphGraphConnection: Send {
         node_names: &[String],
         start_week: &str,
         end_week: &str,
+        task: &ll::Task,
     ) -> Result<Vec<(String, String, Vec<u8>)>>;
 }
 

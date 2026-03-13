@@ -215,12 +215,14 @@ pub async fn ensure_history_partitions(
     conn: &mut dyn UnigraphGraphConnection,
     timeline_id: &TimelineID,
     prepared: &PreparedHistoryEntries,
+    task: &ll::Task,
 ) -> Result<()> {
     for week_entry in prepared.by_week.values() {
         conn.ensure_metric_history_partitions_exist(
             timeline_id,
             &week_entry.week_key,
             &week_entry.all_node_names,
+            task,
         )
         .await?;
     }
@@ -247,9 +249,10 @@ pub async fn store_metric_history_on_conn(
     conn: &mut dyn UnigraphGraphConnection,
     timeline_id: &TimelineID,
     mut prepared: PreparedHistoryEntries,
+    task: &ll::Task,
 ) -> Result<()> {
     for week_entry in prepared.by_week.values_mut() {
-        store_week(conn, timeline_id, week_entry).await?;
+        store_week(conn, timeline_id, week_entry, task).await?;
     }
     Ok(())
 }
@@ -277,12 +280,13 @@ pub async fn fetch_metric_history(
     node_names: &[String],
     start: Timestamp,
     end: Timestamp,
+    task: &ll::Task,
 ) -> Result<BTreeMap<String, Vec<(Timestamp, GraphID, NodeMetricSnapshot)>>> {
     let start_week = WeekPartition::from_timestamp(start).display_key();
     let end_week = WeekPartition::from_timestamp(end).display_key();
 
     let raw_blobs = conn
-        .get_metric_history_range(timeline_id, node_names, &start_week, &end_week)
+        .get_metric_history_range(timeline_id, node_names, &start_week, &end_week, task)
         .await?;
 
     if raw_blobs.is_empty() {
@@ -307,16 +311,23 @@ async fn store_week(
     conn: &mut dyn UnigraphGraphConnection,
     timeline_id: &TimelineID,
     week_entry: &mut PreparedHistoryForWeek,
+    task: &ll::Task,
 ) -> Result<()> {
     // 1. Fetch existing blobs for this week.
     let existing_blobs = conn
-        .get_metric_history_for_week(timeline_id, &week_entry.week_key)
+        .get_metric_history_for_week(timeline_id, &week_entry.week_key, task)
         .await?;
 
     // 2. Fetch existing frames for this timeline + week to build all_frames.
     let week_partition = WeekPartition::parse(&week_entry.week_key)?;
-    let all_frames =
-        build_all_frames(conn, timeline_id, &week_partition, &week_entry.new_frames).await?;
+    let all_frames = build_all_frames(
+        conn,
+        timeline_id,
+        &week_partition,
+        &week_entry.new_frames,
+        task,
+    )
+    .await?;
 
     // 3. Insert missing frames: for nodes in existing blobs but NOT in the
     //    new graphs, add explicit None entries.
@@ -375,7 +386,7 @@ async fn store_week(
     .context("spawn_blocking panicked")??;
 
     // 5. Batch-upsert.
-    conn.upsert_metric_history_batch(timeline_id, &week_entry.week_key, &updated_blobs)
+    conn.upsert_metric_history_batch(timeline_id, &week_entry.week_key, &updated_blobs, task)
         .await?;
 
     Ok(())
@@ -387,18 +398,22 @@ async fn build_all_frames(
     timeline_id: &TimelineID,
     _week_partition: &WeekPartition,
     new_frames: &[Frame],
+    task: &ll::Task,
 ) -> Result<BTreeSet<Frame>> {
     // Fetch existing Full/Delta frames for this timeline.
     // We fetch all of them since we need the complete frame set for
     // anchor materialization. In practice this is bounded by the
     // number of frames in the timeline.
     let existing = conn
-        .select_frames(&FrameQuery {
-            timeline_id: timeline_id.clone(),
-            frame_types: Some(vec![FrameType::Full, FrameType::Delta]),
-            order: Some(Order::Asc),
-            ..Default::default()
-        })
+        .select_frames(
+            &FrameQuery {
+                timeline_id: timeline_id.clone(),
+                frame_types: Some(vec![FrameType::Full, FrameType::Delta]),
+                order: Some(Order::Asc),
+                ..Default::default()
+            },
+            task,
+        )
         .await?;
 
     let mut all_frames: BTreeSet<Frame> = existing

@@ -25,7 +25,7 @@ fn make_db() -> UnigraphDb {
     UnigraphDb::new(sqlite.clone(), sqlite)
 }
 
-async fn setup_with_history(db: &UnigraphDb, name: &str) {
+async fn setup_with_history(db: &UnigraphDb, name: &str, task: &ll::Task) {
     db.timelines
         .create(
             &TimelineID(name.to_string()),
@@ -35,12 +35,13 @@ async fn setup_with_history(db: &UnigraphDb, name: &str) {
                 blob_storage: Default::default(),
                 store_metric_history: Some(true),
             },
+            task,
         )
         .await
         .unwrap();
 }
 
-async fn setup_without_history(db: &UnigraphDb, name: &str) {
+async fn setup_without_history(db: &UnigraphDb, name: &str, task: &ll::Task) {
     db.timelines
         .create(
             &TimelineID(name.to_string()),
@@ -50,24 +51,33 @@ async fn setup_without_history(db: &UnigraphDb, name: &str) {
                 blob_storage: Default::default(),
                 store_metric_history: None,
             },
+            task,
         )
         .await
         .unwrap();
 }
 
-async fn store(db: &UnigraphDb, timeline: &str, graph_id: i64, ts: i64, scene: &Scene) {
+async fn store(
+    db: &UnigraphDb,
+    timeline: &str,
+    graph_id: i64,
+    ts: i64,
+    scene: &Scene,
+    task: &ll::Task,
+) {
     let key = GraphTimeKey {
         timeline_id: TimelineID(timeline.to_string()),
         timestamp: Timestamp::from_unix_timestamp(ts),
         graph_id: GraphID(graph_id),
     };
-    db.graph.store(&key, &scene.to_graph()).await.unwrap();
+    db.graph.store(&key, &scene.to_graph(), task).await.unwrap();
 }
 
 async fn fetch_all_history(
     db: &UnigraphDb,
     timeline: &str,
     nodes: &[&str],
+    task: &ll::Task,
 ) -> BTreeMap<String, Vec<(Timestamp, GraphID, NodeMetricSnapshot)>> {
     let names: Vec<String> = nodes.iter().map(|s| s.to_string()).collect();
     db.metric_history
@@ -76,6 +86,7 @@ async fn fetch_all_history(
             &names,
             Timestamp::from_unix_timestamp(0),
             Timestamp::from_unix_timestamp(2_000_000_000), // ~2033
+            task,
         )
         .await
         .unwrap()
@@ -202,15 +213,16 @@ impl Rng {
 #[tokio::test]
 async fn store_and_fetch_basic() -> Result<()> {
     let db = make_db();
-    setup_with_history(&db, "t").await;
+    let task = ll::Task::create_new("test");
+    setup_with_history(&db, "t", &task).await;
 
     let s = Scene::new()
         .node("app", &[("size", 100.0)])
         .node("lib", &[("size", 50.0)]);
 
-    store(&db, "t", 1, 1000, &s).await;
+    store(&db, "t", 1, 1000, &s, &task).await;
 
-    let h = fetch_all_history(&db, "t", &["app", "lib"]).await;
+    let h = fetch_all_history(&db, "t", &["app", "lib"], &task).await;
     snapshot!(
         format_history(&h),
         "
@@ -226,14 +238,15 @@ lib:
 #[tokio::test]
 async fn history_disabled() -> Result<()> {
     let db = make_db();
-    setup_without_history(&db, "t").await;
+    let task = ll::Task::create_new("test");
+    setup_without_history(&db, "t", &task).await;
 
     let graph = TestGraphTimeline::get_nth(0);
     let key = make_graph_time_key("t", 0, 1000);
-    db.graph.store(&key, &graph).await?;
-    assert_graphs_equal(&graph, &db.graph.fetch(&key.graph_key()).await?);
+    db.graph.store(&key, &graph, &task).await?;
+    assert_graphs_equal(&graph, &db.graph.fetch(&key.graph_key(), &task).await?);
 
-    let h = fetch_all_history(&db, "t", &["anything"]).await;
+    let h = fetch_all_history(&db, "t", &["anything"], &task).await;
     assert!(h.is_empty());
     Ok(())
 }
@@ -241,12 +254,13 @@ async fn history_disabled() -> Result<()> {
 #[tokio::test]
 async fn graph_storage_unaffected_by_history() -> Result<()> {
     let db = make_db();
-    setup_with_history(&db, "t").await;
+    let task = ll::Task::create_new("test");
+    setup_with_history(&db, "t", &task).await;
 
     let graph = TestGraphTimeline::get_nth(99);
     let key = make_graph_time_key("t", 99, 5000);
-    db.graph.store(&key, &graph).await?;
-    assert_graphs_equal(&graph, &db.graph.fetch(&key.graph_key()).await?);
+    db.graph.store(&key, &graph, &task).await?;
+    assert_graphs_equal(&graph, &db.graph.fetch(&key.graph_key(), &task).await?);
     Ok(())
 }
 
@@ -325,17 +339,18 @@ fn generate_scenes(n: usize, seed: u64) -> Vec<(i64, i64, Scene)> {
 #[tokio::test]
 async fn randomized_out_of_order_with_disappearing_nodes() -> Result<()> {
     let db = make_db();
-    setup_with_history(&db, "chaos").await;
+    let task = ll::Task::create_new("test");
+    setup_with_history(&db, "chaos", &task).await;
 
     let scenes = generate_scenes(200, 42);
 
     // Store in chronological order (AdjacentDeltas requires monotonic graph_id).
     for (gid, ts, scene) in &scenes {
-        store(&db, "chaos", *gid, *ts, scene).await;
+        store(&db, "chaos", *gid, *ts, scene, &task).await;
     }
 
     // Fetch full history.
-    let h = fetch_all_history(&db, "chaos", NODES).await;
+    let h = fetch_all_history(&db, "chaos", NODES, &task).await;
 
     // -- Structural assertions --
 

@@ -106,4 +106,13 @@ impl UnigraphDb {
     pub async fn graph_conn(&self) -> Result<Box<dyn UnigraphGraphConnection + '_>> {
         self.storage.graph.conn().await
     }
+
+    /// Get a raw write connection for manual transaction control.
+    ///
+    /// Like [`graph_conn`](Self::graph_conn), but routes to the primary (read-write)
+    /// connection pool. Use this when you need to perform writes outside the
+    /// namespaced API.
+    pub async fn graph_conn_write(&self) -> Result<Box<dyn UnigraphGraphConnection + '_>> {
+        self.storage.graph.conn_write().await
+    }
 }

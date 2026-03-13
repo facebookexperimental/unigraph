@@ -45,7 +45,7 @@ impl UnigraphGraphStorage for SqliteStorage {
 
 #[async_trait]
 impl UnigraphGraphConnection for SqliteConnection {
-    async fn start_transaction(&mut self) -> Result<()> {
+    async fn start_transaction(&mut self, _task: &ll::Task) -> Result<()> {
         self.lock()
             .execute("BEGIN EXCLUSIVE", [])
             .context("Failed to begin exclusive transaction")?;
@@ -53,7 +53,7 @@ impl UnigraphGraphConnection for SqliteConnection {
         Ok(())
     }
 
-    async fn commit_transaction(&mut self) -> Result<()> {
+    async fn commit_transaction(&mut self, _task: &ll::Task) -> Result<()> {
         self.lock()
             .execute("COMMIT", [])
             .context("Failed to commit transaction")?;
@@ -65,6 +65,7 @@ impl UnigraphGraphConnection for SqliteConnection {
         &mut self,
         timeline_id: &TimelineID,
         config: &TimelineConfig,
+        _task: &ll::Task,
     ) -> Result<()> {
         let config_json =
             serde_json::to_string(config).context("Failed to serialize TimelineConfig")?;
@@ -84,6 +85,7 @@ impl UnigraphGraphConnection for SqliteConnection {
     async fn get_timeline_config(
         &mut self,
         timeline_id: &TimelineID,
+        _task: &ll::Task,
     ) -> Result<Option<TimelineConfig>> {
         let conn = self.lock();
         query_timeline_config(&conn, timeline_id)
@@ -92,6 +94,7 @@ impl UnigraphGraphConnection for SqliteConnection {
     async fn get_timeline_config_and_lock(
         &mut self,
         timeline_id: &TimelineID,
+        _task: &ll::Task,
     ) -> Result<Option<TimelineConfig>> {
         // For SQLite, BEGIN EXCLUSIVE (in start_transaction) already serializes
         // all writers. The caller has already started the transaction, so we
@@ -100,7 +103,7 @@ impl UnigraphGraphConnection for SqliteConnection {
         query_timeline_config(&conn, timeline_id)
     }
 
-    async fn list_timelines(&mut self) -> Result<Vec<TimelineID>> {
+    async fn list_timelines(&mut self, _task: &ll::Task) -> Result<Vec<TimelineID>> {
         let conn = self.lock();
         let sql = format!(
             "SELECT timeline_id FROM {} ORDER BY timeline_id",
@@ -128,6 +131,7 @@ impl UnigraphGraphConnection for SqliteConnection {
         base: Option<&GraphKey>,
         manifest_json: &str,
         inline_blobs: Option<&[u8]>,
+        _task: &ll::Task,
     ) -> Result<()> {
         let now = Timestamp::now().to_unix_timestamp();
         let timestamp = key.timestamp.to_unix_timestamp();
@@ -173,7 +177,7 @@ impl UnigraphGraphConnection for SqliteConnection {
         Ok(())
     }
 
-    async fn store_frame_empty(&mut self, key: &GraphTimeKey) -> Result<()> {
+    async fn store_frame_empty(&mut self, key: &GraphTimeKey, _task: &ll::Task) -> Result<()> {
         let now = Timestamp::now().to_unix_timestamp();
         let timestamp = key.timestamp.to_unix_timestamp();
 
@@ -192,7 +196,11 @@ impl UnigraphGraphConnection for SqliteConnection {
         Ok(())
     }
 
-    async fn select_frames(&mut self, query: &FrameQuery) -> Result<Vec<FrameRow>> {
+    async fn select_frames(
+        &mut self,
+        query: &FrameQuery,
+        _task: &ll::Task,
+    ) -> Result<Vec<FrameRow>> {
         let with_data = query.with_data.unwrap_or(false);
 
         // Build SELECT columns.
@@ -351,7 +359,7 @@ impl UnigraphGraphConnection for SqliteConnection {
         Ok(result)
     }
 
-    async fn delete_frame(&mut self, key: &GraphKey) -> Result<bool> {
+    async fn delete_frame(&mut self, key: &GraphKey, _task: &ll::Task) -> Result<bool> {
         let conn = self.lock();
         let sql = format!(
             "DELETE FROM {} WHERE timeline_id = ?1 AND graph_id = ?2",
@@ -363,7 +371,11 @@ impl UnigraphGraphConnection for SqliteConnection {
         Ok(deleted > 0)
     }
 
-    async fn register_blobs_for_cleanup(&mut self, blob_keys: &[String]) -> Result<()> {
+    async fn register_blobs_for_cleanup(
+        &mut self,
+        blob_keys: &[String],
+        _task: &ll::Task,
+    ) -> Result<()> {
         let now = Timestamp::now().to_unix_timestamp();
         let conn = self.lock();
         let sql = format!(
@@ -381,7 +393,11 @@ impl UnigraphGraphConnection for SqliteConnection {
         Ok(())
     }
 
-    async fn unregister_blobs_for_cleanup(&mut self, blob_keys: &[String]) -> Result<()> {
+    async fn unregister_blobs_for_cleanup(
+        &mut self,
+        blob_keys: &[String],
+        _task: &ll::Task,
+    ) -> Result<()> {
         let conn = self.lock();
         let sql = format!("DELETE FROM {} WHERE blob_key = ?1", TABLE_BLOBS_TO_DELETE);
         let mut stmt = conn
@@ -395,7 +411,7 @@ impl UnigraphGraphConnection for SqliteConnection {
         Ok(())
     }
 
-    async fn get_blobs_pending_cleanup(&mut self) -> Result<Vec<String>> {
+    async fn get_blobs_pending_cleanup(&mut self, _task: &ll::Task) -> Result<Vec<String>> {
         let conn = self.lock();
         let sql = format!(
             "SELECT blob_key FROM {} ORDER BY blob_key",
@@ -419,6 +435,7 @@ impl UnigraphGraphConnection for SqliteConnection {
     async fn get_blobs_pending_cleanup_older_than(
         &mut self,
         older_than: unigraph_storage_core::Timestamp,
+        _task: &ll::Task,
     ) -> Result<Vec<String>> {
         let cutoff = older_than.to_unix_timestamp();
         let conn = self.lock();
@@ -445,12 +462,12 @@ impl UnigraphGraphConnection for SqliteConnection {
 
     // -- Named locks --
 
-    async fn acquire_named_lock(&mut self, _name: &str) -> Result<()> {
+    async fn acquire_named_lock(&mut self, _name: &str, _task: &ll::Task) -> Result<()> {
         // No-op for SQLite: BEGIN EXCLUSIVE in start_transaction already serializes writers.
         Ok(())
     }
 
-    async fn release_named_lock(&mut self, _name: &str) -> Result<()> {
+    async fn release_named_lock(&mut self, _name: &str, _task: &ll::Task) -> Result<()> {
         // No-op for SQLite.
         Ok(())
     }
@@ -460,6 +477,7 @@ impl UnigraphGraphConnection for SqliteConnection {
     async fn list_external_id_mappings(
         &mut self,
         ns: &ExternalIDNamespace,
+        _task: &ll::Task,
     ) -> Result<Vec<(ExternalID, GraphID)>> {
         let conn = self.lock();
         let sql = format!(
@@ -483,6 +501,7 @@ impl UnigraphGraphConnection for SqliteConnection {
         &mut self,
         ns: &ExternalIDNamespace,
         mappings: &[(ExternalID, GraphID)],
+        _task: &ll::Task,
     ) -> Result<()> {
         let now = Timestamp::now().to_unix_timestamp();
         let conn = self.lock();
@@ -503,6 +522,7 @@ impl UnigraphGraphConnection for SqliteConnection {
         &mut self,
         external_id_namespace: &ExternalIDNamespace,
         graph_id: &GraphID,
+        _task: &ll::Task,
     ) -> Result<Option<ExternalID>> {
         let conn = self.lock();
         let sql = format!(
@@ -528,6 +548,7 @@ impl UnigraphGraphConnection for SqliteConnection {
         &mut self,
         external_id_namespace: &ExternalIDNamespace,
         graph_ids: &[GraphID],
+        _task: &ll::Task,
     ) -> Result<Vec<(GraphID, ExternalID)>> {
         let conn = self.lock();
         let sql = format!(
@@ -559,6 +580,7 @@ impl UnigraphGraphConnection for SqliteConnection {
     async fn get_latest_external_id(
         &mut self,
         external_id_namespace: &ExternalIDNamespace,
+        _task: &ll::Task,
     ) -> Result<Option<ExternalID>> {
         let conn = self.lock();
         let sql = format!(
@@ -588,6 +610,7 @@ impl UnigraphGraphConnection for SqliteConnection {
         timeline_id: &TimelineID,
         week_key: &str,
         node_names: &[String],
+        _task: &ll::Task,
     ) -> Result<()> {
         let now = Timestamp::now().to_unix_timestamp();
         let conn = self.lock();
@@ -619,6 +642,7 @@ impl UnigraphGraphConnection for SqliteConnection {
         &mut self,
         timeline_id: &TimelineID,
         week_key: &str,
+        _task: &ll::Task,
     ) -> Result<std::collections::BTreeMap<String, Vec<u8>>> {
         let conn = self.lock();
         let sql = format!(
@@ -651,6 +675,7 @@ impl UnigraphGraphConnection for SqliteConnection {
         timeline_id: &TimelineID,
         week_key: &str,
         entries: &[(String, Vec<u8>)],
+        _task: &ll::Task,
     ) -> Result<()> {
         let now = Timestamp::now().to_unix_timestamp();
         let conn = self.lock();
@@ -683,6 +708,7 @@ impl UnigraphGraphConnection for SqliteConnection {
         node_names: &[String],
         start_week: &str,
         end_week: &str,
+        _task: &ll::Task,
     ) -> Result<Vec<(String, String, Vec<u8>)>> {
         if node_names.is_empty() {
             return Ok(vec![]);

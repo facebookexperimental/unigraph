@@ -5,6 +5,7 @@
 use std::sync::Arc;
 
 use anyhow::Result;
+use ll::task;
 use unigraph_storage_core::TimelineConfig;
 use unigraph_storage_core::TimelineID;
 
@@ -20,21 +21,33 @@ pub struct Timelines {
 
 impl Timelines {
     /// Create a new timeline with the given configuration.
-    pub async fn create(&self, timeline_id: &TimelineID, config: &TimelineConfig) -> Result<()> {
-        let mut conn = self.storage.graph.conn().await?;
-        conn.create_timeline(timeline_id, config).await
+    #[task(tags(l3))]
+    pub async fn create(
+        &self,
+        timeline_id: &TimelineID,
+        config: &TimelineConfig,
+        task: &ll::Task,
+    ) -> Result<()> {
+        let mut conn = self.storage.graph.conn_write().await?;
+        conn.create_timeline(timeline_id, config, &task).await
     }
 
     /// Get the configuration for an existing timeline.
     /// Returns `None` if the timeline does not exist.
-    pub async fn get_config(&self, timeline_id: &TimelineID) -> Result<Option<TimelineConfig>> {
+    #[task(tags(l3))]
+    pub async fn get_config(
+        &self,
+        timeline_id: &TimelineID,
+        task: &ll::Task,
+    ) -> Result<Option<TimelineConfig>> {
         let mut conn = self.storage.graph.conn().await?;
-        conn.get_timeline_config(timeline_id).await
+        conn.get_timeline_config(timeline_id, &task).await
     }
 
     /// List all timeline IDs.
-    pub async fn list(&self) -> Result<Vec<TimelineID>> {
+    #[task(tags(l3))]
+    pub async fn list(&self, task: &ll::Task) -> Result<Vec<TimelineID>> {
         let mut conn = self.storage.graph.conn().await?;
-        conn.list_timelines().await
+        conn.list_timelines(&task).await
     }
 }

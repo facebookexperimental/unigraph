@@ -31,8 +31,9 @@ pub async fn store_full(
     storage: &UnigraphStorage,
     key: &GraphTimeKey,
     graph: &ArrayGraphSerializable,
+    task: &ll::Task,
 ) -> Result<()> {
-    let prepared_history = storage.prepare_history_if_enabled(key, graph).await?;
+    let prepared_history = storage.prepare_history_if_enabled(key, graph, task).await?;
 
     let config = make_pack_config(key);
     let package = graph.pack(&config).context("Failed to pack graph")?;
@@ -40,12 +41,13 @@ pub async fn store_full(
         serde_json::to_string(&package.manifest).context("Failed to serialize graph manifest")?;
 
     let prepared = storage
-        .prepare_blobs_for_storage(&key.timeline_id, &package.blobs)
+        .prepare_blobs_for_storage(&key.timeline_id, &package.blobs, task)
         .await?;
 
-    let mut conn = storage.graph.conn().await?;
-    conn.start_transaction().await?;
-    conn.get_timeline_config_and_lock(&key.timeline_id).await?;
+    let mut conn = storage.graph.conn_write().await?;
+    conn.start_transaction(task).await?;
+    conn.get_timeline_config_and_lock(&key.timeline_id, task)
+        .await?;
 
     storage
         .store_package_on_conn(
@@ -56,6 +58,7 @@ pub async fn store_full(
             &manifest_json,
             prepared.inline.as_deref(),
             prepared.external_keys.as_deref(),
+            task,
         )
         .await?;
 
@@ -64,11 +67,12 @@ pub async fn store_full(
             &mut *conn,
             &key.timeline_id,
             prepared_history,
+            task,
         )
         .await?;
     }
 
-    conn.commit_transaction().await?;
+    conn.commit_transaction(task).await?;
     Ok(())
 }
 
@@ -81,13 +85,14 @@ pub async fn store_delta(
     key: &GraphTimeKey,
     base_key: &GraphKey,
     target_graph: &ArrayGraphSerializable,
+    task: &ll::Task,
 ) -> Result<()> {
     let prepared_history = storage
-        .prepare_history_if_enabled(key, target_graph)
+        .prepare_history_if_enabled(key, target_graph, task)
         .await?;
 
     let base_graph = storage
-        .fetch_graph(base_key)
+        .fetch_graph(base_key, task)
         .await
         .with_context(|| format!("Failed to fetch base graph {:?}", base_key))?;
 
@@ -100,12 +105,13 @@ pub async fn store_delta(
         serde_json::to_string(&package.manifest).context("Failed to serialize delta manifest")?;
 
     let prepared = storage
-        .prepare_blobs_for_storage(&key.timeline_id, &package.blobs)
+        .prepare_blobs_for_storage(&key.timeline_id, &package.blobs, task)
         .await?;
 
-    let mut conn = storage.graph.conn().await?;
-    conn.start_transaction().await?;
-    conn.get_timeline_config_and_lock(&key.timeline_id).await?;
+    let mut conn = storage.graph.conn_write().await?;
+    conn.start_transaction(task).await?;
+    conn.get_timeline_config_and_lock(&key.timeline_id, task)
+        .await?;
 
     storage
         .store_package_on_conn(
@@ -116,6 +122,7 @@ pub async fn store_delta(
             &manifest_json,
             prepared.inline.as_deref(),
             prepared.external_keys.as_deref(),
+            task,
         )
         .await?;
 
@@ -124,11 +131,12 @@ pub async fn store_delta(
             &mut *conn,
             &key.timeline_id,
             prepared_history,
+            task,
         )
         .await?;
     }
 
-    conn.commit_transaction().await?;
+    conn.commit_transaction(task).await?;
     Ok(())
 }
 
@@ -147,6 +155,7 @@ pub async fn store_delta(
 pub async fn fetch_graph(
     storage: &UnigraphStorage,
     key: &GraphKey,
+    task: &ll::Task,
 ) -> Result<ArrayGraphSerializable> {
     let mut chain: Vec<(GraphKey, ChainEntry)> = Vec::new();
     let mut current_key = key.clone();
@@ -160,7 +169,7 @@ pub async fn fetch_graph(
             current_key,
         );
 
-        let row = storage.get_frame_with_data(&current_key).await?;
+        let row = storage.get_frame_with_data(&current_key, task).await?;
 
         match row.frame_type {
             FrameType::Full => {
@@ -181,7 +190,7 @@ pub async fn fetch_graph(
                 // If base is in a different timeline, fetch it via schema dispatch
                 // and stop walking.
                 if base.timeline_id != key.timeline_id {
-                    let base_graph = storage.fetch_graph(&base).await.with_context(|| {
+                    let base_graph = storage.fetch_graph(&base, task).await.with_context(|| {
                         format!(
                             "Failed to fetch cross-timeline base {:?} for {:?}",
                             base, current_key

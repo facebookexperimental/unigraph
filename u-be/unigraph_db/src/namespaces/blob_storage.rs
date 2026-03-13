@@ -5,6 +5,7 @@
 use std::sync::Arc;
 
 use anyhow::Result;
+use ll::task;
 
 use crate::storage::UnigraphStorage;
 
@@ -24,13 +25,15 @@ impl BlobStorageOps {
     /// immediately.
     ///
     /// Returns the number of blobs swept.
-    pub async fn sweep(&self, min_age: std::time::Duration) -> Result<usize> {
-        self.storage.sweep_blobs(min_age).await
+    #[task(tags(l3))]
+    pub async fn sweep(&self, min_age: std::time::Duration, task: &ll::Task) -> Result<usize> {
+        self.storage.sweep_blobs(min_age, &task).await
     }
 
     /// Get all blob keys that are pending cleanup.
-    pub async fn get_pending_cleanup(&self) -> Result<Vec<String>> {
+    #[task(tags(l3))]
+    pub async fn get_pending_cleanup(&self, task: &ll::Task) -> Result<Vec<String>> {
         let mut conn = self.storage.graph.conn().await?;
-        conn.get_blobs_pending_cleanup().await
+        conn.get_blobs_pending_cleanup(&task).await
     }
 }

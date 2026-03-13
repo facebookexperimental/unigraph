@@ -34,6 +34,7 @@ fn tid() -> TimelineID {
 #[tokio::test]
 async fn compact_and_select_frames() -> Result<()> {
     let db = make_db();
+    let task = ll::Task::create_new("test");
     db.timelines
         .create(
             &tid(),
@@ -43,6 +44,7 @@ async fn compact_and_select_frames() -> Result<()> {
                 blob_storage: Default::default(),
                 store_metric_history: None,
             },
+            &task,
         )
         .await?;
 
@@ -55,13 +57,13 @@ async fn compact_and_select_frames() -> Result<()> {
         .collect();
 
     for (i, key) in keys.iter().enumerate() {
-        db.graph.store(key, &graphs[i]).await?;
+        db.graph.store(key, &graphs[i], &task).await?;
     }
 
     // ---------------------------------------------------------------
     // 2. Snapshot: all 12 frames are Full
     // ---------------------------------------------------------------
-    let all = db.frames.list(&tid()).await?;
+    let all = db.frames.list(&tid(), &task).await?;
     snapshot!(
         format_frames_table(&all),
         "
@@ -89,14 +91,14 @@ graph_id             timestamp                type       base
     // ---------------------------------------------------------------
     let converted = db
         .graph
-        .compact(&tid(), Some(ts(1003)), Some(ts(1008)))
+        .compact(&tid(), Some(ts(1003)), Some(ts(1008)), &task)
         .await?;
     assert_eq!(converted, 5);
 
     // ---------------------------------------------------------------
     // 4. Snapshot after partial compaction
     // ---------------------------------------------------------------
-    let all = db.frames.list(&tid()).await?;
+    let all = db.frames.list(&tid(), &task).await?;
     snapshot!(
         format_frames_table(&all),
         "
@@ -119,7 +121,7 @@ graph_id             timestamp                type       base
 
     // Verify all 12 graphs are still fetchable after partial compaction
     for (i, key) in keys.iter().enumerate() {
-        let fetched = db.graph.fetch(&key.graph_key()).await?;
+        let fetched = db.graph.fetch(&key.graph_key(), &task).await?;
         assert_graphs_equal(&graphs[i], &fetched);
     }
 
@@ -131,11 +133,14 @@ graph_id             timestamp                type       base
 
     // 5a. Select only Full frames
     let full_only = conn
-        .select_frames(&FrameQuery {
-            timeline_id: tid(),
-            frame_types: Some(vec![FrameType::Full]),
-            ..Default::default()
-        })
+        .select_frames(
+            &FrameQuery {
+                timeline_id: tid(),
+                frame_types: Some(vec![FrameType::Full]),
+                ..Default::default()
+            },
+            &task,
+        )
         .await?;
     snapshot!(
         format_frames_table(&full_only),
@@ -154,11 +159,14 @@ graph_id             timestamp                type       base
 
     // 5b. Select only Delta frames
     let deltas = conn
-        .select_frames(&FrameQuery {
-            timeline_id: tid(),
-            frame_types: Some(vec![FrameType::Delta]),
-            ..Default::default()
-        })
+        .select_frames(
+            &FrameQuery {
+                timeline_id: tid(),
+                frame_types: Some(vec![FrameType::Delta]),
+                ..Default::default()
+            },
+            &task,
+        )
         .await?;
     snapshot!(
         format_frames_table(&deltas),
@@ -175,14 +183,17 @@ graph_id             timestamp                type       base
 
     // 5c. Time range: only frames with timestamp 1005..=1009
     let time_range = conn
-        .select_frames(&FrameQuery {
-            timeline_id: tid(),
-            timestamp_bounds: Some(TimestampBounds {
-                start: Some(ts(1005)),
-                end: Some(ts(1009)),
-            }),
-            ..Default::default()
-        })
+        .select_frames(
+            &FrameQuery {
+                timeline_id: tid(),
+                timestamp_bounds: Some(TimestampBounds {
+                    start: Some(ts(1005)),
+                    end: Some(ts(1009)),
+                }),
+                ..Default::default()
+            },
+            &task,
+        )
         .await?;
     snapshot!(
         format_frames_table(&time_range),
@@ -199,12 +210,15 @@ graph_id             timestamp                type       base
 
     // 5d. Last 3 frames (desc order, limit 3)
     let last_3 = conn
-        .select_frames(&FrameQuery {
-            timeline_id: tid(),
-            order: Some(Order::Desc),
-            limit: Some(3),
-            ..Default::default()
-        })
+        .select_frames(
+            &FrameQuery {
+                timeline_id: tid(),
+                order: Some(Order::Desc),
+                limit: Some(3),
+                ..Default::default()
+            },
+            &task,
+        )
         .await?;
     snapshot!(
         format_frames_table(&last_3),
@@ -219,11 +233,14 @@ graph_id             timestamp                type       base
 
     // 5e. graph_id bounds: 2..=6
     let id_range = conn
-        .select_frames(&FrameQuery {
-            timeline_id: tid(),
-            graph_id_bounds: Some((Some(GraphID(2)), Some(GraphID(6)))),
-            ..Default::default()
-        })
+        .select_frames(
+            &FrameQuery {
+                timeline_id: tid(),
+                graph_id_bounds: Some((Some(GraphID(2)), Some(GraphID(6)))),
+                ..Default::default()
+            },
+            &task,
+        )
         .await?;
     snapshot!(
         format_frames_table(&id_range),
@@ -240,11 +257,14 @@ graph_id             timestamp                type       base
 
     // 5f. Specific graph_ids (cherry-pick)
     let cherry = conn
-        .select_frames(&FrameQuery {
-            timeline_id: tid(),
-            graph_ids: Some(vec![GraphID(0), GraphID(5), GraphID(11)]),
-            ..Default::default()
-        })
+        .select_frames(
+            &FrameQuery {
+                timeline_id: tid(),
+                graph_ids: Some(vec![GraphID(0), GraphID(5), GraphID(11)]),
+                ..Default::default()
+            },
+            &task,
+        )
         .await?;
     snapshot!(
         format_frames_table(&cherry),
@@ -259,11 +279,14 @@ graph_id             timestamp                type       base
 
     // 5g. "before" — frame immediately preceding graph_id=6 at ts=1006
     let preceding = conn
-        .select_frames(&FrameQuery {
-            timeline_id: tid(),
-            before: Some((ts(1006), GraphID(6))),
-            ..Default::default()
-        })
+        .select_frames(
+            &FrameQuery {
+                timeline_id: tid(),
+                before: Some((ts(1006), GraphID(6))),
+                ..Default::default()
+            },
+            &task,
+        )
         .await?;
     snapshot!(
         format_frames_table(&preceding),
@@ -276,16 +299,19 @@ graph_id             timestamp                type       base
 
     // 5h. Combined: Full frames in time range 1000..=1005, limit 2
     let combined = conn
-        .select_frames(&FrameQuery {
-            timeline_id: tid(),
-            frame_types: Some(vec![FrameType::Full]),
-            timestamp_bounds: Some(TimestampBounds {
-                start: Some(ts(1000)),
-                end: Some(ts(1005)),
-            }),
-            limit: Some(2),
-            ..Default::default()
-        })
+        .select_frames(
+            &FrameQuery {
+                timeline_id: tid(),
+                frame_types: Some(vec![FrameType::Full]),
+                timestamp_bounds: Some(TimestampBounds {
+                    start: Some(ts(1000)),
+                    end: Some(ts(1005)),
+                }),
+                limit: Some(2),
+                ..Default::default()
+            },
+            &task,
+        )
         .await?;
     snapshot!(
         format_frames_table(&combined),

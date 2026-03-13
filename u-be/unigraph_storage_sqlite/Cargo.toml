@@ -11,6 +11,7 @@ license = "MIT"
 anyhow = "1.0.102"
 async-trait = "0.1.86"
 chrono = { version = "0.4.44", features = ["clock", "serde", "std"], default-features = false }
+ll = "8.1"
 rusqlite = { version = "0.37.0", features = ["bundled"] }
 serde_json = { version = "1.0.140", features = ["alloc", "float_roundtrip", "raw_value", "unbounded_depth"] }
 unigraph_storage_core = { path = "../unigraph_storage_core" }

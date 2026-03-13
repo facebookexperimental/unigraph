@@ -187,9 +187,10 @@ async fn api_timelines(
     State(state): State<AppState>,
 ) -> Result<impl IntoResponse, http::StatusCode> {
     let db = state.db.as_ref().ok_or(http::StatusCode::NOT_FOUND)?;
+    let task = ll::Task::create_new("api_timelines");
     let timelines = db
         .timelines
-        .list()
+        .list(&task)
         .await
         .map_err(|_| http::StatusCode::INTERNAL_SERVER_ERROR)?;
 
@@ -216,9 +217,10 @@ async fn api_timeline_frames(
     axum::extract::Path(timeline_id): axum::extract::Path<String>,
 ) -> Result<impl IntoResponse, http::StatusCode> {
     let db = state.db.as_ref().ok_or(http::StatusCode::NOT_FOUND)?;
+    let task = ll::Task::create_new("api_timeline_frames");
     let frames = db
         .frames
-        .list(&TimelineID(timeline_id))
+        .list(&TimelineID(timeline_id), &task)
         .await
         .map_err(|_| http::StatusCode::INTERNAL_SERVER_ERROR)?;
 
@@ -256,9 +258,10 @@ async fn api_timeline_graph(
         graph_id: GraphID(path.graph_id),
     };
 
+    let task = ll::Task::create_new("api_timeline_graph");
     let frame = db
         .frames
-        .get(&key, false)
+        .get(&key, false, &task)
         .await
         .map_err(|_| http::StatusCode::INTERNAL_SERVER_ERROR)?
         .ok_or(http::StatusCode::NOT_FOUND)?;
@@ -269,7 +272,7 @@ async fn api_timeline_graph(
 
     let graph = db
         .graph
-        .fetch(&key)
+        .fetch(&key, &task)
         .await
         .map_err(|_| http::StatusCode::INTERNAL_SERVER_ERROR)?;
 

@@ -9,6 +9,7 @@
 use std::sync::Arc;
 
 use anyhow::Result;
+use ll::task;
 use unigraph_core::ArrayGraphSerializable;
 use unigraph_storage_core::FrameQuery;
 use unigraph_storage_core::FrameType;
@@ -40,14 +41,20 @@ impl Graph {
     /// Dispatches to the schema-specific store implementation:
     /// - AdjacentDeltas: validates monotonic ordering, stores as Full
     /// - FullOrDelta: stores as Full with no ordering validation
-    pub async fn store(&self, key: &GraphTimeKey, graph: &ArrayGraphSerializable) -> Result<()> {
-        let schema = self.get_timeline_schema(&key.timeline_id).await?;
+    #[task(tags(l3))]
+    pub async fn store(
+        &self,
+        key: &GraphTimeKey,
+        graph: &ArrayGraphSerializable,
+        task: &ll::Task,
+    ) -> Result<()> {
+        let schema = self.get_timeline_schema(&key.timeline_id, &task).await?;
         match schema {
             TimelineSchema::AdjacentDeltas(_) => {
-                adjacent_deltas::store_full(&self.storage, key, graph).await
+                adjacent_deltas::store_full(&self.storage, key, graph, &task).await
             }
             TimelineSchema::FullOrDelta(_) => {
-                full_or_delta::store_full(&self.storage, key, graph).await
+                full_or_delta::store_full(&self.storage, key, graph, &task).await
             }
         }
     }
@@ -59,13 +66,15 @@ impl Graph {
     ///
     /// Only supported for FullOrDelta timelines. AdjacentDeltas manages
     /// deltas via compaction — explicit delta storage is not allowed.
+    #[task(tags(l3))]
     pub async fn store_as_delta_from(
         &self,
         key: &GraphTimeKey,
         graph: &ArrayGraphSerializable,
         from_key: &GraphKey,
+        task: &ll::Task,
     ) -> Result<()> {
-        let schema = self.get_timeline_schema(&key.timeline_id).await?;
+        let schema = self.get_timeline_schema(&key.timeline_id, &task).await?;
         match schema {
             TimelineSchema::AdjacentDeltas(_) => {
                 anyhow::bail!(
@@ -74,60 +83,77 @@ impl Graph {
                 )
             }
             TimelineSchema::FullOrDelta(_) => {
-                full_or_delta::store_delta(&self.storage, key, from_key, graph).await
+                full_or_delta::store_delta(&self.storage, key, from_key, graph, &task).await
             }
         }
     }
 
     /// Store error data for a failed graph computation.
-    pub async fn store_error(&self, key: &GraphTimeKey, errors: &[TimestampedError]) -> Result<()> {
-        self.storage.store_error(key, errors).await
+    #[task(tags(l3))]
+    pub async fn store_error(
+        &self,
+        key: &GraphTimeKey,
+        errors: &[TimestampedError],
+        task: &ll::Task,
+    ) -> Result<()> {
+        self.storage.store_error(key, errors, &task).await
     }
 
     /// Fetch and reconstruct a graph from storage.
     ///
     /// Dispatches to the schema-specific fetch implementation based on the
     /// timeline's configuration.
-    pub async fn fetch(&self, key: &GraphKey) -> Result<ArrayGraphSerializable> {
-        self.storage.fetch_graph(key).await
+    #[task(tags(l3))]
+    pub async fn fetch(&self, key: &GraphKey, task: &ll::Task) -> Result<ArrayGraphSerializable> {
+        self.storage.fetch_graph(key, &task).await
     }
 
     /// Fetch the latest reconstructable graph from a timeline.
     ///
     /// Finds the most recent `Full` or `Delta` frame (skipping `Empty` and `Error`)
     /// and reconstructs the graph from it.
+    #[task(tags(l3))]
     pub async fn fetch_latest(
         &self,
         timeline_id: &TimelineID,
+        task: &ll::Task,
     ) -> Result<(GraphKey, ArrayGraphSerializable)> {
-        let frame = self.find_latest_fetchable_frame(timeline_id).await?;
+        let frame = self.find_latest_fetchable_frame(timeline_id, &task).await?;
         let key = GraphKey {
             timeline_id: timeline_id.clone(),
             graph_id: frame.frame.graph_id,
         };
-        let graph = self.fetch(&key).await?;
+        let graph = self.storage.fetch_graph(&key, &task).await?;
         Ok((key, graph))
     }
 
     /// Fetch errors for a frame.
-    pub async fn fetch_errors(&self, key: &GraphKey) -> Result<Vec<TimestampedError>> {
-        self.storage.fetch_errors(key).await
+    #[task(tags(l3))]
+    pub async fn fetch_errors(
+        &self,
+        key: &GraphKey,
+        task: &ll::Task,
+    ) -> Result<Vec<TimestampedError>> {
+        self.storage.fetch_errors(key, &task).await
     }
 
     /// Compact a timeline by replacing consecutive Full frames with Deltas.
     ///
     /// Dispatches to the schema-specific compaction implementation.
     /// Returns the number of frames converted from Full to Delta.
+    #[task(tags(l3))]
     pub async fn compact(
         &self,
         timeline_id: &TimelineID,
         start: Option<Timestamp>,
         end: Option<Timestamp>,
+        task: &ll::Task,
     ) -> Result<usize> {
-        let schema = self.get_timeline_schema(timeline_id).await?;
+        let schema = self.get_timeline_schema(timeline_id, &task).await?;
         match schema {
             TimelineSchema::AdjacentDeltas(_) => {
-                adjacent_deltas::compact_timeline(&self.storage, timeline_id, start, end).await
+                adjacent_deltas::compact_timeline(&self.storage, timeline_id, start, end, &task)
+                    .await
             }
             TimelineSchema::FullOrDelta(_) => {
                 full_or_delta::compact_timeline(&self.storage, timeline_id, start, end).await
@@ -138,11 +164,17 @@ impl Graph {
     /// Delete a frame and register its external blobs for cleanup.
     ///
     /// Dispatches to the schema-specific delete implementation.
-    pub async fn delete(&self, key: &GraphKey, timeline_id: &TimelineID) -> Result<bool> {
-        let schema = self.get_timeline_schema(timeline_id).await?;
+    #[task(tags(l3))]
+    pub async fn delete(
+        &self,
+        key: &GraphKey,
+        timeline_id: &TimelineID,
+        task: &ll::Task,
+    ) -> Result<bool> {
+        let schema = self.get_timeline_schema(timeline_id, &task).await?;
         match schema {
             TimelineSchema::AdjacentDeltas(_) | TimelineSchema::FullOrDelta(_) => {
-                self.delete_with_lock(key, timeline_id).await
+                self.delete_with_lock(key, timeline_id, &task).await
             }
         }
     }
@@ -151,10 +183,14 @@ impl Graph {
 // -- Private helpers --
 
 impl Graph {
-    async fn get_timeline_schema(&self, timeline_id: &TimelineID) -> Result<TimelineSchema> {
+    async fn get_timeline_schema(
+        &self,
+        timeline_id: &TimelineID,
+        task: &ll::Task,
+    ) -> Result<TimelineSchema> {
         let mut conn = self.storage.graph.conn().await?;
         let config = conn
-            .get_timeline_config(timeline_id)
+            .get_timeline_config(timeline_id, task)
             .await?
             .ok_or_else(|| anyhow::anyhow!("Timeline not found: {:?}", timeline_id))?;
         Ok(config.schema)
@@ -163,20 +199,24 @@ impl Graph {
     async fn find_latest_fetchable_frame(
         &self,
         timeline_id: &TimelineID,
+        task: &ll::Task,
     ) -> Result<unigraph_storage_core::FrameRow> {
         let mut conn = self.storage.graph.conn().await?;
         let mut frames = conn
-            .select_frames(&FrameQuery {
-                timeline_id: timeline_id.clone(),
-                limit: Some(1),
-                frame_types: Some(vec![FrameType::Full, FrameType::Delta]),
-                order: Some(Order::Desc),
-                timestamp_bounds: None,
-                graph_id_bounds: None,
-                graph_ids: None,
-                with_data: Some(false),
-                before: None,
-            })
+            .select_frames(
+                &FrameQuery {
+                    timeline_id: timeline_id.clone(),
+                    limit: Some(1),
+                    frame_types: Some(vec![FrameType::Full, FrameType::Delta]),
+                    order: Some(Order::Desc),
+                    timestamp_bounds: None,
+                    graph_id_bounds: None,
+                    graph_ids: None,
+                    with_data: Some(false),
+                    before: None,
+                },
+                task,
+            )
             .await?;
 
         frames.pop().ok_or_else(|| {
@@ -184,12 +224,20 @@ impl Graph {
         })
     }
 
-    async fn delete_with_lock(&self, key: &GraphKey, timeline_id: &TimelineID) -> Result<bool> {
-        let mut conn = self.storage.graph.conn().await?;
-        conn.start_transaction().await?;
-        conn.get_timeline_config_and_lock(timeline_id).await?;
-        let deleted = self.storage.delete_frame_on_conn(&mut *conn, key).await?;
-        conn.commit_transaction().await?;
+    async fn delete_with_lock(
+        &self,
+        key: &GraphKey,
+        timeline_id: &TimelineID,
+        task: &ll::Task,
+    ) -> Result<bool> {
+        let mut conn = self.storage.graph.conn_write().await?;
+        conn.start_transaction(task).await?;
+        conn.get_timeline_config_and_lock(timeline_id, task).await?;
+        let deleted = self
+            .storage
+            .delete_frame_on_conn(&mut *conn, key, task)
+            .await?;
+        conn.commit_transaction(task).await?;
         Ok(deleted)
     }
 }

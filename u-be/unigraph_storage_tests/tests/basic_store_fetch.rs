@@ -14,7 +14,7 @@ fn make_db() -> UnigraphDb {
     UnigraphDb::new(sqlite.clone(), sqlite)
 }
 
-async fn setup_timeline(db: &UnigraphDb, name: &str) {
+async fn setup_timeline(db: &UnigraphDb, name: &str, task: &ll::Task) {
     db.timelines
         .create(
             &TimelineID(name.to_string()),
@@ -24,6 +24,7 @@ async fn setup_timeline(db: &UnigraphDb, name: &str) {
                 blob_storage: Default::default(),
                 store_metric_history: None,
             },
+            task,
         )
         .await
         .unwrap();
@@ -32,14 +33,15 @@ async fn setup_timeline(db: &UnigraphDb, name: &str) {
 #[tokio::test]
 async fn store_and_fetch_full_graph() -> Result<()> {
     let db = make_db();
-    setup_timeline(&db, "test").await;
+    let task = ll::Task::create_new("test");
+    setup_timeline(&db, "test", &task).await;
 
     let graph = TestGraphTimeline::get_nth(42);
     let key = make_graph_time_key("test", 42, 1000);
 
-    db.graph.store(&key, &graph).await?;
+    db.graph.store(&key, &graph, &task).await?;
 
-    let fetched = db.graph.fetch(&key.graph_key()).await?;
+    let fetched = db.graph.fetch(&key.graph_key(), &task).await?;
     assert_graphs_equal(&graph, &fetched);
 
     Ok(())
@@ -48,15 +50,19 @@ async fn store_and_fetch_full_graph() -> Result<()> {
 #[tokio::test]
 async fn store_multiple_graphs_and_list_frames() -> Result<()> {
     let db = make_db();
-    setup_timeline(&db, "test").await;
+    let task = ll::Task::create_new("test");
+    setup_timeline(&db, "test", &task).await;
 
     for i in 0..5 {
         let graph = TestGraphTimeline::get_nth(i);
         let key = make_graph_time_key("test", i as i64, 1000 + i as i64);
-        db.graph.store(&key, &graph).await?;
+        db.graph.store(&key, &graph, &task).await?;
     }
 
-    let frames = db.frames.list(&TimelineID("test".to_string())).await?;
+    let frames = db
+        .frames
+        .list(&TimelineID("test".to_string()), &task)
+        .await?;
     assert_eq!(frames.len(), 5);
 
     snapshot!(
@@ -75,7 +81,10 @@ graph_id             timestamp                type       base
     // Verify each graph can be fetched and matches
     for i in 0..5 {
         let expected = TestGraphTimeline::get_nth(i);
-        let fetched = db.graph.fetch(&make_graph_key("test", i as i64)).await?;
+        let fetched = db
+            .graph
+            .fetch(&make_graph_key("test", i as i64), &task)
+            .await?;
         assert_graphs_equal(&expected, &fetched);
     }
 
@@ -85,18 +94,22 @@ graph_id             timestamp                type       base
 #[tokio::test]
 async fn store_empty_frame() -> Result<()> {
     let db = make_db();
-    setup_timeline(&db, "test").await;
+    let task = ll::Task::create_new("test");
+    setup_timeline(&db, "test", &task).await;
 
     let key = make_graph_time_key("test", 1, 1000);
-    db.frames.store_empty(&key).await?;
+    db.frames.store_empty(&key, &task).await?;
 
     // Verify it's listed
-    let frames = db.frames.list(&TimelineID("test".to_string())).await?;
+    let frames = db
+        .frames
+        .list(&TimelineID("test".to_string()), &task)
+        .await?;
     assert_eq!(frames.len(), 1);
     assert_eq!(frames[0].frame_type, FrameType::Empty);
 
     // Verify fetch returns an error
-    let result = db.graph.fetch(&key.graph_key()).await;
+    let result = db.graph.fetch(&key.graph_key(), &task).await;
     assert!(result.is_err());
     let err_msg = format!("{}", result.err().unwrap());
     assert!(
@@ -114,7 +127,8 @@ async fn store_empty_frame() -> Result<()> {
 #[tokio::test]
 async fn store_error_frame() -> Result<()> {
     let db = make_db();
-    setup_timeline(&db, "test").await;
+    let task = ll::Task::create_new("test");
+    setup_timeline(&db, "test", &task).await;
 
     let errors = vec![
         TimestampedError {
@@ -128,19 +142,22 @@ async fn store_error_frame() -> Result<()> {
     ];
 
     let key = make_graph_time_key("test", 1, 1000);
-    db.graph.store_error(&key, &errors).await?;
+    db.graph.store_error(&key, &errors, &task).await?;
 
     // Verify it's listed as Error
-    let frames = db.frames.list(&TimelineID("test".to_string())).await?;
+    let frames = db
+        .frames
+        .list(&TimelineID("test".to_string()), &task)
+        .await?;
     assert_eq!(frames.len(), 1);
     assert_eq!(frames[0].frame_type, FrameType::Error);
 
     // Verify fetch_graph returns an error
-    let result = db.graph.fetch(&key.graph_key()).await;
+    let result = db.graph.fetch(&key.graph_key(), &task).await;
     assert!(result.is_err());
 
     // Verify errors can be fetched back
-    let fetched_errors = db.graph.fetch_errors(&key.graph_key()).await?;
+    let fetched_errors = db.graph.fetch_errors(&key.graph_key(), &task).await?;
     assert_eq!(fetched_errors.len(), 2);
     assert_eq!(fetched_errors[0].message, errors[0].message);
     assert_eq!(fetched_errors[1].message, errors[1].message);
@@ -151,16 +168,17 @@ async fn store_error_frame() -> Result<()> {
 #[tokio::test]
 async fn delete_frame() -> Result<()> {
     let db = make_db();
-    setup_timeline(&db, "test").await;
+    let task = ll::Task::create_new("test");
+    setup_timeline(&db, "test", &task).await;
 
     let graph = TestGraphTimeline::get_nth(1);
     let key = make_graph_time_key("test", 1, 1000);
     let timeline_id = TimelineID("test".to_string());
 
-    db.graph.store(&key, &graph).await?;
+    db.graph.store(&key, &graph, &task).await?;
 
     // Before deletion: frame exists, no blobs pending cleanup
-    let frames = db.frames.list(&timeline_id).await?;
+    let frames = db.frames.list(&timeline_id, &task).await?;
     snapshot!(
         format_frames_table(&frames),
         "
@@ -170,15 +188,18 @@ graph_id             timestamp                type       base
 "
     );
 
-    let pending = db.blob_storage.get_pending_cleanup().await?;
+    let pending = db.blob_storage.get_pending_cleanup(&task).await?;
     snapshot!(format_blob_keys(&pending), "");
 
     // Delete it
-    let deleted = db.graph.delete(&key.graph_key(), &timeline_id).await?;
+    let deleted = db
+        .graph
+        .delete(&key.graph_key(), &timeline_id, &task)
+        .await?;
     assert!(deleted);
 
     // After deletion: no frames, no pending blobs (inline blobs disappear with the row)
-    let frames = db.frames.list(&timeline_id).await?;
+    let frames = db.frames.list(&timeline_id, &task).await?;
     snapshot!(
         format_frames_table(&frames),
         "
@@ -187,11 +208,14 @@ graph_id             timestamp                type       base
 "
     );
 
-    let pending = db.blob_storage.get_pending_cleanup().await?;
+    let pending = db.blob_storage.get_pending_cleanup(&task).await?;
     snapshot!(format_blob_keys(&pending), "");
 
     // Second delete returns false (idempotent)
-    let deleted = db.graph.delete(&key.graph_key(), &timeline_id).await?;
+    let deleted = db
+        .graph
+        .delete(&key.graph_key(), &timeline_id, &task)
+        .await?;
     assert!(!deleted);
 
     Ok(())
@@ -203,6 +227,7 @@ async fn delete_frame_with_external_blobs() -> Result<()> {
 
     let sqlite = Arc::new(SqliteStorage::new_in_memory().unwrap());
     let db = UnigraphDb::new(sqlite.clone(), sqlite.clone());
+    let task = ll::Task::create_new("test");
 
     // Create timeline with External blob storage — forces all blobs to external storage
     db.timelines
@@ -214,6 +239,7 @@ async fn delete_frame_with_external_blobs() -> Result<()> {
                 blob_storage: BlobStorageMode::External,
                 store_metric_history: None,
             },
+            &task,
         )
         .await
         .unwrap();
@@ -222,10 +248,10 @@ async fn delete_frame_with_external_blobs() -> Result<()> {
     let key = make_graph_time_key("test", 1, 1000);
     let timeline_id = TimelineID("test".to_string());
 
-    db.graph.store(&key, &graph).await?;
+    db.graph.store(&key, &graph, &task).await?;
 
     // Before deletion: frame exists
-    let frames = db.frames.list(&timeline_id).await?;
+    let frames = db.frames.list(&timeline_id, &task).await?;
     snapshot!(
         format_frames_table(&frames),
         "
@@ -257,19 +283,22 @@ test/1/traversal_config_252579103958576740
     );
 
     // No pending cleanup (blobs were unregistered after successful store)
-    let pending = db.blob_storage.get_pending_cleanup().await?;
+    let pending = db.blob_storage.get_pending_cleanup(&task).await?;
     snapshot!(format_blob_keys(&pending), "");
 
     // Graph should be fetchable from external blobs
-    let fetched = db.graph.fetch(&key.graph_key()).await?;
+    let fetched = db.graph.fetch(&key.graph_key(), &task).await?;
     assert_graphs_equal(&graph, &fetched);
 
     // Delete the frame
-    let deleted = db.graph.delete(&key.graph_key(), &timeline_id).await?;
+    let deleted = db
+        .graph
+        .delete(&key.graph_key(), &timeline_id, &task)
+        .await?;
     assert!(deleted);
 
     // After deletion: no frames
-    let frames = db.frames.list(&timeline_id).await?;
+    let frames = db.frames.list(&timeline_id, &task).await?;
     snapshot!(
         format_frames_table(&frames),
         "
@@ -300,7 +329,7 @@ test/1/traversal_config_252579103958576740
     );
 
     // But blob keys are registered for cleanup
-    let pending = db.blob_storage.get_pending_cleanup().await?;
+    let pending = db.blob_storage.get_pending_cleanup(&task).await?;
     snapshot!(
         format_blob_keys(&pending),
         "
@@ -326,16 +355,17 @@ test/1/traversal_config_252579103958576740
 #[tokio::test]
 async fn get_frame_metadata_only() -> Result<()> {
     let db = make_db();
-    setup_timeline(&db, "test").await;
+    let task = ll::Task::create_new("test");
+    setup_timeline(&db, "test", &task).await;
 
     let graph = TestGraphTimeline::get_nth(0);
     let key = make_graph_time_key("test", 0, 1000);
-    db.graph.store(&key, &graph).await?;
+    db.graph.store(&key, &graph, &task).await?;
 
     // Fetch without data
     let row = db
         .frames
-        .get(&key.graph_key(), false)
+        .get(&key.graph_key(), false, &task)
         .await?
         .expect("Frame should exist");
 
@@ -348,7 +378,7 @@ async fn get_frame_metadata_only() -> Result<()> {
     // Fetch with data
     let row = db
         .frames
-        .get(&key.graph_key(), true)
+        .get(&key.graph_key(), true, &task)
         .await?
         .expect("Frame should exist");
 
@@ -364,6 +394,7 @@ async fn sweep_deleted_blobs() -> Result<()> {
 
     let sqlite = Arc::new(SqliteStorage::new_in_memory().unwrap());
     let db = UnigraphDb::new(sqlite.clone(), sqlite.clone());
+    let task = ll::Task::create_new("test");
 
     // Create timeline with External blob storage
     db.timelines
@@ -375,6 +406,7 @@ async fn sweep_deleted_blobs() -> Result<()> {
                 blob_storage: BlobStorageMode::External,
                 store_metric_history: None,
             },
+            &task,
         )
         .await
         .unwrap();
@@ -383,7 +415,7 @@ async fn sweep_deleted_blobs() -> Result<()> {
     let key = make_graph_time_key("test", 1, 1000);
     let timeline_id = TimelineID("test".to_string());
 
-    db.graph.store(&key, &graph).await?;
+    db.graph.store(&key, &graph, &task).await?;
 
     // After store: blobs exist in external storage, nothing pending cleanup
     let blobs = sqlite.list_blobs("").await?;
@@ -405,11 +437,13 @@ test/1/tagged_6861884023275401222
 test/1/traversal_config_252579103958576740
 "
     );
-    let pending = db.blob_storage.get_pending_cleanup().await?;
+    let pending = db.blob_storage.get_pending_cleanup(&task).await?;
     snapshot!(format_blob_keys(&pending), "");
 
     // Delete the frame — blobs registered for cleanup but still physically present
-    db.graph.delete(&key.graph_key(), &timeline_id).await?;
+    db.graph
+        .delete(&key.graph_key(), &timeline_id, &task)
+        .await?;
 
     let blobs_after_delete = sqlite.list_blobs("").await?;
     snapshot!(
@@ -430,7 +464,7 @@ test/1/tagged_6861884023275401222
 test/1/traversal_config_252579103958576740
 "
     );
-    let pending = db.blob_storage.get_pending_cleanup().await?;
+    let pending = db.blob_storage.get_pending_cleanup(&task).await?;
     snapshot!(
         format_blob_keys(&pending),
         "
@@ -451,18 +485,24 @@ test/1/traversal_config_252579103958576740
     );
 
     // Sweep with Duration::ZERO — should sweep everything
-    let swept = db.blob_storage.sweep(std::time::Duration::ZERO).await?;
+    let swept = db
+        .blob_storage
+        .sweep(std::time::Duration::ZERO, &task)
+        .await?;
     assert_eq!(swept, 13);
 
     // After sweep: blobs physically gone, cleanup table empty
     let blobs_after_sweep = sqlite.list_blobs("").await?;
     snapshot!(format_blob_keys(&blobs_after_sweep), "");
 
-    let pending_after_sweep = db.blob_storage.get_pending_cleanup().await?;
+    let pending_after_sweep = db.blob_storage.get_pending_cleanup(&task).await?;
     snapshot!(format_blob_keys(&pending_after_sweep), "");
 
     // Sweeping again is a no-op
-    let swept_again = db.blob_storage.sweep(std::time::Duration::ZERO).await?;
+    let swept_again = db
+        .blob_storage
+        .sweep(std::time::Duration::ZERO, &task)
+        .await?;
     assert_eq!(swept_again, 0);
 
     Ok(())
@@ -472,6 +512,7 @@ test/1/traversal_config_252579103958576740
 async fn sweep_respects_min_age() -> Result<()> {
     let sqlite = Arc::new(SqliteStorage::new_in_memory().unwrap());
     let db = UnigraphDb::new(sqlite.clone(), sqlite.clone());
+    let task = ll::Task::create_new("test");
 
     // Create timeline with External blob storage
     db.timelines
@@ -483,6 +524,7 @@ async fn sweep_respects_min_age() -> Result<()> {
                 blob_storage: BlobStorageMode::External,
                 store_metric_history: None,
             },
+            &task,
         )
         .await
         .unwrap();
@@ -491,18 +533,20 @@ async fn sweep_respects_min_age() -> Result<()> {
     let key = make_graph_time_key("test", 1, 1000);
     let timeline_id = TimelineID("test".to_string());
 
-    db.graph.store(&key, &graph).await?;
-    db.graph.delete(&key.graph_key(), &timeline_id).await?;
+    db.graph.store(&key, &graph, &task).await?;
+    db.graph
+        .delete(&key.graph_key(), &timeline_id, &task)
+        .await?;
 
     // Sweep with a large min_age (1 hour) — nothing should be old enough
     let swept = db
         .blob_storage
-        .sweep(std::time::Duration::from_secs(3600))
+        .sweep(std::time::Duration::from_secs(3600), &task)
         .await?;
     assert_eq!(swept, 0);
 
     // Pending cleanup still has entries
-    let pending = db.blob_storage.get_pending_cleanup().await?;
+    let pending = db.blob_storage.get_pending_cleanup(&task).await?;
     assert!(!pending.is_empty());
 
     Ok(())
@@ -511,16 +555,20 @@ async fn sweep_respects_min_age() -> Result<()> {
 #[tokio::test]
 async fn replace_empty_frames_with_full_graphs() -> Result<()> {
     let db = make_db();
-    setup_timeline(&db, "test").await;
+    let task = ll::Task::create_new("test");
+    setup_timeline(&db, "test", &task).await;
 
     // Phase A: Register empty frames for 5 commits (mimics ingestion pipeline).
     // All graph_ids are allocated up front, so the last frame has graph_id=4.
     for i in 0..5 {
         let key = make_graph_time_key("test", i, 1000 + i);
-        db.frames.store_empty(&key).await?;
+        db.frames.store_empty(&key, &task).await?;
     }
 
-    let frames = db.frames.list(&TimelineID("test".to_string())).await?;
+    let frames = db
+        .frames
+        .list(&TimelineID("test".to_string()), &task)
+        .await?;
     assert_eq!(frames.len(), 5);
     assert!(frames.iter().all(|f| f.frame_type == FrameType::Empty));
 
@@ -530,11 +578,14 @@ async fn replace_empty_frames_with_full_graphs() -> Result<()> {
     for i in 0..5 {
         let graph = TestGraphTimeline::get_nth(i as u64);
         let key = make_graph_time_key("test", i, 1000 + i);
-        db.graph.store(&key, &graph).await?;
+        db.graph.store(&key, &graph, &task).await?;
     }
 
     // Verify all frames are now Full.
-    let frames = db.frames.list(&TimelineID("test".to_string())).await?;
+    let frames = db
+        .frames
+        .list(&TimelineID("test".to_string()), &task)
+        .await?;
     snapshot!(
         format_frames_table(&frames),
         "
@@ -551,7 +602,7 @@ graph_id             timestamp                type       base
     // Verify each graph can be fetched back correctly.
     for i in 0..5 {
         let expected = TestGraphTimeline::get_nth(i as u64);
-        let fetched = db.graph.fetch(&make_graph_key("test", i)).await?;
+        let fetched = db.graph.fetch(&make_graph_key("test", i), &task).await?;
         assert_graphs_equal(&expected, &fetched);
     }
 

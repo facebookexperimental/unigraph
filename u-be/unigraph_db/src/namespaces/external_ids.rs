@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use anyhow::Result;
+use ll::task;
 use unigraph_storage_core::ExternalID;
 use unigraph_storage_core::ExternalIDNamespace;
 use unigraph_storage_core::GraphID;
@@ -36,49 +37,60 @@ impl ExternalIds {
     ///
     /// Returns GraphIDs for ALL input ExternalIDs (both pre-existing and
     /// newly allocated), in the same order as the input.
+    #[task(tags(l3))]
     pub async fn add_new(
         &self,
         ns: &ExternalIDNamespace,
         external_ids: &[ExternalID],
+        task: &ll::Task,
     ) -> Result<Vec<GraphID>> {
         if external_ids.is_empty() {
             return Ok(vec![]);
         }
 
         let lock_name = format!("external_ids:{}", ns.0);
-        let mut conn = self.storage.graph.conn().await?;
-        conn.acquire_named_lock(&lock_name).await?;
-        conn.start_transaction().await?;
+        let mut conn = self.storage.graph.conn_write().await?;
+        conn.acquire_named_lock(&lock_name, &task).await?;
+        conn.start_transaction(&task).await?;
 
-        let result = resolve_and_allocate(&mut *conn, ns, external_ids).await;
+        let result = resolve_and_allocate(&mut *conn, ns, external_ids, &task).await;
 
-        finish_transaction(&mut *conn, result, &lock_name).await
+        finish_transaction(&mut *conn, result, &lock_name, &task).await
     }
 
     /// Look up the ExternalID for a GraphID within a namespace.
+    #[task(tags(l3))]
     pub async fn to_external_id(
         &self,
         ns: &ExternalIDNamespace,
         graph_id: &GraphID,
+        task: &ll::Task,
     ) -> Result<Option<ExternalID>> {
         let mut conn = self.storage.graph.conn().await?;
-        conn.graph_id_to_external_id(ns, graph_id).await
+        conn.graph_id_to_external_id(ns, graph_id, &task).await
     }
 
     /// Look up ExternalIDs for multiple GraphIDs within a namespace (batch).
+    #[task(tags(l3))]
     pub async fn to_external_ids(
         &self,
         ns: &ExternalIDNamespace,
         graph_ids: &[GraphID],
+        task: &ll::Task,
     ) -> Result<Vec<(GraphID, ExternalID)>> {
         let mut conn = self.storage.graph.conn().await?;
-        conn.graph_ids_to_external_ids(ns, graph_ids).await
+        conn.graph_ids_to_external_ids(ns, graph_ids, &task).await
     }
 
     /// Get the ExternalID with the highest GraphID in a namespace.
-    pub async fn get_latest(&self, ns: &ExternalIDNamespace) -> Result<Option<ExternalID>> {
+    #[task(tags(l3))]
+    pub async fn get_latest(
+        &self,
+        ns: &ExternalIDNamespace,
+        task: &ll::Task,
+    ) -> Result<Option<ExternalID>> {
         let mut conn = self.storage.graph.conn().await?;
-        conn.get_latest_external_id(ns).await
+        conn.get_latest_external_id(ns, &task).await
     }
 }
 
@@ -90,8 +102,9 @@ async fn resolve_and_allocate(
     conn: &mut dyn UnigraphGraphConnection,
     ns: &ExternalIDNamespace,
     external_ids: &[ExternalID],
+    task: &ll::Task,
 ) -> Result<Vec<GraphID>> {
-    let existing = conn.list_external_id_mappings(ns).await?;
+    let existing = conn.list_external_id_mappings(ns, task).await?;
     let existing_map: HashMap<&str, GraphID> = existing
         .iter()
         .map(|(eid, gid)| (eid.0.as_str(), *gid))
@@ -102,7 +115,8 @@ async fn resolve_and_allocate(
 
     let prefix_ids = resolve_prefix(external_ids, skip_count, &existing_map);
     let new_mappings = allocate_new_tail(external_ids, skip_count, &existing);
-    conn.insert_external_id_mappings(ns, &new_mappings).await?;
+    conn.insert_external_id_mappings(ns, &new_mappings, task)
+        .await?;
 
     let new_ids: Vec<GraphID> = new_mappings.into_iter().map(|(_, gid)| gid).collect();
     Ok([prefix_ids, new_ids].concat())
@@ -113,16 +127,17 @@ async fn finish_transaction<T>(
     conn: &mut dyn UnigraphGraphConnection,
     result: Result<T>,
     lock_name: &str,
+    task: &ll::Task,
 ) -> Result<T> {
     match result {
         Ok(val) => {
-            conn.commit_transaction().await?;
-            conn.release_named_lock(lock_name).await?;
+            conn.commit_transaction(task).await?;
+            conn.release_named_lock(lock_name, task).await?;
             Ok(val)
         }
         Err(e) => {
             // Transaction rolls back on connection drop.
-            conn.release_named_lock(lock_name).await?;
+            conn.release_named_lock(lock_name, task).await?;
             Err(e)
         }
     }

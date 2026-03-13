@@ -138,8 +138,9 @@ pub async fn store_full(
     storage: &UnigraphStorage,
     key: &GraphTimeKey,
     graph: &ArrayGraphSerializable,
+    task: &ll::Task,
 ) -> Result<()> {
-    let prepared_history = storage.prepare_history_if_enabled(key, graph).await?;
+    let prepared_history = storage.prepare_history_if_enabled(key, graph, task).await?;
 
     let config = make_pack_config(key);
     let package = graph.pack(&config).context("Failed to pack graph")?;
@@ -147,13 +148,14 @@ pub async fn store_full(
         serde_json::to_string(&package.manifest).context("Failed to serialize graph manifest")?;
 
     let prepared = storage
-        .prepare_blobs_for_storage(&key.timeline_id, &package.blobs)
+        .prepare_blobs_for_storage(&key.timeline_id, &package.blobs, task)
         .await?;
 
-    let mut conn = storage.graph.conn().await?;
-    conn.start_transaction().await?;
-    conn.get_timeline_config_and_lock(&key.timeline_id).await?;
-    validate_monotonic_append(&mut *conn, key).await?;
+    let mut conn = storage.graph.conn_write().await?;
+    conn.start_transaction(task).await?;
+    conn.get_timeline_config_and_lock(&key.timeline_id, task)
+        .await?;
+    validate_monotonic_append(&mut *conn, key, task).await?;
 
     storage
         .store_package_on_conn(
@@ -164,6 +166,7 @@ pub async fn store_full(
             &manifest_json,
             prepared.inline.as_deref(),
             prepared.external_keys.as_deref(),
+            task,
         )
         .await?;
 
@@ -172,11 +175,12 @@ pub async fn store_full(
             &mut *conn,
             &key.timeline_id,
             prepared_history,
+            task,
         )
         .await?;
     }
 
-    conn.commit_transaction().await?;
+    conn.commit_transaction(task).await?;
     Ok(())
 }
 
@@ -190,9 +194,10 @@ pub async fn store_full(
 pub async fn fetch_graph(
     storage: &UnigraphStorage,
     key: &GraphKey,
+    task: &ll::Task,
 ) -> Result<ArrayGraphSerializable> {
-    let full_frame = find_nearest_full_frame(storage, key).await?;
-    let range = load_frame_range(storage, key, full_frame.graph_id).await?;
+    let full_frame = find_nearest_full_frame(storage, key, task).await?;
+    let range = load_frame_range(storage, key, full_frame.graph_id, task).await?;
     reconstruct_from_range(storage, &range).await
 }
 
@@ -200,17 +205,24 @@ pub async fn fetch_graph(
 ///
 /// Returns metadata only (no data) — the actual graph data is loaded
 /// later in `load_frame_range` to avoid fetching it twice.
-async fn find_nearest_full_frame(storage: &UnigraphStorage, key: &GraphKey) -> Result<Frame> {
+async fn find_nearest_full_frame(
+    storage: &UnigraphStorage,
+    key: &GraphKey,
+    task: &ll::Task,
+) -> Result<Frame> {
     let mut conn = storage.graph.conn().await?;
     let mut rows = conn
-        .select_frames(&FrameQuery {
-            timeline_id: key.timeline_id.clone(),
-            frame_types: Some(vec![FrameType::Full]),
-            graph_id_bounds: Some((None, Some(key.graph_id))),
-            order: Some(Order::Desc),
-            limit: Some(1),
-            ..Default::default()
-        })
+        .select_frames(
+            &FrameQuery {
+                timeline_id: key.timeline_id.clone(),
+                frame_types: Some(vec![FrameType::Full]),
+                graph_id_bounds: Some((None, Some(key.graph_id))),
+                order: Some(Order::Desc),
+                limit: Some(1),
+                ..Default::default()
+            },
+            task,
+        )
         .await?;
 
     let row = rows.pop().with_context(|| {
@@ -231,17 +243,21 @@ async fn load_frame_range(
     storage: &UnigraphStorage,
     key: &GraphKey,
     full_graph_id: GraphID,
+    task: &ll::Task,
 ) -> Result<FrameRange> {
     let mut conn = storage.graph.conn().await?;
     let rows = conn
-        .select_frames(&FrameQuery {
-            timeline_id: key.timeline_id.clone(),
-            frame_types: Some(vec![FrameType::Full, FrameType::Delta]),
-            graph_id_bounds: Some((Some(full_graph_id), Some(key.graph_id))),
-            order: Some(Order::Asc),
-            with_data: Some(true),
-            ..Default::default()
-        })
+        .select_frames(
+            &FrameQuery {
+                timeline_id: key.timeline_id.clone(),
+                frame_types: Some(vec![FrameType::Full, FrameType::Delta]),
+                graph_id_bounds: Some((Some(full_graph_id), Some(key.graph_id))),
+                order: Some(Order::Asc),
+                with_data: Some(true),
+                ..Default::default()
+            },
+            task,
+        )
         .await?;
 
     FrameRange::from_rows(rows, key.graph_id)
@@ -321,12 +337,13 @@ pub async fn compact_timeline(
     timeline_id: &TimelineID,
     start: Option<Timestamp>,
     end: Option<Timestamp>,
+    task: &ll::Task,
 ) -> Result<usize> {
     let mut conn = storage.graph.conn().await?;
 
     // Verify the timeline uses AdjacentDeltas schema.
     let config = conn
-        .get_timeline_config(timeline_id)
+        .get_timeline_config(timeline_id, task)
         .await?
         .ok_or_else(|| anyhow::anyhow!("Timeline not found: {:?}", timeline_id))?;
     anyhow::ensure!(
@@ -342,11 +359,14 @@ pub async fn compact_timeline(
     };
 
     let frames = conn
-        .select_frames(&FrameQuery {
-            timeline_id: timeline_id.clone(),
-            timestamp_bounds,
-            ..Default::default()
-        })
+        .select_frames(
+            &FrameQuery {
+                timeline_id: timeline_id.clone(),
+                timestamp_bounds,
+                ..Default::default()
+            },
+            task,
+        )
         .await?;
     drop(conn);
 
@@ -357,7 +377,7 @@ pub async fn compact_timeline(
         match frame.frame_type {
             FrameType::Full => {
                 if let Some(base_key) = &prev_data_key {
-                    replace_full_with_delta(storage, timeline_id, base_key, frame).await?;
+                    replace_full_with_delta(storage, timeline_id, base_key, frame, task).await?;
                     converted += 1;
                 }
                 prev_data_key = Some(GraphKey {
@@ -390,6 +410,7 @@ async fn replace_full_with_delta(
     timeline_id: &TimelineID,
     base_key: &GraphKey,
     target_frame: &FrameRow,
+    task: &ll::Task,
 ) -> Result<()> {
     let target_key = GraphKey {
         timeline_id: timeline_id.clone(),
@@ -402,11 +423,11 @@ async fn replace_full_with_delta(
     };
 
     let base_graph = storage
-        .fetch_graph(base_key)
+        .fetch_graph(base_key, task)
         .await
         .with_context(|| format!("Failed to fetch base graph {:?}", base_key))?;
     let target_graph = storage
-        .fetch_graph(&target_key)
+        .fetch_graph(&target_key, task)
         .await
         .with_context(|| format!("Failed to fetch target graph {:?}", target_key))?;
 
@@ -421,7 +442,7 @@ async fn replace_full_with_delta(
     let threshold = {
         let mut conn = storage.graph.conn().await?;
         let config = conn
-            .get_timeline_config(timeline_id)
+            .get_timeline_config(timeline_id, task)
             .await?
             .ok_or_else(|| anyhow::anyhow!("Timeline not found: {:?}", timeline_id))?;
         config.inline_blob_threshold()
@@ -429,18 +450,18 @@ async fn replace_full_with_delta(
 
     let inline_blobs = prepare_inline_blobs(&package.blobs, threshold)?;
     let blob_keys_to_unregister = if inline_blobs.is_none() {
-        Some(storage.upload_blobs(&package.blobs).await?)
+        Some(storage.upload_blobs(&package.blobs, task).await?)
     } else {
         None
     };
 
     // Single transaction: delete old Full + insert new Delta.
-    let mut conn = storage.graph.conn().await?;
-    conn.start_transaction().await?;
-    conn.get_timeline_config_and_lock(timeline_id).await?;
+    let mut conn = storage.graph.conn_write().await?;
+    conn.start_transaction(task).await?;
+    conn.get_timeline_config_and_lock(timeline_id, task).await?;
 
     storage
-        .delete_frame_on_conn(&mut *conn, &target_key)
+        .delete_frame_on_conn(&mut *conn, &target_key, task)
         .await?;
     storage
         .store_package_on_conn(
@@ -451,10 +472,11 @@ async fn replace_full_with_delta(
             &manifest_json,
             inline_blobs.as_deref(),
             blob_keys_to_unregister.as_deref(),
+            task,
         )
         .await?;
 
-    conn.commit_transaction().await?;
+    conn.commit_transaction(task).await?;
     Ok(())
 }
 
@@ -476,15 +498,19 @@ async fn replace_full_with_delta(
 pub(crate) async fn validate_monotonic_append(
     conn: &mut dyn UnigraphGraphConnection,
     key: &GraphTimeKey,
+    task: &ll::Task,
 ) -> Result<()> {
     // Check if a frame with this graph_id already exists (replacement).
     let existing = conn
-        .select_frames(&FrameQuery {
-            timeline_id: key.timeline_id.clone(),
-            graph_ids: Some(vec![key.graph_id]),
-            limit: Some(1),
-            ..Default::default()
-        })
+        .select_frames(
+            &FrameQuery {
+                timeline_id: key.timeline_id.clone(),
+                graph_ids: Some(vec![key.graph_id]),
+                limit: Some(1),
+                ..Default::default()
+            },
+            task,
+        )
         .await?;
 
     if !existing.is_empty() {
@@ -493,12 +519,15 @@ pub(crate) async fn validate_monotonic_append(
 
     // New frame — enforce append-only ordering.
     let mut rows = conn
-        .select_frames(&FrameQuery {
-            timeline_id: key.timeline_id.clone(),
-            order: Some(Order::Desc),
-            limit: Some(1),
-            ..Default::default()
-        })
+        .select_frames(
+            &FrameQuery {
+                timeline_id: key.timeline_id.clone(),
+                order: Some(Order::Desc),
+                limit: Some(1),
+                ..Default::default()
+            },
+            task,
+        )
         .await?;
 
     let last = match rows.pop() {
@@ -537,6 +566,7 @@ pub(crate) async fn validate_delta_base(
     conn: &mut dyn UnigraphGraphConnection,
     key: &GraphTimeKey,
     base: Option<&GraphKey>,
+    task: &ll::Task,
 ) -> Result<()> {
     let base = base.ok_or_else(|| {
         anyhow::anyhow!("delta frame graph_id={} has no base key", key.graph_id.0,)
@@ -544,13 +574,16 @@ pub(crate) async fn validate_delta_base(
 
     // The preceding frame is the one with the highest graph_id less than ours.
     let mut rows = conn
-        .select_frames(&FrameQuery {
-            timeline_id: key.timeline_id.clone(),
-            graph_id_bounds: Some((None, Some(GraphID(key.graph_id.0 - 1)))),
-            order: Some(Order::Desc),
-            limit: Some(1),
-            ..Default::default()
-        })
+        .select_frames(
+            &FrameQuery {
+                timeline_id: key.timeline_id.clone(),
+                graph_id_bounds: Some((None, Some(GraphID(key.graph_id.0 - 1)))),
+                order: Some(Order::Desc),
+                limit: Some(1),
+                ..Default::default()
+            },
+            task,
+        )
         .await?;
 
     let prev = rows.pop().with_context(|| {
