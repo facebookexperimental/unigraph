@@ -12,4 +12,5 @@ anyhow = "1.0.102"
 async-trait = "0.1.86"
 chrono = { version = "0.4.44", features = ["clock", "serde", "std"], default-features = false }
 serde = { version = "1.0.219", features = ["derive", "rc"] }
+typegen = { path = "../typegen" }
 unigraph_timestamp = { path = "../unigraph_timestamp" }

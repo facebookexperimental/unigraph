@@ -82,7 +82,8 @@ pub struct ExternalID(pub String);
     Eq,
     Hash,
     serde::Serialize,
-    serde::Deserialize
+    serde::Deserialize,
+    typegen::TypeGen
 )]
 pub struct ExternalIDNamespace(pub String);
 
@@ -306,7 +307,7 @@ pub struct TimestampedError {
 ///
 /// Currently only [`AdjacentDeltas`](AdjacentDeltasConfig) is supported:
 /// deltas must reference the immediately preceding frame as their base.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, typegen::TypeGen)]
 pub enum TimelineSchema {
     /// Linear history where deltas derive from the immediately preceding graph.
     AdjacentDeltas(AdjacentDeltasConfig),
@@ -324,7 +325,7 @@ impl fmt::Display for TimelineSchema {
 ///
 /// Empty for now — fields will be added as the schema evolves
 /// (e.g. max delta chain length, compaction policy).
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, typegen::TypeGen)]
 pub struct AdjacentDeltasConfig {}
 
 /// Controls where graph blobs are stored for a timeline.
@@ -333,7 +334,14 @@ pub struct AdjacentDeltasConfig {}
 ///   directly in the frames table row. This is the default.
 /// - `External`: blobs are always stored in the external blob storage,
 ///   regardless of size.
-#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Default,
+    serde::Serialize,
+    serde::Deserialize,
+    typegen::TypeGen
+)]
 pub enum BlobStorageMode {
     /// Store blobs inline when total size ≤ threshold (default behavior).
     #[default]
@@ -343,7 +351,7 @@ pub enum BlobStorageMode {
 }
 
 /// Timeline configuration stored as a JSON blob in the `timelines` table.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, typegen::TypeGen)]
 pub struct TimelineConfig {
     pub schema: TimelineSchema,
     /// Optional namespace for external ID mappings. When set, this timeline's
