@@ -71,7 +71,7 @@ mod tests {
         );
 
         // All extracted values should be non-zero.
-        for (_name, snapshot) in &metrics {
+        for snapshot in metrics.values() {
             assert!(!snapshot.is_empty());
             for &val in snapshot.values() {
                 assert_ne!(val, 0.0, "zero values should be excluded");
