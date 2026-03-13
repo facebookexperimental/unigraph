@@ -12,8 +12,7 @@ function twinArrow(fromIDX: number, toIDX: number): TwinArrow {
     node_diff: 0,
     l: {
       tag: undefined,
-      branch: undefined,
-      properties: undefined,
+      dynamic: undefined,
       points_from: fromIDX,
       points_to: toIDX,
       excluded: false,

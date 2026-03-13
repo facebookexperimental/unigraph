@@ -200,11 +200,11 @@ function getBadgeData(
   if (arrow == null) return null;
 
   const tag = arrow.tag;
-  const branch = arrow.branch;
+  const dynamic = arrow.dynamic;
   if (tag != null) {
     return { t: "tag", label: tag };
-  } else if (branch != null) {
-    const label = arrow.properties?.type ?? branch;
+  } else if (dynamic != null) {
+    const label = dynamic.metadata?.type ?? dynamic.branch;
     return {
       t: "dyn",
       label,

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
+import { cn } from "../../lib/utils";
 
 interface FrameResponse {
   graph_id: number;
@@ -43,6 +44,7 @@ export default function TimelinePage() {
   const navigate = useNavigate();
   const [frames, setFrames] = useState<FrameResponse[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [compareGraphId, setCompareGraphId] = useState<number | null>(null);
 
   useEffect(() => {
     fetch(`/api/timelines/${timelineId}/frames`)
@@ -96,8 +98,12 @@ export default function TimelinePage() {
           {frames.map((frame) => {
             const canExplore =
               frame.frame_type === "Full" || frame.frame_type === "Delta";
+            const isCompareSource = compareGraphId === frame.graph_id;
             return (
-              <tr key={frame.graph_id} className="border-b">
+              <tr
+                key={frame.graph_id}
+                className={cn("border-b", isCompareSource && "bg-accent")}
+              >
                 <td className="py-2 pr-4 font-mono">{frame.graph_id}</td>
                 <td className="py-2 pr-4">
                   {formatTimestamp(frame.timestamp)}
@@ -110,15 +116,27 @@ export default function TimelinePage() {
                 </td>
                 <td className="py-2">
                   {canExplore && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() =>
-                        navigate(`/explorer/${timelineId}/${frame.graph_id}`)
-                      }
-                    >
-                      Explore
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          navigate(`/explorer/${timelineId}/${frame.graph_id}`)
+                        }
+                      >
+                        Explore
+                      </Button>
+                      <CompareButton
+                        frameGraphId={frame.graph_id}
+                        compareGraphId={compareGraphId}
+                        onCompare={setCompareGraphId}
+                        onConfirm={(rightGraphId) => {
+                          navigate(
+                            `/explorer/${timelineId}/${compareGraphId}?right=${rightGraphId}`,
+                          );
+                        }}
+                      />
+                    </div>
                   )}
                 </td>
               </tr>
@@ -127,5 +145,43 @@ export default function TimelinePage() {
         </tbody>
       </table>
     </div>
+  );
+}
+
+function CompareButton({
+  frameGraphId,
+  compareGraphId,
+  onCompare,
+  onConfirm,
+}: {
+  frameGraphId: number;
+  compareGraphId: number | null;
+  onCompare: (id: number | null) => void;
+  onConfirm: (rightGraphId: number) => void;
+}) {
+  if (compareGraphId === frameGraphId) {
+    return (
+      <Button variant="ghost" size="sm" onClick={() => onCompare(null)}>
+        Cancel
+      </Button>
+    );
+  }
+
+  if (compareGraphId != null) {
+    return (
+      <Button
+        variant="secondary"
+        size="sm"
+        onClick={() => onConfirm(frameGraphId)}
+      >
+        Compare with #{compareGraphId}
+      </Button>
+    );
+  }
+
+  return (
+    <Button variant="ghost" size="sm" onClick={() => onCompare(frameGraphId)}>
+      Compare
+    </Button>
   );
 }

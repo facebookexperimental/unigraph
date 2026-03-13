@@ -288,5 +288,12 @@ def test_all(
     test_rust(update=update)
 
 
+@app.command()
+def ci() -> None:
+    """Run all checks and tests (for CI)."""
+    check_all()
+    test_all()
+
+
 if __name__ == "__main__":
     app()

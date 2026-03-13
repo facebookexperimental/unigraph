@@ -6,9 +6,26 @@ import { Command, CommandGroup, CommandItem, CommandList } from "./ui/command";
 import { useTwinGraph } from "../context/NativeGraphContext";
 import { cn } from "../lib/utils";
 
+/**
+ * Typeahead input for selecting node names from the current graph.
+ *
+ * Performs fuzzy search against graph nodes via WASM (`search_nodes_fuzzy`)
+ * and renders an autocomplete dropdown using cmdk. Matched characters are
+ * highlighted in the suggestion list.
+ *
+ * Keyboard: Arrow Up/Down to navigate, Enter to confirm, Tab/Escape to close.
+ *
+ * This is a controlled component — the parent owns the `value` state.
+ * `onChange` fires on every keystroke; `onSelect` fires only when the user
+ * picks an item from the dropdown (click or Enter).
+ */
+
 interface NodeNameInputProps {
+  /** Current input value (controlled). */
   value: string;
+  /** Called on every input change (typing or selection). */
   onChange: (value: string) => void;
+  /** Called when the user confirms a suggestion (click or Enter). */
   onSelect?: (nodeName: string) => void;
   placeholder?: string;
   className?: string;
@@ -104,6 +121,7 @@ export default function NodeNameInput({
   );
 }
 
+/** Highlights the fuzzy-matched characters in `text` that correspond to `pattern`. */
 function HighlightMatch({ text, pattern }: { text: string; pattern: string }) {
   const patternLower = pattern.toLowerCase();
   const textLower = text.toLowerCase();

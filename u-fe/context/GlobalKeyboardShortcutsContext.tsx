@@ -61,6 +61,9 @@ export function useExplorerKeyboardShortcutsHandler(): (
 
   const keyboardEventHandler = useCallback(
     (e: KeyboardEvent) => {
+      // Skip shortcuts when the user is typing in a text field — otherwise
+      // single-key shortcuts like "f" (flat list) or "e" (force edge) would
+      // fire while editing node names, tag names, etc. in the sidebar panels.
       const target = e.target;
       if (
         target instanceof HTMLInputElement ||

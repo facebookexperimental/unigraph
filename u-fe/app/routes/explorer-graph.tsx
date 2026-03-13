@@ -10,32 +10,49 @@ const QUERY_PARAM_TVC_L = "tvc";
 const QUERY_PARAM_TVC_R = "tvc_r";
 const QUERY_PARAM_GRAPH_SETTINGS = "graph_settings";
 
+const QUERY_PARAM_RIGHT = "right";
+
 interface GraphsApiResponse {
   left: ExplorerComponentInputGraph;
   right?: ExplorerComponentInputGraph;
 }
 
+async function fetchGraph(
+  timelineId: string,
+  graphId: string,
+): Promise<ExplorerComponentInputGraph> {
+  const r = await fetch(`/api/timelines/${timelineId}/graphs/${graphId}`);
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const data: GraphsApiResponse = await r.json();
+  return data.left;
+}
+
 export default function ExplorerGraphRoute() {
   const { timelineId, graphId } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
+  const rightGraphId = searchParams.get(QUERY_PARAM_RIGHT);
   const [graphs, setGraphs] = useState<ExplorerComponentInputGraphs | null>(
     null,
   );
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch(`/api/timelines/${timelineId}/graphs/${graphId}`)
-      .then((r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json();
-      })
-      .then((data: GraphsApiResponse) => {
-        setGraphs({ left: data.left, right: data.right });
+    if (timelineId == null || graphId == null) return;
+
+    const leftPromise = fetchGraph(timelineId, graphId);
+    const rightPromise =
+      rightGraphId != null
+        ? fetchGraph(timelineId, rightGraphId)
+        : Promise.resolve(undefined);
+
+    Promise.all([leftPromise, rightPromise])
+      .then(([left, right]) => {
+        setGraphs({ left, right });
       })
       .catch((e: unknown) =>
         setError(e instanceof Error ? e.message : String(e)),
       );
-  }, [timelineId, graphId]);
+  }, [timelineId, graphId, rightGraphId]);
 
   const tvcL = searchParams.get(QUERY_PARAM_TVC_L) ?? undefined;
   const tvcR = searchParams.get(QUERY_PARAM_TVC_R) ?? undefined;
