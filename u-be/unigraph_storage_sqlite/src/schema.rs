@@ -9,6 +9,7 @@ pub const TABLE_BLOBS: &str = "blobs";
 pub const TABLE_BLOBS_TO_DELETE: &str = "blobs_to_delete";
 pub const TABLE_EXTERNAL_ID_MAPPINGS: &str = "external_id_mappings";
 pub const TABLE_METRIC_HISTORY: &str = "metric_history";
+pub const TABLE_CONFIGS: &str = "configs";
 
 /// SQL statements to create the storage schema.
 ///
@@ -68,4 +69,13 @@ CREATE TABLE IF NOT EXISTS metric_history (
 
 CREATE INDEX IF NOT EXISTS idx_metric_history_timeline_week
     ON metric_history(timeline_id, week_key);
+
+CREATE TABLE IF NOT EXISTS configs (
+    key         TEXT PRIMARY KEY,
+    config_type TEXT NOT NULL,
+    blob_inline BLOB,
+    blob_id     TEXT,
+    base_key    TEXT,
+    created_at  INTEGER NOT NULL
+);
 ";

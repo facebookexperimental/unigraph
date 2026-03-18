@@ -23,8 +23,11 @@ pub type Timestamp = unigraph_timestamp::Timestamp;
     PartialOrd,
     Ord,
     serde::Serialize,
-    serde::Deserialize
+    serde::Deserialize,
+    typegen::TypeGen,
+    unigraph_delta::Deltable
 )]
+#[deltable(replace)]
 pub struct TimelineID(pub String);
 
 impl fmt::Display for TimelineID {
@@ -56,8 +59,11 @@ impl FromStr for TimelineID {
     PartialOrd,
     Ord,
     serde::Serialize,
-    serde::Deserialize
+    serde::Deserialize,
+    typegen::TypeGen,
+    unigraph_delta::Deltable
 )]
+#[deltable(replace)]
 pub struct GraphID(pub i64);
 
 /// Identifies a specific graph within a specific timeline.

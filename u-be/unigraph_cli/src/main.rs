@@ -94,6 +94,7 @@ impl Ingest {
         let path = resolve_sqlite_path(sqlite_path);
         let sqlite = Arc::new(unigraph_storage_sqlite::SqliteStorage::new(path)?);
         let db = unigraph_db::UnigraphDb::new(sqlite.clone(), sqlite);
+        let app = unigraph_app::Unigraph::new(db);
 
         let config_file = &self.config;
         let configs = unigraph_ingestion::load_ingestion_configs(config_file)?;
@@ -108,7 +109,7 @@ impl Ingest {
 
         for (i, ingestion_config) in configs.iter().enumerate() {
             eprintln!("\n=== Ingestion config {}/{} ===", i + 1, configs.len());
-            run_one_config(ingestion_config, &db, &options, task).await?;
+            run_one_config(ingestion_config, &app.db, &options, task).await?;
         }
 
         Ok(())
@@ -247,11 +248,12 @@ impl Frames {
         let path = resolve_sqlite_path(sqlite_path);
         let sqlite = Arc::new(unigraph_storage_sqlite::SqliteStorage::new(path)?);
         let db = unigraph_db::UnigraphDb::new(sqlite.clone(), sqlite);
+        let app = unigraph_app::Unigraph::new(db);
 
         match &self.timeline_id {
             Some(id) => {
                 let timeline_id = TimelineID(id.clone());
-                let frames = db.frames.list(&timeline_id, task).await?;
+                let frames = app.db.frames.list(&timeline_id, task).await?;
 
                 if frames.is_empty() {
                     eprintln!("No frames found for timeline '{}'", id);
@@ -262,14 +264,14 @@ impl Frames {
                 println!("\nTotal: {} frames", frames.len());
             }
             None => {
-                let timelines = db.timelines.list(task).await?;
+                let timelines = app.db.timelines.list(task).await?;
                 if timelines.is_empty() {
                     eprintln!("No timelines found in database.");
                     return Ok(());
                 }
                 println!("Timelines:");
                 for tl in &timelines {
-                    let frames = db.frames.list(tl, task).await?;
+                    let frames = app.db.frames.list(tl, task).await?;
                     println!("  {} ({} frames)", tl.0, frames.len());
                 }
             }
@@ -299,12 +301,13 @@ impl Compact {
         let path = resolve_sqlite_path(sqlite_path);
         let sqlite = Arc::new(unigraph_storage_sqlite::SqliteStorage::new(path)?);
         let db = unigraph_db::UnigraphDb::new(sqlite.clone(), sqlite);
+        let app = unigraph_app::Unigraph::new(db);
 
         let start = parse_timestamp(self.start.as_deref())?;
         let end = parse_timestamp(self.end.as_deref())?;
 
         let timeline_id = TimelineID(self.timeline_id.clone());
-        let converted = db.graph.compact(&timeline_id, start, end, task).await?;
+        let converted = app.db.graph.compact(&timeline_id, start, end, task).await?;
 
         match converted {
             0 => println!("Nothing to compact."),
@@ -344,18 +347,19 @@ impl GraphGet {
         let path = resolve_sqlite_path(sqlite_path);
         let sqlite = Arc::new(unigraph_storage_sqlite::SqliteStorage::new(path)?);
         let db = unigraph_db::UnigraphDb::new(sqlite.clone(), sqlite);
+        let app = unigraph_app::Unigraph::new(db);
 
         let parsed: GraphKeyOrTimelineID = self.key.parse()?;
 
         let (key, serializable) = match parsed {
             GraphKeyOrTimelineID::GraphKey(key) => {
                 eprintln!("Fetching graph {}...", key);
-                let graph = db.graph.fetch(&key, task).await?;
+                let graph = app.db.graph.fetch(&key, task).await?;
                 (key, graph)
             }
             GraphKeyOrTimelineID::TimelineID(tid) => {
                 eprintln!("Fetching latest graph from timeline {}...", tid);
-                let (key, graph) = db.graph.fetch_latest(&tid, task).await?;
+                let (key, graph) = app.db.graph.fetch_latest(&tid, task).await?;
                 eprintln!("Resolved to {}", key);
                 (key, graph)
             }
@@ -391,6 +395,7 @@ impl GraphBudget {
         let path = resolve_sqlite_path(sqlite_path);
         let sqlite = Arc::new(unigraph_storage_sqlite::SqliteStorage::new(path)?);
         let db = unigraph_db::UnigraphDb::new(sqlite.clone(), sqlite);
+        let app = unigraph_app::Unigraph::new(db);
 
         let parsed: GraphKeyOrTimelineID = self.key.parse()?;
         let budget_config: BudgetConfig = serde_json::from_str(&self.budget_config_json)
@@ -399,12 +404,12 @@ impl GraphBudget {
         let (_key, serializable) = match parsed {
             GraphKeyOrTimelineID::GraphKey(key) => {
                 eprintln!("Fetching graph {}...", key);
-                let graph = db.graph.fetch(&key, task).await?;
+                let graph = app.db.graph.fetch(&key, task).await?;
                 (key, graph)
             }
             GraphKeyOrTimelineID::TimelineID(tid) => {
                 eprintln!("Fetching latest graph from timeline {}...", tid);
-                let (key, graph) = db.graph.fetch_latest(&tid, task).await?;
+                let (key, graph) = app.db.graph.fetch_latest(&tid, task).await?;
                 eprintln!("Resolved to {}", key);
                 (key, graph)
             }

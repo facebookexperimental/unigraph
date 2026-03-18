@@ -20,6 +20,7 @@
 //!
 //! `UnigraphDb` is `Clone` (via `Arc`) and can be passed freely across threads.
 
+pub(crate) mod config_storage;
 pub(crate) mod context;
 mod frame_storage;
 pub mod graph_range;
@@ -31,11 +32,13 @@ mod storage;
 use std::sync::Arc;
 
 use anyhow::Result;
+pub use context::DEFAULT_CONFIG_INLINE_BLOB_THRESHOLD;
 use context::UnigraphDbContext;
 pub use graph_range::GraphRange;
 pub use graph_range::GraphRangeBuilder;
 pub use namespaces::AdjacentDeltasOps;
 pub use namespaces::BlobStorageOps;
+pub use namespaces::Configs;
 pub use namespaces::ExternalIds;
 pub use namespaces::Frames;
 pub use namespaces::Graph;
@@ -74,6 +77,7 @@ pub struct UnigraphDb {
     pub frames: Frames,
     pub external_ids: ExternalIds,
     pub graph: Graph,
+    pub configs: Configs,
     pub metric_history: MetricHistory,
     pub blob_storage: BlobStorageOps,
     ctx: UnigraphDbContext,
@@ -86,7 +90,22 @@ impl UnigraphDb {
         let ctx = UnigraphDbContext {
             storage,
             base_pack_config: ArrayGraphSerializablePackageConfig::default(),
+            config_inline_blob_threshold: DEFAULT_CONFIG_INLINE_BLOB_THRESHOLD,
         };
+        Self::from_ctx(ctx)
+    }
+
+    /// Set the threshold (in bytes) above which config blobs are stored in
+    /// external blob storage instead of inline in the configs table.
+    ///
+    /// Default: [`DEFAULT_CONFIG_INLINE_BLOB_THRESHOLD`] (5 KB).
+    pub fn with_config_inline_blob_threshold(mut self, threshold: usize) -> Self {
+        self.ctx.config_inline_blob_threshold = threshold;
+        // Rebuild namespace handles so they pick up the new threshold.
+        Self::from_ctx(self.ctx)
+    }
+
+    fn from_ctx(ctx: UnigraphDbContext) -> Self {
         Self {
             timelines: Timelines { ctx: ctx.clone() },
             frames: Frames { ctx: ctx.clone() },
@@ -95,6 +114,7 @@ impl UnigraphDb {
                 ctx: ctx.clone(),
                 adjacent_deltas: AdjacentDeltasOps { ctx: ctx.clone() },
             },
+            configs: Configs { ctx: ctx.clone() },
             metric_history: MetricHistory { ctx: ctx.clone() },
             blob_storage: BlobStorageOps { ctx: ctx.clone() },
             ctx,

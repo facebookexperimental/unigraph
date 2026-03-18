@@ -9,6 +9,9 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use ll;
+use unigraph_core::config_key::ConfigRow;
+use unigraph_core::config_key::GraphQueryConfigKey;
+use unigraph_core::config_key::TraversalConfigKey;
 
 use crate::frame::FrameRow;
 use crate::types::ExternalID;
@@ -257,6 +260,51 @@ pub trait UnigraphGraphConnection: Send {
         end_week: &str,
         task: &ll::Task,
     ) -> Result<Vec<(String, String, Vec<u8>)>>;
+
+    // -- Config storage --
+
+    /// Store a traversal config blob by its content-addressed key.
+    ///
+    /// Uses `INSERT OR IGNORE` semantics — if the key already exists, the write
+    /// is silently skipped (deduplication).
+    async fn store_traversal_config(
+        &mut self,
+        _key: &TraversalConfigKey,
+        _blob_inline: Option<&[u8]>,
+        _blob_id: Option<&str>,
+        _task: &ll::Task,
+    ) -> Result<()> {
+        unimplemented!("store_traversal_config not implemented for this backend")
+    }
+
+    /// Fetch a traversal config row by key. Returns `None` if not found.
+    async fn get_traversal_config(
+        &mut self,
+        _key: &TraversalConfigKey,
+        _task: &ll::Task,
+    ) -> Result<Option<ConfigRow<TraversalConfigKey>>> {
+        unimplemented!("get_traversal_config not implemented for this backend")
+    }
+
+    /// Store a graph query config blob by its content-addressed key.
+    async fn store_graph_query_config(
+        &mut self,
+        _key: &GraphQueryConfigKey,
+        _blob_inline: Option<&[u8]>,
+        _blob_id: Option<&str>,
+        _task: &ll::Task,
+    ) -> Result<()> {
+        unimplemented!("store_graph_query_config not implemented for this backend")
+    }
+
+    /// Fetch a graph query config row by key. Returns `None` if not found.
+    async fn get_graph_query_config(
+        &mut self,
+        _key: &GraphQueryConfigKey,
+        _task: &ll::Task,
+    ) -> Result<Option<ConfigRow<GraphQueryConfigKey>>> {
+        unimplemented!("get_graph_query_config not implemented for this backend")
+    }
 }
 
 /// Graph storage backend — vends connections.

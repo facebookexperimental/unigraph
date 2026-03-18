@@ -11,6 +11,9 @@ use unigraph_storage_core::GraphTimeKey;
 
 use crate::storage::UnigraphStorage;
 
+/// Default threshold for storing config blobs externally (5 KB).
+pub const DEFAULT_CONFIG_INLINE_BLOB_THRESHOLD: usize = 5_000;
+
 /// Shared context for all database operations.
 ///
 /// Holds the storage compositor and base pack configuration. Passed to
@@ -21,6 +24,9 @@ use crate::storage::UnigraphStorage;
 pub(crate) struct UnigraphDbContext {
     pub storage: Arc<UnigraphStorage>,
     pub base_pack_config: ArrayGraphSerializablePackageConfig,
+    /// Config blobs larger than this (in bytes) are stored in external blob
+    /// storage instead of inline in the configs table.
+    pub config_inline_blob_threshold: usize,
 }
 
 impl UnigraphDbContext {

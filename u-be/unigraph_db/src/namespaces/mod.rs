@@ -8,6 +8,7 @@
 
 mod adjacent_deltas_ops;
 mod blob_storage;
+mod configs;
 mod external_ids;
 mod frames;
 mod graph;
@@ -16,6 +17,7 @@ mod timelines;
 
 pub use adjacent_deltas_ops::AdjacentDeltasOps;
 pub use blob_storage::BlobStorageOps;
+pub use configs::Configs;
 pub use external_ids::ExternalIds;
 pub use frames::Frames;
 pub use graph::Graph;

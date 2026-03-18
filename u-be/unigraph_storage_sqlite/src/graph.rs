@@ -20,6 +20,10 @@ use unigraph_storage_core::GraphTimeKey;
 use unigraph_storage_core::Order;
 use unigraph_storage_core::TimelineConfig;
 use unigraph_storage_core::TimelineID;
+use unigraph_storage_core::config_key::ConfigKeyLike;
+use unigraph_storage_core::config_key::ConfigRow;
+use unigraph_storage_core::config_key::GraphQueryConfigKey;
+use unigraph_storage_core::config_key::TraversalConfigKey;
 use unigraph_storage_core::frame::Frame;
 use unigraph_storage_core::traits::UnigraphGraphConnection;
 use unigraph_storage_core::traits::UnigraphGraphStorage;
@@ -28,6 +32,7 @@ use unigraph_timestamp::Timestamp;
 use crate::SqliteConnection;
 use crate::SqliteStorage;
 use crate::schema::TABLE_BLOBS_TO_DELETE;
+use crate::schema::TABLE_CONFIGS;
 use crate::schema::TABLE_EXTERNAL_ID_MAPPINGS;
 use crate::schema::TABLE_GRAPHS;
 use crate::schema::TABLE_METRIC_HISTORY;
@@ -760,6 +765,44 @@ impl UnigraphGraphConnection for SqliteConnection {
         }
         Ok(result)
     }
+
+    // -- Config storage --
+
+    async fn store_traversal_config(
+        &mut self,
+        key: &TraversalConfigKey,
+        blob_inline: Option<&[u8]>,
+        blob_id: Option<&str>,
+        _task: &ll::Task,
+    ) -> Result<()> {
+        store_config_row(&self.lock(), key, blob_inline, blob_id)
+    }
+
+    async fn get_traversal_config(
+        &mut self,
+        key: &TraversalConfigKey,
+        _task: &ll::Task,
+    ) -> Result<Option<ConfigRow<TraversalConfigKey>>> {
+        get_config_row(&self.lock(), key)
+    }
+
+    async fn store_graph_query_config(
+        &mut self,
+        key: &GraphQueryConfigKey,
+        blob_inline: Option<&[u8]>,
+        blob_id: Option<&str>,
+        _task: &ll::Task,
+    ) -> Result<()> {
+        store_config_row(&self.lock(), key, blob_inline, blob_id)
+    }
+
+    async fn get_graph_query_config(
+        &mut self,
+        key: &GraphQueryConfigKey,
+        _task: &ll::Task,
+    ) -> Result<Option<ConfigRow<GraphQueryConfigKey>>> {
+        get_config_row(&self.lock(), key)
+    }
 }
 
 /// Query timeline config from an already-locked connection.
@@ -810,5 +853,61 @@ impl<T> OptionalExt<T> for Result<T, rusqlite::Error> {
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
             Err(e) => Err(e),
         }
+    }
+}
+
+// -- Config storage helpers --
+
+/// Store a config row with `INSERT OR IGNORE` (content-addressed dedup).
+fn store_config_row<K: ConfigKeyLike>(
+    conn: &MutexGuard<'_, Connection>,
+    key: &K,
+    blob_inline: Option<&[u8]>,
+    blob_id: Option<&str>,
+) -> Result<()> {
+    let now = Timestamp::now().to_unix_timestamp();
+    let sql = format!(
+        "INSERT OR IGNORE INTO {} (key, config_type, blob_inline, blob_id, base_key, created_at)
+         VALUES (?1, ?2, ?3, ?4, NULL, ?5)",
+        TABLE_CONFIGS
+    );
+    conn.execute(
+        &sql,
+        rusqlite::params![key.as_str(), K::PREFIX, blob_inline, blob_id, now,],
+    )
+    .context("failed to store config")?;
+    Ok(())
+}
+
+/// Fetch a config row by key. Returns `None` if not found.
+fn get_config_row<K: ConfigKeyLike>(
+    conn: &MutexGuard<'_, Connection>,
+    key: &K,
+) -> Result<Option<ConfigRow<K>>> {
+    let sql = format!(
+        "SELECT blob_inline, blob_id FROM {} WHERE key = ?1",
+        TABLE_CONFIGS
+    );
+    let mut stmt = conn
+        .prepare(&sql)
+        .context("failed to prepare get_config query")?;
+
+    let result = stmt
+        .query_row(rusqlite::params![key.as_str()], |row| {
+            Ok((
+                row.get::<_, Option<Vec<u8>>>(0)?,
+                row.get::<_, Option<String>>(1)?,
+            ))
+        })
+        .optional()
+        .context("failed to query config")?;
+
+    match result {
+        Some((blob_inline, blob_id)) => Ok(Some(ConfigRow {
+            key: key.clone(),
+            blob_inline,
+            blob_id,
+        })),
+        None => Ok(None),
     }
 }

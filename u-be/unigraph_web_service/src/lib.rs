@@ -24,12 +24,12 @@ use tower_http::services::ServeFile;
 use tower_http::trace::TraceLayer;
 use tracing::Span;
 use tracing::info;
+use unigraph_app::Unigraph;
 use unigraph_core::ArrayGraphSerializable;
 use unigraph_core::ArrayGraphSerializablePackage;
 use unigraph_core::ArrayGraphSerializablePackageConfig;
 use unigraph_core::MapGraph;
 use unigraph_core::ui_types::ExplorerComponentInputGraph;
-use unigraph_db::UnigraphDb;
 use unigraph_serialization::SerializationFormat;
 use unigraph_storage_core::FrameType;
 use unigraph_storage_core::GraphID;
@@ -52,7 +52,7 @@ pub enum ServeMode {
 struct AppState {
     left_graph: Arc<String>,
     right_graph: Arc<Option<String>>,
-    db: Option<UnigraphDb>,
+    db: Option<Unigraph>,
 }
 
 pub async fn start(
@@ -84,7 +84,8 @@ pub async fn start(
     let db = match sqlite_path {
         Some(path) => {
             let sqlite = Arc::new(unigraph_storage_sqlite::SqliteStorage::new(path)?);
-            Some(UnigraphDb::new(sqlite.clone(), sqlite))
+            let db = unigraph_db::UnigraphDb::new(sqlite.clone(), sqlite);
+            Some(Unigraph::new(db))
         }
         None => None,
     };
@@ -186,9 +187,10 @@ struct TimelineResponse {
 async fn api_timelines(
     State(state): State<AppState>,
 ) -> Result<impl IntoResponse, http::StatusCode> {
-    let db = state.db.as_ref().ok_or(http::StatusCode::NOT_FOUND)?;
+    let app = state.db.as_ref().ok_or(http::StatusCode::NOT_FOUND)?;
     let task = ll::Task::create_new("api_timelines");
-    let timelines = db
+    let timelines = app
+        .db
         .timelines
         .list(&task)
         .await
@@ -216,9 +218,10 @@ async fn api_timeline_frames(
     State(state): State<AppState>,
     axum::extract::Path(timeline_id): axum::extract::Path<String>,
 ) -> Result<impl IntoResponse, http::StatusCode> {
-    let db = state.db.as_ref().ok_or(http::StatusCode::NOT_FOUND)?;
+    let app = state.db.as_ref().ok_or(http::StatusCode::NOT_FOUND)?;
     let task = ll::Task::create_new("api_timeline_frames");
-    let frames = db
+    let frames = app
+        .db
         .frames
         .list(&TimelineID(timeline_id), &task)
         .await
@@ -252,14 +255,15 @@ async fn api_timeline_graph(
     State(state): State<AppState>,
     axum::extract::Path(path): axum::extract::Path<TimelineGraphPath>,
 ) -> Result<impl IntoResponse, http::StatusCode> {
-    let db = state.db.as_ref().ok_or(http::StatusCode::NOT_FOUND)?;
+    let app = state.db.as_ref().ok_or(http::StatusCode::NOT_FOUND)?;
     let key = GraphKey {
         timeline_id: TimelineID(path.timeline_id),
         graph_id: GraphID(path.graph_id),
     };
 
     let task = ll::Task::create_new("api_timeline_graph");
-    let frame = db
+    let frame = app
+        .db
         .frames
         .get(&key, false, &task)
         .await
@@ -270,7 +274,8 @@ async fn api_timeline_graph(
         return Err(http::StatusCode::NOT_FOUND);
     }
 
-    let graph = db
+    let graph = app
+        .db
         .graph
         .fetch(&key, &task)
         .await

@@ -12,10 +12,18 @@
 //! - [`frame`] — frame and frame-row structures
 //! - [`traits`] — storage trait definitions ([`UnigraphGraphStorage`], [`UnigraphGraphConnection`], [`UnigraphBlobStorage`])
 
+pub mod config_key {
+    //! Re-exports from `unigraph_core::config_key`.
+    pub use unigraph_core::config_key::*;
+}
 pub mod frame;
 pub mod traits;
 pub mod types;
 
+pub use config_key::ConfigKeyLike;
+pub use config_key::ConfigRow;
+pub use config_key::GraphQueryConfigKey;
+pub use config_key::TraversalConfigKey;
 pub use frame::Frame;
 pub use frame::FrameData;
 pub use frame::FrameRow;
