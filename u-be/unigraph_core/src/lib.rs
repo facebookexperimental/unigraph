@@ -4,6 +4,7 @@
 #![allow(clippy::collapsible_else_if)]
 #![feature(once_cell_try)]
 mod array_graph_serializable;
+pub mod identifiers;
 pub mod map_graph_builder;
 mod test_graph;
 pub(crate) mod traversal;
@@ -36,6 +37,11 @@ pub use crate::array_graph_serializable::package::BlobID;
 pub use crate::array_graph_serializable::package::ManifestBlobs;
 pub use crate::array_graph_serializable::package::ManifestStats;
 pub use crate::array_graph_serializable::package::into_blobs;
+pub use crate::identifiers::GraphID;
+pub use crate::identifiers::GraphKey;
+pub use crate::identifiers::GraphTimeKey;
+pub use crate::identifiers::TimelineID;
+pub use crate::identifiers::Timestamp;
 pub use crate::map_graph_builder::GraphBuilder;
 pub use crate::test_graph::make_test_graph;
 pub use crate::traversal::Decision;

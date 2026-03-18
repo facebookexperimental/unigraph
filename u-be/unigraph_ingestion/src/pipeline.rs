@@ -6,6 +6,7 @@ use std::path::Path;
 
 use anyhow::Context;
 use anyhow::Result;
+use unigraph_db::GraphRangeBuilder;
 use unigraph_db::UnigraphDb;
 use unigraph_storage_core::AdjacentDeltasConfig;
 use unigraph_storage_core::ExternalID;
@@ -150,6 +151,8 @@ async fn run_git_ingestion(
             );
         };
 
+        let mut range_builder = GraphRangeBuilder::new(timeline_id.clone());
+
         for (i, frame) in empty_frames.iter().enumerate() {
             let external_id = db
                 .external_ids
@@ -170,6 +173,11 @@ async fn run_git_ingestion(
 
             // Check out the commit
             if let Err(e) = unigraph_git::checkout_commit(repo_path, commit_hash) {
+                // Flush accumulated range before storing error.
+                if !range_builder.is_empty() {
+                    let flushed = range_builder.take(timeline_id.clone());
+                    db.graph.adjacent_deltas.store_range(flushed, task).await?;
+                }
                 store_error(db, &key, &format!("Failed to checkout: {e:#}"), task).await?;
                 commit_task.data("status", "error");
                 error_count += 1;
@@ -180,14 +188,15 @@ async fn run_git_ingestion(
             match builder.build(repo_path) {
                 Ok(map_graph) => match map_graph.to_array_graph_serializable() {
                     Ok(array_graph) => {
-                        db.graph
-                            .store(&key, &array_graph, task)
-                            .await
-                            .with_context(|| format!("Failed to store graph for {short_hash}"))?;
+                        range_builder.add(key, array_graph)?;
                         commit_task.data("status", "stored");
                         stored_count += 1;
                     }
                     Err(e) => {
+                        if !range_builder.is_empty() {
+                            let flushed = range_builder.take(timeline_id.clone());
+                            db.graph.adjacent_deltas.store_range(flushed, task).await?;
+                        }
                         store_error(
                             db,
                             &key,
@@ -200,11 +209,24 @@ async fn run_git_ingestion(
                     }
                 },
                 Err(e) => {
+                    if !range_builder.is_empty() {
+                        let flushed = range_builder.take(timeline_id.clone());
+                        db.graph.adjacent_deltas.store_range(flushed, task).await?;
+                    }
                     store_error(db, &key, &format!("Graph build failed: {e:#}"), task).await?;
                     commit_task.data("status", "error");
                     error_count += 1;
                 }
             }
+        }
+
+        // Store remaining range.
+        if !range_builder.is_empty() {
+            let final_range = range_builder.finalize();
+            db.graph
+                .adjacent_deltas
+                .store_range(final_range, task)
+                .await?;
         }
 
         builder_task.progress(total as i64, total as i64);
@@ -303,6 +325,8 @@ async fn run_timeline_ingestion(
             );
         };
 
+        let mut range_builder = GraphRangeBuilder::new(timeline_id.clone());
+
         for (i, frame) in empty_frames.iter().enumerate() {
             let graph_id = frame.frame.graph_id;
 
@@ -338,6 +362,10 @@ async fn run_timeline_ingestion(
                     // Source has data, proceed below
                 }
                 Some(sf) => {
+                    if !range_builder.is_empty() {
+                        let flushed = range_builder.take(timeline_id.clone());
+                        db.graph.adjacent_deltas.store_range(flushed, task).await?;
+                    }
                     store_error(
                         db,
                         &key,
@@ -353,6 +381,10 @@ async fn run_timeline_ingestion(
                     continue;
                 }
                 None => {
+                    if !range_builder.is_empty() {
+                        let flushed = range_builder.take(timeline_id.clone());
+                        db.graph.adjacent_deltas.store_range(flushed, task).await?;
+                    }
                     store_error(
                         db,
                         &key,
@@ -373,6 +405,10 @@ async fn run_timeline_ingestion(
             let source_graph = match db.graph.fetch(&source_key, task).await {
                 Ok(g) => g,
                 Err(e) => {
+                    if !range_builder.is_empty() {
+                        let flushed = range_builder.take(timeline_id.clone());
+                        db.graph.adjacent_deltas.store_range(flushed, task).await?;
+                    }
                     store_error(
                         db,
                         &key,
@@ -389,19 +425,29 @@ async fn run_timeline_ingestion(
             // Transform
             match budget_builder.build(source_graph) {
                 Ok(result_graph) => {
-                    db.graph
-                        .store(&key, &result_graph, task)
-                        .await
-                        .with_context(|| format!("Failed to store graph for {display_id}"))?;
+                    range_builder.add(key, result_graph)?;
                     frame_task.data("status", "stored");
                     stored_count += 1;
                 }
                 Err(e) => {
+                    if !range_builder.is_empty() {
+                        let flushed = range_builder.take(timeline_id.clone());
+                        db.graph.adjacent_deltas.store_range(flushed, task).await?;
+                    }
                     store_error(db, &key, &format!("Transform failed: {e:#}"), task).await?;
                     frame_task.data("status", "error");
                     error_count += 1;
                 }
             }
+        }
+
+        // Store remaining range.
+        if !range_builder.is_empty() {
+            let final_range = range_builder.finalize();
+            db.graph
+                .adjacent_deltas
+                .store_range(final_range, task)
+                .await?;
         }
 
         builder_task.progress(total as i64, total as i64);

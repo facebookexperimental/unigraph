@@ -4,9 +4,7 @@
 //!
 //! Fetch, compact, and delete dispatch to the appropriate schema implementation
 //! based on the timeline's [`TimelineSchema`]. Store operations are schema-agnostic
-//! and delegate to [`UnigraphStorage`].
-
-use std::sync::Arc;
+//! and delegate to [`UnigraphStorage`](crate::storage::UnigraphStorage).
 
 use anyhow::Result;
 use ll::task;
@@ -21,16 +19,19 @@ use unigraph_storage_core::TimelineSchema;
 use unigraph_storage_core::Timestamp;
 use unigraph_storage_core::TimestampedError;
 
+use super::AdjacentDeltasOps;
+use crate::context::UnigraphDbContext;
 use crate::schemas::adjacent_deltas;
 use crate::schemas::full_or_delta;
-use crate::storage::UnigraphStorage;
 
 /// Handle for graph domain operations.
 ///
 /// Obtained via [`UnigraphDb::graph`](crate::UnigraphDb).
 #[derive(Clone)]
 pub struct Graph {
-    pub(crate) storage: Arc<UnigraphStorage>,
+    pub(crate) ctx: UnigraphDbContext,
+    /// Batch operations for adjacent deltas timelines (store/load ranges).
+    pub adjacent_deltas: AdjacentDeltasOps,
 }
 
 // -- Public API --
@@ -51,10 +52,10 @@ impl Graph {
         let schema = self.get_timeline_schema(&key.timeline_id, &task).await?;
         match schema {
             TimelineSchema::AdjacentDeltas(_) => {
-                adjacent_deltas::store_full(&self.storage, key, graph, &task).await
+                adjacent_deltas::store_full(&self.ctx, key, graph, &task).await
             }
             TimelineSchema::FullOrDelta(_) => {
-                full_or_delta::store_full(&self.storage, key, graph, &task).await
+                full_or_delta::store_full(&self.ctx, key, graph, &task).await
             }
         }
     }
@@ -83,7 +84,7 @@ impl Graph {
                 )
             }
             TimelineSchema::FullOrDelta(_) => {
-                full_or_delta::store_delta(&self.storage, key, from_key, graph, &task).await
+                full_or_delta::store_delta(&self.ctx, key, from_key, graph, &task).await
             }
         }
     }
@@ -96,7 +97,11 @@ impl Graph {
         errors: &[TimestampedError],
         task: &ll::Task,
     ) -> Result<()> {
-        self.storage.store_error(key, errors, &task).await
+        let config = self.ctx.pack_config_for_key(key);
+        self.ctx
+            .storage
+            .store_error(key, errors, &config, &task)
+            .await
     }
 
     /// Fetch and reconstruct a graph from storage.
@@ -105,7 +110,7 @@ impl Graph {
     /// timeline's configuration.
     #[task(tags(l3))]
     pub async fn fetch(&self, key: &GraphKey, task: &ll::Task) -> Result<ArrayGraphSerializable> {
-        self.storage.fetch_graph(key, &task).await
+        self.ctx.storage.fetch_graph(key, &task).await
     }
 
     /// Fetch the latest reconstructable graph from a timeline.
@@ -123,7 +128,7 @@ impl Graph {
             timeline_id: timeline_id.clone(),
             graph_id: frame.frame.graph_id,
         };
-        let graph = self.storage.fetch_graph(&key, &task).await?;
+        let graph = self.ctx.storage.fetch_graph(&key, &task).await?;
         Ok((key, graph))
     }
 
@@ -134,7 +139,7 @@ impl Graph {
         key: &GraphKey,
         task: &ll::Task,
     ) -> Result<Vec<TimestampedError>> {
-        self.storage.fetch_errors(key, &task).await
+        self.ctx.storage.fetch_errors(key, &task).await
     }
 
     /// Compact a timeline by replacing consecutive Full frames with Deltas.
@@ -152,11 +157,10 @@ impl Graph {
         let schema = self.get_timeline_schema(timeline_id, &task).await?;
         match schema {
             TimelineSchema::AdjacentDeltas(_) => {
-                adjacent_deltas::compact_timeline(&self.storage, timeline_id, start, end, &task)
-                    .await
+                adjacent_deltas::compact_timeline(&self.ctx, timeline_id, start, end, &task).await
             }
             TimelineSchema::FullOrDelta(_) => {
-                full_or_delta::compact_timeline(&self.storage, timeline_id, start, end).await
+                full_or_delta::compact_timeline(&self.ctx.storage, timeline_id, start, end).await
             }
         }
     }
@@ -188,7 +192,7 @@ impl Graph {
         timeline_id: &TimelineID,
         task: &ll::Task,
     ) -> Result<TimelineSchema> {
-        let mut conn = self.storage.graph.conn().await?;
+        let mut conn = self.ctx.storage.graph.conn().await?;
         let config = conn
             .get_timeline_config(timeline_id, task)
             .await?
@@ -201,7 +205,7 @@ impl Graph {
         timeline_id: &TimelineID,
         task: &ll::Task,
     ) -> Result<unigraph_storage_core::FrameRow> {
-        let mut conn = self.storage.graph.conn().await?;
+        let mut conn = self.ctx.storage.graph.conn().await?;
         let mut frames = conn
             .select_frames(
                 &FrameQuery {
@@ -230,10 +234,11 @@ impl Graph {
         timeline_id: &TimelineID,
         task: &ll::Task,
     ) -> Result<bool> {
-        let mut conn = self.storage.graph.conn_write().await?;
+        let mut conn = self.ctx.storage.graph.conn_write().await?;
         conn.start_transaction(task).await?;
         conn.get_timeline_config_and_lock(timeline_id, task).await?;
         let deleted = self
+            .ctx
             .storage
             .delete_frame_on_conn(&mut *conn, key, task)
             .await?;

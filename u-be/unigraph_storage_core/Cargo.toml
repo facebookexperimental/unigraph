@@ -14,4 +14,5 @@ chrono = { version = "0.4.44", features = ["clock", "serde", "std"], default-fea
 ll = "8.1"
 serde = { version = "1.0.219", features = ["derive", "rc"] }
 typegen = { path = "../typegen" }
+unigraph_core = { path = "../unigraph_core" }
 unigraph_timestamp = { path = "../unigraph_timestamp" }

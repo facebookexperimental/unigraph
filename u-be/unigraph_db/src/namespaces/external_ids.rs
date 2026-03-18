@@ -3,7 +3,6 @@
 //! External ID mapping — allocate, look up, and manage ExternalID ↔ GraphID mappings.
 
 use std::collections::HashMap;
-use std::sync::Arc;
 
 use anyhow::Result;
 use ll::task;
@@ -12,14 +11,14 @@ use unigraph_storage_core::ExternalIDNamespace;
 use unigraph_storage_core::GraphID;
 use unigraph_storage_core::UnigraphGraphConnection;
 
-use crate::storage::UnigraphStorage;
+use crate::context::UnigraphDbContext;
 
 /// Handle for external ID mapping operations.
 ///
 /// Obtained via [`UnigraphDb::external_ids`](crate::UnigraphDb).
 #[derive(Clone)]
 pub struct ExternalIds {
-    pub(crate) storage: Arc<UnigraphStorage>,
+    pub(crate) ctx: UnigraphDbContext,
 }
 
 // -- Public API --
@@ -49,7 +48,7 @@ impl ExternalIds {
         }
 
         let lock_name = format!("external_ids:{}", ns.0);
-        let mut conn = self.storage.graph.conn_write().await?;
+        let mut conn = self.ctx.storage.graph.conn_write().await?;
         conn.acquire_named_lock(&lock_name, &task).await?;
         conn.start_transaction(&task).await?;
 
@@ -66,7 +65,7 @@ impl ExternalIds {
         graph_id: &GraphID,
         task: &ll::Task,
     ) -> Result<Option<ExternalID>> {
-        let mut conn = self.storage.graph.conn().await?;
+        let mut conn = self.ctx.storage.graph.conn().await?;
         conn.graph_id_to_external_id(ns, graph_id, &task).await
     }
 
@@ -78,7 +77,7 @@ impl ExternalIds {
         graph_ids: &[GraphID],
         task: &ll::Task,
     ) -> Result<Vec<(GraphID, ExternalID)>> {
-        let mut conn = self.storage.graph.conn().await?;
+        let mut conn = self.ctx.storage.graph.conn().await?;
         conn.graph_ids_to_external_ids(ns, graph_ids, &task).await
     }
 
@@ -89,7 +88,7 @@ impl ExternalIds {
         ns: &ExternalIDNamespace,
         task: &ll::Task,
     ) -> Result<Option<ExternalID>> {
-        let mut conn = self.storage.graph.conn().await?;
+        let mut conn = self.ctx.storage.graph.conn().await?;
         conn.get_latest_external_id(ns, &task).await
     }
 }

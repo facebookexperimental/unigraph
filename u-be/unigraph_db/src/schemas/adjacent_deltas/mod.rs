@@ -99,10 +99,15 @@
 //! The `load_frame_range` step does a single query that fetches all needed
 //! data in one pass, including the Full frame.
 
+mod cas_store;
+mod load_range;
+
 use std::collections::BTreeMap;
 
 use anyhow::Context;
 use anyhow::Result;
+pub use cas_store::store_range;
+pub use load_range::load_range;
 use unigraph_core::ArrayGraphSerializable;
 use unigraph_core::apply_delta;
 use unigraph_core::derive_delta;
@@ -121,7 +126,7 @@ use unigraph_storage_core::Timestamp;
 use unigraph_storage_core::TimestampBounds;
 use unigraph_storage_core::UnigraphGraphConnection;
 
-use crate::frame_storage::make_pack_config;
+use crate::context::UnigraphDbContext;
 use crate::frame_storage::prepare_inline_blobs;
 use crate::storage::UnigraphStorage;
 
@@ -135,14 +140,15 @@ use crate::storage::UnigraphStorage;
 /// then stores everything in a single transaction with monotonic ordering
 /// validation.
 pub async fn store_full(
-    storage: &UnigraphStorage,
+    ctx: &UnigraphDbContext,
     key: &GraphTimeKey,
     graph: &ArrayGraphSerializable,
     task: &ll::Task,
 ) -> Result<()> {
+    let storage = &ctx.storage;
     let prepared_history = storage.prepare_history_if_enabled(key, graph, task).await?;
 
-    let config = make_pack_config(key);
+    let config = ctx.pack_config_for_key(key);
     let package = graph.pack(&config).context("Failed to pack graph")?;
     let manifest_json =
         serde_json::to_string(&package.manifest).context("Failed to serialize graph manifest")?;
@@ -333,12 +339,13 @@ async fn reconstruct_from_range(
 ///
 /// Returns the number of frames converted from Full to Delta.
 pub async fn compact_timeline(
-    storage: &UnigraphStorage,
+    ctx: &UnigraphDbContext,
     timeline_id: &TimelineID,
     start: Option<Timestamp>,
     end: Option<Timestamp>,
     task: &ll::Task,
 ) -> Result<usize> {
+    let storage = &ctx.storage;
     let mut conn = storage.graph.conn().await?;
 
     // Verify the timeline uses AdjacentDeltas schema.
@@ -377,7 +384,7 @@ pub async fn compact_timeline(
         match frame.frame_type {
             FrameType::Full => {
                 if let Some(base_key) = &prev_data_key {
-                    replace_full_with_delta(storage, timeline_id, base_key, frame, task).await?;
+                    replace_full_with_delta(ctx, timeline_id, base_key, frame, task).await?;
                     converted += 1;
                 }
                 prev_data_key = Some(GraphKey {
@@ -406,12 +413,13 @@ pub async fn compact_timeline(
 /// swaps the frame using `delete_frame_on_conn` + `store_package_on_conn`
 /// in a single transaction.
 async fn replace_full_with_delta(
-    storage: &UnigraphStorage,
+    ctx: &UnigraphDbContext,
     timeline_id: &TimelineID,
     base_key: &GraphKey,
     target_frame: &FrameRow,
     task: &ll::Task,
 ) -> Result<()> {
+    let storage = &ctx.storage;
     let target_key = GraphKey {
         timeline_id: timeline_id.clone(),
         graph_id: target_frame.frame.graph_id,
@@ -433,7 +441,7 @@ async fn replace_full_with_delta(
 
     let delta = derive_delta(&base_graph, &target_graph).context("Failed to derive delta")?;
 
-    let config = make_pack_config(&target_time_key);
+    let config = ctx.pack_config_for_key(&target_time_key);
     let package = pack_delta(&delta, &config).context("Failed to pack delta")?;
     let manifest_json =
         serde_json::to_string(&package.manifest).context("Failed to serialize delta manifest")?;

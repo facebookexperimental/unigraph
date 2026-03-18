@@ -8,7 +8,6 @@
 //! with safe blob cleanup.
 
 use std::collections::BTreeMap;
-use std::sync::Arc;
 
 use anyhow::Context;
 use anyhow::Result;
@@ -58,13 +57,13 @@ impl UnigraphStorage {
         &self,
         key: &GraphTimeKey,
         errors: &[TimestampedError],
+        config: &ArrayGraphSerializablePackageConfig,
         task: &ll::Task,
     ) -> Result<()> {
-        let config = make_pack_config(key);
         let error_count = errors.len() as u32;
         let errors_vec = errors.to_vec();
         let package =
-            pack_errors(&errors_vec, error_count, &config).context("Failed to pack errors")?;
+            pack_errors(&errors_vec, error_count, config).context("Failed to pack errors")?;
         let manifest_json = serde_json::to_string(&package.manifest)
             .context("Failed to serialize error manifest")?;
 
@@ -347,7 +346,7 @@ impl UnigraphStorage {
     /// Blob IDs already contain the full storage key (including the
     /// `timeline_id/graph_id/` prefix), so they are used directly as
     /// external blob keys.
-    async fn resolve_blobs(
+    pub(crate) async fn resolve_blobs(
         &self,
         blob_ids: &[BlobID],
         inline_blobs: Option<&[u8]>,
@@ -447,22 +446,6 @@ impl UnigraphStorage {
     ) -> Result<FrameRow> {
         let mut conn = self.graph.conn().await?;
         get_frame_with_data(&mut *conn, key, task).await
-    }
-}
-
-/// Build a pack config that prefixes all blob IDs with `graphs/timeline_id/graph_id/`.
-///
-/// This ensures each frame's blobs have unique IDs and can be independently
-/// deleted when the frame is removed. The `graphs/` prefix separates graph
-/// blobs from other data in the blob store (e.g. warm cache).
-pub(crate) fn make_pack_config(key: &GraphTimeKey) -> ArrayGraphSerializablePackageConfig {
-    let timeline_id = key.timeline_id.clone();
-    let graph_id = key.graph_id;
-    ArrayGraphSerializablePackageConfig {
-        modify_blob_id: Some(Arc::new(move |id| {
-            BlobID(format!("graphs/{}/{}/{}", timeline_id.0, graph_id.0, id))
-        })),
-        ..Default::default()
     }
 }
 

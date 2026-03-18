@@ -2,8 +2,6 @@
 
 //! Frame queries — select, list, and inspect frames in a timeline.
 
-use std::sync::Arc;
-
 use anyhow::Result;
 use ll::task;
 use unigraph_storage_core::FrameQuery;
@@ -14,14 +12,14 @@ use unigraph_storage_core::TimelineID;
 use unigraph_storage_core::Timestamp;
 use unigraph_storage_core::TimestampBounds;
 
-use crate::storage::UnigraphStorage;
+use crate::context::UnigraphDbContext;
 
 /// Handle for frame operations.
 ///
 /// Obtained via [`UnigraphDb::frames`](crate::UnigraphDb).
 #[derive(Clone)]
 pub struct Frames {
-    pub(crate) storage: Arc<UnigraphStorage>,
+    pub(crate) ctx: UnigraphDbContext,
 }
 
 impl Frames {
@@ -31,7 +29,7 @@ impl Frames {
     /// only), stores the frame, and commits.
     #[task(tags(l3))]
     pub async fn store_empty(&self, key: &GraphTimeKey, task: &ll::Task) -> Result<()> {
-        let mut conn = self.storage.graph.conn_write().await?;
+        let mut conn = self.ctx.storage.graph.conn_write().await?;
         conn.start_transaction(&task).await?;
         let config = conn
             .get_timeline_config_and_lock(&key.timeline_id, &task)
@@ -54,7 +52,7 @@ impl Frames {
     /// Select frames matching a structured query.
     #[task(tags(l3))]
     pub async fn select(&self, query: &FrameQuery, task: &ll::Task) -> Result<Vec<FrameRow>> {
-        let mut conn = self.storage.graph.conn().await?;
+        let mut conn = self.ctx.storage.graph.conn().await?;
         conn.select_frames(query, &task).await
     }
 
@@ -71,7 +69,7 @@ impl Frames {
         with_data: bool,
         task: &ll::Task,
     ) -> Result<Option<FrameRow>> {
-        let mut conn = self.storage.graph.conn().await?;
+        let mut conn = self.ctx.storage.graph.conn().await?;
         let mut rows = conn
             .select_frames(
                 &FrameQuery {
@@ -95,7 +93,7 @@ impl Frames {
     /// Returns metadata only (data is `None`).
     #[task(tags(l3))]
     pub async fn list(&self, timeline_id: &TimelineID, task: &ll::Task) -> Result<Vec<FrameRow>> {
-        let mut conn = self.storage.graph.conn().await?;
+        let mut conn = self.ctx.storage.graph.conn().await?;
         conn.select_frames(
             &FrameQuery {
                 timeline_id: timeline_id.clone(),
@@ -123,7 +121,7 @@ impl Frames {
         end: Timestamp,
         task: &ll::Task,
     ) -> Result<Vec<FrameRow>> {
-        let mut conn = self.storage.graph.conn().await?;
+        let mut conn = self.ctx.storage.graph.conn().await?;
         conn.select_frames(
             &FrameQuery {
                 timeline_id: timeline_id.clone(),
@@ -152,7 +150,7 @@ impl Frames {
         key: &GraphTimeKey,
         task: &ll::Task,
     ) -> Result<Option<FrameRow>> {
-        let mut conn = self.storage.graph.conn().await?;
+        let mut conn = self.ctx.storage.graph.conn().await?;
         let mut rows = conn
             .select_frames(
                 &FrameQuery {

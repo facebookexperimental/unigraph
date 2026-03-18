@@ -17,7 +17,7 @@ use unigraph_storage_core::GraphTimeKey;
 use unigraph_storage_core::TimelineID;
 use unigraph_storage_core::Timestamp;
 
-use crate::frame_storage::make_pack_config;
+use crate::context::UnigraphDbContext;
 use crate::storage::UnigraphStorage;
 
 // ---------------------------------------------------------------------------
@@ -28,14 +28,15 @@ use crate::storage::UnigraphStorage;
 ///
 /// No ordering validation — graphs can be stored in any order.
 pub async fn store_full(
-    storage: &UnigraphStorage,
+    ctx: &UnigraphDbContext,
     key: &GraphTimeKey,
     graph: &ArrayGraphSerializable,
     task: &ll::Task,
 ) -> Result<()> {
+    let storage = &ctx.storage;
     let prepared_history = storage.prepare_history_if_enabled(key, graph, task).await?;
 
-    let config = make_pack_config(key);
+    let config = ctx.pack_config_for_key(key);
     let package = graph.pack(&config).context("Failed to pack graph")?;
     let manifest_json =
         serde_json::to_string(&package.manifest).context("Failed to serialize graph manifest")?;
@@ -81,12 +82,13 @@ pub async fn store_full(
 /// Fetches the base graph, derives the delta, packs it, and stores.
 /// The base can be in any timeline (cross-timeline deltas are allowed).
 pub async fn store_delta(
-    storage: &UnigraphStorage,
+    ctx: &UnigraphDbContext,
     key: &GraphTimeKey,
     base_key: &GraphKey,
     target_graph: &ArrayGraphSerializable,
     task: &ll::Task,
 ) -> Result<()> {
+    let storage = &ctx.storage;
     let prepared_history = storage
         .prepare_history_if_enabled(key, target_graph, task)
         .await?;
@@ -99,7 +101,7 @@ pub async fn store_delta(
     let delta =
         unigraph_core::derive_delta(&base_graph, target_graph).context("Failed to derive delta")?;
 
-    let config = make_pack_config(key);
+    let config = ctx.pack_config_for_key(key);
     let package = unigraph_core::pack_delta(&delta, &config).context("Failed to pack delta")?;
     let manifest_json =
         serde_json::to_string(&package.manifest).context("Failed to serialize delta manifest")?;

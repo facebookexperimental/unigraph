@@ -2,21 +2,19 @@
 
 //! Timeline management — create, configure, and list timelines.
 
-use std::sync::Arc;
-
 use anyhow::Result;
 use ll::task;
 use unigraph_storage_core::TimelineConfig;
 use unigraph_storage_core::TimelineID;
 
-use crate::storage::UnigraphStorage;
+use crate::context::UnigraphDbContext;
 
 /// Handle for timeline operations.
 ///
 /// Obtained via [`UnigraphDb::timelines`](crate::UnigraphDb).
 #[derive(Clone)]
 pub struct Timelines {
-    pub(crate) storage: Arc<UnigraphStorage>,
+    pub(crate) ctx: UnigraphDbContext,
 }
 
 impl Timelines {
@@ -28,7 +26,7 @@ impl Timelines {
         config: &TimelineConfig,
         task: &ll::Task,
     ) -> Result<()> {
-        let mut conn = self.storage.graph.conn_write().await?;
+        let mut conn = self.ctx.storage.graph.conn_write().await?;
         conn.create_timeline(timeline_id, config, &task).await
     }
 
@@ -40,14 +38,14 @@ impl Timelines {
         timeline_id: &TimelineID,
         task: &ll::Task,
     ) -> Result<Option<TimelineConfig>> {
-        let mut conn = self.storage.graph.conn().await?;
+        let mut conn = self.ctx.storage.graph.conn().await?;
         conn.get_timeline_config(timeline_id, &task).await
     }
 
     /// List all timeline IDs.
     #[task(tags(l3))]
     pub async fn list(&self, task: &ll::Task) -> Result<Vec<TimelineID>> {
-        let mut conn = self.storage.graph.conn().await?;
+        let mut conn = self.ctx.storage.graph.conn().await?;
         conn.list_timelines(&task).await
     }
 }
