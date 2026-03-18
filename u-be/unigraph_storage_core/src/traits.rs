@@ -269,42 +269,34 @@ pub trait UnigraphGraphConnection: Send {
     /// is silently skipped (deduplication).
     async fn store_traversal_config(
         &mut self,
-        _key: &TraversalConfigKey,
-        _blob_inline: Option<&[u8]>,
-        _blob_id: Option<&str>,
-        _task: &ll::Task,
-    ) -> Result<()> {
-        unimplemented!("store_traversal_config not implemented for this backend")
-    }
+        key: &TraversalConfigKey,
+        blob_inline: Option<&[u8]>,
+        blob_id: Option<&str>,
+        task: &ll::Task,
+    ) -> Result<()>;
 
     /// Fetch a traversal config row by key. Returns `None` if not found.
     async fn get_traversal_config(
         &mut self,
-        _key: &TraversalConfigKey,
-        _task: &ll::Task,
-    ) -> Result<Option<ConfigRow<TraversalConfigKey>>> {
-        unimplemented!("get_traversal_config not implemented for this backend")
-    }
+        key: &TraversalConfigKey,
+        task: &ll::Task,
+    ) -> Result<Option<ConfigRow<TraversalConfigKey>>>;
 
     /// Store a graph query config blob by its content-addressed key.
     async fn store_graph_query_config(
         &mut self,
-        _key: &GraphQueryConfigKey,
-        _blob_inline: Option<&[u8]>,
-        _blob_id: Option<&str>,
-        _task: &ll::Task,
-    ) -> Result<()> {
-        unimplemented!("store_graph_query_config not implemented for this backend")
-    }
+        key: &GraphQueryConfigKey,
+        blob_inline: Option<&[u8]>,
+        blob_id: Option<&str>,
+        task: &ll::Task,
+    ) -> Result<()>;
 
     /// Fetch a graph query config row by key. Returns `None` if not found.
     async fn get_graph_query_config(
         &mut self,
-        _key: &GraphQueryConfigKey,
-        _task: &ll::Task,
-    ) -> Result<Option<ConfigRow<GraphQueryConfigKey>>> {
-        unimplemented!("get_graph_query_config not implemented for this backend")
-    }
+        key: &GraphQueryConfigKey,
+        task: &ll::Task,
+    ) -> Result<Option<ConfigRow<GraphQueryConfigKey>>>;
 }
 
 /// Graph storage backend — vends connections.
