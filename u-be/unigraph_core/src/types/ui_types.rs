@@ -15,25 +15,25 @@ pub struct ExplorerProps {
     /// or two graphs that will be compared to each other.
     pub graphs: ExplorerComponentInputGraphs,
 
-    /// serialized traversal config (for the Left graph).
-    /// Serialization format:
-    /// 1. JSON
-    /// 2. ZSTD compression
-    /// 3. Base64 (UrlSafe, NoPadding)
-    pub traversal_config_l: Option<String>,
-    pub on_traversal_config_change_l: Option<CallbackFn>,
+    /// Base GraphQueryConfig as JSON (from API response, immutable).
+    /// Used as the baseline for delta computation.
+    pub base_gqc_l: Option<String>,
+    pub base_gqc_r: Option<String>,
 
-    /// Same as traversal config, but for the Right graph
-    /// (in delta/comparison view)
-    pub traversal_config_r: Option<String>,
-    pub on_traversal_config_change_r: Option<CallbackFn>,
+    /// GQC delta (zstd+base64) — only the fields the user changed
+    /// relative to the base GQC. Stored in the URL.
+    pub gqc_delta_l: Option<String>,
+    pub on_gqc_delta_change_l: Option<CallbackFn>,
+    pub gqc_delta_r: Option<String>,
+    pub on_gqc_delta_change_r: Option<CallbackFn>,
 
-    /// serialized traversal config. Serialization format
-    /// 1. JSON
-    /// 2. ZSTD compression
-    /// 3. Base64 (UrlSafe, NoPadding)
+    /// Serialized graph settings (zstd+base64).
     pub graph_settings: Option<String>,
     pub on_graph_settings_change: CallbackFn,
+
+    /// If set, the sidebar shows a home icon linking to this URL.
+    /// Omit for standalone/local mode where there's no home page.
+    pub home_href: Option<String>,
 }
 
 #[derive(typegen::TypeGen, serde::Deserialize)]

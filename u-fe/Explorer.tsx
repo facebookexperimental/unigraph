@@ -2,11 +2,14 @@
 
 import { useCallback, useMemo } from "react";
 import {
+  apply_gqc_delta,
+  derive_gqc_delta,
   from_zstd_base64_url_safe_no_pad,
   to_zstd_base64_url_safe_no_pad,
 } from "../.build/wasm/unigraph_wasm";
 import type { ArrayGraphUISettingsTreeTableEntryPoints } from "./__generated__/ts/ArrayGraphUISettingsTreeTableEntryPoints";
 import type { ExplorerProps } from "./__generated__/ts/ExplorerProps";
+import type { GraphQueryConfig } from "./__generated__/ts/GraphQueryConfig";
 import type { GraphSettings } from "./__generated__/ts/GraphSettings";
 import type { TraversalConfig } from "./__generated__/ts/TraversalConfig";
 import ErrorBoundary from "./components/ErrorBoundary";
@@ -46,12 +49,15 @@ export function Explorer(props: ExplorerProps) {
 
   const {
     graphs,
-    traversal_config_l,
-    on_traversal_config_change_l,
-    traversal_config_r,
-    on_traversal_config_change_r,
+    base_gqc_l,
+    base_gqc_r,
+    gqc_delta_l,
+    on_gqc_delta_change_l,
+    gqc_delta_r,
+    on_gqc_delta_change_r,
     graph_settings,
     on_graph_settings_change,
+    home_href,
   } = props;
 
   /// This graph initializes a new native graph every time the raw data changes.
@@ -60,28 +66,37 @@ export function Explorer(props: ExplorerProps) {
     [graphs],
   );
 
-  /// This hook will NOT re-initialize the native graph if the traversal config changes.
-  /// We modify it in place and return a new nativeGraph reference with all caches busted.
-  const [tvcL, nativeGraphL] = useMemo(() => {
-    const tvc: TraversalConfig =
-      traversal_config_l == null
-        ? nativeGraphNoTVCL.getTraversalConfig()
-        : JSON.parse(from_zstd_base64_url_safe_no_pad(traversal_config_l));
+  // Resolve base GQC — either from props (handle mode) or from graph defaults (local mode)
+  const resolvedBaseGqcL = useMemo(
+    () => resolveBaseGqc(base_gqc_l, nativeGraphNoTVCL),
+    [base_gqc_l, nativeGraphNoTVCL],
+  );
 
+  const resolvedBaseGqcR = useMemo(
+    () =>
+      nativeGraphNoTVCR != null
+        ? resolveBaseGqc(base_gqc_r, nativeGraphNoTVCR)
+        : null,
+    [base_gqc_r, nativeGraphNoTVCR],
+  );
+
+  // Apply delta to get current GQC, then extract TVC
+  const [tvcL, nativeGraphL] = useMemo(() => {
+    const currentGqc = applyDelta(resolvedBaseGqcL, gqc_delta_l);
+    const tvc: TraversalConfig =
+      currentGqc.traversal_config ?? nativeGraphNoTVCL.getTraversalConfig();
     return [tvc, nativeGraphNoTVCL.getApplyTraversalConfig(tvc)];
-  }, [traversal_config_l, nativeGraphNoTVCL]);
+  }, [resolvedBaseGqcL, gqc_delta_l, nativeGraphNoTVCL]);
 
   const [tvcR, nativeGraphR] = useMemo(() => {
-    if (nativeGraphNoTVCR == null) {
+    if (nativeGraphNoTVCR == null || resolvedBaseGqcR == null) {
       return [null, null];
     }
+    const currentGqc = applyDelta(resolvedBaseGqcR, gqc_delta_r);
     const tvc: TraversalConfig =
-      traversal_config_r == null
-        ? nativeGraphNoTVCR.getTraversalConfig()
-        : JSON.parse(from_zstd_base64_url_safe_no_pad(traversal_config_r));
-
+      currentGqc.traversal_config ?? nativeGraphNoTVCR.getTraversalConfig();
     return [tvc, nativeGraphNoTVCR.getApplyTraversalConfig(tvc)];
-  }, [traversal_config_r, nativeGraphNoTVCR]);
+  }, [resolvedBaseGqcR, gqc_delta_r, nativeGraphNoTVCR]);
 
   const settings = useMemo(() => {
     return graph_settings == null
@@ -91,29 +106,35 @@ export function Explorer(props: ExplorerProps) {
 
   const setTvcLCb = useCallback(
     (tvc: TraversalConfig) => {
-      const traversal_config_zstd_base64_url_safe_no_padding =
-        to_zstd_base64_url_safe_no_pad(JSON.stringify(tvc));
-
-      on_traversal_config_change_l?.(
-        traversal_config_zstd_base64_url_safe_no_padding,
+      const modified: GraphQueryConfig = {
+        ...resolvedBaseGqcL,
+        traversal_config: tvc,
+      };
+      const delta = derive_gqc_delta(
+        JSON.stringify(resolvedBaseGqcL),
+        JSON.stringify(modified),
       );
+      on_gqc_delta_change_l?.(delta);
     },
-    [on_traversal_config_change_l],
+    [resolvedBaseGqcL, on_gqc_delta_change_l],
   );
 
   const setTvcRCb = useCallback(
     (tvc: TraversalConfig) => {
-      if (nativeGraphR == null) {
+      if (nativeGraphR == null || resolvedBaseGqcR == null) {
         return;
       }
-      const traversal_config_zstd_base64_url_safe_no_padding =
-        to_zstd_base64_url_safe_no_pad(JSON.stringify(tvc));
-
-      on_traversal_config_change_r?.(
-        traversal_config_zstd_base64_url_safe_no_padding,
+      const modified: GraphQueryConfig = {
+        ...resolvedBaseGqcR,
+        traversal_config: tvc,
+      };
+      const delta = derive_gqc_delta(
+        JSON.stringify(resolvedBaseGqcR),
+        JSON.stringify(modified),
       );
+      on_gqc_delta_change_r?.(delta);
     },
-    [on_traversal_config_change_r, nativeGraphR],
+    [resolvedBaseGqcR, on_gqc_delta_change_r, nativeGraphR],
   );
 
   const setSettingsCb = useCallback(
@@ -146,7 +167,7 @@ export function Explorer(props: ExplorerProps) {
                       setSettings={setSettingsCb}
                     >
                       <SelectedPathContextProvider syncToURL={true}>
-                        <Page />
+                        <Page homeHref={home_href} />
                       </SelectedPathContextProvider>
                     </GraphSettingsContextProvider>
                   </SelectedNodesContextProvider>
@@ -160,7 +181,7 @@ export function Explorer(props: ExplorerProps) {
   );
 }
 
-function Page() {
+function Page({ homeHref }: { homeHref?: string }) {
   const [nativeGraphL, nativeGraphR] = useNativeGraphs();
   const [graphSettings] = useGraphSettings();
   const [settings] = useGraphSettings();
@@ -220,7 +241,7 @@ function Page() {
       className="flex grow-1 shrink flex-row bg-background text-foreground min-h-0"
       ref={portalRef}
     >
-      <Sidebar selectedPanelTab={selectedSidebarPanel} />
+      <Sidebar selectedPanelTab={selectedSidebarPanel} homeHref={homeHref} />
       {panelTab}
       <div className="flex flex-col h-full grow-1">
         <GraphTreeTable focusOnMount={true} roots={roots} />
@@ -260,4 +281,29 @@ function getRoots(
       );
     }
   }
+}
+
+function resolveBaseGqc(
+  baseGqcJson: string | undefined,
+  nativeGraph: NativeGraph,
+): GraphQueryConfig {
+  if (baseGqcJson != null) {
+    return JSON.parse(baseGqcJson);
+  }
+  // Local mode: construct a base GQC from graph defaults
+  return {
+    roots: [],
+    traversal_config: nativeGraph.getTraversalConfig(),
+  };
+}
+
+function applyDelta(
+  base: GraphQueryConfig,
+  deltaBase64: string | undefined,
+): GraphQueryConfig {
+  if (deltaBase64 == null || deltaBase64 === "") {
+    return base;
+  }
+  const resultJson = apply_gqc_delta(JSON.stringify(base), deltaBase64);
+  return JSON.parse(resultJson);
 }

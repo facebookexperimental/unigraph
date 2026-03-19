@@ -1,6 +1,6 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-import { Info, SlidersHorizontal, Waypoints, Wrench } from "lucide-react";
+import { Home, Info, SlidersHorizontal, Waypoints, Wrench } from "lucide-react";
 import type { SidebarPanel } from "./__generated__/ts/SidebarPanel";
 import UTooltip from "./components/UTooltip";
 import { Button } from "./components/ui/button";
@@ -11,14 +11,30 @@ import TraversalConfigInspector from "./sidebar_panels/TraversalConfigInspector"
 
 export default function Sidebar({
   selectedPanelTab,
+  homeHref,
 }: {
   selectedPanelTab: SidebarPanel;
+  homeHref?: string;
 }) {
   const [debugMode, setDebugMode] = useDebugMode();
   const tg = useTwinGraph();
   return (
     <div className="flex h-full flex-col px-2 bg-sidebar pt-4 pb-3 border-r justify-between">
       <div className="flex flex-col items-center gap-2">
+        {homeHref != null && (
+          <UTooltip tooltip="Back to timelines">
+            <Button
+              size="icon"
+              className="cursor-pointer"
+              variant="ghost"
+              asChild
+            >
+              <a href={homeHref}>
+                <Home />
+              </a>
+            </Button>
+          </UTooltip>
+        )}
         <TabSelector tabName="Simulation" selectedPanelTab={selectedPanelTab}>
           <Waypoints />
         </TabSelector>

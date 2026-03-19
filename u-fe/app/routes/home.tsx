@@ -23,7 +23,7 @@ export default function Home() {
       .then((r) => {
         if (r.status === 404) {
           // No storage configured, redirect to explorer
-          navigate("/explorer", { replace: true });
+          navigate("/explorer/local", { replace: true });
           return null;
         }
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -32,7 +32,7 @@ export default function Home() {
       .then((data: TimelineResponse[] | null) => {
         if (data == null) return;
         if (data.length === 0) {
-          navigate("/explorer", { replace: true });
+          navigate("/explorer/local", { replace: true });
           return;
         }
         setTimelines(data);

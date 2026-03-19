@@ -121,7 +121,7 @@ export default function TimelinePage() {
                         variant="outline"
                         size="sm"
                         onClick={() =>
-                          navigate(`/explorer/${timelineId}/${frame.graph_id}`)
+                          navigate(`/explorer/${timelineId}~${frame.graph_id}`)
                         }
                       >
                         Explore
@@ -132,7 +132,7 @@ export default function TimelinePage() {
                         onCompare={setCompareGraphId}
                         onConfirm={(rightGraphId) => {
                           navigate(
-                            `/explorer/${timelineId}/${compareGraphId}?right=${rightGraphId}`,
+                            `/explorer/${timelineId}~${compareGraphId}/${timelineId}~${rightGraphId}`,
                           );
                         }}
                       />

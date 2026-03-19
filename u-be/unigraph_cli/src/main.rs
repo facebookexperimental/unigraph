@@ -14,6 +14,43 @@ use unigraph_storage_core::GraphKeyOrTimelineID;
 use unigraph_storage_core::TimelineID;
 use unigraph_web_service::ServeMode;
 
+#[tokio::main]
+async fn main() {
+    let args = Args::parse();
+    let sqlite_path = &args.sqlite_path;
+
+    // Show interactive task tree only on TTY terminals
+    if std::io::stderr().is_tty() && args.task_tree {
+        ll::reporters::term_status::show();
+    } else {
+        tracing_subscriber::fmt()
+            .compact()
+            .with_target(false)
+            .init();
+    }
+
+    let task = ll::Task::create_new("unigraph");
+
+    let result = match args.command {
+        Commands::Serve(serve) => {
+            serve.run(sqlite_path).await;
+            Ok(())
+        }
+        Commands::Ingest(ingest) => ingest.run(sqlite_path, &task).await,
+        Commands::Frames(frames) => frames.run(sqlite_path, &task).await,
+        Commands::Compact(compact) => compact.run(sqlite_path, &task).await,
+        Commands::Graph(g) => match g.command {
+            GraphCommands::Get(get) => get.run(sqlite_path, &task).await,
+            GraphCommands::Budget(budget) => budget.run(sqlite_path, &task).await,
+        },
+    };
+
+    if let Err(e) = result {
+        eprintln!("Error: {e:#}");
+        std::process::exit(1);
+    }
+}
+
 fn default_sqlite_path() -> PathBuf {
     dirs::home_dir()
         .expect("could not determine home directory")
@@ -31,6 +68,10 @@ fn resolve_sqlite_path(path: &Path) -> &Path {
 #[derive(Parser)]
 #[command(long_about = None)]
 struct Args {
+    // show ll task tree in the terminal
+    #[arg(long)]
+    task_tree: bool,
+
     /// Path to the SQLite database file
     #[arg(long, default_value_os_t = default_sqlite_path(), global = true)]
     sqlite_path: PathBuf,
@@ -460,37 +501,5 @@ fn parse_timestamp(s: Option<&str>) -> anyhow::Result<Option<unigraph_timestamp:
                 .map_err(|e| anyhow::anyhow!("Invalid timestamp: {e}"))?,
         )),
         None => Ok(None),
-    }
-}
-
-#[tokio::main]
-async fn main() {
-    let args = Args::parse();
-    let sqlite_path = &args.sqlite_path;
-
-    // Show interactive task tree only on TTY terminals
-    if std::io::stderr().is_tty() {
-        ll::reporters::term_status::show();
-    }
-
-    let task = ll::Task::create_new("unigraph");
-
-    let result = match args.command {
-        Commands::Serve(serve) => {
-            serve.run(sqlite_path).await;
-            Ok(())
-        }
-        Commands::Ingest(ingest) => ingest.run(sqlite_path, &task).await,
-        Commands::Frames(frames) => frames.run(sqlite_path, &task).await,
-        Commands::Compact(compact) => compact.run(sqlite_path, &task).await,
-        Commands::Graph(g) => match g.command {
-            GraphCommands::Get(get) => get.run(sqlite_path, &task).await,
-            GraphCommands::Budget(budget) => budget.run(sqlite_path, &task).await,
-        },
-    };
-
-    if let Err(e) = result {
-        eprintln!("Error: {e:#}");
-        std::process::exit(1);
     }
 }

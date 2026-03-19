@@ -12,6 +12,7 @@ use unigraph_core::ArrayGraph;
 use unigraph_core::ArrayGraphSerializable;
 use unigraph_core::ArrayGraphSerializablePackage;
 use unigraph_core::ArrayGraphSerializablePackageBase64;
+use unigraph_core::GraphQueryConfig;
 use unigraph_core::MapGraph;
 use unigraph_core::TraversalConfig;
 use unigraph_core::TraversalType;
@@ -20,6 +21,7 @@ use unigraph_core::graph_settings::GraphStructure;
 use unigraph_core::types::NodeIDX;
 use unigraph_core::ui_types::ExplorerComponentInputGraph;
 use unigraph_core::ui_types::ExplorerComponentInputGraphs;
+use unigraph_delta::Deltable;
 use unigraph_graph_state::GlobalGraphState;
 use unigraph_graph_state::global_graph_state;
 use unigraph_graph_state::types::SimulationParams;
@@ -584,6 +586,48 @@ pub fn from_zstd_base64_url_safe_no_pad(zstd_base64: &str) -> Result<String, Was
 #[wasm_bindgen]
 pub fn to_zstd_base64_url_safe_no_pad(s: String) -> Result<String, WasmJSError> {
     Ok(SerializationFormat::JsonZstdBestBase64URLSafeNoPad.to_string(&s)?)
+}
+
+/// Compute the delta between a base and modified GraphQueryConfig.
+/// Returns a zstd+base64 encoded delta string, or empty string if unchanged.
+#[wasm_bindgen]
+pub fn derive_gqc_delta(base_json: String, modified_json: String) -> Result<String, WasmJSError> {
+    let base: GraphQueryConfig =
+        serde_json::from_str(&base_json).context("failed to parse base GQC")?;
+    let modified: GraphQueryConfig =
+        serde_json::from_str(&modified_json).context("failed to parse modified GQC")?;
+
+    match base.derive_delta(&modified) {
+        Some(delta) => {
+            let delta_json =
+                serde_json::to_string(&delta).context("failed to serialize GQC delta")?;
+            Ok(to_zstd_base64_url_safe_no_pad_inner(&delta_json)?)
+        }
+        None => Ok(String::new()),
+    }
+}
+
+/// Apply a zstd+base64 encoded delta to a base GraphQueryConfig.
+/// Returns the resulting GraphQueryConfig as JSON.
+#[wasm_bindgen]
+pub fn apply_gqc_delta(base_json: String, delta_base64: &str) -> Result<String, WasmJSError> {
+    let mut base: GraphQueryConfig =
+        serde_json::from_str(&base_json).context("failed to parse base GQC")?;
+    let delta_json: String =
+        from_zstd_base64_url_safe_no_pad_inner(delta_base64).context("failed to decode delta")?;
+    let delta: <GraphQueryConfig as Deltable>::Delta =
+        serde_json::from_str(&delta_json).context("failed to parse GQC delta")?;
+    base.apply_delta(delta)
+        .context("failed to apply GQC delta")?;
+    Ok(serde_json::to_string(&base).context("failed to serialize result GQC")?)
+}
+
+fn from_zstd_base64_url_safe_no_pad_inner(zstd_base64: &str) -> Result<String> {
+    SerializationFormat::JsonZstdBestBase64URLSafeNoPad.parse_string(zstd_base64)
+}
+
+fn to_zstd_base64_url_safe_no_pad_inner(s: &String) -> Result<String> {
+    SerializationFormat::JsonZstdBestBase64URLSafeNoPad.to_string(s)
 }
 
 fn parse_input_graph(g: ExplorerComponentInputGraph) -> Result<ArrayGraphSerializable> {
