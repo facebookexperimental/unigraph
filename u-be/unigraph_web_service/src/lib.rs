@@ -19,27 +19,19 @@ use axum::response::IntoResponse;
 use axum::response::Response;
 use axum::routing::get;
 use axum::routing::post;
-use serde::Deserialize;
-use serde::Serialize;
 use tower_http::services::ServeDir;
 use tower_http::services::ServeFile;
 use tower_http::trace::TraceLayer;
 use tracing::Span;
 use tracing::info;
 use unigraph_app::Unigraph;
+use unigraph_app::UnigraphRequest;
 use unigraph_core::ArrayGraphSerializable;
 use unigraph_core::ArrayGraphSerializablePackage;
 use unigraph_core::ArrayGraphSerializablePackageConfig;
-use unigraph_core::GraphQueryConfig;
 use unigraph_core::MapGraph;
-use unigraph_core::config_key::GraphQueryConfigKey;
 use unigraph_core::ui_types::ExplorerComponentInputGraph;
 use unigraph_serialization::SerializationFormat;
-use unigraph_storage_core::FrameType;
-use unigraph_storage_core::GraphID;
-use unigraph_storage_core::GraphKey;
-use unigraph_storage_core::GraphKeyOrTimelineID;
-use unigraph_storage_core::TimelineID;
 
 const THIS_FILES_DIR: &str = match option_env!("CARGO_MANIFEST_DIR") {
     Some(dir) => dir,
@@ -100,16 +92,7 @@ pub async fn start(
         .route("/favicon.ico", get(favicon_ico))
         .route("/favicon-192.png", get(favicon_png))
         .route("/api/local_graphs", get(api_local_graphs))
-        .route("/api/graph_query", post(api_graph_query))
-        .route("/api/timelines", get(api_timelines))
-        .route(
-            "/api/timelines/{timeline_id}/frames",
-            get(api_timeline_frames),
-        )
-        .route(
-            "/api/timelines/{timeline_id}/graphs/{graph_id}",
-            get(api_timeline_graph),
-        )
+        .route("/api/rpc", post(api_rpc))
         .with_state(state);
 
     let project_root = PathBuf::from(THIS_FILES_DIR).join("../..");
@@ -193,220 +176,21 @@ async fn api_local_graphs(State(state): State<AppState>) -> impl IntoResponse {
     ([(http::header::CONTENT_TYPE, "application/json")], body)
 }
 
-// --- Graph query endpoint ---
+// --- RPC endpoint ---
 
-#[derive(Deserialize)]
-struct GraphQueryRequest {
-    graph_query_config: Option<GraphQueryConfig>,
-    graph_query_config_key: Option<String>,
-}
-
-#[derive(Serialize)]
-struct GraphQueryResponse {
-    graph: serde_json::Value,
-    graph_query_config: GraphQueryConfig,
-}
-
-async fn api_graph_query(
+async fn api_rpc(
     State(state): State<AppState>,
-    axum::Json(req): axum::Json<GraphQueryRequest>,
+    axum::Json(req): axum::Json<UnigraphRequest>,
 ) -> Result<impl IntoResponse, http::StatusCode> {
     let app = state.db.as_ref().ok_or(http::StatusCode::NOT_FOUND)?;
-    let task = ll::Task::create_new("api_graph_query");
-
-    let gqc = resolve_graph_query_config(app, &req, &task).await?;
-    let (graph_json, gqc) = fetch_graph_for_gqc(app, gqc, &task).await?;
-
-    let graph_value: serde_json::Value =
-        serde_json::from_str(&graph_json).map_err(|_| http::StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    let response = GraphQueryResponse {
-        graph: graph_value,
-        graph_query_config: gqc,
-    };
-
+    let task = ll::Task::create_new("api_rpc");
+    let response = app
+        .exec_rpc(req, &task)
+        .await
+        .map_err(|_| http::StatusCode::INTERNAL_SERVER_ERROR)?;
     let json =
         serde_json::to_string(&response).map_err(|_| http::StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(([(http::header::CONTENT_TYPE, "application/json")], json))
-}
-
-async fn resolve_graph_query_config(
-    app: &Unigraph,
-    req: &GraphQueryRequest,
-    task: &ll::Task,
-) -> Result<GraphQueryConfig, http::StatusCode> {
-    match (&req.graph_query_config, &req.graph_query_config_key) {
-        (Some(gqc), _) => Ok(gqc.clone()),
-        (_, Some(key_str)) => {
-            let key: GraphQueryConfigKey =
-                key_str.parse().map_err(|_| http::StatusCode::BAD_REQUEST)?;
-            app.db
-                .configs
-                .fetch_graph_query_config(&key, task)
-                .await
-                .map_err(|_| http::StatusCode::INTERNAL_SERVER_ERROR)
-        }
-        (None, None) => Err(http::StatusCode::BAD_REQUEST),
-    }
-}
-
-async fn fetch_graph_for_gqc(
-    app: &Unigraph,
-    mut gqc: GraphQueryConfig,
-    task: &ll::Task,
-) -> Result<(String, GraphQueryConfig), http::StatusCode> {
-    let handle = gqc.handle.as_ref().ok_or(http::StatusCode::BAD_REQUEST)?;
-    let parsed: GraphKeyOrTimelineID = handle.parse().map_err(|_| http::StatusCode::BAD_REQUEST)?;
-
-    let graph = match parsed {
-        GraphKeyOrTimelineID::GraphKey(key) => {
-            let frame = app
-                .db
-                .frames
-                .get(&key, false, task)
-                .await
-                .map_err(|_| http::StatusCode::INTERNAL_SERVER_ERROR)?
-                .ok_or(http::StatusCode::NOT_FOUND)?;
-
-            if frame.frame_type == FrameType::Empty || frame.frame_type == FrameType::Error {
-                return Err(http::StatusCode::NOT_FOUND);
-            }
-
-            app.db
-                .graph
-                .fetch(&key, task)
-                .await
-                .map_err(|_| http::StatusCode::INTERNAL_SERVER_ERROR)?
-        }
-        GraphKeyOrTimelineID::TimelineID(tid) => {
-            let (_key, graph) = app
-                .db
-                .graph
-                .fetch_latest(&tid, task)
-                .await
-                .map_err(|_| http::StatusCode::INTERNAL_SERVER_ERROR)?;
-            graph
-        }
-    };
-
-    // If the GQC has no TVC, populate from the graph's embedded config
-    if gqc.traversal_config.is_none() {
-        gqc.traversal_config = graph.traversal_config.clone();
-    }
-
-    let graph_json =
-        array_graph_to_json(&graph).map_err(|_| http::StatusCode::INTERNAL_SERVER_ERROR)?;
-    Ok((graph_json, gqc))
-}
-
-// --- Storage-backed endpoints ---
-
-#[derive(Serialize)]
-struct TimelineResponse {
-    timeline_id: String,
-}
-
-async fn api_timelines(
-    State(state): State<AppState>,
-) -> Result<impl IntoResponse, http::StatusCode> {
-    let app = state.db.as_ref().ok_or(http::StatusCode::NOT_FOUND)?;
-    let task = ll::Task::create_new("api_timelines");
-    let timelines = app
-        .db
-        .timelines
-        .list(&task)
-        .await
-        .map_err(|_| http::StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    let response: Vec<TimelineResponse> = timelines
-        .into_iter()
-        .map(|tl| TimelineResponse { timeline_id: tl.0 })
-        .collect();
-
-    let json =
-        serde_json::to_string(&response).map_err(|_| http::StatusCode::INTERNAL_SERVER_ERROR)?;
-    Ok(([(http::header::CONTENT_TYPE, "application/json")], json))
-}
-
-#[derive(Serialize)]
-struct FrameResponse {
-    graph_id: i64,
-    timestamp: String,
-    frame_type: String,
-    base: Option<i64>,
-}
-
-async fn api_timeline_frames(
-    State(state): State<AppState>,
-    axum::extract::Path(timeline_id): axum::extract::Path<String>,
-) -> Result<impl IntoResponse, http::StatusCode> {
-    let app = state.db.as_ref().ok_or(http::StatusCode::NOT_FOUND)?;
-    let task = ll::Task::create_new("api_timeline_frames");
-    let frames = app
-        .db
-        .frames
-        .list(&TimelineID(timeline_id), &task)
-        .await
-        .map_err(|_| http::StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    let response: Vec<FrameResponse> = frames
-        .iter()
-        .map(|f| {
-            let base = f.base.as_ref().map(|k| k.graph_id.0);
-            FrameResponse {
-                graph_id: f.frame.graph_id.0,
-                timestamp: f.frame.timestamp.to_rfc3339(),
-                frame_type: f.frame_type.to_string(),
-                base,
-            }
-        })
-        .collect();
-
-    let json =
-        serde_json::to_string(&response).map_err(|_| http::StatusCode::INTERNAL_SERVER_ERROR)?;
-    Ok(([(http::header::CONTENT_TYPE, "application/json")], json))
-}
-
-#[derive(Deserialize)]
-struct TimelineGraphPath {
-    timeline_id: String,
-    graph_id: i64,
-}
-
-async fn api_timeline_graph(
-    State(state): State<AppState>,
-    axum::extract::Path(path): axum::extract::Path<TimelineGraphPath>,
-) -> Result<impl IntoResponse, http::StatusCode> {
-    let app = state.db.as_ref().ok_or(http::StatusCode::NOT_FOUND)?;
-    let key = GraphKey {
-        timeline_id: TimelineID(path.timeline_id),
-        graph_id: GraphID(path.graph_id),
-    };
-
-    let task = ll::Task::create_new("api_timeline_graph");
-    let frame = app
-        .db
-        .frames
-        .get(&key, false, &task)
-        .await
-        .map_err(|_| http::StatusCode::INTERNAL_SERVER_ERROR)?
-        .ok_or(http::StatusCode::NOT_FOUND)?;
-
-    if frame.frame_type == FrameType::Empty || frame.frame_type == FrameType::Error {
-        return Err(http::StatusCode::NOT_FOUND);
-    }
-
-    let graph = app
-        .db
-        .graph
-        .fetch(&key, &task)
-        .await
-        .map_err(|_| http::StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    let json = array_graph_to_json(&graph).map_err(|_| http::StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    let body = format!(r#"{{"left":{json}}}"#);
-    Ok(([(http::header::CONTENT_TYPE, "application/json")], body))
 }
 
 // --- Vite proxy ---

@@ -2,16 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router";
+import type { FrameInfo } from "../../__generated__/ts/FrameInfo";
+import { rpc } from "../../api/rpc";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { cn } from "../../lib/utils";
-
-interface FrameResponse {
-  graph_id: number;
-  timestamp: string;
-  frame_type: string;
-  base: number | null;
-}
 
 function FrameTypeBadge({ frameType }: { frameType: string }) {
   switch (frameType) {
@@ -42,17 +37,14 @@ function formatTimestamp(iso: string): string {
 export default function TimelinePage() {
   const { timelineId } = useParams();
   const navigate = useNavigate();
-  const [frames, setFrames] = useState<FrameResponse[] | null>(null);
+  const [frames, setFrames] = useState<FrameInfo[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [compareGraphId, setCompareGraphId] = useState<number | null>(null);
 
   useEffect(() => {
-    fetch(`/api/timelines/${timelineId}/frames`)
-      .then((r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json();
-      })
-      .then((data: FrameResponse[]) => setFrames(data))
+    if (timelineId == null) return;
+    rpc("SelectFrames", { timeline_id: timelineId })
+      .then((data) => setFrames(data.frames))
       .catch((e: unknown) =>
         setError(e instanceof Error ? e.message : String(e)),
       );

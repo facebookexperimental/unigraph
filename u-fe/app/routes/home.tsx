@@ -8,38 +8,29 @@ import {
   CardTitle,
   CardDescription,
 } from "../../components/ui/card";
-
-interface TimelineResponse {
-  timeline_id: string;
-}
+import { rpc } from "../../api/rpc";
 
 export default function Home() {
   const navigate = useNavigate();
-  const [timelines, setTimelines] = useState<TimelineResponse[] | null>(null);
+  const [timelineIds, setTimelineIds] = useState<string[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/timelines")
-      .then((r) => {
-        if (r.status === 404) {
-          // No storage configured, redirect to explorer
-          navigate("/explorer/local", { replace: true });
-          return null;
-        }
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json();
-      })
-      .then((data: TimelineResponse[] | null) => {
-        if (data == null) return;
-        if (data.length === 0) {
+    rpc("ListTimelines", {})
+      .then((data) => {
+        if (data.timeline_ids.length === 0) {
           navigate("/explorer/local", { replace: true });
           return;
         }
-        setTimelines(data);
+        setTimelineIds(data.timeline_ids);
       })
-      .catch((e: unknown) =>
-        setError(e instanceof Error ? e.message : String(e)),
-      );
+      .catch((e: unknown) => {
+        if (e instanceof Error && e.message.includes("HTTP 404")) {
+          navigate("/explorer/local", { replace: true });
+          return;
+        }
+        setError(e instanceof Error ? e.message : String(e));
+      });
   }, [navigate]);
 
   if (error != null) {
@@ -48,7 +39,7 @@ export default function Home() {
     );
   }
 
-  if (timelines == null) {
+  if (timelineIds == null) {
     return (
       <div className="h-screen flex items-center justify-center">
         Loading...
@@ -60,14 +51,14 @@ export default function Home() {
     <div className="p-8 max-w-4xl mx-auto">
       <h1 className="text-2xl font-bold mb-6">Timelines</h1>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {timelines.map((tl) => (
+        {timelineIds.map((id) => (
           <Card
-            key={tl.timeline_id}
+            key={id}
             className="cursor-pointer hover:border-primary/50 transition-colors"
-            onClick={() => navigate(`/timelines/${tl.timeline_id}`)}
+            onClick={() => navigate(`/timelines/${id}`)}
           >
             <CardHeader>
-              <CardTitle>{tl.timeline_id}</CardTitle>
+              <CardTitle>{id}</CardTitle>
               <CardDescription>Timeline</CardDescription>
             </CardHeader>
           </Card>

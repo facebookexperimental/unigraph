@@ -1,0 +1,232 @@
+#![allow(async_fn_in_trait)]
+
+// --- Public API ---
+
+/// Trait for executing an RPC method. Each Input type implements this
+/// with its corresponding Output type and the RPC context as `Ctx`.
+///
+/// ```ignore
+/// impl RpcExec<MyRPC> for HelloWorldInput {
+///     type Output = HelloWorldOutput;
+///     async fn exec(self, ctx: &MyRPC, task: &ll::Task) -> Result<HelloWorldOutput> { ... }
+/// }
+/// ```
+pub trait RpcExec<Ctx> {
+    type Output;
+    async fn exec(self, ctx: &Ctx, task: &ll::Task) -> anyhow::Result<Self::Output>;
+}
+
+/// Generates `{Name}Request` and `{Name}Response` enums from an RPC spec.
+///
+/// ```ignore
+/// define_rpc! {
+///     pub MyRPC {
+///         HelloWorld(HelloWorldInput) -> HelloWorldOutput,
+///         OtherStuff(OtherStuffInput) -> OtherStuffOutput,
+///     }
+/// }
+/// ```
+#[macro_export]
+macro_rules! define_rpc {
+    (
+        $vis:vis $name:ident {
+            $( $variant:ident ( $input:ty ) -> $output:ty ),* $(,)?
+        }
+    ) => {
+        paste::paste! {
+            #[derive(typegen::TypeGen, serde::Serialize, serde::Deserialize)]
+            $vis enum [<$name Request>] {
+                $( $variant($input), )*
+            }
+
+            impl [<$name Request>] {
+                pub fn variant_name(&self) -> &'static str {
+                    match self {
+                        $( Self::$variant(_) => stringify!($variant), )*
+                    }
+                }
+            }
+
+            #[derive(typegen::TypeGen, serde::Serialize, serde::Deserialize)]
+            $vis enum [<$name Response>] {
+                $( $variant($output), )*
+            }
+
+            impl [<$name Response>] {
+                pub fn variant_name(&self) -> &'static str {
+                    match self {
+                        $( Self::$variant(_) => stringify!($variant), )*
+                    }
+                }
+            }
+        }
+    };
+}
+
+/// Like [`define_rpc!`], but also generates compile-time validation that
+/// every Input type implements [`RpcExec<Name>`]. Missing impl = compile error.
+///
+/// ```ignore
+/// define_rpc_for_exec! {
+///     pub MyRPC {
+///         HelloWorld(HelloWorldInput) -> HelloWorldOutput,
+///     }
+/// }
+/// ```
+#[macro_export]
+macro_rules! define_rpc_for_exec {
+    (
+        $vis:vis $name:ident {
+            $( $variant:ident ( $input:ty ) -> $output:ty ),* $(,)?
+        }
+    ) => {
+        $crate::define_rpc!($vis $name {
+            $( $variant($input) -> $output ),*
+        });
+
+        paste::paste! {
+            #[allow(dead_code)]
+            fn [<_validate_ $name:snake _exec>]() {
+                fn _check<T: $crate::RpcExec<$name>>() {}
+                $( _check::<$input>(); )*
+            }
+        }
+    };
+}
+
+#[cfg(test)]
+mod tests {
+    use serde::Deserialize;
+    use serde::Serialize;
+
+    use super::*;
+
+    // --- Test types ---
+
+    #[derive(typegen::TypeGen, Serialize, Deserialize, Debug, Clone, PartialEq)]
+    struct PingInput {
+        message: String,
+    }
+
+    #[derive(typegen::TypeGen, Serialize, Deserialize, Debug, Clone, PartialEq)]
+    struct PingOutput {
+        reply: String,
+    }
+
+    #[derive(typegen::TypeGen, Serialize, Deserialize, Debug, Clone, PartialEq)]
+    struct AddInput {
+        a: u32,
+        b: u32,
+    }
+
+    #[derive(typegen::TypeGen, Serialize, Deserialize, Debug, Clone, PartialEq)]
+    struct AddOutput {
+        sum: u64,
+    }
+
+    // --- Test RPC context ---
+
+    struct TestRPC;
+
+    // --- define_rpc! (enums only) ---
+
+    define_rpc! {
+        TestCallOnly {
+            Ping(PingInput) -> PingOutput,
+            Add(AddInput) -> AddOutput,
+        }
+    }
+
+    // --- define_rpc_for_exec! (enums + validation) ---
+
+    define_rpc_for_exec! {
+        TestRPC {
+            Ping(PingInput) -> PingOutput,
+            Add(AddInput) -> AddOutput,
+        }
+    }
+
+    // RpcExec impls required by define_rpc_for_exec!
+    impl RpcExec<TestRPC> for PingInput {
+        type Output = PingOutput;
+        async fn exec(self, _ctx: &TestRPC, _task: &ll::Task) -> anyhow::Result<PingOutput> {
+            Ok(PingOutput {
+                reply: format!("pong: {}", self.message),
+            })
+        }
+    }
+
+    impl RpcExec<TestRPC> for AddInput {
+        type Output = AddOutput;
+        async fn exec(self, _ctx: &TestRPC, _task: &ll::Task) -> anyhow::Result<AddOutput> {
+            Ok(AddOutput {
+                sum: self.a as u64 + self.b as u64,
+            })
+        }
+    }
+
+    // --- Tests ---
+
+    #[test]
+    fn test_request_serde_roundtrip() {
+        let request = TestRPCRequest::Ping(PingInput {
+            message: "hello".to_string(),
+        });
+        let json = serde_json::to_string(&request).unwrap();
+        k9::snapshot!(&json, r#"{"Ping":{"message":"hello"}}"#);
+
+        let parsed: TestRPCRequest = serde_json::from_str(&json).unwrap();
+        match parsed {
+            TestRPCRequest::Ping(input) => {
+                k9::assert_equal!(input.message, "hello");
+            }
+            _ => panic!("wrong variant"),
+        }
+    }
+
+    #[test]
+    fn test_response_serde_roundtrip() {
+        let response = TestRPCResponse::Add(AddOutput { sum: 42 });
+        let json = serde_json::to_string(&response).unwrap();
+        k9::snapshot!(&json, r#"{"Add":{"sum":42}}"#);
+
+        let parsed: TestRPCResponse = serde_json::from_str(&json).unwrap();
+        match parsed {
+            TestRPCResponse::Add(output) => {
+                k9::assert_equal!(output.sum, 42);
+            }
+            _ => panic!("wrong variant"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_exec_ping() {
+        let ctx = TestRPC;
+        let task = ll::Task::create_new("test");
+        let input = PingInput {
+            message: "hi".to_string(),
+        };
+        let output = input.exec(&ctx, &task).await.unwrap();
+        k9::assert_equal!(output.reply, "pong: hi");
+    }
+
+    #[tokio::test]
+    async fn test_exec_add() {
+        let ctx = TestRPC;
+        let task = ll::Task::create_new("test");
+        let input = AddInput { a: 3, b: 7 };
+        let output = input.exec(&ctx, &task).await.unwrap();
+        k9::assert_equal!(output.sum, 10);
+    }
+
+    #[test]
+    fn test_call_only_enums_exist() {
+        // Call mode generates enums without requiring RpcExec impls
+        let req = TestCallOnlyRequest::Ping(PingInput {
+            message: "test".to_string(),
+        });
+        let resp = TestCallOnlyResponse::Add(AddOutput { sum: 0 });
+        k9::assert_equal!(req.variant_name(), "Ping");
+        k9::assert_equal!(resp.variant_name(), "Add");
+    }
+}

@@ -5,6 +5,8 @@ import { useParams, useSearchParams } from "react-router";
 import type { ExplorerComponentInputGraph } from "../../__generated__/ts/ExplorerComponentInputGraph";
 import type { ExplorerComponentInputGraphs } from "../../__generated__/ts/ExplorerComponentInputGraphs";
 import type { GraphQueryConfig } from "../../__generated__/ts/GraphQueryConfig";
+import type { GraphQueryOutput } from "../../__generated__/ts/GraphQueryOutput";
+import { rpc } from "../../api/rpc";
 import { Explorer } from "../../Explorer";
 
 const QUERY_PARAM_GQC_DELTA_L = "gqc_deltaL";
@@ -14,11 +16,6 @@ const QUERY_PARAM_GRAPH_SETTINGS = "graph_settings";
 interface LocalGraphsApiResponse {
   left: ExplorerComponentInputGraph;
   right?: ExplorerComponentInputGraph;
-}
-
-interface GraphQueryApiResponse {
-  graph: ExplorerComponentInputGraph;
-  graph_query_config: GraphQueryConfig;
 }
 
 export default function ExplorerRoute() {
@@ -152,27 +149,33 @@ interface HandleFetchResults {
   baseGqcR: GraphQueryConfig | null;
 }
 
-async function fetchGraphQuery(handle: string): Promise<GraphQueryApiResponse> {
-  const body = handle.startsWith("gqc-")
-    ? { graph_query_config_key: handle }
-    : { graph_query_config: { roots: [], handle } };
+function graphQueryOutputToInputGraph(
+  output: GraphQueryOutput,
+): ExplorerComponentInputGraph {
+  return {
+    ArrayGraphSerializedPackageBase64: {
+      data: JSON.stringify(output.package),
+      format: "Json",
+    },
+  };
+}
 
-  const r = await fetch("/api/graph_query", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+async function fetchHandleGraph(handle: string): Promise<GraphQueryOutput> {
+  if (handle.startsWith("gqc-")) {
+    return rpc("GraphQuery", { graph_query_config_key: handle });
+  }
+  return rpc("GraphQuery", {
+    graph_query_config: { roots: [], handle },
   });
-  if (!r.ok) throw new Error(`HTTP ${r.status}`);
-  return r.json();
 }
 
 async function fetchHandleGraphs(
   handleL: string,
   handleR: string | undefined,
 ): Promise<HandleFetchResults> {
-  const leftPromise = fetchGraphQuery(handleL);
+  const leftPromise = fetchHandleGraph(handleL);
   const rightPromise =
-    handleR != null ? fetchGraphQuery(handleR) : Promise.resolve(null);
+    handleR != null ? fetchHandleGraph(handleR) : Promise.resolve(null);
 
   const [leftResult, rightResult] = await Promise.all([
     leftPromise,
@@ -180,8 +183,11 @@ async function fetchHandleGraphs(
   ]);
 
   return {
-    leftGraph: leftResult.graph,
-    rightGraph: rightResult?.graph,
+    leftGraph: graphQueryOutputToInputGraph(leftResult),
+    rightGraph:
+      rightResult != null
+        ? graphQueryOutputToInputGraph(rightResult)
+        : undefined,
     baseGqcL: leftResult.graph_query_config,
     baseGqcR: rightResult?.graph_query_config ?? null,
   };
