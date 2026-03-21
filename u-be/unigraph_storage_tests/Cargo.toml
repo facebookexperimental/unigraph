@@ -12,3 +12,12 @@ serde_json = { version = "1.0.140", features = ["alloc", "float_roundtrip", "raw
 unigraph_core = { path = "../unigraph_core" }
 unigraph_storage_core = { path = "../unigraph_storage_core" }
 unigraph_timestamp = { path = "../unigraph_timestamp" }
+
+[dev-dependencies]
+anyhow = "1.0.102"
+k9 = { version = "0.12.0", features = ["custom_comparison_formatters", "regex"] }
+ll = "8.1"
+tokio = { version = "1.50.0", features = ["full", "test-util", "tracing"] }
+unigraph_db = { path = "../unigraph_db" }
+unigraph_metric_history = { path = "../unigraph_metric_history" }
+unigraph_storage_sqlite = { path = "../unigraph_storage_sqlite" }

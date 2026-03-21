@@ -48,6 +48,9 @@ impl Unigraph {
             UnigraphRequest::SelectFrames(input) => Ok(UnigraphResponse::SelectFrames(
                 input.exec(self, task).await?,
             )),
+            UnigraphRequest::ExploreGraph(input) => Ok(UnigraphResponse::ExploreGraph(
+                input.exec(self, task).await?,
+            )),
         }
     }
 }
@@ -59,5 +62,6 @@ unigraph_rpc::define_rpc_for_exec! {
         GraphQuery(GraphQueryInput) -> GraphQueryOutput,
         ListTimelines(ListTimelinesInput) -> ListTimelinesOutput,
         SelectFrames(SelectFramesInput) -> SelectFramesOutput,
+        ExploreGraph(ExploreGraphInput) -> ExploreGraphOutput,
     }
 }

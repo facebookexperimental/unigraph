@@ -411,7 +411,7 @@ impl ArrayGraph {
 
 /// Dynamic-edge-only fields. None for directed/tagged edges.
 /// Shared between Arrow (ArrayGraph level) and NamedArrow (MapGraph level).
-#[derive(serde::Deserialize, serde::Serialize, typegen::TypeGen, Clone)]
+#[derive(serde::Deserialize, serde::Serialize, typegen::TypeGen, Clone, Debug)]
 pub struct DynamicEdgeInfo {
     pub type_key: DynamicTypeKey,
     pub edge_name: DynamicEdgeName,

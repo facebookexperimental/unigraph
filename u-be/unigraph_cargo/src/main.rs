@@ -83,7 +83,7 @@ fn main() -> Result<()> {
 
     // 6. Write output.
     if let Some(output_path) = &args.output {
-        std::fs::write(output_path, &json)?;
+        std::fs::write(output_path.as_path(), &json)?;
         eprintln!("Wrote graph to {}", output_path.display());
     } else {
         println!("{json}");
