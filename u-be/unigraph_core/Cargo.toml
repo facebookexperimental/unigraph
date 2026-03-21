@@ -15,7 +15,6 @@ readonly = "0.2.13"
 regex = "1.12.3"
 serde = { version = "1.0.219", features = ["derive", "rc"] }
 serde_json = { version = "1.0.140", features = ["alloc", "float_roundtrip", "raw_value", "unbounded_depth"] }
-tracing = { version = "0.1.41", features = ["attributes", "valuable"] }
 typegen = { path = "../typegen" }
 unigraph_delta = { path = "../unigraph_delta" }
 unigraph_serialization = { path = "../unigraph_serialization" }

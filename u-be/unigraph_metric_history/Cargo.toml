@@ -15,6 +15,3 @@ unigraph_core = { path = "../unigraph_core" }
 unigraph_storage_core = { path = "../unigraph_storage_core" }
 unigraph_timestamp = { path = "../unigraph_timestamp" }
 zstd = { version = "0.13.3", features = ["experimental", "zstdmt"] }
-
-[dev-dependencies]
-k9 = { version = "0.12.0", features = ["custom_comparison_formatters", "regex"] }
