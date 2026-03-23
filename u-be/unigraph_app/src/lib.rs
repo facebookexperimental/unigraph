@@ -9,22 +9,26 @@ use anyhow::Result;
 use unigraph_db::UnigraphDb;
 use unigraph_rpc::RpcExec;
 
+mod graph_cache;
 mod rpc_req;
 mod rpc_types;
 
+pub use graph_cache::GraphCache;
 pub use rpc_types::*;
 
-/// The Unigraph application — wraps the database and (eventually) caches.
+/// The Unigraph application — wraps the database, caches, and cross-cutting concerns.
 ///
 /// Constructed by the CLI or web service after setting up storage backends.
 #[derive(Clone)]
 pub struct Unigraph {
     pub db: UnigraphDb,
+    pub graph_cache: GraphCache,
 }
 
 impl Unigraph {
     pub fn new(db: UnigraphDb) -> Self {
-        Self { db }
+        let graph_cache = GraphCache::new(db.clone(), 64, std::time::Duration::from_secs(5 * 60));
+        Self { db, graph_cache }
     }
 
     pub async fn exec_rpc(

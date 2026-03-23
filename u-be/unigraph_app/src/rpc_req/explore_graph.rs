@@ -2,19 +2,18 @@
 
 use std::collections::BTreeMap;
 use std::fmt::Write;
+use std::sync::Arc;
 
 use anyhow::Context;
 use anyhow::Result;
 use anyhow::bail;
 use unigraph_core::ArrayGraph;
-use unigraph_core::ArrayGraphSerializable;
 use unigraph_core::DynamicEdgeInfo;
 use unigraph_core::NodeIDX;
-use unigraph_core::config_query::GraphQueryConfig;
+use unigraph_core::config_key::GraphQueryConfigKey;
 use unigraph_core::graph_settings::GraphStructure;
 use unigraph_core::graph_settings::SortOrder;
 use unigraph_rpc::RpcExec;
-use unigraph_storage_core::GraphKeyOrTimelineID;
 
 use crate::ExploreGraphArrow;
 use crate::ExploreGraphInput;
@@ -27,69 +26,28 @@ impl RpcExec<Unigraph> for ExploreGraphInput {
     type Output = ExploreGraphOutput;
 
     async fn exec(self, ctx: &Unigraph, task: &ll::Task) -> Result<ExploreGraphOutput> {
-        let gqc = resolve_gqc(ctx, &self, task).await?;
-        let ag_ser = fetch_graph(ctx, &gqc, task).await?;
+        let gqc_key = resolve_gqc_key(&self)?;
+        let ag = ctx.graph_cache.get_by_gqc_key(&gqc_key, task).await?;
         let input = self;
-        tokio::task::spawn_blocking(move || explore_node(ag_ser, &gqc, &input)).await?
+        tokio::task::spawn_blocking(move || explore_node(ag, &input)).await?
     }
 }
 
-// ── Async helpers (graph fetching) ──────────────────────────────
+// ── GQC key resolution ──────────────────────────────────────────
 
-async fn resolve_gqc(
-    ctx: &Unigraph,
-    input: &ExploreGraphInput,
-    task: &ll::Task,
-) -> Result<GraphQueryConfig> {
-    match (&input.graph_query_config, &input.graph_query_config_key) {
-        (Some(gqc), _) => Ok(gqc.clone()),
-        (_, Some(key)) => ctx.db.configs.fetch_graph_query_config(key, task).await,
-        (None, None) => bail!("either graph_query_config or graph_query_config_key must be set"),
+fn resolve_gqc_key(input: &ExploreGraphInput) -> Result<GraphQueryConfigKey> {
+    match &input.graph_query_config_key {
+        Some(key) => Ok(key.clone()),
+        None => bail!(
+            "graph_query_config_key is required for ExploreGraph \
+             (store the config via PutConfigs first)"
+        ),
     }
-}
-
-async fn fetch_graph(
-    ctx: &Unigraph,
-    gqc: &GraphQueryConfig,
-    task: &ll::Task,
-) -> Result<ArrayGraphSerializable> {
-    let handle = gqc
-        .handle
-        .as_deref()
-        .context("graph_query_config.handle is required")?;
-    let parsed: GraphKeyOrTimelineID = handle.parse()?;
-    let (_key, mut ag) = match parsed {
-        GraphKeyOrTimelineID::GraphKey(key) => {
-            let graph = ctx.db.graph.fetch(&key, task).await?;
-            (key, graph)
-        }
-        GraphKeyOrTimelineID::TimelineID(tid) => ctx.db.graph.fetch_latest(&tid, task).await?,
-    };
-
-    if !gqc.roots.is_empty() {
-        let root_idxs: Vec<_> = gqc
-            .roots
-            .iter()
-            .filter_map(|name| ag.node_names_ordered.name_to_idx_log(name.as_str()))
-            .collect();
-        ag = ag
-            .into_array_graph()
-            .get_reachable_subgraph_unconfigured(&root_idxs)?;
-    }
-
-    Ok(ag)
 }
 
 // ── Sync core logic (runs in spawn_blocking) ────────────────────
 
-fn explore_node(
-    ag_ser: ArrayGraphSerializable,
-    gqc: &GraphQueryConfig,
-    input: &ExploreGraphInput,
-) -> Result<ExploreGraphOutput> {
-    let mut ag = ag_ser.into_array_graph();
-    apply_traversal(&mut ag, gqc)?;
-
+fn explore_node(ag: Arc<ArrayGraph>, input: &ExploreGraphInput) -> Result<ExploreGraphOutput> {
     let metric_names = collect_metric_names(&ag);
     let tier_names = collect_tier_names(&ag);
 
@@ -139,17 +97,6 @@ fn explore_node(
         total_arrows_count,
         ascii,
     })
-}
-
-fn apply_traversal(ag: &mut ArrayGraph, gqc: &GraphQueryConfig) -> Result<()> {
-    let tvc = gqc
-        .traversal_config
-        .as_ref()
-        .or(ag.state.traversal_config.as_ref());
-    if let Some(tvc) = tvc {
-        ag.apply_traversal_config(tvc.clone())?;
-    }
-    Ok(())
 }
 
 fn collect_metric_names(ag: &ArrayGraph) -> Vec<String> {

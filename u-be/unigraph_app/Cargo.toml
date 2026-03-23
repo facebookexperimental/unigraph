@@ -10,6 +10,7 @@ license = "MIT"
 [dependencies]
 anyhow = "1.0.102"
 ll = "8.1"
+lru = { version = "0.16.3", default-features = false }
 paste = "1.0.14"
 serde = { version = "1.0.219", features = ["derive", "rc"] }
 tokio = { version = "1.50.0", features = ["full", "test-util", "tracing"] }

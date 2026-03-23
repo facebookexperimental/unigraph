@@ -5,11 +5,14 @@ use k9::snapshot;
 use unigraph_app::ExploreGraphInput;
 use unigraph_app::ExploreGraphTarget;
 use unigraph_app::NodeMetric;
+use unigraph_app::PutConfigsInput;
 use unigraph_app::call_rpc;
+use unigraph_core::config_key::GraphQueryConfigKey;
 use unigraph_core::config_query::GraphQueryConfig;
 use unigraph_core::graph_settings::GraphStructure;
 use unigraph_core::graph_settings::SortOrder;
 
+use crate::support::app::TestApp;
 use crate::support::app::init_app;
 use crate::support::fixtures::ingest_explore_graph;
 
@@ -19,8 +22,9 @@ use crate::support::fixtures::ingest_explore_graph;
 async fn entry_points() -> Result<()> {
     let t = init_app();
     let handle = ingest_explore_graph(&t).await?;
+    let gqc_key = store_gqc(&t, &handle).await?;
 
-    let out = call_rpc!(t, ExploreGraph(Explore::new(&handle).build()));
+    let out = call_rpc!(t, ExploreGraph(Explore::new(gqc_key).build()));
     snapshot!(
         out.ascii.unwrap(),
         "
@@ -40,6 +44,7 @@ app
 async fn all_nodes() -> Result<()> {
     let t = init_app();
     let handle = ingest_explore_graph(&t).await?;
+    let gqc_key = store_gqc(&t, &handle).await?;
 
     let metrics = [
         NodeMetric::Metric {
@@ -69,7 +74,7 @@ async fn all_nodes() -> Result<()> {
     let out = call_rpc!(
         t,
         ExploreGraph(
-            Explore::new(&handle)
+            Explore::new(gqc_key)
                 .all_nodes()
                 .metrics(&metrics)
                 .sort_by(NodeMetric::MetricTransitive {
@@ -112,6 +117,7 @@ button_ios     |              0 |               1 |                1 |    80 |  
 async fn drill_into_app() -> Result<()> {
     let t = init_app();
     let handle = ingest_explore_graph(&t).await?;
+    let gqc_key = store_gqc(&t, &handle).await?;
 
     let metrics = [
         NodeMetric::Metric {
@@ -125,7 +131,7 @@ async fn drill_into_app() -> Result<()> {
     let out = call_rpc!(
         t,
         ExploreGraph(
-            Explore::new(&handle)
+            Explore::new(gqc_key)
                 .node("app")
                 .metrics(&metrics)
                 .sort_by(NodeMetric::MetricTransitive {
@@ -156,6 +162,7 @@ utils     |              0 |   50 |                50
 async fn drill_into_ui_with_tags() -> Result<()> {
     let t = init_app();
     let handle = ingest_explore_graph(&t).await?;
+    let gqc_key = store_gqc(&t, &handle).await?;
 
     let metrics = [
         NodeMetric::Metric {
@@ -165,7 +172,7 @@ async fn drill_into_ui_with_tags() -> Result<()> {
     ];
     let out = call_rpc!(
         t,
-        ExploreGraph(Explore::new(&handle).node("ui").metrics(&metrics).build())
+        ExploreGraph(Explore::new(gqc_key).node("ui").metrics(&metrics).build())
     );
     snapshot!(
         out.ascii.unwrap(),
@@ -189,6 +196,7 @@ dialogs    |              1 |  120 | lazy
 async fn drill_into_components_with_dynamic() -> Result<()> {
     let t = init_app();
     let handle = ingest_explore_graph(&t).await?;
+    let gqc_key = store_gqc(&t, &handle).await?;
 
     let metrics = [NodeMetric::Metric {
         name: "size".into(),
@@ -196,7 +204,7 @@ async fn drill_into_components_with_dynamic() -> Result<()> {
     let out = call_rpc!(
         t,
         ExploreGraph(
-            Explore::new(&handle)
+            Explore::new(gqc_key.clone())
                 .node("components")
                 .metrics(&metrics)
                 .build()
@@ -224,6 +232,7 @@ button_ios     |   30 | platform:button/ios
 async fn reverse_edges() -> Result<()> {
     let t = init_app();
     let handle = ingest_explore_graph(&t).await?;
+    let gqc_key = store_gqc(&t, &handle).await?;
 
     let metrics = [NodeMetric::Metric {
         name: "size".into(),
@@ -231,7 +240,7 @@ async fn reverse_edges() -> Result<()> {
     let out = call_rpc!(
         t,
         ExploreGraph(
-            Explore::new(&handle)
+            Explore::new(gqc_key)
                 .node("utils")
                 .metrics(&metrics)
                 .structure(GraphStructure::Reverse)
@@ -262,6 +271,7 @@ db         |  250
 async fn dominator_tree() -> Result<()> {
     let t = init_app();
     let handle = ingest_explore_graph(&t).await?;
+    let gqc_key = store_gqc(&t, &handle).await?;
 
     let metrics = [
         NodeMetric::Metric {
@@ -275,7 +285,7 @@ async fn dominator_tree() -> Result<()> {
     let out = call_rpc!(
         t,
         ExploreGraph(
-            Explore::new(&handle)
+            Explore::new(gqc_key)
                 .node("app")
                 .metrics(&metrics)
                 .sort_by(NodeMetric::MetricDominated {
@@ -307,6 +317,7 @@ utils     |               1 |   50 |               50
 async fn sort_ascending() -> Result<()> {
     let t = init_app();
     let handle = ingest_explore_graph(&t).await?;
+    let gqc_key = store_gqc(&t, &handle).await?;
 
     let metrics = [NodeMetric::Metric {
         name: "size".into(),
@@ -314,7 +325,7 @@ async fn sort_ascending() -> Result<()> {
     let out = call_rpc!(
         t,
         ExploreGraph(
-            Explore::new(&handle)
+            Explore::new(gqc_key)
                 .node("app")
                 .metrics(&metrics)
                 .sort_by(NodeMetric::Metric {
@@ -346,6 +357,7 @@ core      |    300
 async fn offset_and_limit() -> Result<()> {
     let t = init_app();
     let handle = ingest_explore_graph(&t).await?;
+    let gqc_key = store_gqc(&t, &handle).await?;
 
     let metrics = [NodeMetric::Metric {
         name: "size".into(),
@@ -358,7 +370,7 @@ async fn offset_and_limit() -> Result<()> {
     let out = call_rpc!(
         t,
         ExploreGraph(
-            Explore::new(&handle)
+            Explore::new(gqc_key.clone())
                 .node("app")
                 .metrics(&metrics)
                 .sort_by(sort_by.clone())
@@ -385,7 +397,7 @@ ui        |    200
     let out = call_rpc!(
         t,
         ExploreGraph(
-            Explore::new(&handle)
+            Explore::new(gqc_key)
                 .node("app")
                 .metrics(&metrics)
                 .sort_by(sort_by)
@@ -415,6 +427,7 @@ utils     |     50
 async fn tiered_metrics() -> Result<()> {
     let t = init_app();
     let handle = ingest_explore_graph(&t).await?;
+    let gqc_key = store_gqc(&t, &handle).await?;
 
     let metrics = [
         NodeMetric::Metric {
@@ -431,7 +444,7 @@ async fn tiered_metrics() -> Result<()> {
     ];
     let out = call_rpc!(
         t,
-        ExploreGraph(Explore::new(&handle).node("ui").metrics(&metrics).build())
+        ExploreGraph(Explore::new(gqc_key).node("ui").metrics(&metrics).build())
     );
     snapshot!(
         out.ascii.unwrap(),
@@ -455,6 +468,7 @@ dialogs    |  120 |        265 |       385 | lazy
 async fn exhaustive_columns() -> Result<()> {
     let t = init_app();
     let handle = ingest_explore_graph(&t).await?;
+    let gqc_key = store_gqc(&t, &handle).await?;
 
     // All metric types on a node with dynamic edges
     let metrics = [
@@ -485,7 +499,7 @@ async fn exhaustive_columns() -> Result<()> {
     let out = call_rpc!(
         t,
         ExploreGraph(
-            Explore::new(&handle)
+            Explore::new(gqc_key)
                 .node("components")
                 .metrics(&metrics)
                 .sort_by(NodeMetric::MetricTransitive {
@@ -512,10 +526,28 @@ button_ios     |               1 |                1 |    80 |   30 |            
     Ok(())
 }
 
+// ── Helpers ─────────────────────────────────────────────────────
+
+async fn store_gqc(t: &TestApp, handle: &str) -> Result<GraphQueryConfigKey> {
+    let gqc = GraphQueryConfig {
+        roots: Default::default(),
+        traversal_config: None,
+        handle: Some(handle.to_string()),
+    };
+    let put = call_rpc!(
+        t,
+        PutConfigs(PutConfigsInput {
+            traversal_configs: vec![],
+            graph_query_configs: vec![gqc],
+        })
+    );
+    Ok(put.graph_query_configs.into_iter().next().unwrap())
+}
+
 // ── Input builder ───────────────────────────────────────────────
 
 struct Explore<'a> {
-    handle: &'a str,
+    gqc_key: GraphQueryConfigKey,
     target: ExploreGraphTarget,
     metrics: &'a [NodeMetric],
     sort_by: Option<NodeMetric>,
@@ -526,9 +558,9 @@ struct Explore<'a> {
 }
 
 impl<'a> Explore<'a> {
-    fn new(handle: &'a str) -> Self {
+    fn new(gqc_key: GraphQueryConfigKey) -> Self {
         Self {
-            handle,
+            gqc_key,
             target: ExploreGraphTarget::EntryPoints {},
             metrics: &[],
             sort_by: None,
@@ -583,12 +615,8 @@ impl<'a> Explore<'a> {
 
     fn build(self) -> ExploreGraphInput {
         ExploreGraphInput {
-            graph_query_config: Some(GraphQueryConfig {
-                roots: Default::default(),
-                traversal_config: None,
-                handle: Some(self.handle.to_string()),
-            }),
-            graph_query_config_key: None,
+            graph_query_config: None,
+            graph_query_config_key: Some(self.gqc_key),
             target: self.target,
             graph_structure: self.graph_structure,
             metrics: self.metrics.to_vec(),
