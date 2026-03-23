@@ -1,6 +1,7 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 use std::collections::BTreeMap;
+use std::fmt::Write;
 
 use anyhow::Context;
 use anyhow::Result;
@@ -114,17 +115,29 @@ fn explore_node(
         .map(|idx| build_explore_arrow_for_node(&ag, idx, &input.metrics, input.graph_structure))
         .transpose()?;
 
+    let include_ascii = input.include_ascii.unwrap_or(false);
+    let ascii = if include_ascii {
+        Some(render_ascii(&node, &arrows, total_arrows_count, offset))
+    } else {
+        None
+    };
+
     Ok(ExploreGraphOutput {
         node,
         arrows,
         metric_names,
         tier_names,
         total_arrows_count,
+        ascii,
     })
 }
 
 fn apply_traversal(ag: &mut ArrayGraph, gqc: &GraphQueryConfig) -> Result<()> {
-    if let Some(tvc) = &gqc.traversal_config {
+    let tvc = gqc
+        .traversal_config
+        .as_ref()
+        .or(ag.state.traversal_config.as_ref());
+    if let Some(tvc) = tvc {
         ag.apply_traversal_config(tvc.clone())?;
     }
     Ok(())
@@ -342,4 +355,202 @@ fn build_explore_arrow_for_node(
         tag: None,
         dynamic: None,
     })
+}
+
+// ── ASCII table rendering ───────────────────────────────────────
+
+fn render_ascii(
+    node: &Option<ExploreGraphArrow>,
+    arrows: &[ExploreGraphArrow],
+    total_count: usize,
+    offset: usize,
+) -> String {
+    let metric_cols = collect_metric_columns(node, arrows);
+    let has_tags = has_any_tags(node, arrows);
+    let has_children = node.is_some();
+    let widths = compute_column_widths(&metric_cols, has_tags, has_children, node, arrows);
+
+    let mut out = String::with_capacity(256);
+    write_header(&mut out, &metric_cols, has_tags, &widths);
+    write_separator(&mut out, '=', &widths);
+
+    if let Some(n) = node {
+        write_row(&mut out, n, &metric_cols, has_tags, &widths, 0);
+    }
+
+    for arrow in arrows {
+        let indent = if has_children { 2 } else { 0 };
+        write_row(&mut out, arrow, &metric_cols, has_tags, &widths, indent);
+    }
+
+    write_footer(&mut out, arrows.len(), total_count, offset);
+    out
+}
+
+fn collect_metric_columns(
+    node: &Option<ExploreGraphArrow>,
+    arrows: &[ExploreGraphArrow],
+) -> Vec<String> {
+    let mut cols = BTreeMap::<String, ()>::new();
+    if let Some(n) = node {
+        for k in n.metrics.keys() {
+            cols.insert(k.clone(), ());
+        }
+    }
+    for a in arrows {
+        for k in a.metrics.keys() {
+            cols.insert(k.clone(), ());
+        }
+    }
+    cols.into_keys().collect()
+}
+
+fn has_any_tags(node: &Option<ExploreGraphArrow>, arrows: &[ExploreGraphArrow]) -> bool {
+    node.as_ref().is_some_and(|n| n.tag.is_some()) || arrows.iter().any(|a| a.tag.is_some())
+}
+
+/// Column widths: [name, metric0, metric1, ..., tag?]
+fn compute_column_widths(
+    metric_cols: &[String],
+    has_tags: bool,
+    has_children: bool,
+    node: &Option<ExploreGraphArrow>,
+    arrows: &[ExploreGraphArrow],
+) -> Vec<usize> {
+    let num_cols = 1 + metric_cols.len() + usize::from(has_tags);
+    let mut widths = Vec::with_capacity(num_cols);
+
+    // name column — children are indented by 2 spaces
+    let child_indent = if has_children { 2 } else { 0 };
+    let mut name_w = 4; // "name"
+    if let Some(n) = node {
+        name_w = name_w.max(n.name.len());
+    }
+    for a in arrows {
+        name_w = name_w.max(child_indent + a.name.len());
+    }
+    widths.push(name_w);
+
+    // metric columns
+    for col in metric_cols {
+        let mut w = col.len();
+        if let Some(n) = node
+            && let Some(v) = n.metrics.get(col)
+        {
+            w = w.max(format_metric(*v).len());
+        }
+        for a in arrows {
+            if let Some(v) = a.metrics.get(col) {
+                w = w.max(format_metric(*v).len());
+            }
+        }
+        widths.push(w);
+    }
+
+    // tag column
+    if has_tags {
+        let mut w = 3; // "tag"
+        if let Some(n) = node
+            && let Some(t) = &n.tag
+        {
+            w = w.max(t.len());
+        }
+        for a in arrows {
+            if let Some(t) = &a.tag {
+                w = w.max(t.len());
+            }
+        }
+        widths.push(w);
+    }
+
+    widths
+}
+
+fn write_header(out: &mut String, metric_cols: &[String], has_tags: bool, widths: &[usize]) {
+    let start = out.len();
+    write_cell(out, "name", widths[0], true);
+    for (i, col) in metric_cols.iter().enumerate() {
+        let _ = write!(out, " | ");
+        write_cell(out, col, widths[1 + i], false);
+    }
+    if has_tags {
+        let _ = write!(out, " | ");
+        write_cell(out, "tag", widths[widths.len() - 1], true);
+    }
+    trim_trailing_spaces(out, start);
+    out.push('\n');
+}
+
+fn write_separator(out: &mut String, ch: char, widths: &[usize]) {
+    for (i, &w) in widths.iter().enumerate() {
+        if i > 0 {
+            out.push(ch);
+            out.push('+');
+            out.push(ch);
+        }
+        for _ in 0..w {
+            out.push(ch);
+        }
+    }
+    out.push('\n');
+}
+
+fn write_row(
+    out: &mut String,
+    arrow: &ExploreGraphArrow,
+    metric_cols: &[String],
+    has_tags: bool,
+    widths: &[usize],
+    indent: usize,
+) {
+    let start = out.len();
+    let name = if indent > 0 {
+        format!("{:indent$}{}", "", arrow.name)
+    } else {
+        arrow.name.clone()
+    };
+    write_cell(out, &name, widths[0], true);
+    for (i, col) in metric_cols.iter().enumerate() {
+        let _ = write!(out, " | ");
+        let val = arrow
+            .metrics
+            .get(col)
+            .map(|v| format_metric(*v))
+            .unwrap_or_else(|| "0".to_string());
+        write_cell(out, &val, widths[1 + i], false);
+    }
+    if has_tags {
+        let _ = write!(out, " | ");
+        let tag = arrow.tag.as_deref().unwrap_or("");
+        write_cell(out, tag, widths[widths.len() - 1], true);
+    }
+    trim_trailing_spaces(out, start);
+    out.push('\n');
+}
+
+fn write_footer(out: &mut String, shown: usize, total: usize, offset: usize) {
+    if total > shown {
+        let _ = write!(out, "\n(showing {shown} of {total} rows, offset {offset})");
+    }
+}
+
+fn write_cell(out: &mut String, text: &str, width: usize, left_align: bool) {
+    if left_align {
+        let _ = write!(out, "{text:<width$}");
+    } else {
+        let _ = write!(out, "{text:>width$}");
+    }
+}
+
+fn trim_trailing_spaces(out: &mut String, start: usize) {
+    let trimmed = out[start..].trim_end_matches(' ').len();
+    out.truncate(start + trimmed);
+}
+
+fn format_metric(v: f32) -> String {
+    if v == v.trunc() && v.abs() < 1e15 {
+        format!("{}", v as i64)
+    } else {
+        format!("{v:.2}")
+    }
 }

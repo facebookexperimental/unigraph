@@ -55,6 +55,36 @@ impl Unigraph {
     }
 }
 
+/// Call an RPC method and unwrap the response in one step.
+///
+/// Wraps the input in the correct `UnigraphRequest` variant, calls `.rpc()`,
+/// checks for `Error`, and extracts the expected output variant.
+///
+/// The first argument must have an `async fn rpc(UnigraphRequest) -> Result<UnigraphResponse>`.
+///
+/// ```ignore
+/// let put = call_rpc!(t, PutConfigs(PutConfigsInput {
+///     traversal_configs: vec![sample_tvc()],
+///     graph_query_configs: vec![sample_gqc()],
+/// }));
+/// // put: PutConfigsOutput
+/// ```
+#[macro_export]
+macro_rules! call_rpc {
+    ($ctx:expr, $variant:ident($input:expr)) => {{
+        let resp = $ctx.rpc($crate::UnigraphRequest::$variant($input)).await?;
+        match resp {
+            $crate::UnigraphResponse::Error(err) => ::anyhow::Result::Err(err.into_anyhow()),
+            $crate::UnigraphResponse::$variant(output) => ::anyhow::Result::Ok(output),
+            other => ::anyhow::bail!(
+                "unexpected response: expected {}, got {}",
+                stringify!($variant),
+                other.variant_name()
+            ),
+        }?
+    }};
+}
+
 unigraph_rpc::define_rpc_for_exec! {
     pub Unigraph {
         PutConfigs(PutConfigsInput) -> PutConfigsOutput,

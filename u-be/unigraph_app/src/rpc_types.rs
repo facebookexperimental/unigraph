@@ -176,6 +176,11 @@ pub struct ExploreGraphInput {
     /// Maximum number of arrows to return. Defaults to 50.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub limit: Option<usize>,
+
+    /// When true, populate the `ascii` field in the response with a human-readable
+    /// ASCII table of the results (optimized for agent / LLM consumption).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub include_ascii: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TypeGen)]
@@ -191,6 +196,10 @@ pub struct ExploreGraphOutput {
     pub tier_names: Vec<String>,
     /// Total number of arrows before offset/limit.
     pub total_arrows_count: usize,
+    /// Human-readable ASCII table of the results. Only populated when
+    /// `include_ascii` is set to true in the request.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ascii: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TypeGen)]

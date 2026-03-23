@@ -7,9 +7,11 @@
 
 import type { AddOutput } from './AddOutput.ts';
 import type { PingOutput } from './PingOutput.ts';
+import type { RpcError } from './RpcError.ts';
 
 export type TestCallOnlyResponse =
   { "Ping": PingOutput } |
-  { "Add": AddOutput };
+  { "Add": AddOutput } |
+  { "Error": RpcError };
 
-export type TestCallOnlyResponseVariants = "Ping" | "Add";
+export type TestCallOnlyResponseVariants = "Ping" | "Add" | "Error";

@@ -266,15 +266,36 @@ def test_js() -> None:
     run([str(BIN / "vitest"), "run"])
 
 
-@test_app.command("rust")
+@test_app.command(
+    "rust",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
 def test_rust(
+    ctx: typer.Context,
     update: Annotated[
         bool, typer.Option("-u", "--update", help="Update k9 snapshots.")
     ] = False,
+    filter: Annotated[
+        str | None,
+        typer.Argument(help="Filter by package/test name (substring match)."),
+    ] = None,
 ) -> None:
-    """Run Rust tests with cargo-nextest."""
+    """Run Rust tests with cargo-nextest. Extra args are forwarded."""
+    _run_rust_tests(update=update, filter=filter, extra_args=ctx.args)
+
+
+def _run_rust_tests(
+    update: bool = False,
+    filter: str | None = None,
+    extra_args: list[str] | None = None,
+) -> None:
     env = {"K9_UPDATE_SNAPSHOTS": "1"} if update else None
-    run(["cargo", "nextest", "run"], env=env)
+    args = ["cargo", "nextest", "run"]
+    if filter:
+        args.extend(["-E", f"package(/{filter}/) + test(/{filter}/)"])
+    if extra_args:
+        args.extend(extra_args)
+    run(args, env=env)
 
 
 @test_app.command("all")
@@ -285,7 +306,7 @@ def test_all(
 ) -> None:
     """Run all tests."""
     test_js()
-    test_rust(update=update)
+    _run_rust_tests(update=update)
 
 
 @app.command()

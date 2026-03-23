@@ -5,6 +5,7 @@
  */
 
 
+import type { ExploreGraphInput } from './ExploreGraphInput.ts';
 import type { GetConfigsInput } from './GetConfigsInput.ts';
 import type { GraphQueryInput } from './GraphQueryInput.ts';
 import type { ListTimelinesInput } from './ListTimelinesInput.ts';
@@ -16,6 +17,7 @@ export type UnigraphRequest =
   { "GetConfigs": GetConfigsInput } |
   { "GraphQuery": GraphQueryInput } |
   { "ListTimelines": ListTimelinesInput } |
-  { "SelectFrames": SelectFramesInput };
+  { "SelectFrames": SelectFramesInput } |
+  { "ExploreGraph": ExploreGraphInput };
 
-export type UnigraphRequestVariants = "PutConfigs" | "GetConfigs" | "GraphQuery" | "ListTimelines" | "SelectFrames";
+export type UnigraphRequestVariants = "PutConfigs" | "GetConfigs" | "GraphQuery" | "ListTimelines" | "SelectFrames" | "ExploreGraph";
