@@ -3,6 +3,7 @@
 use anyhow::Result;
 use k9::snapshot;
 use unigraph_app::ExploreGraphInput;
+use unigraph_app::ExploreGraphTarget;
 use unigraph_app::NodeMetric;
 use unigraph_app::call_rpc;
 use unigraph_core::config_query::GraphQueryConfig;
@@ -23,9 +24,83 @@ async fn entry_points() -> Result<()> {
     snapshot!(
         out.ascii.unwrap(),
         "
-name
-====
+Entry points
+
+node_name
+=========
 app
+
+"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn all_nodes() -> Result<()> {
+    let t = init_app();
+    let handle = ingest_explore_graph(&t).await?;
+
+    let metrics = [
+        NodeMetric::Metric {
+            name: "size".into(),
+        },
+        NodeMetric::Metric {
+            name: "lines".into(),
+        },
+        NodeMetric::MetricTransitive {
+            name: "size".into(),
+        },
+        NodeMetric::MetricDominated {
+            name: "size".into(),
+        },
+        NodeMetric::MetricTiered {
+            name: "size".into(),
+            tier: "eager".into(),
+        },
+        NodeMetric::MetricTiered {
+            name: "size".into(),
+            tier: "lazy".into(),
+        },
+        NodeMetric::ChildrenCount {},
+        NodeMetric::CountDominated {},
+        NodeMetric::CountTransitive {},
+    ];
+    let out = call_rpc!(
+        t,
+        ExploreGraph(
+            Explore::new(&handle)
+                .all_nodes()
+                .metrics(&metrics)
+                .sort_by(NodeMetric::MetricTransitive {
+                    name: "size".into(),
+                })
+                .build()
+        )
+    );
+
+    // Flat list: no parent row, no indent, all 12 nodes, all columns
+    assert!(out.node.is_none(), "AllNodes should have no parent row");
+    assert_eq!(out.total_arrows_count, 12);
+    snapshot!(
+        out.ascii.unwrap(),
+        "
+All reachable nodes
+
+node_name      | children_count | count_dominated | count_transitive | lines | size | size_dominated | size_eager | size_lazy | size_transitive ▼
+===============+================+=================+==================+=======+======+================+============+===========+==================
+app            |              3 |              12 |               12 |  1200 |  500 |           1985 |       1775 |      1985 |              1985
+core           |              3 |               4 |                5 |   600 |  300 |            820 |        780 |       870 |               870
+ui             |              3 |               6 |                7 |   800 |  200 |            615 |        545 |       665 |               665
+auth           |              2 |               1 |                3 |   420 |  180 |            180 |        480 |       480 |               480
+dialogs        |              1 |               1 |                5 |   350 |  120 |            120 |        265 |       385 |               385
+db             |              1 |               1 |                2 |   500 |  250 |            250 |        300 |       300 |               300
+components     |              3 |               3 |                4 |   400 |  150 |            215 |        265 |       265 |               265
+analytics      |              1 |               1 |                2 |   250 |   90 |             90 |         50 |       140 |               140
+styles         |              0 |               1 |                1 |   200 |   80 |             80 |         80 |        80 |                80
+utils          |              0 |               1 |                1 |   100 |   50 |             50 |         50 |        50 |                50
+button_android |              0 |               1 |                1 |    90 |   35 |             35 |         35 |        35 |                35
+button_ios     |              0 |               1 |                1 |    80 |   30 |             30 |         30 |        30 |                30
 
 "
     );
@@ -62,12 +137,14 @@ async fn drill_into_app() -> Result<()> {
     snapshot!(
         out.ascii.unwrap(),
         "
-name    | children_count | size | size_transitive
-========+================+======+================
-app     |              3 |  500 |            1985
-  core  |              3 |  300 |             870
-  ui    |              3 |  200 |             665
-  utils |              0 |   50 |              50
+Edges: forward
+Edges of: app
+
+node_name | children_count | size | size_transitive ▼
+==========+================+======+==================
+core      |              3 |  300 |               870
+ui        |              3 |  200 |               665
+utils     |              0 |   50 |                50
 
 "
     );
@@ -93,12 +170,14 @@ async fn drill_into_ui_with_tags() -> Result<()> {
     snapshot!(
         out.ascii.unwrap(),
         "
-name         | children_count | size | tag
-=============+================+======+=====
-ui           |              3 |  200 |
-  components |              3 |  150 |
-  styles     |              0 |   80 |
-  dialogs    |              1 |  120 | lazy
+Edges: forward
+Edges of: ui
+
+node_name  | children_count | size | tag
+===========+================+======+=====
+components |              3 |  150 |
+styles     |              0 |   80 |
+dialogs    |              1 |  120 | lazy
 
 "
     );
@@ -126,12 +205,14 @@ async fn drill_into_components_with_dynamic() -> Result<()> {
     snapshot!(
         out.ascii.unwrap(),
         "
-name             | size
-=================+=====
-components       |  150
-  utils          |   50
-  button_android |   35
-  button_ios     |   30
+Edges: forward
+Edges of: components
+
+node_name      | size | dynamic
+===============+======+========================
+utils          |   50 |
+button_android |   35 | platform:button/android
+button_ios     |   30 | platform:button/ios
 
 "
     );
@@ -160,14 +241,16 @@ async fn reverse_edges() -> Result<()> {
     snapshot!(
         out.ascii.unwrap(),
         "
-name         | size
-=============+=====
-utils        |   50
-  analytics  |   90
-  app        |  500
-  auth       |  180
-  components |  150
-  db         |  250
+Edges: reverse
+Edges of: utils
+
+node_name  | size
+===========+=====
+analytics  |   90
+app        |  500
+auth       |  180
+components |  150
+db         |  250
 
 "
     );
@@ -205,12 +288,14 @@ async fn dominator_tree() -> Result<()> {
     snapshot!(
         out.ascii.unwrap(),
         "
-name    | count_dominated | size | size_dominated
-========+=================+======+===============
-app     |              12 |  500 |           1985
-  core  |               4 |  300 |            820
-  ui    |               6 |  200 |            615
-  utils |               1 |   50 |             50
+Edges: dominator
+Edges of: app
+
+node_name | count_dominated | size | size_dominated ▼
+==========+=================+======+=================
+core      |               4 |  300 |              820
+ui        |               6 |  200 |              615
+utils     |               1 |   50 |               50
 
 "
     );
@@ -242,12 +327,14 @@ async fn sort_ascending() -> Result<()> {
     snapshot!(
         out.ascii.unwrap(),
         "
-name    | size
-========+=====
-app     |  500
-  utils |   50
-  ui    |  200
-  core  |  300
+Edges: forward
+Edges of: app
+
+node_name | size ▲
+==========+=======
+utils     |     50
+ui        |    200
+core      |    300
 
 "
     );
@@ -282,11 +369,13 @@ async fn offset_and_limit() -> Result<()> {
     snapshot!(
         out.ascii.unwrap(),
         "
-name   | size
-=======+=====
-app    |  500
-  core |  300
-  ui   |  200
+Edges: forward
+Edges of: app
+
+node_name | size ▼
+==========+=======
+core      |    300
+ui        |    200
 
 (showing 2 of 3 rows, offset 0)
 "
@@ -308,10 +397,12 @@ app    |  500
     snapshot!(
         out.ascii.unwrap(),
         "
-name    | size
-========+=====
-app     |  500
-  utils |   50
+Edges: forward
+Edges of: app
+
+node_name | size ▼
+==========+=======
+utils     |     50
 
 (showing 1 of 3 rows, offset 2)
 "
@@ -345,12 +436,75 @@ async fn tiered_metrics() -> Result<()> {
     snapshot!(
         out.ascii.unwrap(),
         "
-name         | size | size_eager | size_lazy | tag
-=============+======+============+===========+=====
-ui           |  200 |        545 |       665 |
-  components |  150 |        265 |       265 |
-  styles     |   80 |         80 |        80 |
-  dialogs    |  120 |        265 |       385 | lazy
+Edges: forward
+Edges of: ui
+
+node_name  | size | size_eager | size_lazy | tag
+===========+======+============+===========+=====
+components |  150 |        265 |       265 |
+styles     |   80 |         80 |        80 |
+dialogs    |  120 |        265 |       385 | lazy
+
+"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn exhaustive_columns() -> Result<()> {
+    let t = init_app();
+    let handle = ingest_explore_graph(&t).await?;
+
+    // All metric types on a node with dynamic edges
+    let metrics = [
+        NodeMetric::Metric {
+            name: "size".into(),
+        },
+        NodeMetric::Metric {
+            name: "lines".into(),
+        },
+        NodeMetric::MetricTransitive {
+            name: "size".into(),
+        },
+        NodeMetric::MetricDominated {
+            name: "size".into(),
+        },
+        NodeMetric::MetricTiered {
+            name: "size".into(),
+            tier: "eager".into(),
+        },
+        NodeMetric::MetricTiered {
+            name: "size".into(),
+            tier: "lazy".into(),
+        },
+        NodeMetric::ChildrenCount {},
+        NodeMetric::CountDominated {},
+        NodeMetric::CountTransitive {},
+    ];
+    let out = call_rpc!(
+        t,
+        ExploreGraph(
+            Explore::new(&handle)
+                .node("components")
+                .metrics(&metrics)
+                .sort_by(NodeMetric::MetricTransitive {
+                    name: "size".into(),
+                })
+                .build()
+        )
+    );
+    snapshot!(
+        out.ascii.unwrap(),
+        "
+Edges: forward
+Edges of: components
+
+node_name      | count_dominated | count_transitive | lines | size | size_dominated | size_eager | size_lazy | size_transitive ▼ | dynamic
+===============+=================+==================+=======+======+================+============+===========+===================+========================
+utils          |               1 |                1 |   100 |   50 |             50 |         50 |        50 |                50 |
+button_android |               1 |                1 |    90 |   35 |             35 |         35 |        35 |                35 | platform:button/android
+button_ios     |               1 |                1 |    80 |   30 |             30 |         30 |        30 |                30 | platform:button/ios
 
 "
     );
@@ -362,7 +516,7 @@ ui           |  200 |        545 |       665 |
 
 struct Explore<'a> {
     handle: &'a str,
-    node: Option<&'a str>,
+    target: ExploreGraphTarget,
     metrics: &'a [NodeMetric],
     sort_by: Option<NodeMetric>,
     sort_order: Option<SortOrder>,
@@ -375,7 +529,7 @@ impl<'a> Explore<'a> {
     fn new(handle: &'a str) -> Self {
         Self {
             handle,
-            node: None,
+            target: ExploreGraphTarget::EntryPoints {},
             metrics: &[],
             sort_by: None,
             sort_order: None,
@@ -385,8 +539,15 @@ impl<'a> Explore<'a> {
         }
     }
 
-    fn node(mut self, node: &'a str) -> Self {
-        self.node = Some(node);
+    fn node(mut self, name: &str) -> Self {
+        self.target = ExploreGraphTarget::Node {
+            name: name.to_string(),
+        };
+        self
+    }
+
+    fn all_nodes(mut self) -> Self {
+        self.target = ExploreGraphTarget::AllNodes {};
         self
     }
 
@@ -428,7 +589,7 @@ impl<'a> Explore<'a> {
                 handle: Some(self.handle.to_string()),
             }),
             graph_query_config_key: None,
-            node: self.node.map(|s| s.to_string()),
+            target: self.target,
             graph_structure: self.graph_structure,
             metrics: self.metrics.to_vec(),
             sort_by: self.sort_by,

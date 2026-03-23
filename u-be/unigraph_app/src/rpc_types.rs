@@ -140,6 +140,23 @@ impl NodeMetric {
     }
 }
 
+/// What to explore.
+#[derive(Debug, Clone, Serialize, Deserialize, TypeGen)]
+pub enum ExploreGraphTarget {
+    /// Auto-detected entry points (nodes with no parents).
+    EntryPoints {},
+    /// Drill into a specific node's children.
+    Node { name: String },
+    /// Flat list of all reachable nodes.
+    AllNodes {},
+}
+
+impl Default for ExploreGraphTarget {
+    fn default() -> Self {
+        Self::EntryPoints {}
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, TypeGen)]
 pub struct ExploreGraphInput {
     /// Inline graph query config. Either this or `graph_query_config_key` must be set.
@@ -149,9 +166,9 @@ pub struct ExploreGraphInput {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub graph_query_config_key: Option<GraphQueryConfigKey>,
 
-    /// Node to explore. None = show graph entry points.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub node: Option<String>,
+    /// What to explore: entry points, a specific node, or all nodes.
+    #[serde(default)]
+    pub target: ExploreGraphTarget,
 
     /// Which edge structure to follow.
     #[serde(default)]

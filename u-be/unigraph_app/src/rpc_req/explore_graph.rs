@@ -8,6 +8,7 @@ use anyhow::Result;
 use anyhow::bail;
 use unigraph_core::ArrayGraph;
 use unigraph_core::ArrayGraphSerializable;
+use unigraph_core::DynamicEdgeInfo;
 use unigraph_core::NodeIDX;
 use unigraph_core::config_query::GraphQueryConfig;
 use unigraph_core::graph_settings::GraphStructure;
@@ -18,6 +19,7 @@ use unigraph_storage_core::GraphKeyOrTimelineID;
 use crate::ExploreGraphArrow;
 use crate::ExploreGraphInput;
 use crate::ExploreGraphOutput;
+use crate::ExploreGraphTarget;
 use crate::NodeMetric;
 use crate::Unigraph;
 
@@ -90,10 +92,8 @@ fn explore_node(
 
     let metric_names = collect_metric_names(&ag);
     let tier_names = collect_tier_names(&ag);
-    let entry_points = ag.determine_entrypoints();
 
-    let (parent_idx, arrow_data) =
-        resolve_arrows(&ag, &input.node, input.graph_structure, &entry_points)?;
+    let (parent_idx, arrow_data) = resolve_arrows(&ag, &input.target, input.graph_structure)?;
     let total_arrows_count = arrow_data.len();
 
     let sort_order = input.sort_order.unwrap_or(SortOrder::Desc);
@@ -116,8 +116,17 @@ fn explore_node(
         .transpose()?;
 
     let include_ascii = input.include_ascii.unwrap_or(false);
+    let sort_by_key = input.sort_by.as_ref().map(|m| m.key());
     let ascii = if include_ascii {
-        Some(render_ascii(&node, &arrows, total_arrows_count, offset))
+        Some(render_ascii(
+            &input.target,
+            input.graph_structure,
+            &arrows,
+            total_arrows_count,
+            offset,
+            sort_by_key.as_deref(),
+            sort_order,
+        ))
     } else {
         None
     };
@@ -171,16 +180,16 @@ struct ArrowData {
 
 fn resolve_arrows(
     ag: &ArrayGraph,
-    node_name: &Option<String>,
+    target: &ExploreGraphTarget,
     graph_structure: GraphStructure,
-    entry_points: &[NodeIDX],
 ) -> Result<(Option<NodeIDX>, Vec<ArrowData>)> {
-    match node_name {
-        None => {
-            let arrows = entry_points
-                .iter()
-                .filter(|&&idx| !ag.is_node_unreachable(idx))
-                .map(|&idx| ArrowData {
+    match target {
+        ExploreGraphTarget::EntryPoints {} => {
+            let arrows = ag
+                .determine_entrypoints()
+                .into_iter()
+                .filter(|&idx| !ag.is_node_unreachable(idx))
+                .map(|idx| ArrowData {
                     node_idx: idx,
                     tag: None,
                     dynamic: None,
@@ -188,7 +197,19 @@ fn resolve_arrows(
                 .collect();
             Ok((None, arrows))
         }
-        Some(name) => {
+        ExploreGraphTarget::AllNodes {} => {
+            let arrows = ag
+                .all_reachable_node_idxs()
+                .into_iter()
+                .map(|idx| ArrowData {
+                    node_idx: idx,
+                    tag: None,
+                    dynamic: None,
+                })
+                .collect();
+            Ok((None, arrows))
+        }
+        ExploreGraphTarget::Node { name } => {
             let node_idx = ag
                 .nodes
                 .name_to_idx_log(name)
@@ -359,44 +380,81 @@ fn build_explore_arrow_for_node(
 
 // ── ASCII table rendering ───────────────────────────────────────
 
+/// Display width of a sort arrow suffix (" ▼" or " ▲").
+const SORT_ARROW_DISPLAY_LEN: usize = 2;
+
+fn sort_arrow(order: SortOrder) -> &'static str {
+    match order {
+        SortOrder::Desc => " ▼",
+        SortOrder::Asc => " ▲",
+    }
+}
+
 fn render_ascii(
-    node: &Option<ExploreGraphArrow>,
+    target: &ExploreGraphTarget,
+    graph_structure: GraphStructure,
     arrows: &[ExploreGraphArrow],
     total_count: usize,
     offset: usize,
+    sort_by_key: Option<&str>,
+    sort_order: SortOrder,
 ) -> String {
-    let metric_cols = collect_metric_columns(node, arrows);
-    let has_tags = has_any_tags(node, arrows);
-    let has_children = node.is_some();
-    let widths = compute_column_widths(&metric_cols, has_tags, has_children, node, arrows);
+    let metric_cols = collect_metric_columns(arrows);
+    let has_tags = has_any_tags(arrows);
+    let has_dynamic = has_any_dynamic(arrows);
+    let widths = compute_column_widths(&metric_cols, has_tags, has_dynamic, arrows, sort_by_key);
 
     let mut out = String::with_capacity(256);
-    write_header(&mut out, &metric_cols, has_tags, &widths);
+    write_summary(&mut out, target, graph_structure);
+    write_header(
+        &mut out,
+        &metric_cols,
+        has_tags,
+        has_dynamic,
+        &widths,
+        sort_by_key,
+        sort_order,
+    );
     write_separator(&mut out, '=', &widths);
 
-    if let Some(n) = node {
-        write_row(&mut out, n, &metric_cols, has_tags, &widths, 0);
-    }
-
     for arrow in arrows {
-        let indent = if has_children { 2 } else { 0 };
-        write_row(&mut out, arrow, &metric_cols, has_tags, &widths, indent);
+        write_row(
+            &mut out,
+            arrow,
+            &metric_cols,
+            has_tags,
+            has_dynamic,
+            &widths,
+        );
     }
 
     write_footer(&mut out, arrows.len(), total_count, offset);
     out
 }
 
-fn collect_metric_columns(
-    node: &Option<ExploreGraphArrow>,
-    arrows: &[ExploreGraphArrow],
-) -> Vec<String> {
-    let mut cols = BTreeMap::<String, ()>::new();
-    if let Some(n) = node {
-        for k in n.metrics.keys() {
-            cols.insert(k.clone(), ());
+fn write_summary(out: &mut String, target: &ExploreGraphTarget, graph_structure: GraphStructure) {
+    match target {
+        ExploreGraphTarget::EntryPoints {} => {
+            out.push_str("Entry points\n\n");
+        }
+        ExploreGraphTarget::AllNodes {} => {
+            out.push_str("All reachable nodes\n\n");
+        }
+        ExploreGraphTarget::Node { name } => {
+            let structure = match graph_structure {
+                GraphStructure::Forward => "forward",
+                GraphStructure::Reverse => "reverse",
+                GraphStructure::Dominator => "dominator",
+            };
+            let _ = writeln!(out, "Edges: {structure}");
+            let _ = writeln!(out, "Edges of: {name}");
+            out.push('\n');
         }
     }
+}
+
+fn collect_metric_columns(arrows: &[ExploreGraphArrow]) -> Vec<String> {
+    let mut cols = BTreeMap::<String, ()>::new();
     for a in arrows {
         for k in a.metrics.keys() {
             cols.insert(k.clone(), ());
@@ -405,40 +463,44 @@ fn collect_metric_columns(
     cols.into_keys().collect()
 }
 
-fn has_any_tags(node: &Option<ExploreGraphArrow>, arrows: &[ExploreGraphArrow]) -> bool {
-    node.as_ref().is_some_and(|n| n.tag.is_some()) || arrows.iter().any(|a| a.tag.is_some())
+fn has_any_tags(arrows: &[ExploreGraphArrow]) -> bool {
+    arrows.iter().any(|a| a.tag.is_some())
 }
 
-/// Column widths: [name, metric0, metric1, ..., tag?]
+fn has_any_dynamic(arrows: &[ExploreGraphArrow]) -> bool {
+    arrows.iter().any(|a| a.dynamic.is_some())
+}
+
+fn format_dynamic(d: &DynamicEdgeInfo) -> String {
+    format!("{}:{}/{}", d.type_key, d.edge_name, d.branch)
+}
+
+/// Column widths: [node_name, metric0, metric1, ..., tag?, edge?]
 fn compute_column_widths(
     metric_cols: &[String],
     has_tags: bool,
-    has_children: bool,
-    node: &Option<ExploreGraphArrow>,
+    has_dynamic: bool,
     arrows: &[ExploreGraphArrow],
+    sort_by_key: Option<&str>,
 ) -> Vec<usize> {
-    let num_cols = 1 + metric_cols.len() + usize::from(has_tags);
+    let num_cols = 1 + metric_cols.len() + usize::from(has_tags) + usize::from(has_dynamic);
     let mut widths = Vec::with_capacity(num_cols);
 
-    // name column — children are indented by 2 spaces
-    let child_indent = if has_children { 2 } else { 0 };
-    let mut name_w = 4; // "name"
-    if let Some(n) = node {
-        name_w = name_w.max(n.name.len());
-    }
+    // node_name column
+    let mut name_w = 9; // "node_name"
     for a in arrows {
-        name_w = name_w.max(child_indent + a.name.len());
+        name_w = name_w.max(a.name.len());
     }
     widths.push(name_w);
 
     // metric columns
     for col in metric_cols {
-        let mut w = col.len();
-        if let Some(n) = node
-            && let Some(v) = n.metrics.get(col)
-        {
-            w = w.max(format_metric(*v).len());
-        }
+        let header_w = if sort_by_key == Some(col.as_str()) {
+            col.len() + SORT_ARROW_DISPLAY_LEN
+        } else {
+            col.len()
+        };
+        let mut w = header_w;
         for a in arrows {
             if let Some(v) = a.metrics.get(col) {
                 w = w.max(format_metric(*v).len());
@@ -450,11 +512,6 @@ fn compute_column_widths(
     // tag column
     if has_tags {
         let mut w = 3; // "tag"
-        if let Some(n) = node
-            && let Some(t) = &n.tag
-        {
-            w = w.max(t.len());
-        }
         for a in arrows {
             if let Some(t) = &a.tag {
                 w = w.max(t.len());
@@ -463,19 +520,55 @@ fn compute_column_widths(
         widths.push(w);
     }
 
+    // dynamic edge column
+    if has_dynamic {
+        let mut w = 7; // "dynamic"
+        for a in arrows {
+            if let Some(d) = &a.dynamic {
+                w = w.max(format_dynamic(d).len());
+            }
+        }
+        widths.push(w);
+    }
+
     widths
 }
 
-fn write_header(out: &mut String, metric_cols: &[String], has_tags: bool, widths: &[usize]) {
+fn write_header(
+    out: &mut String,
+    metric_cols: &[String],
+    has_tags: bool,
+    has_dynamic: bool,
+    widths: &[usize],
+    sort_by_key: Option<&str>,
+    sort_order: SortOrder,
+) {
     let start = out.len();
-    write_cell(out, "name", widths[0], true);
+    write_cell(out, "node_name", widths[0], true);
     for (i, col) in metric_cols.iter().enumerate() {
         let _ = write!(out, " | ");
-        write_cell(out, col, widths[1 + i], false);
+        if sort_by_key == Some(col.as_str()) {
+            let text = format!("{col}{}", sort_arrow(sort_order));
+            // ▼/▲ is 3 bytes but 1 display char — pad manually for correct alignment
+            let display_len = col.len() + SORT_ARROW_DISPLAY_LEN;
+            let pad = widths[1 + i].saturating_sub(display_len);
+            for _ in 0..pad {
+                out.push(' ');
+            }
+            out.push_str(&text);
+        } else {
+            write_cell(out, col, widths[1 + i], false);
+        }
     }
+    let mut extra_idx = 1 + metric_cols.len();
     if has_tags {
         let _ = write!(out, " | ");
-        write_cell(out, "tag", widths[widths.len() - 1], true);
+        write_cell(out, "tag", widths[extra_idx], true);
+        extra_idx += 1;
+    }
+    if has_dynamic {
+        let _ = write!(out, " | ");
+        write_cell(out, "dynamic", widths[extra_idx], true);
     }
     trim_trailing_spaces(out, start);
     out.push('\n');
@@ -500,16 +593,11 @@ fn write_row(
     arrow: &ExploreGraphArrow,
     metric_cols: &[String],
     has_tags: bool,
+    has_dynamic: bool,
     widths: &[usize],
-    indent: usize,
 ) {
     let start = out.len();
-    let name = if indent > 0 {
-        format!("{:indent$}{}", "", arrow.name)
-    } else {
-        arrow.name.clone()
-    };
-    write_cell(out, &name, widths[0], true);
+    write_cell(out, &arrow.name, widths[0], true);
     for (i, col) in metric_cols.iter().enumerate() {
         let _ = write!(out, " | ");
         let val = arrow
@@ -519,10 +607,21 @@ fn write_row(
             .unwrap_or_else(|| "0".to_string());
         write_cell(out, &val, widths[1 + i], false);
     }
+    let mut extra_idx = 1 + metric_cols.len();
     if has_tags {
         let _ = write!(out, " | ");
         let tag = arrow.tag.as_deref().unwrap_or("");
-        write_cell(out, tag, widths[widths.len() - 1], true);
+        write_cell(out, tag, widths[extra_idx], true);
+        extra_idx += 1;
+    }
+    if has_dynamic {
+        let _ = write!(out, " | ");
+        let edge = arrow
+            .dynamic
+            .as_ref()
+            .map(format_dynamic)
+            .unwrap_or_default();
+        write_cell(out, &edge, widths[extra_idx], true);
     }
     trim_trailing_spaces(out, start);
     out.push('\n');
@@ -535,10 +634,17 @@ fn write_footer(out: &mut String, shown: usize, total: usize, offset: usize) {
 }
 
 fn write_cell(out: &mut String, text: &str, width: usize, left_align: bool) {
+    let pad = width.saturating_sub(text.len());
     if left_align {
-        let _ = write!(out, "{text:<width$}");
+        out.push_str(text);
+        for _ in 0..pad {
+            out.push(' ');
+        }
     } else {
-        let _ = write!(out, "{text:>width$}");
+        for _ in 0..pad {
+            out.push(' ');
+        }
+        out.push_str(text);
     }
 }
 
