@@ -120,6 +120,7 @@ use unigraph_storage_core::GraphID;
 use unigraph_storage_core::GraphKey;
 use unigraph_storage_core::GraphTimeKey;
 use unigraph_storage_core::Order;
+use unigraph_storage_core::TimelineConfig;
 use unigraph_storage_core::TimelineID;
 use unigraph_storage_core::TimelineSchema;
 use unigraph_storage_core::Timestamp;
@@ -612,6 +613,316 @@ pub(crate) async fn validate_delta_base(
     );
 
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Batch empty frame registration
+// ---------------------------------------------------------------------------
+
+/// Maximum number of empty frames to INSERT in a single batch within the
+/// transaction. Keeps individual SQL statements bounded.
+const EMPTY_FRAME_CHUNK_SIZE: usize = 10_000;
+
+/// Maximum number of stored frames to load for overlap resolution.
+/// Only the tail of the timeline is needed — the overlap region is always
+/// a suffix of stored frames matching a prefix of the input.
+const STORED_FRAMES_LOOKBACK: i64 = 10_000;
+
+/// Store new empty frames, filtering out frames already present in the timeline.
+///
+/// `new_frames` must be sorted by `(timestamp, graph_id)` with strictly
+/// increasing graph_ids and non-decreasing timestamps. The range may
+/// overlap with the tail of already-stored frames — the overlap is
+/// validated for alignment and filtered out.
+///
+/// When `require_overlap` is `true`, the input MUST overlap with at least
+/// one stored frame (unless the timeline is empty). This prevents silently
+/// appending frames with a gap when the caller expected continuity.
+///
+/// Runs in a single transaction with an exclusive timeline lock.
+/// Inserts are chunked to keep SQL statements bounded.
+///
+/// Returns the number of frames actually inserted (after filtering overlap).
+pub async fn put_new_empty_frames(
+    ctx: &UnigraphDbContext,
+    timeline_id: &TimelineID,
+    new_frames: Vec<Frame>,
+    require_overlap: bool,
+    task: &ll::Task,
+) -> Result<usize> {
+    if new_frames.is_empty() {
+        return Ok(0);
+    }
+
+    validate_input_ordering(&new_frames)?;
+
+    let mut conn = ctx.storage.graph.conn_write().await?;
+    conn.start_transaction(task).await?;
+    let config = lock_timeline(&mut *conn, timeline_id, task).await?;
+    ensure_adjacent_deltas_schema(&config, timeline_id)?;
+
+    let stored_tail = load_stored_tail(&mut *conn, timeline_id, task).await?;
+    let to_insert = resolve_overlap(&stored_tail, &new_frames, require_overlap)?;
+
+    if to_insert.is_empty() {
+        conn.commit_transaction(task).await?;
+        return Ok(0);
+    }
+
+    validate_monotonic_continuation(&stored_tail, &to_insert[0], timeline_id)?;
+    insert_empty_frames_chunked(&mut *conn, timeline_id, to_insert, task).await?;
+
+    conn.commit_transaction(task).await?;
+    Ok(to_insert.len())
+}
+
+/// Verify that input frames have strictly increasing graph_ids and
+/// non-decreasing timestamps.
+fn validate_input_ordering(frames: &[Frame]) -> Result<()> {
+    for i in 1..frames.len() {
+        let prev = &frames[i - 1];
+        let curr = &frames[i];
+
+        anyhow::ensure!(
+            curr.graph_id.0 > prev.graph_id.0,
+            "input frames are not monotonically ordered: frame at index {i} \
+             has graph_id={} which is not greater than previous graph_id={} \
+             (at index {})",
+            curr.graph_id.0,
+            prev.graph_id.0,
+            i - 1,
+        );
+
+        anyhow::ensure!(
+            curr.timestamp >= prev.timestamp,
+            "input frames are not monotonically ordered: frame at index {i} \
+             has timestamp={} which is earlier than previous timestamp={} \
+             (at index {}, graph_id={} vs graph_id={})",
+            curr.timestamp,
+            prev.timestamp,
+            i - 1,
+            curr.graph_id.0,
+            prev.graph_id.0,
+        );
+    }
+    Ok(())
+}
+
+/// Acquire an exclusive timeline lock and return the config.
+async fn lock_timeline(
+    conn: &mut dyn UnigraphGraphConnection,
+    timeline_id: &TimelineID,
+    task: &ll::Task,
+) -> Result<TimelineConfig> {
+    conn.get_timeline_config_and_lock(timeline_id, task)
+        .await?
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "put_new_empty_frames: timeline '{}' not found",
+                timeline_id.0,
+            )
+        })
+}
+
+/// Verify the timeline uses the AdjacentDeltas schema.
+fn ensure_adjacent_deltas_schema(config: &TimelineConfig, timeline_id: &TimelineID) -> Result<()> {
+    anyhow::ensure!(
+        matches!(config.schema, TimelineSchema::AdjacentDeltas(_)),
+        "put_new_empty_frames only supports AdjacentDeltas timelines, \
+         but timeline '{}' uses {} schema",
+        timeline_id.0,
+        config.schema,
+    );
+    Ok(())
+}
+
+/// Load the last `STORED_FRAMES_LOOKBACK` stored frames (metadata only)
+/// in ascending order. Only the tail is needed for overlap resolution.
+async fn load_stored_tail(
+    conn: &mut dyn UnigraphGraphConnection,
+    timeline_id: &TimelineID,
+    task: &ll::Task,
+) -> Result<Vec<Frame>> {
+    // Query in descending order with a limit, then reverse to get ascending.
+    let mut rows = conn
+        .select_frames(
+            &FrameQuery {
+                timeline_id: timeline_id.clone(),
+                order: Some(Order::Desc),
+                limit: Some(STORED_FRAMES_LOOKBACK),
+                ..Default::default()
+            },
+            task,
+        )
+        .await?;
+
+    rows.reverse();
+    Ok(rows.into_iter().map(|r| r.frame).collect())
+}
+
+/// Determine which frames from `new_frames` need to be inserted by
+/// resolving overlap with `stored_tail` (the last N stored frames).
+///
+/// The overlap must be a contiguous suffix of `stored_tail` that matches
+/// a contiguous prefix of `new_frames` — both graph_id and timestamp must
+/// agree for every overlapping pair.
+///
+/// When `require_overlap` is `true` and the timeline is non-empty, the
+/// input must overlap with at least one stored frame.
+///
+/// Returns the slice of `new_frames` after the overlap (the frames to insert).
+fn resolve_overlap<'a>(
+    stored_tail: &[Frame],
+    new_frames: &'a [Frame],
+    require_overlap: bool,
+) -> Result<&'a [Frame]> {
+    if stored_tail.is_empty() {
+        return Ok(new_frames);
+    }
+
+    let first_new = &new_frames[0];
+    let last_stored = stored_tail.last().unwrap();
+
+    // No overlap: new range starts after all stored frames.
+    if first_new.graph_id.0 > last_stored.graph_id.0 {
+        if require_overlap {
+            anyhow::bail!(
+                "require_overlap is set but no overlap found: the first input \
+                 frame has graph_id={} which is after the last stored \
+                 graph_id={}. The input must include at least one frame that \
+                 already exists in storage to confirm continuity.",
+                first_new.graph_id.0,
+                last_stored.graph_id.0,
+            );
+        }
+        return Ok(new_frames);
+    }
+
+    // Find where new_frames[0] appears in stored_tail (by graph_id).
+    let overlap_start_in_stored = stored_tail
+        .iter()
+        .position(|f| f.graph_id == first_new.graph_id)
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "overlap alignment failed: the first input frame has graph_id={}, \
+                 which is less than or equal to the last stored graph_id={}, \
+                 but graph_id={} does not exist in the last {} stored frames. \
+                 Input frames must either start after all stored frames or \
+                 overlap with a contiguous suffix of stored frames.",
+                first_new.graph_id.0,
+                last_stored.graph_id.0,
+                first_new.graph_id.0,
+                stored_tail.len(),
+            )
+        })?;
+
+    // Walk the overlap: stored[overlap_start..] vs new[0..overlap_len].
+    let stored_overlap = &stored_tail[overlap_start_in_stored..];
+    let overlap_len = std::cmp::min(stored_overlap.len(), new_frames.len());
+
+    for i in 0..overlap_len {
+        let stored = &stored_overlap[i];
+        let new = &new_frames[i];
+
+        anyhow::ensure!(
+            stored.graph_id == new.graph_id,
+            "overlap alignment failed at overlap position {i}: \
+             stored frame has graph_id={}, but input frame has graph_id={}. \
+             The overlapping portion of input frames must exactly match \
+             the tail of stored frames. Stored frames in overlap region: [{}]. \
+             Input frames in overlap region: [{}].",
+            stored.graph_id.0,
+            new.graph_id.0,
+            format_graph_ids(stored_overlap),
+            format_graph_ids(&new_frames[..overlap_len]),
+        );
+
+        anyhow::ensure!(
+            stored.timestamp == new.timestamp,
+            "overlap alignment failed: frame with graph_id={} has \
+             timestamp={} in input but timestamp={} in storage. \
+             Timestamps must match for overlapping frames.",
+            new.graph_id.0,
+            new.timestamp,
+            stored.timestamp,
+        );
+    }
+
+    // If stored_overlap extends beyond new_frames, that means all input
+    // frames are already stored — nothing to insert.
+    if stored_overlap.len() >= new_frames.len() {
+        return Ok(&new_frames[new_frames.len()..]);
+    }
+
+    Ok(&new_frames[overlap_len..])
+}
+
+/// Verify that the first frame to insert continues the monotonic sequence
+/// after the last stored frame.
+fn validate_monotonic_continuation(
+    stored_tail: &[Frame],
+    first_to_insert: &Frame,
+    timeline_id: &TimelineID,
+) -> Result<()> {
+    let last_stored = match stored_tail.last() {
+        Some(f) => f,
+        None => return Ok(()),
+    };
+
+    anyhow::ensure!(
+        first_to_insert.graph_id.0 > last_stored.graph_id.0,
+        "monotonic ordering violated after overlap resolution in timeline '{}': \
+         first frame to insert has graph_id={}, but the last stored frame \
+         has graph_id={}. New frames must have strictly greater graph_id.",
+        timeline_id.0,
+        first_to_insert.graph_id.0,
+        last_stored.graph_id.0,
+    );
+
+    anyhow::ensure!(
+        first_to_insert.timestamp >= last_stored.timestamp,
+        "monotonic ordering violated after overlap resolution in timeline '{}': \
+         first frame to insert has timestamp={}, but the last stored frame \
+         has timestamp={} (graph_id={} vs graph_id={}). \
+         New frames must have non-decreasing timestamps.",
+        timeline_id.0,
+        first_to_insert.timestamp,
+        last_stored.timestamp,
+        first_to_insert.graph_id.0,
+        last_stored.graph_id.0,
+    );
+
+    Ok(())
+}
+
+/// Insert empty frames in chunks within an existing transaction.
+async fn insert_empty_frames_chunked(
+    conn: &mut dyn UnigraphGraphConnection,
+    timeline_id: &TimelineID,
+    frames: &[Frame],
+    task: &ll::Task,
+) -> Result<()> {
+    for chunk in frames.chunks(EMPTY_FRAME_CHUNK_SIZE) {
+        for frame in chunk {
+            let key = GraphTimeKey {
+                timeline_id: timeline_id.clone(),
+                timestamp: frame.timestamp,
+                graph_id: frame.graph_id,
+            };
+            conn.store_frame_empty(&key, task).await?;
+        }
+    }
+    Ok(())
+}
+
+/// Format a slice of frames as a comma-separated list of graph_ids for
+/// error messages.
+fn format_graph_ids(frames: &[Frame]) -> String {
+    frames
+        .iter()
+        .map(|f| f.graph_id.0.to_string())
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 // ---------------------------------------------------------------------------

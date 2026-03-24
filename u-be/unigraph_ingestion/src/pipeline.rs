@@ -1,7 +1,6 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 use std::cmp;
-use std::collections::HashSet;
 use std::path::Path;
 
 use anyhow::Context;
@@ -10,8 +9,8 @@ use unigraph_db::GraphRangeBuilder;
 use unigraph_db::UnigraphDb;
 use unigraph_storage_core::AdjacentDeltasConfig;
 use unigraph_storage_core::ExternalID;
+use unigraph_storage_core::Frame;
 use unigraph_storage_core::FrameType;
-use unigraph_storage_core::GraphID;
 use unigraph_storage_core::GraphKey;
 use unigraph_storage_core::GraphTimeKey;
 use unigraph_storage_core::TimelineConfig;
@@ -101,24 +100,19 @@ async fn run_git_ingestion(
         let timeline_id = &builder_config.timeline_id;
         ensure_timeline(db, timeline_id, ns, task).await?;
 
-        let existing_graph_ids: HashSet<GraphID> = db
-            .frames
-            .list(timeline_id, task)
-            .await?
+        let new_frames: Vec<Frame> = new_commits
             .iter()
-            .map(|f| f.frame.graph_id)
+            .zip(&graph_ids)
+            .map(|(commit, &graph_id)| Frame {
+                timestamp: commit.timestamp,
+                graph_id,
+            })
             .collect();
 
-        for (commit, &graph_id) in new_commits.iter().zip(&graph_ids) {
-            if !existing_graph_ids.contains(&graph_id) {
-                let key = GraphTimeKey {
-                    timeline_id: timeline_id.clone(),
-                    timestamp: commit.timestamp,
-                    graph_id,
-                };
-                db.frames.store_empty(&key, task).await?;
-            }
-        }
+        db.graph
+            .adjacent_deltas
+            .put_new_empty_frames(timeline_id, new_frames, true, task)
+            .await?;
     }
 
     drop(registration_task);
@@ -273,25 +267,18 @@ async fn run_timeline_ingestion(
         let timeline_id = &builder_config.timeline_id;
         ensure_timeline(db, timeline_id, ns, task).await?;
 
-        let existing_graph_ids: HashSet<GraphID> = db
-            .frames
-            .list(timeline_id, task)
-            .await?
+        let new_frames: Vec<Frame> = source_frames
             .iter()
-            .map(|f| f.frame.graph_id)
+            .map(|sf| Frame {
+                timestamp: sf.frame.timestamp,
+                graph_id: sf.frame.graph_id,
+            })
             .collect();
 
-        for source_frame in &source_frames {
-            let graph_id = source_frame.frame.graph_id;
-            if !existing_graph_ids.contains(&graph_id) {
-                let key = GraphTimeKey {
-                    timeline_id: timeline_id.clone(),
-                    timestamp: source_frame.frame.timestamp,
-                    graph_id,
-                };
-                db.frames.store_empty(&key, task).await?;
-            }
-        }
+        db.graph
+            .adjacent_deltas
+            .put_new_empty_frames(timeline_id, new_frames, true, task)
+            .await?;
     }
 
     drop(registration_task);

@@ -49,10 +49,16 @@ async fn store_and_load_single_range() -> Result<()> {
     let graphs: Vec<_> = (0..count).map(TestGraphTimeline::get_nth).collect();
 
     // Register Empty frames (Phase A of ingestion).
-    for i in 0..count {
-        let key = make_graph_time_key(tl, i as i64, 1000 + i as i64);
-        db.frames.store_empty(&key, &task).await?;
-    }
+    let empty_frames: Vec<Frame> = (0..count)
+        .map(|i| Frame {
+            timestamp: unigraph_timestamp::Timestamp::from_unix_timestamp(1000 + i as i64),
+            graph_id: GraphID(i as i64),
+        })
+        .collect();
+    db.graph
+        .adjacent_deltas
+        .put_new_empty_frames(&TimelineID(tl.to_string()), empty_frames, false, &task)
+        .await?;
 
     // Build a GraphRange (Phase B).
     let mut builder = GraphRangeBuilder::new(TimelineID(tl.to_string()));
@@ -103,10 +109,16 @@ async fn store_multiple_ranges_then_load() -> Result<()> {
     let graphs: Vec<_> = (0..total).map(TestGraphTimeline::get_nth).collect();
 
     // Register all Empty frames.
-    for i in 0..total {
-        let key = make_graph_time_key(tl, i as i64, 1000 + i as i64);
-        db.frames.store_empty(&key, &task).await?;
-    }
+    let empty_frames: Vec<Frame> = (0..total)
+        .map(|i| Frame {
+            timestamp: unigraph_timestamp::Timestamp::from_unix_timestamp(1000 + i as i64),
+            graph_id: GraphID(i as i64),
+        })
+        .collect();
+    db.graph
+        .adjacent_deltas
+        .put_new_empty_frames(&TimelineID(tl.to_string()), empty_frames, false, &task)
+        .await?;
 
     // Build and store in 3 separate ranges: [0..15), [15..35), [35..50).
     let splits = [0..15, 15..35, 35..50];
@@ -159,10 +171,16 @@ async fn flush_on_error_with_take() -> Result<()> {
     let error_at = 5u64; // Simulate error at graph 5
 
     // Register all Empty frames.
-    for i in 0..total {
-        let key = make_graph_time_key(tl, i as i64, 1000 + i as i64);
-        db.frames.store_empty(&key, &task).await?;
-    }
+    let empty_frames: Vec<Frame> = (0..total)
+        .map(|i| Frame {
+            timestamp: unigraph_timestamp::Timestamp::from_unix_timestamp(1000 + i as i64),
+            graph_id: GraphID(i as i64),
+        })
+        .collect();
+    db.graph
+        .adjacent_deltas
+        .put_new_empty_frames(&TimelineID(tl.to_string()), empty_frames, false, &task)
+        .await?;
 
     let mut builder = GraphRangeBuilder::new(TimelineID(tl.to_string()));
 
@@ -244,10 +262,16 @@ async fn load_partial_range() -> Result<()> {
     let total = 30u64;
 
     // Register all Empty frames.
-    for i in 0..total {
-        let key = make_graph_time_key(tl, i as i64, 1000 + i as i64);
-        db.frames.store_empty(&key, &task).await?;
-    }
+    let empty_frames: Vec<Frame> = (0..total)
+        .map(|i| Frame {
+            timestamp: unigraph_timestamp::Timestamp::from_unix_timestamp(1000 + i as i64),
+            graph_id: GraphID(i as i64),
+        })
+        .collect();
+    db.graph
+        .adjacent_deltas
+        .put_new_empty_frames(&TimelineID(tl.to_string()), empty_frames, false, &task)
+        .await?;
 
     // Store in 3 ranges: [0..10), [10..20), [20..30).
     // Each range starts with a Full frame.
@@ -302,10 +326,16 @@ async fn randomized_multi_range_200() -> Result<()> {
     let graphs: Vec<_> = (0..total).map(TestGraphTimeline::get_nth).collect();
 
     // Register all Empty frames.
-    for i in 0..total {
-        let key = make_graph_time_key(tl, i as i64, 1000 + i as i64);
-        db.frames.store_empty(&key, &task).await?;
-    }
+    let empty_frames: Vec<Frame> = (0..total)
+        .map(|i| Frame {
+            timestamp: unigraph_timestamp::Timestamp::from_unix_timestamp(1000 + i as i64),
+            graph_id: GraphID(i as i64),
+        })
+        .collect();
+    db.graph
+        .adjacent_deltas
+        .put_new_empty_frames(&TimelineID(tl.to_string()), empty_frames, false, &task)
+        .await?;
 
     // Store in chunks of varying sizes: 7, 13, 23, 11, ... (wrapping).
     let chunk_sizes = [7, 13, 23, 11, 17, 3, 29, 19, 5, 31];

@@ -97,14 +97,20 @@ async fn store_empty_frame() -> Result<()> {
     let task = ll::Task::create_new("test");
     setup_timeline(&db, "test", &task).await;
 
+    let tl = TimelineID("test".to_string());
+    let empty_frames = vec![Frame {
+        timestamp: unigraph_timestamp::Timestamp::from_unix_timestamp(1000),
+        graph_id: GraphID(1),
+    }];
+    db.graph
+        .adjacent_deltas
+        .put_new_empty_frames(&tl, empty_frames, false, &task)
+        .await?;
+
     let key = make_graph_time_key("test", 1, 1000);
-    db.frames.store_empty(&key, &task).await?;
 
     // Verify it's listed
-    let frames = db
-        .frames
-        .list(&TimelineID("test".to_string()), &task)
-        .await?;
+    let frames = db.frames.list(&tl, &task).await?;
     assert_eq!(frames.len(), 1);
     assert_eq!(frames[0].frame_type, FrameType::Empty);
 
@@ -560,10 +566,17 @@ async fn replace_empty_frames_with_full_graphs() -> Result<()> {
 
     // Phase A: Register empty frames for 5 commits (mimics ingestion pipeline).
     // All graph_ids are allocated up front, so the last frame has graph_id=4.
-    for i in 0..5 {
-        let key = make_graph_time_key("test", i, 1000 + i);
-        db.frames.store_empty(&key, &task).await?;
-    }
+    let tl = TimelineID("test".to_string());
+    let empty_frames: Vec<Frame> = (0..5)
+        .map(|i| Frame {
+            timestamp: unigraph_timestamp::Timestamp::from_unix_timestamp(1000 + i),
+            graph_id: GraphID(i),
+        })
+        .collect();
+    db.graph
+        .adjacent_deltas
+        .put_new_empty_frames(&tl, empty_frames, false, &task)
+        .await?;
 
     let frames = db
         .frames

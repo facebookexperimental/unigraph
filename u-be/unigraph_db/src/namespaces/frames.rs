@@ -23,32 +23,6 @@ pub struct Frames {
 }
 
 impl Frames {
-    /// Store an empty frame (placeholder with no data).
-    ///
-    /// Transactional: locks the timeline, validates ordering (AdjacentDeltas
-    /// only), stores the frame, and commits.
-    #[task(tags(l3))]
-    pub async fn store_empty(&self, key: &GraphTimeKey, task: &ll::Task) -> Result<()> {
-        let mut conn = self.ctx.storage.graph.conn_write().await?;
-        conn.start_transaction(&task).await?;
-        let config = conn
-            .get_timeline_config_and_lock(&key.timeline_id, &task)
-            .await?
-            .ok_or_else(|| anyhow::anyhow!("Timeline not found: {:?}", key.timeline_id))?;
-
-        if matches!(
-            config.schema,
-            unigraph_storage_core::TimelineSchema::AdjacentDeltas(_)
-        ) {
-            crate::schemas::adjacent_deltas::validate_monotonic_append(&mut *conn, key, &task)
-                .await?;
-        }
-
-        conn.store_frame_empty(key, &task).await?;
-        conn.commit_transaction(&task).await?;
-        Ok(())
-    }
-
     /// Select frames matching a structured query.
     #[task(tags(l3))]
     pub async fn select(&self, query: &FrameQuery, task: &ll::Task) -> Result<Vec<FrameRow>> {

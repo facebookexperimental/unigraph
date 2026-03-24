@@ -11,11 +11,13 @@ use crate::SearchNodesInput;
 use crate::SearchNodesOutput;
 use crate::Unigraph;
 
+const DEFAULT_TTL_HOURS: u64 = 6;
+
 impl RpcExec<Unigraph> for SearchNodesInput {
     type Output = SearchNodesOutput;
 
     async fn exec(self, ctx: &Unigraph, task: &ll::Task) -> Result<SearchNodesOutput> {
-        let ttl = Duration::from_secs(60);
+        let ttl = Duration::from_hours(DEFAULT_TTL_HOURS);
         let ag = ctx
             .graph_cache
             .get_latest_by_timeline(&self.timeline_id, task, ttl)
