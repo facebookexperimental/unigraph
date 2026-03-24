@@ -60,82 +60,29 @@ export function Explorer(props: ExplorerProps) {
     home_href,
   } = props;
 
-  /// This graph initializes a new native graph every time the raw data changes.
   const [nativeGraphNoTVCL, nativeGraphNoTVCR] = useMemo(
     () => NativeGraph.fromSerialized(graphs),
     [graphs],
   );
 
-  // Resolve base GQC — either from props (handle mode) or from graph defaults (local mode)
-  const resolvedBaseGqcL = useMemo(
-    () => resolveBaseGqc(base_gqc_l, nativeGraphNoTVCL),
-    [base_gqc_l, nativeGraphNoTVCL],
+  const left = useResolvedSide(
+    base_gqc_l,
+    gqc_delta_l,
+    on_gqc_delta_change_l,
+    nativeGraphNoTVCL,
   );
-
-  const resolvedBaseGqcR = useMemo(
-    () =>
-      nativeGraphNoTVCR != null
-        ? resolveBaseGqc(base_gqc_r, nativeGraphNoTVCR)
-        : null,
-    [base_gqc_r, nativeGraphNoTVCR],
+  const right = useResolvedSide(
+    base_gqc_r,
+    gqc_delta_r,
+    on_gqc_delta_change_r,
+    nativeGraphNoTVCR ?? null,
   );
-
-  // Apply delta to get current GQC, then extract TVC
-  const [tvcL, nativeGraphL] = useMemo(() => {
-    const currentGqc = applyDelta(resolvedBaseGqcL, gqc_delta_l);
-    const tvc: TraversalConfig =
-      currentGqc.traversal_config ?? nativeGraphNoTVCL.getTraversalConfig();
-    return [tvc, nativeGraphNoTVCL.getApplyTraversalConfig(tvc)];
-  }, [resolvedBaseGqcL, gqc_delta_l, nativeGraphNoTVCL]);
-
-  const [tvcR, nativeGraphR] = useMemo(() => {
-    if (nativeGraphNoTVCR == null || resolvedBaseGqcR == null) {
-      return [null, null];
-    }
-    const currentGqc = applyDelta(resolvedBaseGqcR, gqc_delta_r);
-    const tvc: TraversalConfig =
-      currentGqc.traversal_config ?? nativeGraphNoTVCR.getTraversalConfig();
-    return [tvc, nativeGraphNoTVCR.getApplyTraversalConfig(tvc)];
-  }, [resolvedBaseGqcR, gqc_delta_r, nativeGraphNoTVCR]);
 
   const settings = useMemo(() => {
     return graph_settings == null
-      ? nativeGraphNoTVCL.getGraphSettings() // default settings come from the native graph
+      ? nativeGraphNoTVCL.getGraphSettings()
       : JSON.parse(from_zstd_base64_url_safe_no_pad(graph_settings));
   }, [graph_settings, nativeGraphNoTVCL]);
-
-  const setTvcLCb = useCallback(
-    (tvc: TraversalConfig) => {
-      const modified: GraphQueryConfig = {
-        ...resolvedBaseGqcL,
-        traversal_config: tvc,
-      };
-      const delta = derive_gqc_delta(
-        JSON.stringify(resolvedBaseGqcL),
-        JSON.stringify(modified),
-      );
-      on_gqc_delta_change_l?.(delta);
-    },
-    [resolvedBaseGqcL, on_gqc_delta_change_l],
-  );
-
-  const setTvcRCb = useCallback(
-    (tvc: TraversalConfig) => {
-      if (nativeGraphR == null || resolvedBaseGqcR == null) {
-        return;
-      }
-      const modified: GraphQueryConfig = {
-        ...resolvedBaseGqcR,
-        traversal_config: tvc,
-      };
-      const delta = derive_gqc_delta(
-        JSON.stringify(resolvedBaseGqcR),
-        JSON.stringify(modified),
-      );
-      on_gqc_delta_change_r?.(delta);
-    },
-    [resolvedBaseGqcR, on_gqc_delta_change_r, nativeGraphR],
-  );
 
   const setSettingsCb = useCallback(
     (settings: GraphSettings) => {
@@ -151,14 +98,14 @@ export function Explorer(props: ExplorerProps) {
         <GlobalElementRefsContextProvider>
           <ErrorBoundary>
             <NativeGraphContextProvider
-              nativeGraphL={nativeGraphL}
-              nativeGraphR={nativeGraphR}
+              nativeGraphL={left.nativeGraph!}
+              nativeGraphR={right.nativeGraph}
             >
               <TraversalConfigContextProvider
-                tvcL={tvcL}
-                setTvcL={setTvcLCb}
-                tvcR={tvcR}
-                setTvcR={setTvcRCb}
+                tvcL={left.tvc!}
+                setTvcL={left.setTvc}
+                tvcR={right.tvc}
+                setTvcR={right.setTvc}
               >
                 <SimulationParamsContextProvider>
                   <SelectedNodesContextProvider>
@@ -183,7 +130,6 @@ export function Explorer(props: ExplorerProps) {
 
 function Page({ homeHref }: { homeHref?: string }) {
   const [nativeGraphL, nativeGraphR] = useNativeGraphs();
-  const [graphSettings] = useGraphSettings();
   const [settings] = useGraphSettings();
   const [selectedNodes] = useSelectedNodes();
   const portalRef = usePortalContainer();
@@ -213,8 +159,8 @@ function Page({ homeHref }: { homeHref?: string }) {
     const rootsL = getRoots(
       nativeGraphL,
       selectedNodes,
-      graphSettings.ui_settings?.entry_points_specified ?? null,
-      graphSettings.ui_settings?.entry_points,
+      settings.ui_settings?.entry_points_specified ?? null,
+      settings.ui_settings?.entry_points,
     );
 
     if (nativeGraphR == null) {
@@ -223,8 +169,8 @@ function Page({ homeHref }: { homeHref?: string }) {
       const rootsR = getRoots(
         nativeGraphR,
         selectedNodes,
-        graphSettings.ui_settings?.entry_points_specified ?? null,
-        graphSettings.ui_settings?.entry_points,
+        settings.ui_settings?.entry_points_specified ?? null,
+        settings.ui_settings?.entry_points,
       );
       return Array.from(new Set([...rootsL, ...rootsR]));
     }
@@ -232,8 +178,8 @@ function Page({ homeHref }: { homeHref?: string }) {
     nativeGraphL,
     nativeGraphR,
     selectedNodes,
-    graphSettings.ui_settings?.entry_points,
-    graphSettings.ui_settings?.entry_points_specified,
+    settings.ui_settings?.entry_points,
+    settings.ui_settings?.entry_points_specified,
   ]);
 
   return (
@@ -281,6 +227,51 @@ function getRoots(
       );
     }
   }
+}
+
+function useResolvedSide(
+  baseGqcJson: string | undefined,
+  gqcDelta: string | undefined,
+  onDeltaChange: ((delta: string) => void) | undefined,
+  nativeGraphNoTVC: NativeGraph | null,
+) {
+  const resolvedBase = useMemo(
+    () =>
+      nativeGraphNoTVC != null
+        ? resolveBaseGqc(baseGqcJson, nativeGraphNoTVC)
+        : null,
+    [baseGqcJson, nativeGraphNoTVC],
+  );
+
+  const [tvc, nativeGraph] = useMemo(() => {
+    if (resolvedBase == null || nativeGraphNoTVC == null) {
+      return [null, null];
+    }
+    const currentGqc = applyDelta(resolvedBase, gqcDelta);
+    const tvc: TraversalConfig =
+      currentGqc.traversal_config ?? nativeGraphNoTVC.getTraversalConfig();
+    return [tvc, nativeGraphNoTVC.getApplyTraversalConfig(tvc)];
+  }, [resolvedBase, gqcDelta, nativeGraphNoTVC]);
+
+  const setTvc = useCallback(
+    (tvc: TraversalConfig) => {
+      if (resolvedBase == null) {
+        return;
+      }
+      const modified: GraphQueryConfig = {
+        ...resolvedBase,
+        traversal_config: tvc,
+      };
+      const delta = derive_gqc_delta(
+        JSON.stringify(resolvedBase),
+        JSON.stringify(modified),
+      );
+      onDeltaChange?.(delta);
+    },
+    [resolvedBase, onDeltaChange],
+  );
+
+  return { tvc, nativeGraph, setTvc };
 }
 
 function resolveBaseGqc(
