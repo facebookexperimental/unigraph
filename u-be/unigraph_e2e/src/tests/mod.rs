@@ -2,3 +2,4 @@
 
 mod config_storage;
 mod explore_graph;
+mod search_nodes;

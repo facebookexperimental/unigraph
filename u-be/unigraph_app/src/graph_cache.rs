@@ -1,18 +1,30 @@
 // (c) Meta Platforms, Inc. and affiliates. Confidential and proprietary.
 
-//! In-memory graph cache with LRU eviction, TTL, and stampede prevention.
+//! In-memory graph cache with LRU eviction, per-entry TTL, and stampede prevention.
 //!
-//! `GraphCache` caches fully-prepared `ArrayGraph` instances (fetched, roots-filtered,
-//! traversal-applied) keyed by `GraphQueryConfigKey`. Multiple concurrent requests for
-//! the same key share a single computation — the first caller fetches, others wait.
+//! `GraphCache` caches `Arc<ArrayGraph>` instances across two LRU caches:
+//!
+//! - **`by_gqc_key`** — keyed by `GraphQueryConfigKey`. Stores fully-prepared graphs
+//!   (fetched, roots-filtered, traversal-applied). Used by ExploreGraph RPC.
+//!
+//! - **`by_timeline_latest`** — keyed by `TimelineID`. Stores the latest raw graph
+//!   for a timeline (no roots/traversal). Used by SearchNodes RPC.
+//!
+//! Each entry carries its own TTL, set by the caller at fetch time.
 //!
 //! ```text
-//! get_by_gqc_key("gqc-abc", task)
+//! get_by_gqc_key("gqc-abc", task, 5min)
 //!   ├─ cache hit   → Arc::clone(cached_graph)
 //!   └─ cache miss  → resolve config → fetch graph → apply roots → apply traversal
-//!                    → store Arc<ArrayGraph> → return clone
+//!                    → store entry with TTL → return Arc::clone
+//!
+//! get_latest_by_timeline("my-timeline", task, 60s)
+//!   ├─ cache hit   → Arc::clone(cached_graph)
+//!   └─ cache miss  → fetch_latest → into_array_graph → store → return Arc::clone
 //! ```
 
+use std::fmt::Debug;
+use std::hash::Hash;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -25,19 +37,28 @@ use unigraph_core::config_key::GraphQueryConfigKey;
 use unigraph_core::config_query::GraphQueryConfig;
 use unigraph_db::UnigraphDb;
 use unigraph_storage_core::GraphKeyOrTimelineID;
+use unigraph_storage_core::TimelineID;
 
-type ComputationSlot = Arc<Mutex<Option<Arc<ArrayGraph>>>>;
+/// A cached graph — the value stored in each LRU slot.
+struct ArrayGraphCacheEntry {
+    graph: Arc<ArrayGraph>,
+}
 
-/// In-memory LRU cache for prepared graphs, keyed by `GraphQueryConfigKey`.
+type CacheSlot = Arc<Mutex<Option<ArrayGraphCacheEntry>>>;
+
+/// In-memory LRU cache for prepared graphs.
 ///
-/// Designed for interactive exploration where the same graph is queried repeatedly
-/// with different view parameters (target node, sort, pagination). The graph identity
-/// is fixed by the config key — only view parameters change between requests.
+/// Two independent LRUs serve different access patterns:
+///
+/// - `by_gqc_key`: for interactive exploration — graph identity fixed by config key,
+///   only view parameters (target, sort, pagination) change between requests.
+/// - `by_timeline_latest`: for node search — caches the latest raw graph for a timeline,
+///   avoids re-fetching on every keystroke.
 ///
 /// ## Stampede prevention
 ///
 /// When multiple requests arrive for the same uncached key, only the first caller
-/// fetches from storage. Others wait on the same computation slot and receive
+/// fetches from storage. Others wait on the same `CacheSlot` and receive
 /// `Arc::clone` of the result.
 ///
 /// ## Thread safety
@@ -48,17 +69,17 @@ type ComputationSlot = Arc<Mutex<Option<Arc<ArrayGraph>>>>;
 #[derive(Clone)]
 pub struct GraphCache {
     db: UnigraphDb,
-    by_gqc_key: Arc<Mutex<LruCache<GraphQueryConfigKey, ComputationSlot>>>,
-    ttl: Duration,
+    by_gqc_key: Arc<Mutex<LruCache<GraphQueryConfigKey, CacheSlot>>>,
+    by_timeline_latest: Arc<Mutex<LruCache<TimelineID, CacheSlot>>>,
 }
 
 impl GraphCache {
-    pub fn new(db: UnigraphDb, capacity: usize, ttl: Duration) -> Self {
+    pub fn new(db: UnigraphDb, capacity: usize) -> Self {
         let cap = std::num::NonZero::new(capacity).expect("cache capacity must be > 0");
         Self {
             db,
             by_gqc_key: Arc::new(Mutex::new(LruCache::new(cap))),
-            ttl,
+            by_timeline_latest: Arc::new(Mutex::new(LruCache::new(cap))),
         }
     }
 
@@ -70,50 +91,85 @@ impl GraphCache {
         &self,
         key: &GraphQueryConfigKey,
         task: &ll::Task,
+        ttl: Duration,
     ) -> Result<Arc<ArrayGraph>> {
-        let slot = self.get_or_create_gqc_slot(key).await;
-        self.resolve_gqc_slot(slot, key, task).await
+        let slot = get_or_create_slot(&self.by_gqc_key, key).await;
+        self.resolve_gqc_slot(slot, key, task, ttl).await
+    }
+
+    /// Retrieve the latest raw `ArrayGraph` for a timeline, fetching from storage on miss.
+    ///
+    /// No roots filtering or traversal config is applied — this is the full graph
+    /// as stored. Useful for node search and other timeline-level operations.
+    pub async fn get_latest_by_timeline(
+        &self,
+        timeline_id: &TimelineID,
+        task: &ll::Task,
+        ttl: Duration,
+    ) -> Result<Arc<ArrayGraph>> {
+        let slot = get_or_create_slot(&self.by_timeline_latest, timeline_id).await;
+        self.resolve_timeline_slot(slot, timeline_id, task, ttl)
+            .await
     }
 }
 
-// ── Implementation ───────────────────────────────────────────────
+// ── Slot resolution ─────────────────────────────────────────────
 
 impl GraphCache {
-    /// Check the `by_gqc_key` LRU for an existing slot, or create an empty one.
-    async fn get_or_create_gqc_slot(&self, key: &GraphQueryConfigKey) -> ComputationSlot {
-        let mut lru = self.by_gqc_key.lock().await;
-        if let Some(slot) = lru.get(key) {
-            Arc::clone(slot)
-        } else {
-            let slot: ComputationSlot = Arc::new(Mutex::new(None));
-            lru.put(key.clone(), Arc::clone(&slot));
-            slot
-        }
-    }
-
-    /// Lock the slot: if populated, return the cached value; otherwise compute and cache it.
+    /// Lock the GQC slot: if populated, return cached; otherwise fetch, prepare, and cache.
     async fn resolve_gqc_slot(
         &self,
-        slot: ComputationSlot,
+        slot: CacheSlot,
         key: &GraphQueryConfigKey,
         task: &ll::Task,
+        ttl: Duration,
     ) -> Result<Arc<ArrayGraph>> {
         let mut guard = slot.lock().await;
 
-        if let Some(cached) = guard.as_ref() {
-            return Ok(Arc::clone(cached));
+        if let Some(entry) = guard.as_ref() {
+            return Ok(Arc::clone(&entry.graph));
         }
 
-        let graph = Arc::new(self.fetch_and_prepare(key, task).await?);
-        *guard = Some(Arc::clone(&graph));
+        let graph = Arc::new(self.fetch_and_prepare_gqc(key, task).await?);
+        *guard = Some(ArrayGraphCacheEntry {
+            graph: Arc::clone(&graph),
+        });
 
-        self.schedule_eviction(key.clone());
+        schedule_eviction(&self.by_gqc_key, key.clone(), ttl);
 
         Ok(graph)
     }
 
-    /// Fetch graph from storage and apply roots + traversal config.
-    async fn fetch_and_prepare(
+    /// Lock the timeline slot: if populated, return cached; otherwise fetch and cache.
+    async fn resolve_timeline_slot(
+        &self,
+        slot: CacheSlot,
+        timeline_id: &TimelineID,
+        task: &ll::Task,
+        ttl: Duration,
+    ) -> Result<Arc<ArrayGraph>> {
+        let mut guard = slot.lock().await;
+
+        if let Some(entry) = guard.as_ref() {
+            return Ok(Arc::clone(&entry.graph));
+        }
+
+        let graph = Arc::new(self.fetch_latest_graph(timeline_id, task).await?);
+        *guard = Some(ArrayGraphCacheEntry {
+            graph: Arc::clone(&graph),
+        });
+
+        schedule_eviction(&self.by_timeline_latest, timeline_id.clone(), ttl);
+
+        Ok(graph)
+    }
+}
+
+// ── Fetch helpers ───────────────────────────────────────────────
+
+impl GraphCache {
+    /// Fetch graph by GQC key and apply roots + traversal config.
+    async fn fetch_and_prepare_gqc(
         &self,
         key: &GraphQueryConfigKey,
         task: &ll::Task,
@@ -125,20 +181,50 @@ impl GraphCache {
         Ok(ag)
     }
 
-    /// Schedule TTL-based eviction for a key.
-    fn schedule_eviction(&self, key: GraphQueryConfigKey) {
-        if self.ttl.is_zero() {
-            return;
-        }
-        let cache = Arc::clone(&self.by_gqc_key);
-        let ttl = self.ttl;
-        tokio::spawn(async move {
-            tokio::time::sleep(ttl).await;
-            if let Ok(mut lru) = cache.try_lock() {
-                lru.pop(&key);
-            }
-        });
+    /// Fetch the latest graph for a timeline — raw, no roots/traversal applied.
+    async fn fetch_latest_graph(
+        &self,
+        timeline_id: &TimelineID,
+        task: &ll::Task,
+    ) -> Result<ArrayGraph> {
+        let (_key, ag_ser) = self.db.graph.fetch_latest(timeline_id, task).await?;
+        Ok(ag_ser.into_array_graph())
     }
+}
+
+// ── Generic LRU helpers ─────────────────────────────────────────
+
+/// Check the LRU for an existing slot, or create an empty one.
+async fn get_or_create_slot<K: Clone + Eq + Hash>(
+    lru: &Arc<Mutex<LruCache<K, CacheSlot>>>,
+    key: &K,
+) -> CacheSlot {
+    let mut guard = lru.lock().await;
+    if let Some(slot) = guard.get(key) {
+        Arc::clone(slot)
+    } else {
+        let slot: CacheSlot = Arc::new(Mutex::new(None));
+        guard.put(key.clone(), Arc::clone(&slot));
+        slot
+    }
+}
+
+/// Schedule TTL-based eviction for a key from an LRU cache.
+fn schedule_eviction<K: Clone + Eq + Hash + Debug + Send + 'static>(
+    lru: &Arc<Mutex<LruCache<K, CacheSlot>>>,
+    key: K,
+    ttl: Duration,
+) {
+    if ttl.is_zero() {
+        return;
+    }
+    let cache = Arc::clone(lru);
+    tokio::spawn(async move {
+        tokio::time::sleep(ttl).await;
+        if let Ok(mut guard) = cache.try_lock() {
+            guard.pop(&key);
+        }
+    });
 }
 
 // ── Graph fetching (moved from explore_graph.rs) ─────────────────

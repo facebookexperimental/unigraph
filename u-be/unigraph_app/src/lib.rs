@@ -27,7 +27,7 @@ pub struct Unigraph {
 
 impl Unigraph {
     pub fn new(db: UnigraphDb) -> Self {
-        let graph_cache = GraphCache::new(db.clone(), 64, std::time::Duration::from_secs(5 * 60));
+        let graph_cache = GraphCache::new(db.clone(), 64);
         Self { db, graph_cache }
     }
 
@@ -55,6 +55,9 @@ impl Unigraph {
             UnigraphRequest::ExploreGraph(input) => Ok(UnigraphResponse::ExploreGraph(
                 input.exec(self, task).await?,
             )),
+            UnigraphRequest::SearchNodes(input) => {
+                Ok(UnigraphResponse::SearchNodes(input.exec(self, task).await?))
+            }
         }
     }
 }
@@ -97,5 +100,6 @@ unigraph_rpc::define_rpc_for_exec! {
         ListTimelines(ListTimelinesInput) -> ListTimelinesOutput,
         SelectFrames(SelectFramesInput) -> SelectFramesOutput,
         ExploreGraph(ExploreGraphInput) -> ExploreGraphOutput,
+        SearchNodes(SearchNodesInput) -> SearchNodesOutput,
     }
 }

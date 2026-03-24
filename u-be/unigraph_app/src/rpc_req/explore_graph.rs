@@ -3,6 +3,7 @@
 use std::collections::BTreeMap;
 use std::fmt::Write;
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::Context;
 use anyhow::Result;
@@ -27,7 +28,8 @@ impl RpcExec<Unigraph> for ExploreGraphInput {
 
     async fn exec(self, ctx: &Unigraph, task: &ll::Task) -> Result<ExploreGraphOutput> {
         let gqc_key = resolve_gqc_key(&self)?;
-        let ag = ctx.graph_cache.get_by_gqc_key(&gqc_key, task).await?;
+        let ttl = Duration::from_secs(5 * 60);
+        let ag = ctx.graph_cache.get_by_gqc_key(&gqc_key, task, ttl).await?;
         let input = self;
         tokio::task::spawn_blocking(move || explore_node(ag, &input)).await?
     }

@@ -238,3 +238,18 @@ pub struct ExploreGraphArrow {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dynamic: Option<DynamicEdgeInfo>,
 }
+
+// ── SearchNodes ──────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize, TypeGen)]
+pub struct SearchNodesInput {
+    pub timeline_id: TimelineID,
+    pub pattern: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub limit: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TypeGen)]
+pub struct SearchNodesOutput {
+    pub matches: Vec<String>,
+}
