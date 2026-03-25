@@ -3,75 +3,97 @@
 use std::collections::BinaryHeap;
 
 use anyhow::Result;
+use rayon::prelude::*;
 
 use crate::ArrayGraphNodes;
 use crate::NodeIDX;
 
-/// Search for nodes using regex pattern matching.
-/// Iterates through all node names and matches them against the provided regex pattern.
-/// Like search_fuzzy, this creates a subsequence pattern by escaping regex characters
-/// and inserting .* between each character for fuzzy matching.
-/// Returns up to `limit` matches ordered by string length (shortest first).
+/// Fuzzy-search node names using regex subsequence matching, parallelized with rayon.
+///
+/// Each rayon thread maintains a local top-K heap (bounded by `limit`), then heaps
+/// are merged pairwise. Memory usage is O(limit * num_threads), not O(total_matches).
+///
+/// On WASM (no threads), rayon automatically falls back to sequential execution.
 pub fn search_fuzzy_regex<'a>(
     nodes: &'a ArrayGraphNodes,
     pattern: &str,
     limit: usize,
 ) -> Result<Vec<(&'a str, NodeIDX)>> {
-    // Create a case insensitive regex pattern that matches the query as a subsequence
-    // For each character in the query, we want to match it anywhere in the string
-    // with other characters potentially in between (subsequence matching)
+    let regex = build_subsequence_regex(pattern)?;
+    let heap = collect_top_k_matches(nodes, &regex, limit);
+    Ok(sorted_results(nodes, heap))
+}
+
+fn build_subsequence_regex(pattern: &str) -> Result<regex::Regex> {
     let pattern_parts: Vec<String> = pattern
         .chars()
         .map(|c| regex::escape(&c.to_string()))
         .collect();
 
-    // Join the escaped characters with ".*" to allow any characters in between
-    // This creates a subsequence match: for "ae" -> ".*a.*e.*"
     let pattern = format!(".*{}.*", pattern_parts.join(".*"));
-    let regex = regex::RegexBuilder::new(&pattern)
+    Ok(regex::RegexBuilder::new(&pattern)
         .case_insensitive(true)
-        .build()?;
+        .build()?)
+}
 
-    // Binary heap so we can search for only N top results ordered
-    // by node length ascending.
-    //
-    // Since it's a fuzzy search, it will likely match a LOT of garbage
-    // that is likely irrelevant.
-    // e.g. if you search for `cat`
-    // it will match strings like
-    // - *CAT*astrophiclly_terrible_match
-    // - a*C*tu*A*lly_another_*T*errible_match
-    // - cat
-    // - also_a_cat
-    // Obviously we want to surface `cat` and `also_a_cat` as first
-    // matches. A good heuristic is to prioritize shorter names.
-    let mut heap = BinaryHeap::new();
+/// Parallel scan: each thread keeps a local BinaryHeap of at most `limit` entries
+/// (max-heap by name length), then heaps are merged pairwise via reduce.
+fn collect_top_k_matches(
+    nodes: &ArrayGraphNodes,
+    regex: &regex::Regex,
+    limit: usize,
+) -> BinaryHeap<(i32, NodeIDX)> {
+    nodes
+        .combined_node_idx_iter()
+        .par_bridge()
+        .fold(
+            || BinaryHeap::with_capacity(limit + 1),
+            |mut heap, node_idx| {
+                let node_name = nodes.idx_to_name(node_idx);
+                let len = node_name.len() as i32;
 
-    for node_idx in nodes.combined_node_idx_iter() {
-        let node_name = nodes.idx_to_name(node_idx);
-        let len = node_name.len() as i32;
-        let current_longest_match = heap.peek().map(|(len, _)| *len).unwrap_or(i32::MAX);
+                if len >= heap.peek().map(|(l, _)| *l).unwrap_or(i32::MAX) && heap.len() >= limit {
+                    return heap;
+                }
 
-        if len >= current_longest_match && heap.len() >= limit {
-            // This match is longer than the longest match we have
-            // and we already have enough matches, so skip it instead matching, pushing and popping
-            continue;
-        }
+                if regex.is_match(node_name) {
+                    heap.push((len, node_idx));
+                    if heap.len() > limit {
+                        heap.pop();
+                    }
+                }
 
-        if regex.is_match(node_name) {
-            heap.push((len, node_idx));
+                heap
+            },
+        )
+        .reduce(
+            || BinaryHeap::with_capacity(limit + 1),
+            |a, b| merge_heaps(a, b, limit),
+        )
+}
 
-            if heap.len() > limit {
-                heap.pop();
-            }
+fn merge_heaps(
+    mut a: BinaryHeap<(i32, NodeIDX)>,
+    b: BinaryHeap<(i32, NodeIDX)>,
+    limit: usize,
+) -> BinaryHeap<(i32, NodeIDX)> {
+    for item in b {
+        a.push(item);
+        if a.len() > limit {
+            a.pop();
         }
     }
+    a
+}
 
-    Ok(heap
-        .into_sorted_vec()
+fn sorted_results<'a>(
+    nodes: &'a ArrayGraphNodes,
+    heap: BinaryHeap<(i32, NodeIDX)>,
+) -> Vec<(&'a str, NodeIDX)> {
+    heap.into_sorted_vec()
         .into_iter()
         .map(|(_len, node_idx)| (nodes.idx_to_name(node_idx), node_idx))
-        .collect())
+        .collect()
 }
 
 #[cfg(test)]
