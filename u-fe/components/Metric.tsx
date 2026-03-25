@@ -11,8 +11,10 @@ export default function Metric({
 }) {
   return (
     <div className="flex flex-col items-center">
-      <span className={clsx("tabular-nums", metricSize)}>{value}</span>
-      <span className="text-xs text-primary font-medium">{label}</span>
+      <span className={clsx("tabular-nums font-mono", metricSize)}>
+        {value}
+      </span>
+      <span className="text-xs text-muted-foreground font-medium">{label}</span>
     </div>
   );
 }

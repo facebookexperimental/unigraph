@@ -8,6 +8,7 @@ import type { MetricSettings } from "../../__generated__/ts/MetricSettings";
 import type { SortColumn } from "../../__generated__/ts/SortColumn";
 import type { SortOrder } from "../../__generated__/ts/SortOrder";
 import type { TraversalConfig } from "../../__generated__/ts/TraversalConfig";
+import { displayNodeName } from "../../lib/utils";
 import { useGraphSettings } from "../../context/GraphSettingsContext";
 import { useTwinGraph } from "../../context/NativeGraphContext";
 import { useTVC } from "../../context/TraversalConfigContext";
@@ -98,7 +99,7 @@ export default function useGraphTreeTableColumns(): ColumnDefinitions {
 
     const treeColumn: TreeColumnDefinition = {
       label: "Node Name",
-      getNodeName: (idx: NodeIDX) => l.getNodeName(idx),
+      getNodeName: (idx: NodeIDX) => displayNodeName(l.getNodeName(idx)),
       flexGrow: 1,
       sortable: {
         order: nodeNameSortOrder,

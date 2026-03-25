@@ -70,7 +70,7 @@ export default function TimelinePage() {
         <Button variant="ghost" size="sm" onClick={() => navigate("/")}>
           &larr; Back
         </Button>
-        <h1 className="text-2xl font-bold">{timelineId}</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">{timelineId}</h1>
         <span className="text-muted-foreground text-sm">
           {frames.length} frames
         </span>

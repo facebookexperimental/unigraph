@@ -19,6 +19,7 @@ import { useDebugMode } from "../context/DebugModeContext";
 import { useGraphSettings } from "../context/GraphSettingsContext";
 import { useTwinGraph } from "../context/NativeGraphContext";
 import { useSelectedPath } from "../context/SelectedPathContext";
+import { displayNodeName } from "../lib/utils";
 import { nodeEdgesChanged, nodeMetricsChanged } from "../native/NodeDiff";
 import type TwinGraph from "../native/TwinGraph";
 import { H2, P } from "../Typography";
@@ -494,8 +495,10 @@ function SkippedNodesHovercardContent({
   twinArrow: TwinArrow;
   skipped: number;
 }) {
-  const fromName = twinGraph.getNodeName(twinArrow.points_from);
-  const toName = twinGraph.getNodeName(twinArrow.points_to);
+  const fromName = displayNodeName(
+    twinGraph.getNodeName(twinArrow.points_from),
+  );
+  const toName = displayNodeName(twinGraph.getNodeName(twinArrow.points_to));
 
   return (
     <div className="flex flex-col gap-2">

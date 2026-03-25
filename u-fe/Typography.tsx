@@ -17,7 +17,12 @@ export function Pre({ text, className }: { text: string; className?: string }) {
 
 export function H1({ text, className }: { text: string; className?: string }) {
   return (
-    <div className={clsx("text-xl font-semibold text-foreground", className)}>
+    <div
+      className={clsx(
+        "text-xl font-semibold tracking-tight text-foreground",
+        className,
+      )}
+    >
       {text}
     </div>
   );
@@ -25,7 +30,12 @@ export function H1({ text, className }: { text: string; className?: string }) {
 
 export function H2({ text, className }: { text: string; className?: string }) {
   return (
-    <div className={clsx("text-xl font-semibold text-foreground", className)}>
+    <div
+      className={clsx(
+        "text-xl font-semibold tracking-tight text-foreground",
+        className,
+      )}
+    >
       {text}
     </div>
   );
@@ -33,7 +43,12 @@ export function H2({ text, className }: { text: string; className?: string }) {
 
 export function H3({ text, className }: { text: string; className?: string }) {
   return (
-    <div className={clsx("text-lg font-semibold text-foreground", className)}>
+    <div
+      className={clsx(
+        "text-lg font-semibold tracking-tight text-foreground",
+        className,
+      )}
+    >
       {text}
     </div>
   );
