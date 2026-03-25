@@ -8,6 +8,7 @@ import base64
 import os
 import re
 import shlex
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Annotated
@@ -73,13 +74,40 @@ def run(args: list[str], env: dict[str, str] | None = None) -> None:
         raise typer.Exit(result.returncode)
 
 
+def fmt_size(size: int) -> str:
+    kb = size / 1024
+    return f"{kb:,.1f} kB"
+
+
+def print_artifacts(paths: list[Path]) -> None:
+    rows = []
+    for p in paths:
+        if p.exists():
+            name = p.name
+            size = fmt_size(p.stat().st_size)
+            rows.append((name, size))
+    if not rows:
+        return
+    name_w = max(len(r[0]) for r in rows)
+    size_w = max(len(r[1]) for r in rows)
+    sep = f"┼{'─' * (name_w + 2)}┼{'─' * (size_w + 2)}┼"
+    print(f"\n{sep}")
+    for name, size in rows:
+        print(f"│ {name:<{name_w}} │ {size:>{size_w}} │")
+    print(sep)
+
+
 OUT_DIR = ROOT / ".build"
 WASM_OUT_DIR = OUT_DIR / "wasm"
 WASM_TARGET_DIR = Path("/tmp/unigraph-target")
 
 
 @build_app.command("wasm")
-def build_wasm() -> None:
+def build_wasm(
+    skip_wasm_opt: Annotated[
+        bool, typer.Option("--skip-wasm-opt", help="Skip wasm-opt optimization.")
+    ] = False,
+) -> None:
     """Build the WASM package and inline it as base64 TypeScript."""
     WASM_OUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -89,14 +117,18 @@ def build_wasm() -> None:
             "build",
             "--package",
             "unigraph_wasm",
-            "--release",
+            "--profile",
+            "release-wasm",
             "--target",
             "wasm32-unknown-unknown",
         ]
     )
 
     wasm_path = (
-        WASM_TARGET_DIR / "wasm32-unknown-unknown" / "release" / "unigraph_wasm.wasm"
+        WASM_TARGET_DIR
+        / "wasm32-unknown-unknown"
+        / "release-wasm"
+        / "unigraph_wasm.wasm"
     )
     run(
         [
@@ -109,11 +141,43 @@ def build_wasm() -> None:
         ]
     )
 
-    # Encode wasm to base64 and create a TS module that inlines it
     wasm_artifact = WASM_OUT_DIR / "unigraph_wasm_bg.wasm"
+
+    # Run wasm-opt for size reduction
+    if skip_wasm_opt:
+        pass
+    elif not shutil.which("wasm-opt"):
+        print(
+            "\033[31mError: wasm-opt not found.\033[0m\n"
+            "  Install: brew install binaryen\n"
+            "  Or skip:  ut build wasm --skip-wasm-opt"
+        )
+        raise typer.Exit(1)
+    else:
+        run(
+            [
+                "wasm-opt",
+                "-Oz",
+                "--all-features",
+                str(wasm_artifact),
+                "-o",
+                str(wasm_artifact),
+            ]
+        )
+
+    # Encode wasm to base64 and create a TS module that inlines it
     wasm_b64 = base64.b64encode(wasm_artifact.read_bytes()).decode()
     wasm_ts = WASM_OUT_DIR / "unigraph_wasm_base64.ts"
     wasm_ts.write_text(f"export default `\n{wasm_b64}\n`;\n")
+
+    print_artifacts(
+        [
+            wasm_artifact,
+            WASM_OUT_DIR / "unigraph_wasm.js",
+            WASM_OUT_DIR / "unigraph_wasm.d.ts",
+            wasm_ts,
+        ]
+    )
 
 
 @build_app.command("js")
