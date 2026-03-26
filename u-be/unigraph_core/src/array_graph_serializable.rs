@@ -194,9 +194,10 @@ impl ArrayGraphSerializable {
             .context("Failed to deserialize ArrayGraphSerializable from JSON bytes")
     }
 
-    /// NOTE: this is a serial operation that is performed on a single thread.
-    /// it works on WASM but it will be much much slower in native than it could be.
-    /// You should use the parallelized version in `unigraph_server_utils` crate instead.
+    /// Packs this graph into compressed, chunked blobs for storage/transport.
+    ///
+    /// Each field is serialized, compressed, and chunked in parallel via rayon
+    /// (degrades to sequential on WASM).
     pub fn pack(
         &self,
         config: &ArrayGraphSerializablePackageConfig,

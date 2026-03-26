@@ -52,6 +52,10 @@ fn collect_top_k_matches(
                 let node_name = nodes.idx_to_name(node_idx);
                 let len = node_name.len() as i32;
 
+                // Skip the expensive regex check for names that can't improve the result.
+                // Uses >= (not >) intentionally: equal-length names won't shorten the top-K,
+                // so we avoid the regex cost. This means tiebreaking among same-length names
+                // is non-deterministic across threads, which is acceptable.
                 if len >= heap.peek().map(|(l, _)| *l).unwrap_or(i32::MAX) && heap.len() >= limit {
                     return heap;
                 }
