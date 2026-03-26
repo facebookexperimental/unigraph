@@ -315,32 +315,66 @@ pub fn pack(
 
     let (node_names, node_names_offsets) = node_names_ordered.as_parts();
 
-    let node_names = into_blobs(&node_names, "node_names", &mut b, c)?;
-    let node_names_offsets = into_blobs(&node_names_offsets, "node_names_offsets", &mut b, c)?;
-    let directed = into_blobs(&directed, "directed", &mut b, c)?;
-    let directed_offsets = into_blobs(&directed_offsets, "directed_offsets", &mut b, c)?;
-    let tagged = into_blobs(&tagged, "tagged", &mut b, c)?;
-    let dynamic = into_blobs(&dynamic, "dynamic", &mut b, c)?;
-    let metrics = into_blobs(&metrics, "metrics", &mut b, c)?;
-    let labels = into_blobs(&labels, "labels", &mut b, c)?;
-    let properties = into_blobs(&properties, "properties", &mut b, c)?;
-    let traversal_config = into_blobs(&traversal_config, "traversal_config", &mut b, c)?;
-    let budget_configs = into_blobs(&budget_configs, "budget_configs", &mut b, c)?;
-    let entry_points = into_blobs(&entry_points, "entry_points", &mut b, c)?;
+    // Serialize + compress all fields in parallel via rayon::scope.
+    // Each field runs on its own thread; results are collected by name.
+    // On WASM (no thread pool), rayon degrades to sequential automatically.
+    type FieldBlobs = Result<(Vec<BlobID>, BTreeMap<BlobID, Vec<u8>>)>;
+    let results = std::sync::Mutex::new(BTreeMap::<&str, FieldBlobs>::new());
+
+    macro_rules! spawn_field {
+        ($s:expr, $($field:ident),+ $(,)?) => {$(
+            $s.spawn(|_| {
+                let r = into_blobs_isolated(&$field, stringify!($field), c);
+                results.lock().unwrap().insert(stringify!($field), r);
+            });
+        )+};
+    }
+
+    rayon::scope(|s| {
+        spawn_field!(
+            s,
+            node_names,
+            node_names_offsets,
+            directed,
+            directed_offsets,
+            tagged,
+            dynamic,
+            metrics,
+            labels,
+            properties,
+            traversal_config,
+            budget_configs,
+            entry_points,
+        );
+    });
+
+    let mut results = results
+        .into_inner()
+        .map_err(|e| anyhow::anyhow!("rayon task panicked: {e}"))?;
+
+    macro_rules! take_field {
+        ($field:ident) => {{
+            let (ids, blobs) = results
+                .remove(stringify!($field))
+                .context(concat!("missing result for field: ", stringify!($field)))??;
+            b.extend(blobs);
+            ids
+        }};
+    }
 
     let manifest_blobs = ManifestBlobs {
-        node_names,
-        node_names_offsets,
-        directed,
-        directed_offsets,
-        tagged,
-        dynamic,
-        metrics,
-        labels,
-        properties,
-        traversal_config,
-        budget_configs,
-        entry_points,
+        node_names: take_field!(node_names),
+        node_names_offsets: take_field!(node_names_offsets),
+        directed: take_field!(directed),
+        directed_offsets: take_field!(directed_offsets),
+        tagged: take_field!(tagged),
+        dynamic: take_field!(dynamic),
+        metrics: take_field!(metrics),
+        labels: take_field!(labels),
+        properties: take_field!(properties),
+        traversal_config: take_field!(traversal_config),
+        budget_configs: take_field!(budget_configs),
+        entry_points: take_field!(entry_points),
     };
 
     let mut manifest_blob_id = BlobID::from("_manifest.json");
@@ -491,6 +525,20 @@ fn from_blobs_field<T: serde::de::DeserializeOwned + Default>(
             &blob_ids
         )
     })
+}
+
+/// Like [`into_blobs`], but returns the blob map instead of mutating a shared one.
+///
+/// This enables parallel serialization — each field can produce its own blob map
+/// independently, and results are merged after all tasks complete.
+fn into_blobs_isolated<T: serde::Serialize>(
+    value: &T,
+    name: &str,
+    cfg: &ArrayGraphSerializablePackageConfig,
+) -> Result<(Vec<BlobID>, BTreeMap<BlobID, Vec<u8>>)> {
+    let mut blobs = BTreeMap::new();
+    let ids = into_blobs(value, name, &mut blobs, cfg)?;
+    Ok((ids, blobs))
 }
 
 /// Serializes a single graph field into one or more compressed blobs.
