@@ -84,6 +84,7 @@ impl UnigraphStorage {
             &manifest_json,
             prepared.inline.as_deref(),
             prepared.external_keys.as_deref(),
+            None,
             task,
         )
         .await?;
@@ -283,10 +284,19 @@ impl UnigraphStorage {
         manifest_json: &str,
         inline_blobs: Option<&[u8]>,
         blob_keys_to_unregister: Option<&[String]>,
+        expires_at: Option<Timestamp>,
         task: &ll::Task,
     ) -> Result<()> {
-        conn.store_frame(key, frame_type, base, manifest_json, inline_blobs, task)
-            .await?;
+        conn.store_frame(
+            key,
+            frame_type,
+            base,
+            manifest_json,
+            inline_blobs,
+            expires_at,
+            task,
+        )
+        .await?;
 
         // Unregister blob keys from cleanup table INSIDE the transaction,
         // so if commit fails the blobs remain registered for cleanup.
@@ -540,6 +550,8 @@ async fn get_frame_with_data_on_conn(
                 graph_ids: Some(vec![key.graph_id]),
                 with_data: Some(true),
                 limit: Some(1),
+                before: None,
+                expires_before: None,
                 ..Default::default()
             },
             task,

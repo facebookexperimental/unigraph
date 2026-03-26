@@ -14,6 +14,7 @@ mod frames;
 mod graph;
 mod metric_history;
 mod timelines;
+mod utility;
 
 pub use adjacent_deltas_ops::AdjacentDeltasOps;
 pub use blob_storage::BlobStorageOps;
@@ -23,3 +24,5 @@ pub use frames::Frames;
 pub use graph::Graph;
 pub use metric_history::MetricHistory;
 pub use timelines::Timelines;
+pub use utility::CleanupResult;
+pub use utility::Utility;

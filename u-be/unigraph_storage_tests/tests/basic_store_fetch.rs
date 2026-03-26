@@ -68,13 +68,13 @@ async fn store_multiple_graphs_and_list_frames() -> Result<()> {
     snapshot!(
         format_frames_table(&frames),
         "
-graph_id             timestamp                type       base
-----------------------------------------------------------------------
-0                    1970-01-01T00:16:40.000Z Full -
-1                    1970-01-01T00:16:41.000Z Full -
-2                    1970-01-01T00:16:42.000Z Full -
-3                    1970-01-01T00:16:43.000Z Full -
-4                    1970-01-01T00:16:44.000Z Full -
+graph_id             timestamp                type       base       expires_at
+----------------------------------------------------------------------------------------------
+0                    1970-01-01T00:16:40.000Z Full -          -
+1                    1970-01-01T00:16:41.000Z Full -          -
+2                    1970-01-01T00:16:42.000Z Full -          -
+3                    1970-01-01T00:16:43.000Z Full -          -
+4                    1970-01-01T00:16:44.000Z Full -          -
 "
     );
 
@@ -188,9 +188,9 @@ async fn delete_frame() -> Result<()> {
     snapshot!(
         format_frames_table(&frames),
         "
-graph_id             timestamp                type       base
-----------------------------------------------------------------------
-1                    1970-01-01T00:16:40.000Z Full -
+graph_id             timestamp                type       base       expires_at
+----------------------------------------------------------------------------------------------
+1                    1970-01-01T00:16:40.000Z Full -          -
 "
     );
 
@@ -209,8 +209,8 @@ graph_id             timestamp                type       base
     snapshot!(
         format_frames_table(&frames),
         "
-graph_id             timestamp                type       base
-----------------------------------------------------------------------
+graph_id             timestamp                type       base       expires_at
+----------------------------------------------------------------------------------------------
 "
     );
 
@@ -261,9 +261,9 @@ async fn delete_frame_with_external_blobs() -> Result<()> {
     snapshot!(
         format_frames_table(&frames),
         "
-graph_id             timestamp                type       base
-----------------------------------------------------------------------
-1                    1970-01-01T00:16:40.000Z Full -
+graph_id             timestamp                type       base       expires_at
+----------------------------------------------------------------------------------------------
+1                    1970-01-01T00:16:40.000Z Full -          -
 "
     );
 
@@ -308,8 +308,8 @@ graphs/test/1/traversal_config_252579103958576740
     snapshot!(
         format_frames_table(&frames),
         "
-graph_id             timestamp                type       base
-----------------------------------------------------------------------
+graph_id             timestamp                type       base       expires_at
+----------------------------------------------------------------------------------------------
 "
     );
 
@@ -602,13 +602,13 @@ async fn replace_empty_frames_with_full_graphs() -> Result<()> {
     snapshot!(
         format_frames_table(&frames),
         "
-graph_id             timestamp                type       base
-----------------------------------------------------------------------
-0                    1970-01-01T00:16:40.000Z Full -
-1                    1970-01-01T00:16:41.000Z Full -
-2                    1970-01-01T00:16:42.000Z Full -
-3                    1970-01-01T00:16:43.000Z Full -
-4                    1970-01-01T00:16:44.000Z Full -
+graph_id             timestamp                type       base       expires_at
+----------------------------------------------------------------------------------------------
+0                    1970-01-01T00:16:40.000Z Full -          -
+1                    1970-01-01T00:16:41.000Z Full -          -
+2                    1970-01-01T00:16:42.000Z Full -          -
+3                    1970-01-01T00:16:43.000Z Full -          -
+4                    1970-01-01T00:16:44.000Z Full -          -
 "
     );
 

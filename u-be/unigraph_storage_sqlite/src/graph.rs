@@ -136,6 +136,7 @@ impl UnigraphGraphConnection for SqliteConnection {
         base: Option<&GraphKey>,
         manifest_json: &str,
         inline_blobs: Option<&[u8]>,
+        expires_at: Option<Timestamp>,
         _task: &ll::Task,
     ) -> Result<()> {
         let now = Timestamp::now().to_unix_timestamp();
@@ -145,6 +146,7 @@ impl UnigraphGraphConnection for SqliteConnection {
             .map(serde_json::to_string)
             .transpose()
             .context("Failed to serialize base GraphKey")?;
+        let expires_at_unix = expires_at.map(|t| t.to_unix_timestamp());
 
         let conn = self.lock();
 
@@ -160,8 +162,8 @@ impl UnigraphGraphConnection for SqliteConnection {
         .context("Failed to delete existing empty frame")?;
 
         let insert_sql = format!(
-            "INSERT INTO {} (timeline_id, timestamp, graph_id, frame_type, manifest_json, inline_blobs, base_key_json, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            "INSERT INTO {} (timeline_id, timestamp, graph_id, frame_type, manifest_json, inline_blobs, base_key_json, created_at, expires_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             TABLE_GRAPHS
         );
         conn.execute(
@@ -175,6 +177,7 @@ impl UnigraphGraphConnection for SqliteConnection {
                 inline_blobs,
                 base_key_json,
                 now,
+                expires_at_unix,
             ],
         )
         .context("Failed to insert frame")?;
@@ -211,12 +214,12 @@ impl UnigraphGraphConnection for SqliteConnection {
         // Build SELECT columns.
         let select = if with_data {
             format!(
-                "SELECT graph_id, timestamp, frame_type, base_key_json, manifest_json, inline_blobs FROM {}",
+                "SELECT graph_id, timestamp, frame_type, base_key_json, expires_at, manifest_json, inline_blobs FROM {}",
                 TABLE_GRAPHS
             )
         } else {
             format!(
-                "SELECT graph_id, timestamp, frame_type, base_key_json FROM {}",
+                "SELECT graph_id, timestamp, frame_type, base_key_json, expires_at FROM {}",
                 TABLE_GRAPHS
             )
         };
@@ -283,6 +286,14 @@ impl UnigraphGraphConnection for SqliteConnection {
             ));
         }
 
+        if let Some(expires_before) = &query.expires_before {
+            params.push(expires_before.to_unix_timestamp().to_string());
+            conditions.push(format!(
+                "expires_at IS NOT NULL AND expires_at <= ?{}",
+                params.len()
+            ));
+        }
+
         // Build ORDER BY.
         let order_clause = if query.before.is_some() {
             // `before` implies DESC to get the closest preceding frame.
@@ -331,16 +342,18 @@ impl UnigraphGraphConnection for SqliteConnection {
             let timestamp_unix: i64 = row.get(1)?;
             let frame_type_str: String = row.get(2)?;
             let base_key_json: Option<String> = row.get(3)?;
+            let expires_at_unix: Option<i64> = row.get(4)?;
 
             let timestamp = Timestamp::from_unix_timestamp(timestamp_unix);
             let frame_type: FrameType = frame_type_str
                 .parse()
                 .context("Failed to parse FrameType")?;
             let base = parse_base_key(base_key_json.as_deref())?;
+            let expires_at = expires_at_unix.map(Timestamp::from_unix_timestamp);
 
             let data = if with_data {
-                let manifest_json: Option<String> = row.get(4)?;
-                let inline_blobs: Option<Vec<u8>> = row.get(5)?;
+                let manifest_json: Option<String> = row.get(5)?;
+                let inline_blobs: Option<Vec<u8>> = row.get(6)?;
                 manifest_json.map(|mj| FrameData {
                     manifest_json: mj,
                     inline_blobs,
@@ -358,6 +371,7 @@ impl UnigraphGraphConnection for SqliteConnection {
                 frame_type,
                 base,
                 data,
+                expires_after: expires_at,
             });
         }
 
@@ -773,9 +787,10 @@ impl UnigraphGraphConnection for SqliteConnection {
         key: &TraversalConfigKey,
         blob_inline: Option<&[u8]>,
         blob_id: Option<&str>,
+        expires_at: Option<Timestamp>,
         _task: &ll::Task,
     ) -> Result<()> {
-        store_config_row(&self.lock(), key, blob_inline, blob_id)
+        store_config_row(&self.lock(), key, blob_inline, blob_id, expires_at)
     }
 
     async fn get_traversal_config(
@@ -791,9 +806,10 @@ impl UnigraphGraphConnection for SqliteConnection {
         key: &GraphQueryConfigKey,
         blob_inline: Option<&[u8]>,
         blob_id: Option<&str>,
+        expires_at: Option<Timestamp>,
         _task: &ll::Task,
     ) -> Result<()> {
-        store_config_row(&self.lock(), key, blob_inline, blob_id)
+        store_config_row(&self.lock(), key, blob_inline, blob_id, expires_at)
     }
 
     async fn get_graph_query_config(
@@ -802,6 +818,49 @@ impl UnigraphGraphConnection for SqliteConnection {
         _task: &ll::Task,
     ) -> Result<Option<ConfigRow<GraphQueryConfigKey>>> {
         get_config_row(&self.lock(), key)
+    }
+
+    // -- TTL / expiration --
+
+    async fn select_expired_config_keys(
+        &mut self,
+        now: Timestamp,
+        limit: i64,
+        _task: &ll::Task,
+    ) -> Result<Vec<String>> {
+        let now_unix = now.to_unix_timestamp();
+        let conn = self.lock();
+        let sql = format!(
+            "SELECT key FROM {}
+             WHERE expires_at IS NOT NULL AND expires_at <= ?1
+             ORDER BY expires_at
+             LIMIT ?2",
+            TABLE_CONFIGS
+        );
+        let mut stmt = conn
+            .prepare(&sql)
+            .context("Failed to prepare select_expired_config_keys query")?;
+
+        let rows = stmt
+            .query_map(rusqlite::params![now_unix, limit], |row| {
+                row.get::<_, String>(0)
+            })
+            .context("Failed to query expired config keys")?;
+
+        let mut result = Vec::new();
+        for row in rows {
+            result.push(row.context("Failed to read expired config key")?);
+        }
+        Ok(result)
+    }
+
+    async fn delete_config_db_rows(&mut self, key: &str, _task: &ll::Task) -> Result<bool> {
+        let conn = self.lock();
+        let sql = format!("DELETE FROM {} WHERE key = ?1", TABLE_CONFIGS);
+        let deleted = conn
+            .execute(&sql, rusqlite::params![key])
+            .context("Failed to delete config")?;
+        Ok(deleted > 0)
     }
 }
 
@@ -864,16 +923,25 @@ fn store_config_row<K: ConfigKeyLike>(
     key: &K,
     blob_inline: Option<&[u8]>,
     blob_id: Option<&str>,
+    expires_at: Option<Timestamp>,
 ) -> Result<()> {
     let now = Timestamp::now().to_unix_timestamp();
+    let expires_at_unix = expires_at.map(|t| t.to_unix_timestamp());
     let sql = format!(
-        "INSERT OR IGNORE INTO {} (key, config_type, blob_inline, blob_id, base_key, created_at)
-         VALUES (?1, ?2, ?3, ?4, NULL, ?5)",
+        "INSERT OR IGNORE INTO {} (key, config_type, blob_inline, blob_id, base_key, created_at, expires_at)
+         VALUES (?1, ?2, ?3, ?4, NULL, ?5, ?6)",
         TABLE_CONFIGS
     );
     conn.execute(
         &sql,
-        rusqlite::params![key.as_str(), K::PREFIX, blob_inline, blob_id, now,],
+        rusqlite::params![
+            key.as_str(),
+            K::PREFIX,
+            blob_inline,
+            blob_id,
+            now,
+            expires_at_unix,
+        ],
     )
     .context("failed to store config")?;
     Ok(())

@@ -41,6 +41,8 @@ pub async fn load_range(
                 graph_id_bounds: Some((from, to)),
                 order: Some(Order::Asc),
                 with_data: Some(true),
+                before: None,
+                expires_before: None,
                 ..Default::default()
             },
             task,

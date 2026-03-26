@@ -173,6 +173,7 @@ pub async fn store_full(
             &manifest_json,
             prepared.inline.as_deref(),
             prepared.external_keys.as_deref(),
+            None,
             task,
         )
         .await?;
@@ -226,6 +227,8 @@ async fn find_nearest_full_frame(
                 graph_id_bounds: Some((None, Some(key.graph_id))),
                 order: Some(Order::Desc),
                 limit: Some(1),
+                before: None,
+                expires_before: None,
                 ..Default::default()
             },
             task,
@@ -261,6 +264,8 @@ async fn load_frame_range(
                 graph_id_bounds: Some((Some(full_graph_id), Some(key.graph_id))),
                 order: Some(Order::Asc),
                 with_data: Some(true),
+                before: None,
+                expires_before: None,
                 ..Default::default()
             },
             task,
@@ -371,6 +376,8 @@ pub async fn compact_timeline(
             &FrameQuery {
                 timeline_id: timeline_id.clone(),
                 timestamp_bounds,
+                before: None,
+                expires_before: None,
                 ..Default::default()
             },
             task,
@@ -481,6 +488,7 @@ async fn replace_full_with_delta(
             &manifest_json,
             inline_blobs.as_deref(),
             blob_keys_to_unregister.as_deref(),
+            None,
             task,
         )
         .await?;
@@ -516,6 +524,8 @@ pub(crate) async fn validate_monotonic_append(
                 timeline_id: key.timeline_id.clone(),
                 graph_ids: Some(vec![key.graph_id]),
                 limit: Some(1),
+                before: None,
+                expires_before: None,
                 ..Default::default()
             },
             task,
@@ -533,6 +543,8 @@ pub(crate) async fn validate_monotonic_append(
                 timeline_id: key.timeline_id.clone(),
                 order: Some(Order::Desc),
                 limit: Some(1),
+                before: None,
+                expires_before: None,
                 ..Default::default()
             },
             task,
@@ -589,6 +601,8 @@ pub(crate) async fn validate_delta_base(
                 graph_id_bounds: Some((None, Some(GraphID(key.graph_id.0 - 1)))),
                 order: Some(Order::Desc),
                 limit: Some(1),
+                before: None,
+                expires_before: None,
                 ..Default::default()
             },
             task,
@@ -750,6 +764,8 @@ async fn load_stored_tail(
                 timeline_id: timeline_id.clone(),
                 order: Some(Order::Desc),
                 limit: Some(STORED_FRAMES_LOOKBACK),
+                before: None,
+                expires_before: None,
                 ..Default::default()
             },
             task,

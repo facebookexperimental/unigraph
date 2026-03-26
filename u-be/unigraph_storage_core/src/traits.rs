@@ -86,6 +86,7 @@ pub trait UnigraphGraphConnection: Send {
     /// - `base`: for Delta frames, the base graph this delta derives from; `None` otherwise
     /// - `manifest_json`: JSON-serialized manifest
     /// - `inline_blobs`: optional ZSTD-compressed blob map (when blobs are small enough to inline)
+    /// - `expires_at`: optional expiration timestamp; `None` means the frame never expires
     async fn store_frame(
         &mut self,
         key: &GraphTimeKey,
@@ -93,6 +94,7 @@ pub trait UnigraphGraphConnection: Send {
         base: Option<&GraphKey>,
         manifest_json: &str,
         inline_blobs: Option<&[u8]>,
+        expires_at: Option<Timestamp>,
         task: &ll::Task,
     ) -> Result<()>;
 
@@ -272,6 +274,7 @@ pub trait UnigraphGraphConnection: Send {
         key: &TraversalConfigKey,
         blob_inline: Option<&[u8]>,
         blob_id: Option<&str>,
+        expires_at: Option<Timestamp>,
         task: &ll::Task,
     ) -> Result<()>;
 
@@ -288,6 +291,7 @@ pub trait UnigraphGraphConnection: Send {
         key: &GraphQueryConfigKey,
         blob_inline: Option<&[u8]>,
         blob_id: Option<&str>,
+        expires_at: Option<Timestamp>,
         task: &ll::Task,
     ) -> Result<()>;
 
@@ -297,6 +301,26 @@ pub trait UnigraphGraphConnection: Send {
         key: &GraphQueryConfigKey,
         task: &ll::Task,
     ) -> Result<Option<ConfigRow<GraphQueryConfigKey>>>;
+
+    // -- TTL / expiration --
+
+    /// Select config keys that have expired (expires_at <= now).
+    async fn select_expired_config_keys(
+        &mut self,
+        now: Timestamp,
+        limit: i64,
+        task: &ll::Task,
+    ) -> Result<Vec<String>>;
+
+    /// Delete a config row by key.
+    ///
+    /// Only deletes the database row. Does NOT clean up blobs that were
+    /// offloaded to external blob storage via `blob_id` — the caller is
+    /// responsible for registering those blob keys for cleanup before
+    /// calling this.
+    ///
+    /// Returns `true` if a config was deleted, `false` if it didn't exist.
+    async fn delete_config_db_rows(&mut self, key: &str, task: &ll::Task) -> Result<bool>;
 }
 
 /// Graph storage backend — vends connections.

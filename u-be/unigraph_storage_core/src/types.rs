@@ -171,6 +171,9 @@ pub struct FrameQuery {
     /// Compiles to: `WHERE (timestamp < X OR (timestamp = X AND graph_id < Y))`
     /// with `ORDER BY timestamp DESC, graph_id DESC LIMIT 1`.
     pub before: Option<(Timestamp, GraphID)>,
+    /// Only return frames whose `expires_at` column is non-NULL and <= this value.
+    /// Used for TTL cleanup: pass `Timestamp::now()` to find expired frames.
+    pub expires_before: Option<Timestamp>,
 }
 
 /// A timestamped error message from a failed graph computation.

@@ -30,11 +30,16 @@ CREATE TABLE IF NOT EXISTS graphs (
     inline_blobs  BLOB,
     base_key_json TEXT,
     created_at    INTEGER NOT NULL,
+    expires_at    INTEGER,
     PRIMARY KEY (timeline_id, graph_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_graphs_timeline_ts
     ON graphs(timeline_id, timestamp, graph_id);
+
+CREATE INDEX IF NOT EXISTS idx_graphs_timeline_expires
+    ON graphs(timeline_id, expires_at)
+    WHERE expires_at IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS blobs (
     blob_key    TEXT PRIMARY KEY,
@@ -76,6 +81,11 @@ CREATE TABLE IF NOT EXISTS configs (
     blob_inline BLOB,
     blob_id     TEXT,
     base_key    TEXT,
-    created_at  INTEGER NOT NULL
+    created_at  INTEGER NOT NULL,
+    expires_at  INTEGER
 );
+
+CREATE INDEX IF NOT EXISTS idx_configs_expires
+    ON configs(expires_at)
+    WHERE expires_at IS NOT NULL;
 ";

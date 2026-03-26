@@ -74,10 +74,10 @@ async fn store_then_delta_and_fetch() -> Result<()> {
     snapshot!(
         format_frames_table(&frames),
         "
-graph_id             timestamp                type       base
-----------------------------------------------------------------------
-0                    1970-01-01T00:16:40.000Z Full -
-1                    1970-01-01T00:16:41.000Z Delta test:0
+graph_id             timestamp                type       base       expires_at
+----------------------------------------------------------------------------------------------
+0                    1970-01-01T00:16:40.000Z Full -          -
+1                    1970-01-01T00:16:41.000Z Delta test:0     -
 "
     );
 
@@ -118,12 +118,12 @@ async fn delta_chain_full_d_d_d() -> Result<()> {
     snapshot!(
         format_frames_table(&frames),
         "
-graph_id             timestamp                type       base
-----------------------------------------------------------------------
-0                    1970-01-01T00:16:40.000Z Full -
-1                    1970-01-01T00:16:41.000Z Delta test:0
-2                    1970-01-01T00:16:42.000Z Delta test:1
-3                    1970-01-01T00:16:43.000Z Delta test:2
+graph_id             timestamp                type       base       expires_at
+----------------------------------------------------------------------------------------------
+0                    1970-01-01T00:16:40.000Z Full -          -
+1                    1970-01-01T00:16:41.000Z Delta test:0     -
+2                    1970-01-01T00:16:42.000Z Delta test:1     -
+3                    1970-01-01T00:16:43.000Z Delta test:2     -
 "
     );
 

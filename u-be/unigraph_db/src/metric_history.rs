@@ -410,6 +410,8 @@ async fn build_all_frames(
                 timeline_id: timeline_id.clone(),
                 frame_types: Some(vec![FrameType::Full, FrameType::Delta]),
                 order: Some(Order::Asc),
+                before: None,
+                expires_before: None,
                 ..Default::default()
             },
             task,

@@ -29,6 +29,7 @@ use unigraph_core::config_key::TraversalConfigKey;
 use unigraph_core::config_query::GraphQueryConfig;
 use unigraph_core::types::NodeName;
 use unigraph_storage_core::UnigraphGraphConnection;
+use unigraph_timestamp::Timestamp;
 
 use crate::config_storage::AsyncGetFn;
 use crate::config_storage::AsyncStoreFn;
@@ -207,6 +208,7 @@ impl Configs {
             Some(&prepared.blob),
             None,
             store_fn,
+            None,
             task,
         )
         .await?;
@@ -248,6 +250,7 @@ impl Configs {
             None,
             Some(&blob_path),
             store_fn,
+            None,
             task,
         )
         .await?;
@@ -271,9 +274,10 @@ impl AsyncStoreFn<TraversalConfigKey> for StoreTraversalConfig {
         key: &TraversalConfigKey,
         blob_inline: Option<&[u8]>,
         blob_id: Option<&str>,
+        expires_at: Option<Timestamp>,
         task: &ll::Task,
     ) -> Result<()> {
-        conn.store_traversal_config(key, blob_inline, blob_id, task)
+        conn.store_traversal_config(key, blob_inline, blob_id, expires_at, task)
             .await
     }
 }
@@ -302,9 +306,10 @@ impl AsyncStoreFn<GraphQueryConfigKey> for StoreGraphQueryConfig {
         key: &GraphQueryConfigKey,
         blob_inline: Option<&[u8]>,
         blob_id: Option<&str>,
+        expires_at: Option<Timestamp>,
         task: &ll::Task,
     ) -> Result<()> {
-        conn.store_graph_query_config(key, blob_inline, blob_id, task)
+        conn.store_graph_query_config(key, blob_inline, blob_id, expires_at, task)
             .await
     }
 }

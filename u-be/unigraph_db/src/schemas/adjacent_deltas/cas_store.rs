@@ -201,6 +201,8 @@ pub async fn store_range(
                 timeline_id: timeline_id.clone(),
                 graph_ids: Some(graph_ids.clone()),
                 with_data: Some(false),
+                before: None,
+                expires_before: None,
                 ..Default::default()
             },
             task,
@@ -248,6 +250,7 @@ pub async fn store_range(
                 &entry.manifest_json,
                 prepared.inline.as_deref(),
                 prepared.external_keys.as_deref(),
+                None,
                 task,
             )
             .await?;

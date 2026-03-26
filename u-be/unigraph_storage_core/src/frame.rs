@@ -37,6 +37,9 @@ pub struct FrameRow {
     /// (e.g. listing timeline contents, checking for gaps/errors).
     /// `Some` when fetched with data (e.g. reading graphs for reconstruction).
     pub data: Option<FrameData>,
+    /// Optional expiration timestamp. `None` means the frame never expires.
+    /// When set, the frame is eligible for cleanup after this time.
+    pub expires_after: Option<Timestamp>,
 }
 
 /// The payload data for a frame.
@@ -63,22 +66,27 @@ pub struct FrameData {
 pub fn format_frames_table(frames: &[FrameRow]) -> String {
     let mut lines = Vec::new();
     lines.push(format!(
-        "{:<20} {:<24} {:<10} {:<10}",
-        "graph_id", "timestamp", "type", "base"
+        "{:<20} {:<24} {:<10} {:<10} {:<24}",
+        "graph_id", "timestamp", "type", "base", "expires_at"
     ));
-    lines.push("-".repeat(70));
+    lines.push("-".repeat(94));
 
     for frame in frames {
         let base_str = match &frame.base {
             Some(key) => format!("{}:{}", key.timeline_id.0, key.graph_id.0),
             None => "-".to_string(),
         };
+        let expires_str = match &frame.expires_after {
+            Some(ts) => ts.to_comparable_rfc3339_str(),
+            None => "-".to_string(),
+        };
         lines.push(format!(
-            "{:<20} {:<24} {:<10} {:<10}",
+            "{:<20} {:<24} {:<10} {:<10} {:<24}",
             frame.frame.graph_id.0,
             frame.frame.timestamp.to_comparable_rfc3339_str(),
             frame.frame_type,
             base_str,
+            expires_str,
         ));
     }
 

@@ -49,6 +49,7 @@ fn to_frame_query(input: &SelectFramesInput) -> Result<FrameQuery> {
         graph_ids: None,
         with_data: None,
         before: None,
+        expires_before: None,
     })
 }
 

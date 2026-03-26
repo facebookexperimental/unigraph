@@ -56,6 +56,7 @@ impl Frames {
                     graph_ids: Some(vec![key.graph_id]),
                     with_data: Some(with_data),
                     before: None,
+                    expires_before: None,
                 },
                 &task,
             )
@@ -79,6 +80,7 @@ impl Frames {
                 graph_ids: None,
                 with_data: None,
                 before: None,
+                expires_before: None,
             },
             &task,
         )
@@ -110,6 +112,7 @@ impl Frames {
                 graph_ids: None,
                 with_data: None,
                 before: None,
+                expires_before: None,
             },
             &task,
         )
@@ -137,6 +140,7 @@ impl Frames {
                     graph_ids: None,
                     with_data: None,
                     before: Some((key.timestamp, key.graph_id)),
+                    expires_before: None,
                 },
                 &task,
             )

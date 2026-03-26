@@ -67,20 +67,20 @@ async fn compact_and_select_frames() -> Result<()> {
     snapshot!(
         format_frames_table(&all),
         "
-graph_id             timestamp                type       base
-----------------------------------------------------------------------
-0                    1970-01-01T00:16:40.000Z Full -
-1                    1970-01-01T00:16:41.000Z Full -
-2                    1970-01-01T00:16:42.000Z Full -
-3                    1970-01-01T00:16:43.000Z Full -
-4                    1970-01-01T00:16:44.000Z Full -
-5                    1970-01-01T00:16:45.000Z Full -
-6                    1970-01-01T00:16:46.000Z Full -
-7                    1970-01-01T00:16:47.000Z Full -
-8                    1970-01-01T00:16:48.000Z Full -
-9                    1970-01-01T00:16:49.000Z Full -
-10                   1970-01-01T00:16:50.000Z Full -
-11                   1970-01-01T00:16:51.000Z Full -
+graph_id             timestamp                type       base       expires_at
+----------------------------------------------------------------------------------------------
+0                    1970-01-01T00:16:40.000Z Full -          -
+1                    1970-01-01T00:16:41.000Z Full -          -
+2                    1970-01-01T00:16:42.000Z Full -          -
+3                    1970-01-01T00:16:43.000Z Full -          -
+4                    1970-01-01T00:16:44.000Z Full -          -
+5                    1970-01-01T00:16:45.000Z Full -          -
+6                    1970-01-01T00:16:46.000Z Full -          -
+7                    1970-01-01T00:16:47.000Z Full -          -
+8                    1970-01-01T00:16:48.000Z Full -          -
+9                    1970-01-01T00:16:49.000Z Full -          -
+10                   1970-01-01T00:16:50.000Z Full -          -
+11                   1970-01-01T00:16:51.000Z Full -          -
 "
     );
 
@@ -102,20 +102,20 @@ graph_id             timestamp                type       base
     snapshot!(
         format_frames_table(&all),
         "
-graph_id             timestamp                type       base
-----------------------------------------------------------------------
-0                    1970-01-01T00:16:40.000Z Full -
-1                    1970-01-01T00:16:41.000Z Full -
-2                    1970-01-01T00:16:42.000Z Full -
-3                    1970-01-01T00:16:43.000Z Full -
-4                    1970-01-01T00:16:44.000Z Delta tl:3
-5                    1970-01-01T00:16:45.000Z Delta tl:4
-6                    1970-01-01T00:16:46.000Z Delta tl:5
-7                    1970-01-01T00:16:47.000Z Delta tl:6
-8                    1970-01-01T00:16:48.000Z Delta tl:7
-9                    1970-01-01T00:16:49.000Z Full -
-10                   1970-01-01T00:16:50.000Z Full -
-11                   1970-01-01T00:16:51.000Z Full -
+graph_id             timestamp                type       base       expires_at
+----------------------------------------------------------------------------------------------
+0                    1970-01-01T00:16:40.000Z Full -          -
+1                    1970-01-01T00:16:41.000Z Full -          -
+2                    1970-01-01T00:16:42.000Z Full -          -
+3                    1970-01-01T00:16:43.000Z Full -          -
+4                    1970-01-01T00:16:44.000Z Delta tl:3       -
+5                    1970-01-01T00:16:45.000Z Delta tl:4       -
+6                    1970-01-01T00:16:46.000Z Delta tl:5       -
+7                    1970-01-01T00:16:47.000Z Delta tl:6       -
+8                    1970-01-01T00:16:48.000Z Delta tl:7       -
+9                    1970-01-01T00:16:49.000Z Full -          -
+10                   1970-01-01T00:16:50.000Z Full -          -
+11                   1970-01-01T00:16:51.000Z Full -          -
 "
     );
 
@@ -137,6 +137,8 @@ graph_id             timestamp                type       base
             &FrameQuery {
                 timeline_id: tid(),
                 frame_types: Some(vec![FrameType::Full]),
+                before: None,
+                expires_before: None,
                 ..Default::default()
             },
             &task,
@@ -145,15 +147,15 @@ graph_id             timestamp                type       base
     snapshot!(
         format_frames_table(&full_only),
         "
-graph_id             timestamp                type       base
-----------------------------------------------------------------------
-0                    1970-01-01T00:16:40.000Z Full -
-1                    1970-01-01T00:16:41.000Z Full -
-2                    1970-01-01T00:16:42.000Z Full -
-3                    1970-01-01T00:16:43.000Z Full -
-9                    1970-01-01T00:16:49.000Z Full -
-10                   1970-01-01T00:16:50.000Z Full -
-11                   1970-01-01T00:16:51.000Z Full -
+graph_id             timestamp                type       base       expires_at
+----------------------------------------------------------------------------------------------
+0                    1970-01-01T00:16:40.000Z Full -          -
+1                    1970-01-01T00:16:41.000Z Full -          -
+2                    1970-01-01T00:16:42.000Z Full -          -
+3                    1970-01-01T00:16:43.000Z Full -          -
+9                    1970-01-01T00:16:49.000Z Full -          -
+10                   1970-01-01T00:16:50.000Z Full -          -
+11                   1970-01-01T00:16:51.000Z Full -          -
 "
     );
 
@@ -163,6 +165,8 @@ graph_id             timestamp                type       base
             &FrameQuery {
                 timeline_id: tid(),
                 frame_types: Some(vec![FrameType::Delta]),
+                before: None,
+                expires_before: None,
                 ..Default::default()
             },
             &task,
@@ -171,13 +175,13 @@ graph_id             timestamp                type       base
     snapshot!(
         format_frames_table(&deltas),
         "
-graph_id             timestamp                type       base
-----------------------------------------------------------------------
-4                    1970-01-01T00:16:44.000Z Delta tl:3
-5                    1970-01-01T00:16:45.000Z Delta tl:4
-6                    1970-01-01T00:16:46.000Z Delta tl:5
-7                    1970-01-01T00:16:47.000Z Delta tl:6
-8                    1970-01-01T00:16:48.000Z Delta tl:7
+graph_id             timestamp                type       base       expires_at
+----------------------------------------------------------------------------------------------
+4                    1970-01-01T00:16:44.000Z Delta tl:3       -
+5                    1970-01-01T00:16:45.000Z Delta tl:4       -
+6                    1970-01-01T00:16:46.000Z Delta tl:5       -
+7                    1970-01-01T00:16:47.000Z Delta tl:6       -
+8                    1970-01-01T00:16:48.000Z Delta tl:7       -
 "
     );
 
@@ -190,6 +194,8 @@ graph_id             timestamp                type       base
                     start: Some(ts(1005)),
                     end: Some(ts(1009)),
                 }),
+                before: None,
+                expires_before: None,
                 ..Default::default()
             },
             &task,
@@ -198,13 +204,13 @@ graph_id             timestamp                type       base
     snapshot!(
         format_frames_table(&time_range),
         "
-graph_id             timestamp                type       base
-----------------------------------------------------------------------
-5                    1970-01-01T00:16:45.000Z Delta tl:4
-6                    1970-01-01T00:16:46.000Z Delta tl:5
-7                    1970-01-01T00:16:47.000Z Delta tl:6
-8                    1970-01-01T00:16:48.000Z Delta tl:7
-9                    1970-01-01T00:16:49.000Z Full -
+graph_id             timestamp                type       base       expires_at
+----------------------------------------------------------------------------------------------
+5                    1970-01-01T00:16:45.000Z Delta tl:4       -
+6                    1970-01-01T00:16:46.000Z Delta tl:5       -
+7                    1970-01-01T00:16:47.000Z Delta tl:6       -
+8                    1970-01-01T00:16:48.000Z Delta tl:7       -
+9                    1970-01-01T00:16:49.000Z Full -          -
 "
     );
 
@@ -215,6 +221,8 @@ graph_id             timestamp                type       base
                 timeline_id: tid(),
                 order: Some(Order::Desc),
                 limit: Some(3),
+                before: None,
+                expires_before: None,
                 ..Default::default()
             },
             &task,
@@ -223,11 +231,11 @@ graph_id             timestamp                type       base
     snapshot!(
         format_frames_table(&last_3),
         "
-graph_id             timestamp                type       base
-----------------------------------------------------------------------
-11                   1970-01-01T00:16:51.000Z Full -
-10                   1970-01-01T00:16:50.000Z Full -
-9                    1970-01-01T00:16:49.000Z Full -
+graph_id             timestamp                type       base       expires_at
+----------------------------------------------------------------------------------------------
+11                   1970-01-01T00:16:51.000Z Full -          -
+10                   1970-01-01T00:16:50.000Z Full -          -
+9                    1970-01-01T00:16:49.000Z Full -          -
 "
     );
 
@@ -237,6 +245,8 @@ graph_id             timestamp                type       base
             &FrameQuery {
                 timeline_id: tid(),
                 graph_id_bounds: Some((Some(GraphID(2)), Some(GraphID(6)))),
+                before: None,
+                expires_before: None,
                 ..Default::default()
             },
             &task,
@@ -245,13 +255,13 @@ graph_id             timestamp                type       base
     snapshot!(
         format_frames_table(&id_range),
         "
-graph_id             timestamp                type       base
-----------------------------------------------------------------------
-2                    1970-01-01T00:16:42.000Z Full -
-3                    1970-01-01T00:16:43.000Z Full -
-4                    1970-01-01T00:16:44.000Z Delta tl:3
-5                    1970-01-01T00:16:45.000Z Delta tl:4
-6                    1970-01-01T00:16:46.000Z Delta tl:5
+graph_id             timestamp                type       base       expires_at
+----------------------------------------------------------------------------------------------
+2                    1970-01-01T00:16:42.000Z Full -          -
+3                    1970-01-01T00:16:43.000Z Full -          -
+4                    1970-01-01T00:16:44.000Z Delta tl:3       -
+5                    1970-01-01T00:16:45.000Z Delta tl:4       -
+6                    1970-01-01T00:16:46.000Z Delta tl:5       -
 "
     );
 
@@ -261,6 +271,8 @@ graph_id             timestamp                type       base
             &FrameQuery {
                 timeline_id: tid(),
                 graph_ids: Some(vec![GraphID(0), GraphID(5), GraphID(11)]),
+                before: None,
+                expires_before: None,
                 ..Default::default()
             },
             &task,
@@ -269,11 +281,11 @@ graph_id             timestamp                type       base
     snapshot!(
         format_frames_table(&cherry),
         "
-graph_id             timestamp                type       base
-----------------------------------------------------------------------
-0                    1970-01-01T00:16:40.000Z Full -
-5                    1970-01-01T00:16:45.000Z Delta tl:4
-11                   1970-01-01T00:16:51.000Z Full -
+graph_id             timestamp                type       base       expires_at
+----------------------------------------------------------------------------------------------
+0                    1970-01-01T00:16:40.000Z Full -          -
+5                    1970-01-01T00:16:45.000Z Delta tl:4       -
+11                   1970-01-01T00:16:51.000Z Full -          -
 "
     );
 
@@ -283,6 +295,7 @@ graph_id             timestamp                type       base
             &FrameQuery {
                 timeline_id: tid(),
                 before: Some((ts(1006), GraphID(6))),
+                expires_before: None,
                 ..Default::default()
             },
             &task,
@@ -291,9 +304,9 @@ graph_id             timestamp                type       base
     snapshot!(
         format_frames_table(&preceding),
         "
-graph_id             timestamp                type       base
-----------------------------------------------------------------------
-5                    1970-01-01T00:16:45.000Z Delta tl:4
+graph_id             timestamp                type       base       expires_at
+----------------------------------------------------------------------------------------------
+5                    1970-01-01T00:16:45.000Z Delta tl:4       -
 "
     );
 
@@ -308,6 +321,8 @@ graph_id             timestamp                type       base
                     end: Some(ts(1005)),
                 }),
                 limit: Some(2),
+                before: None,
+                expires_before: None,
                 ..Default::default()
             },
             &task,
@@ -316,10 +331,10 @@ graph_id             timestamp                type       base
     snapshot!(
         format_frames_table(&combined),
         "
-graph_id             timestamp                type       base
-----------------------------------------------------------------------
-0                    1970-01-01T00:16:40.000Z Full -
-1                    1970-01-01T00:16:41.000Z Full -
+graph_id             timestamp                type       base       expires_at
+----------------------------------------------------------------------------------------------
+0                    1970-01-01T00:16:40.000Z Full -          -
+1                    1970-01-01T00:16:41.000Z Full -          -
 "
     );
 

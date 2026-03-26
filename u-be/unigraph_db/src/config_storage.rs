@@ -18,6 +18,7 @@ use unigraph_serialization::from_zstd;
 use unigraph_serialization::to_zstd;
 use unigraph_storage_core::UnigraphBlobStorage;
 use unigraph_storage_core::UnigraphGraphConnection;
+use unigraph_timestamp::Timestamp;
 
 // -- Blob preparation --
 
@@ -79,12 +80,15 @@ pub(crate) async fn store_config<K>(
     blob_inline: Option<&[u8]>,
     blob_id: Option<&str>,
     store_fn: impl AsyncStoreFn<K>,
+    expires_at: Option<Timestamp>,
     task: &ll::Task,
 ) -> Result<()>
 where
     K: ConfigKeyLike,
 {
-    store_fn.call(conn, key, blob_inline, blob_id, task).await
+    store_fn
+        .call(conn, key, blob_inline, blob_id, expires_at, task)
+        .await
 }
 
 // -- Fetch --
@@ -123,6 +127,7 @@ pub(crate) trait AsyncStoreFn<K: ConfigKeyLike>: Send + Sync {
         key: &K,
         blob_inline: Option<&[u8]>,
         blob_id: Option<&str>,
+        expires_at: Option<Timestamp>,
         task: &ll::Task,
     ) -> Result<()>;
 }

@@ -68,11 +68,11 @@ async fn fresh_timeline_inserts_all() -> Result<()> {
     snapshot!(
         format_frames_table(&stored),
         "
-graph_id             timestamp                type       base
-----------------------------------------------------------------------
-1                    1970-01-01T00:16:41.000Z Empty -
-2                    1970-01-01T00:16:42.000Z Empty -
-3                    1970-01-01T00:16:43.000Z Empty -
+graph_id             timestamp                type       base       expires_at
+----------------------------------------------------------------------------------------------
+1                    1970-01-01T00:16:41.000Z Empty -          -
+2                    1970-01-01T00:16:42.000Z Empty -          -
+3                    1970-01-01T00:16:43.000Z Empty -          -
 "
     );
 

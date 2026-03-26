@@ -38,12 +38,14 @@ pub use graph_range::GraphRange;
 pub use graph_range::GraphRangeBuilder;
 pub use namespaces::AdjacentDeltasOps;
 pub use namespaces::BlobStorageOps;
+pub use namespaces::CleanupResult;
 pub use namespaces::Configs;
 pub use namespaces::ExternalIds;
 pub use namespaces::Frames;
 pub use namespaces::Graph;
 pub use namespaces::MetricHistory;
 pub use namespaces::Timelines;
+pub use namespaces::Utility;
 pub use storage::UnigraphStorage;
 use unigraph_core::ArrayGraphSerializablePackageConfig;
 use unigraph_storage_core::UnigraphBlobStorage;
@@ -80,6 +82,7 @@ pub struct UnigraphDb {
     pub configs: Configs,
     pub metric_history: MetricHistory,
     pub blob_storage: BlobStorageOps,
+    pub utility: Utility,
     ctx: UnigraphDbContext,
 }
 
@@ -117,6 +120,7 @@ impl UnigraphDb {
             configs: Configs { ctx: ctx.clone() },
             metric_history: MetricHistory { ctx: ctx.clone() },
             blob_storage: BlobStorageOps { ctx: ctx.clone() },
+            utility: Utility { ctx: ctx.clone() },
             ctx,
         }
     }

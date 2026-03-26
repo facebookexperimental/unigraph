@@ -155,6 +155,16 @@ impl Timestamp {
         Ok(Self(ts))
     }
 
+    /// Add an arbitrary [`std::time::Duration`] to this timestamp.
+    pub fn add_duration(&self, duration: std::time::Duration) -> Result<Self> {
+        let chrono_duration = chrono::Duration::from_std(duration)
+            .context("duration too large for chrono conversion")?;
+        self.0
+            .checked_add_signed(chrono_duration)
+            .map(Self)
+            .context("timestamp overflow when adding duration")
+    }
+
     pub fn day_start(&self) -> Result<Self> {
         let ts = self
             .0
@@ -436,6 +446,31 @@ mod tests {
 
         let roundrip = Timestamp::from_unix_timestamp(unix);
         assert_equal!(ts, roundrip);
+        Ok(())
+    }
+
+    #[test]
+    fn add_duration() -> Result<()> {
+        let ts = Timestamp::from_rfc3339("2024-06-24T00:00:00.000Z")?;
+
+        let plus_1s = ts.add_duration(std::time::Duration::from_secs(1))?;
+        assert_equal!(
+            plus_1s.to_comparable_rfc3339_str(),
+            "2024-06-24T00:00:01.000Z"
+        );
+
+        let plus_1h = ts.add_duration(std::time::Duration::from_secs(3600))?;
+        assert_equal!(
+            plus_1h.to_comparable_rfc3339_str(),
+            "2024-06-24T01:00:00.000Z"
+        );
+
+        let plus_500ms = ts.add_duration(std::time::Duration::from_millis(500))?;
+        assert_equal!(
+            plus_500ms.to_comparable_rfc3339_str(),
+            "2024-06-24T00:00:00.500Z"
+        );
+
         Ok(())
     }
 }

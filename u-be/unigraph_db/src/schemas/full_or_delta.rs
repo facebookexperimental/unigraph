@@ -59,6 +59,7 @@ pub async fn store_full(
             &manifest_json,
             prepared.inline.as_deref(),
             prepared.external_keys.as_deref(),
+            None,
             task,
         )
         .await?;
@@ -124,6 +125,7 @@ pub async fn store_delta(
             &manifest_json,
             prepared.inline.as_deref(),
             prepared.external_keys.as_deref(),
+            None,
             task,
         )
         .await?;
