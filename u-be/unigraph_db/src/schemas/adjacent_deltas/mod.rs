@@ -918,7 +918,10 @@ async fn insert_empty_frames_chunked(
     frames: &[Frame],
     task: &ll::Task,
 ) -> Result<()> {
-    for chunk in frames.chunks(EMPTY_FRAME_CHUNK_SIZE) {
+    let total = frames.len() as i64;
+    task.progress(0, total);
+
+    for (i, chunk) in frames.chunks(EMPTY_FRAME_CHUNK_SIZE).enumerate() {
         for frame in chunk {
             let key = GraphTimeKey {
                 timeline_id: timeline_id.clone(),
@@ -927,6 +930,8 @@ async fn insert_empty_frames_chunked(
             };
             conn.store_frame_empty(&key, task).await?;
         }
+        let done = ((i + 1) * EMPTY_FRAME_CHUNK_SIZE).min(frames.len()) as i64;
+        task.progress(done, total);
     }
     Ok(())
 }
