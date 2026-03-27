@@ -14,7 +14,8 @@ use unigraph_db::UnigraphDb;
 use unigraph_error::format_for_user;
 use unigraph_storage_core::*;
 use unigraph_storage_sqlite::SqliteStorage;
-use unigraph_storage_tests::*;
+
+use crate::*;
 
 fn make_db() -> UnigraphDb {
     let sqlite = Arc::new(SqliteStorage::new_in_memory().unwrap());

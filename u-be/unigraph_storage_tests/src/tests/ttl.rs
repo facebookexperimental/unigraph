@@ -9,8 +9,9 @@ use unigraph_core::config_key::TraversalConfigKey;
 use unigraph_db::UnigraphDb;
 use unigraph_storage_core::*;
 use unigraph_storage_sqlite::SqliteStorage;
-use unigraph_storage_tests::*;
 use unigraph_timestamp::Timestamp;
+
+use crate::*;
 
 fn test_config_key() -> TraversalConfigKey {
     TraversalConfigKey::from_blob(b"test-config-data")
@@ -162,7 +163,7 @@ async fn ttl_expired_frames_and_configs_cleanup() -> Result<()> {
         expired_configs,
         r#"
 [
-    "tvc-13d1f86dda51b96f",
+    "tvc-42638012cc37ff85",
 ]
 "#
     );

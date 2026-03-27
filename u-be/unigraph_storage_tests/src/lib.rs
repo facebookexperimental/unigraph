@@ -189,3 +189,6 @@ pub fn make_graph_key(timeline: &str, graph_id: i64) -> unigraph_storage_core::G
         graph_id: GraphID(graph_id),
     }
 }
+
+#[cfg(test)]
+mod tests;
