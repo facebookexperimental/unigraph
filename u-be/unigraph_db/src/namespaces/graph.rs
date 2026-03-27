@@ -47,15 +47,16 @@ impl Graph {
         &self,
         key: &GraphTimeKey,
         graph: &ArrayGraphSerializable,
+        expires_at: Option<Timestamp>,
         task: &ll::Task,
     ) -> Result<()> {
         let schema = self.get_timeline_schema(&key.timeline_id, &task).await?;
         match schema {
             TimelineSchema::AdjacentDeltas(_) => {
-                adjacent_deltas::store_full(&self.ctx, key, graph, &task).await
+                adjacent_deltas::store_full(&self.ctx, key, graph, expires_at, &task).await
             }
             TimelineSchema::FullOrDelta(_) => {
-                full_or_delta::store_full(&self.ctx, key, graph, &task).await
+                full_or_delta::store_full(&self.ctx, key, graph, expires_at, &task).await
             }
         }
     }

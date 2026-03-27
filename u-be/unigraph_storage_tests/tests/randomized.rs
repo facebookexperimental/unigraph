@@ -59,7 +59,7 @@ async fn randomized_full_graph_roundtrip_1000() -> Result<()> {
     // Store in monotonic order (required by AdjacentDeltas invariant)
     for &(i, ref graph) in &graphs {
         let key = make_graph_time_key("test", i as i64, 1000 + i as i64);
-        db.graph.store(&key, graph, &task).await?;
+        db.graph.store(&key, graph, None, &task).await?;
     }
 
     // Verify all 1000 graphs round-trip correctly
@@ -85,7 +85,7 @@ async fn randomized_delta_chain_100() -> Result<()> {
 
     // Store first as full
     let key_0 = make_graph_time_key("test", 0, 1000);
-    db.graph.store(&key_0, &graphs[0], &task).await?;
+    db.graph.store(&key_0, &graphs[0], None, &task).await?;
 
     // Store the rest as sequential deltas
     for (i, graph) in graphs.iter().enumerate().skip(1) {

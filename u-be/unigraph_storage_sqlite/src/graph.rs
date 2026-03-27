@@ -37,6 +37,7 @@ use crate::schema::TABLE_EXTERNAL_ID_MAPPINGS;
 use crate::schema::TABLE_GRAPHS;
 use crate::schema::TABLE_METRIC_HISTORY;
 use crate::schema::TABLE_TIMELINE_CONFIGS;
+use crate::schema::TABLE_UNIQ_IDS;
 
 #[async_trait]
 impl UnigraphGraphStorage for SqliteStorage {
@@ -861,6 +862,16 @@ impl UnigraphGraphConnection for SqliteConnection {
             .execute(&sql, rusqlite::params![key])
             .context("Failed to delete config")?;
         Ok(deleted > 0)
+    }
+
+    async fn gen_uniq_id(&mut self, _task: &ll::Task) -> Result<i64> {
+        let conn = self.lock();
+        conn.execute(
+            &format!("INSERT INTO {} DEFAULT VALUES", TABLE_UNIQ_IDS),
+            [],
+        )
+        .context("Failed to insert into uniq_ids")?;
+        Ok(conn.last_insert_rowid())
     }
 }
 

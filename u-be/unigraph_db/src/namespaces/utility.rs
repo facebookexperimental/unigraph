@@ -100,6 +100,16 @@ impl Utility {
         })
     }
 
+    /// Generate a globally unique integer ID.
+    ///
+    /// Acquires a write connection and inserts into the auto-increment
+    /// `uniq_ids` table. Safe for concurrent callers.
+    #[task]
+    pub async fn gen_uniq_id(&self, task: &ll::Task) -> Result<i64> {
+        let mut conn = self.ctx.storage.graph.conn_write().await?;
+        conn.gen_uniq_id(&task).await
+    }
+
     async fn cleanup_expired_frames(&self, task: &ll::Task) -> Result<usize> {
         // Iterate all timelines and clean up each one.
         let timelines = {

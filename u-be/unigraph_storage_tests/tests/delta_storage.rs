@@ -59,7 +59,7 @@ async fn store_then_delta_and_fetch() -> Result<()> {
     let key_1 = make_graph_time_key("test", 1, 1001);
 
     // Store full graph
-    db.graph.store(&key_0, &graph_0, &task).await?;
+    db.graph.store(&key_0, &graph_0, None, &task).await?;
 
     // Store delta
     db.graph
@@ -101,7 +101,7 @@ async fn delta_chain_full_d_d_d() -> Result<()> {
         .collect();
 
     // Store Full
-    db.graph.store(&keys[0], &graphs[0], &task).await?;
+    db.graph.store(&keys[0], &graphs[0], None, &task).await?;
 
     // Store chain of deltas
     for i in 1..4 {
@@ -153,11 +153,11 @@ async fn delta_chain_with_intermediate_full() -> Result<()> {
         .map(|i| make_graph_time_key("test", i as i64, 1000 + i as i64))
         .collect();
 
-    db.graph.store(&keys[0], &graphs[0], &task).await?;
+    db.graph.store(&keys[0], &graphs[0], None, &task).await?;
     db.graph
         .store_as_delta_from(&keys[1], &graphs[1], &keys[0].graph_key(), &task)
         .await?;
-    db.graph.store(&keys[2], &graphs[2], &task).await?;
+    db.graph.store(&keys[2], &graphs[2], None, &task).await?;
     db.graph
         .store_as_delta_from(&keys[3], &graphs[3], &keys[2].graph_key(), &task)
         .await?;
@@ -192,7 +192,7 @@ async fn cross_timeline_delta_reference_rejected() -> Result<()> {
     let key_b = make_graph_time_key("timeline_b", 101, 2000);
 
     // Store full in timeline_a
-    db.graph.store(&key_a, &graph_a, &task).await?;
+    db.graph.store(&key_a, &graph_a, None, &task).await?;
 
     // store_as_delta_from is not supported for AdjacentDeltas timelines
     // (deltas are managed exclusively via compaction).
@@ -220,7 +220,7 @@ async fn get_preceding_frame() -> Result<()> {
 
     for (i, key) in keys.iter().enumerate() {
         let graph = TestGraphTimeline::get_nth(i as u64);
-        db.graph.store(key, &graph, &task).await?;
+        db.graph.store(key, &graph, None, &task).await?;
     }
 
     // Preceding frame of g_2 should be g_1

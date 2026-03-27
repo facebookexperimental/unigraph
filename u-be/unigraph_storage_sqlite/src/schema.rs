@@ -10,6 +10,7 @@ pub const TABLE_BLOBS_TO_DELETE: &str = "blobs_to_delete";
 pub const TABLE_EXTERNAL_ID_MAPPINGS: &str = "external_id_mappings";
 pub const TABLE_METRIC_HISTORY: &str = "metric_history";
 pub const TABLE_CONFIGS: &str = "configs";
+pub const TABLE_UNIQ_IDS: &str = "uniq_ids";
 
 /// SQL statements to create the storage schema.
 ///
@@ -88,4 +89,8 @@ CREATE TABLE IF NOT EXISTS configs (
 CREATE INDEX IF NOT EXISTS idx_configs_expires
     ON configs(expires_at)
     WHERE expires_at IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS uniq_ids (
+    id INTEGER PRIMARY KEY AUTOINCREMENT
+);
 ";

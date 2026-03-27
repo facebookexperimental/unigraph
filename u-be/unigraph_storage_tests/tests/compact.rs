@@ -43,7 +43,7 @@ async fn compact_converts_full_to_delta() -> Result<()> {
         .collect();
 
     for (i, key) in keys.iter().enumerate() {
-        db.graph.store(key, &graphs[i], &task).await?;
+        db.graph.store(key, &graphs[i], None, &task).await?;
     }
 
     // Before compaction: all Full
@@ -117,8 +117,8 @@ async fn compact_with_error_gap() -> Result<()> {
         .map(|i| make_graph_time_key("test", i as i64, 1000 + i as i64))
         .collect();
 
-    db.graph.store(&keys[0], &graphs[0], &task).await?;
-    db.graph.store(&keys[1], &graphs[1], &task).await?;
+    db.graph.store(&keys[0], &graphs[0], None, &task).await?;
+    db.graph.store(&keys[1], &graphs[1], None, &task).await?;
     db.graph
         .store_error(
             &keys[2],
@@ -129,8 +129,8 @@ async fn compact_with_error_gap() -> Result<()> {
             &task,
         )
         .await?;
-    db.graph.store(&keys[3], &graphs[2], &task).await?;
-    db.graph.store(&keys[4], &graphs[3], &task).await?;
+    db.graph.store(&keys[3], &graphs[2], None, &task).await?;
+    db.graph.store(&keys[4], &graphs[3], None, &task).await?;
 
     let converted = db
         .graph
@@ -184,7 +184,7 @@ async fn compact_already_compact() -> Result<()> {
         .collect();
 
     for (i, key) in keys.iter().enumerate() {
-        db.graph.store(key, &graphs[i], &task).await?;
+        db.graph.store(key, &graphs[i], None, &task).await?;
     }
 
     // First compact: converts 2 Full → Delta

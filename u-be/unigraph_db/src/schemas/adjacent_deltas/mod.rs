@@ -144,6 +144,7 @@ pub async fn store_full(
     ctx: &UnigraphDbContext,
     key: &GraphTimeKey,
     graph: &ArrayGraphSerializable,
+    expires_at: Option<Timestamp>,
     task: &ll::Task,
 ) -> Result<()> {
     let storage = &ctx.storage;
@@ -173,7 +174,7 @@ pub async fn store_full(
             &manifest_json,
             prepared.inline.as_deref(),
             prepared.external_keys.as_deref(),
-            None,
+            expires_at,
             task,
         )
         .await?;

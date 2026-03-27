@@ -90,7 +90,7 @@ async fn ttl_expired_frames_and_configs_cleanup() -> Result<()> {
     // Store graph A normally, then re-insert with expires_at
     let graph_a = TestGraphTimeline::get_nth(0);
     let key_a = make_graph_time_key("test", 0, 1000);
-    db.graph.store(&key_a, &graph_a, &task).await?;
+    db.graph.store(&key_a, &graph_a, None, &task).await?;
 
     // Select the frame data, delete, re-insert with TTL
     {
@@ -117,7 +117,7 @@ async fn ttl_expired_frames_and_configs_cleanup() -> Result<()> {
     // Store graph B without TTL (normal path)
     let graph_b = TestGraphTimeline::get_nth(1);
     let key_b = make_graph_time_key("test", 1, 1001);
-    db.graph.store(&key_b, &graph_b, &task).await?;
+    db.graph.store(&key_b, &graph_b, None, &task).await?;
 
     // Store a config with 1-second TTL
     {
@@ -223,7 +223,7 @@ async fn ttl_cleanup_with_external_blobs() -> Result<()> {
     // Store graph with external blobs and TTL
     let graph = TestGraphTimeline::get_nth(0);
     let key = make_graph_time_key("test", 0, 1000);
-    db.graph.store(&key, &graph, &task).await?;
+    db.graph.store(&key, &graph, None, &task).await?;
 
     // Verify blobs were stored externally
     let blobs_before = sqlite.list_blobs("").await?;
@@ -263,7 +263,7 @@ async fn ttl_cleanup_with_external_blobs() -> Result<()> {
     // Store a non-TTL graph too
     let graph_b = TestGraphTimeline::get_nth(1);
     let key_b = make_graph_time_key("test", 1, 1001);
-    db.graph.store(&key_b, &graph_b, &task).await?;
+    db.graph.store(&key_b, &graph_b, None, &task).await?;
 
     // Wait for TTL to expire
     tokio::time::sleep(Duration::from_secs(2)).await;

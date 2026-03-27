@@ -113,7 +113,7 @@ async fn frames_ordered_by_timestamp_then_graph_id() -> Result<()> {
             timestamp: ts,
             graph_id: GraphID(id),
         };
-        db.graph.store(&key, &graph, &task).await?;
+        db.graph.store(&key, &graph, None, &task).await?;
     }
 
     let frames = db
@@ -145,7 +145,7 @@ async fn list_frames_range() -> Result<()> {
     for i in 0..10 {
         let graph = TestGraphTimeline::get_nth(i);
         let key = make_graph_time_key("test", i as i64, 1000 + i as i64);
-        db.graph.store(&key, &graph, &task).await?;
+        db.graph.store(&key, &graph, None, &task).await?;
     }
 
     // Query a range that should include frames 3-7

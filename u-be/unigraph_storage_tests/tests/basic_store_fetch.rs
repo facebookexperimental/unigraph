@@ -39,7 +39,7 @@ async fn store_and_fetch_full_graph() -> Result<()> {
     let graph = TestGraphTimeline::get_nth(42);
     let key = make_graph_time_key("test", 42, 1000);
 
-    db.graph.store(&key, &graph, &task).await?;
+    db.graph.store(&key, &graph, None, &task).await?;
 
     let fetched = db.graph.fetch(&key.graph_key(), &task).await?;
     assert_graphs_equal(&graph, &fetched);
@@ -56,7 +56,7 @@ async fn store_multiple_graphs_and_list_frames() -> Result<()> {
     for i in 0..5 {
         let graph = TestGraphTimeline::get_nth(i);
         let key = make_graph_time_key("test", i as i64, 1000 + i as i64);
-        db.graph.store(&key, &graph, &task).await?;
+        db.graph.store(&key, &graph, None, &task).await?;
     }
 
     let frames = db
@@ -181,7 +181,7 @@ async fn delete_frame() -> Result<()> {
     let key = make_graph_time_key("test", 1, 1000);
     let timeline_id = TimelineID("test".to_string());
 
-    db.graph.store(&key, &graph, &task).await?;
+    db.graph.store(&key, &graph, None, &task).await?;
 
     // Before deletion: frame exists, no blobs pending cleanup
     let frames = db.frames.list(&timeline_id, &task).await?;
@@ -254,7 +254,7 @@ async fn delete_frame_with_external_blobs() -> Result<()> {
     let key = make_graph_time_key("test", 1, 1000);
     let timeline_id = TimelineID("test".to_string());
 
-    db.graph.store(&key, &graph, &task).await?;
+    db.graph.store(&key, &graph, None, &task).await?;
 
     // Before deletion: frame exists
     let frames = db.frames.list(&timeline_id, &task).await?;
@@ -366,7 +366,7 @@ async fn get_frame_metadata_only() -> Result<()> {
 
     let graph = TestGraphTimeline::get_nth(0);
     let key = make_graph_time_key("test", 0, 1000);
-    db.graph.store(&key, &graph, &task).await?;
+    db.graph.store(&key, &graph, None, &task).await?;
 
     // Fetch without data
     let row = db
@@ -421,7 +421,7 @@ async fn sweep_deleted_blobs() -> Result<()> {
     let key = make_graph_time_key("test", 1, 1000);
     let timeline_id = TimelineID("test".to_string());
 
-    db.graph.store(&key, &graph, &task).await?;
+    db.graph.store(&key, &graph, None, &task).await?;
 
     // After store: blobs exist in external storage, nothing pending cleanup
     let blobs = sqlite.list_blobs("").await?;
@@ -539,7 +539,7 @@ async fn sweep_respects_min_age() -> Result<()> {
     let key = make_graph_time_key("test", 1, 1000);
     let timeline_id = TimelineID("test".to_string());
 
-    db.graph.store(&key, &graph, &task).await?;
+    db.graph.store(&key, &graph, None, &task).await?;
     db.graph
         .delete(&key.graph_key(), &timeline_id, &task)
         .await?;
@@ -591,7 +591,7 @@ async fn replace_empty_frames_with_full_graphs() -> Result<()> {
     for i in 0..5 {
         let graph = TestGraphTimeline::get_nth(i as u64);
         let key = make_graph_time_key("test", i, 1000 + i);
-        db.graph.store(&key, &graph, &task).await?;
+        db.graph.store(&key, &graph, None, &task).await?;
     }
 
     // Verify all frames are now Full.

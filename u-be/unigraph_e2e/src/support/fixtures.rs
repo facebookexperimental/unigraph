@@ -43,7 +43,7 @@ async fn ingest_map_graph_json(t: &TestApp, timeline_id: &str, json: &str) -> Re
         timestamp: Timestamp::from_unix_timestamp(1000),
         graph_id: GraphID(0),
     };
-    t.app.db.graph.store(&key, &ag_ser, &t.task).await?;
+    t.app.db.graph.store(&key, &ag_ser, None, &t.task).await?;
 
     Ok(())
 }

@@ -321,6 +321,15 @@ pub trait UnigraphGraphConnection: Send {
     ///
     /// Returns `true` if a config was deleted, `false` if it didn't exist.
     async fn delete_config_db_rows(&mut self, key: &str, task: &ll::Task) -> Result<bool>;
+
+    // ── Unique ID generation ────────────────────────────────────────
+
+    /// Generate a globally unique integer ID.
+    ///
+    /// Uses an auto-increment table to produce IDs that are unique across
+    /// all callers sharing the same database. Connection-scoped `last_insert_id`
+    /// makes this safe for concurrent use.
+    async fn gen_uniq_id(&mut self, task: &ll::Task) -> Result<i64>;
 }
 
 /// Graph storage backend — vends connections.

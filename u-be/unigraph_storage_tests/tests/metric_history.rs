@@ -70,7 +70,10 @@ async fn store(
         timestamp: Timestamp::from_unix_timestamp(ts),
         graph_id: GraphID(graph_id),
     };
-    db.graph.store(&key, &scene.to_graph(), task).await.unwrap();
+    db.graph
+        .store(&key, &scene.to_graph(), None, task)
+        .await
+        .unwrap();
 }
 
 async fn fetch_all_history(
@@ -243,7 +246,7 @@ async fn history_disabled() -> Result<()> {
 
     let graph = TestGraphTimeline::get_nth(0);
     let key = make_graph_time_key("t", 0, 1000);
-    db.graph.store(&key, &graph, &task).await?;
+    db.graph.store(&key, &graph, None, &task).await?;
     assert_graphs_equal(&graph, &db.graph.fetch(&key.graph_key(), &task).await?);
 
     let h = fetch_all_history(&db, "t", &["anything"], &task).await;
@@ -259,7 +262,7 @@ async fn graph_storage_unaffected_by_history() -> Result<()> {
 
     let graph = TestGraphTimeline::get_nth(99);
     let key = make_graph_time_key("t", 99, 5000);
-    db.graph.store(&key, &graph, &task).await?;
+    db.graph.store(&key, &graph, None, &task).await?;
     assert_graphs_equal(&graph, &db.graph.fetch(&key.graph_key(), &task).await?);
     Ok(())
 }
