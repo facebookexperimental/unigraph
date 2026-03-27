@@ -23,7 +23,7 @@ impl AdjacentDeltasOps {
     ///
     /// Consumes the range. Packs each entry, verifies all target frames are
     /// Empty, then stores the entire range in a single transaction.
-    #[ll::task(tags(l3))]
+    #[ll::task]
     pub async fn store_range(&self, range: GraphRange, task: &ll::Task) -> Result<()> {
         crate::schemas::adjacent_deltas::store_range(&self.ctx, range, &task).await
     }
