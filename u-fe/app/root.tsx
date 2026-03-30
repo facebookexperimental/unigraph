@@ -1,7 +1,10 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 import { Links, Meta, Outlet, Scripts, ScrollRestoration } from "react-router";
+import { createFetchTransport, initRpc } from "../api/rpc";
 import "../input.css";
+
+initRpc(createFetchTransport("/api/rpc"));
 
 export function Layout({ children }: { children: React.ReactNode }) {
   return (

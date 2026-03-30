@@ -27,7 +27,7 @@ import {
 import type { ArrayGraphStats } from "../__generated__/ts/ArrayGraphStats";
 import type { CombinedMetricsForNodes } from "../__generated__/ts/CombinedMetricsForNodes";
 import type { ConjointCost } from "../__generated__/ts/ConjointCost";
-import type { ExplorerComponentInputGraphs } from "../__generated__/ts/ExplorerComponentInputGraphs";
+import type { ExplorerComponentInputGraphs } from "../Explorer";
 import type { GraphSettings } from "../__generated__/ts/GraphSettings";
 import type { TraversalConfig } from "../__generated__/ts/TraversalConfig";
 import type { NodeIDX } from "../types";

@@ -1,26 +1,25 @@
 import { readFileSync } from "node:fs";
 import { defineConfig } from "rolldown";
+import { dts } from "rolldown-plugin-dts";
 
-export default defineConfig([
-  {
-    input: "u-fe/Explorer.tsx",
-    external: ["react", "react-dom", "react/jsx-runtime"],
+export default defineConfig({
+  input: "u-fe/Unigraph.tsx",
+  external: ["react", "react-dom", "react/jsx-runtime"],
+  transform: {
     define: { "process.env.NODE_ENV": "'production'" },
     jsx: "react-jsx",
-    output: {
-      file: ".build/unigraph-explorer-intern.js",
-      format: "umd",
-      name: "unigraph-explorer-intern",
-      minify: false,
-    },
-    plugins: [injectCSS()],
   },
-]);
+  output: {
+    dir: ".build/js",
+    format: "esm",
+    minify: false,
+  },
+  plugins: [injectCSS(), dts()],
+});
 
 const DOCBLOCK = `/**
  * @oncall unigraph
  * @nolint
- * @providesModule unigraph-explorer-intern
  * @preserve-whitespace
  * @${"generated"}
  */`;

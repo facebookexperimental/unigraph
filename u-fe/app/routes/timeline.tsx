@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import type { FrameInfo } from "../../__generated__/ts/FrameInfo";
-import { rpc } from "../../api/rpc";
+import { call_rpc } from "../../api/rpc";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { cn } from "../../lib/utils";
@@ -43,7 +43,7 @@ export default function TimelinePage() {
 
   useEffect(() => {
     if (timelineId == null) return;
-    rpc("SelectFrames", { timeline_id: timelineId })
+    call_rpc("SelectFrames", { timeline_id: timelineId })
       .then((data) => setFrames(data.frames))
       .catch((e: unknown) =>
         setError(e instanceof Error ? e.message : String(e)),

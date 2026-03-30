@@ -2,11 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "react-router";
-import type { ExplorerComponentInputGraph } from "../../__generated__/ts/ExplorerComponentInputGraph";
-import type { ExplorerComponentInputGraphs } from "../../__generated__/ts/ExplorerComponentInputGraphs";
+import type {
+  ExplorerComponentInputGraph,
+  ExplorerComponentInputGraphs,
+} from "../../Explorer";
 import type { GraphQueryConfig } from "../../__generated__/ts/GraphQueryConfig";
 import type { GraphQueryOutput } from "../../__generated__/ts/GraphQueryOutput";
-import { rpc } from "../../api/rpc";
+import { call_rpc } from "../../api/rpc";
 import { Explorer } from "../../Explorer";
 
 const QUERY_PARAM_GQC_DELTA_L = "gqc_deltaL";
@@ -162,9 +164,9 @@ function graphQueryOutputToInputGraph(
 
 async function fetchHandleGraph(handle: string): Promise<GraphQueryOutput> {
   if (handle.startsWith("gqc-")) {
-    return rpc("GraphQuery", { graph_query_config_key: handle });
+    return call_rpc("GraphQuery", { graph_query_config_key: handle });
   }
-  return rpc("GraphQuery", {
+  return call_rpc("GraphQuery", {
     graph_query_config: { roots: [], handle },
   });
 }

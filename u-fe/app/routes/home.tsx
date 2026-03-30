@@ -8,7 +8,7 @@ import {
   CardTitle,
   CardDescription,
 } from "../../components/ui/card";
-import { rpc } from "../../api/rpc";
+import { callUnigraphRPC } from "../../api/rpc";
 
 export default function Home() {
   const navigate = useNavigate();
@@ -16,7 +16,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    rpc("ListTimelines", {})
+    callUnigraphRPC("ListTimelines", {})
       .then((data) => {
         if (data.timeline_ids.length === 0) {
           navigate("/explorer/local", { replace: true });

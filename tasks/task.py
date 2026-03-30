@@ -6,7 +6,6 @@
 
 import base64
 import os
-import re
 import shlex
 import shutil
 import subprocess
@@ -102,6 +101,14 @@ WASM_OUT_DIR = OUT_DIR / "wasm"
 WASM_TARGET_DIR = Path("/tmp/unigraph-target")
 
 
+@build_app.command("clean")
+def build_clean() -> None:
+    """Remove all build artifacts under .build/."""
+    if OUT_DIR.exists():
+        shutil.rmtree(OUT_DIR, ignore_errors=True)
+        print(f"Removed {OUT_DIR.relative_to(ROOT)}")
+
+
 @build_app.command("wasm")
 def build_wasm(
     skip_wasm_opt: Annotated[
@@ -180,42 +187,36 @@ def build_wasm(
     )
 
 
+@build_app.command("tailwind")
+def build_tailwind() -> None:
+    """Build Tailwind CSS."""
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    run(
+        [
+            str(BIN / "tailwindcss"),
+            "-i",
+            "./input.css",
+            "-o",
+            "../.build/output.css",
+            "--cwd",
+            "u-fe",
+        ]
+    )
+
+
 @build_app.command("js")
 def build_js() -> None:
-    """Build the JS bundle."""
-    run([str(BIN / "rolldown"), "-c", "rolldown.config.ts"])
-
-
-@build_app.command("haste")
-def build_haste() -> None:
-    """Build WASM + JS bundle with haste post-processing."""
+    """Build Tailwind CSS + JS bundle with type declarations."""
+    build_tailwind()
     build_wasm()
-    build_js()
-
-    umd_build = OUT_DIR / "unigraph-explorer-intern.js"
-    haste_build = OUT_DIR / "unigraph-explorer-umd-haste-build.js"
-    content = umd_build.read_text()
-
-    # cx() is a haste built-in; rename to clsx to avoid conflicts
-    content = re.sub(r"\b(cx)\(", "clsx(", content)
-    # jsx-runtime at Meta comes directly from react
-    content = content.replace("react/jsx-runtime", "react")
-    # import.meta.url causes syntax errors in non-module contexts
-    content = content.replace("import.meta.url", '"import.meta.url not supported"')
-
-    haste_build.write_text(content)
-
-
-@build_app.command("react-router")
-def build_react_router() -> None:
-    """Build the React Router SPA for production."""
-    run([str(BIN / "react-router"), "build"])
+    run([str(BIN / "rolldown"), "-c", "rolldown.config.ts"])
 
 
 @build_app.command("all")
 def build_all() -> None:
     """Build everything."""
-    build_haste()
+    build_wasm()
+    build_js()
 
 
 @app.command()

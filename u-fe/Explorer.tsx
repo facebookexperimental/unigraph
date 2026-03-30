@@ -8,10 +8,58 @@ import {
   to_zstd_base64_url_safe_no_pad,
 } from "../.build/wasm/unigraph_wasm";
 import type { ArrayGraphUISettingsTreeTableEntryPoints } from "./__generated__/ts/ArrayGraphUISettingsTreeTableEntryPoints";
-import type { ExplorerProps } from "./__generated__/ts/ExplorerProps";
 import type { GraphQueryConfig } from "./__generated__/ts/GraphQueryConfig";
 import type { GraphSettings } from "./__generated__/ts/GraphSettings";
 import type { TraversalConfig } from "./__generated__/ts/TraversalConfig";
+
+// ---------------------------------------------------------------------------
+// Exported types — these end up in the bundled .d.ts for external consumers.
+// ---------------------------------------------------------------------------
+
+export type SerializationFormat =
+  | "Json"
+  | "JsonZstdBase64"
+  | "JsonZstdFastBase64"
+  | "JsonZstdBestBase64"
+  | "JsonZstdBase64URLSafeNoPad"
+  | "JsonZstdBestBase64URLSafeNoPad"
+  | "JsonZstdFastBase64URLSafeNoPad";
+
+export interface SerializedStr {
+  data: string;
+  format: SerializationFormat;
+  type_hint?: string | undefined;
+}
+
+export type ExplorerComponentInputGraph =
+  | { MapGraphSerialized: SerializedStr }
+  | { ArrayGraphSerialized: SerializedStr }
+  | { ArrayGraphSerializedPackageBase64: SerializedStr };
+
+export type ExplorerComponentInputGraphVariants =
+  | "MapGraphSerialized"
+  | "ArrayGraphSerialized"
+  | "ArrayGraphSerializedPackageBase64";
+
+export interface ExplorerComponentInputGraphs {
+  left: ExplorerComponentInputGraph;
+  right?: ExplorerComponentInputGraph | undefined;
+}
+
+export type CallbackFn = (value: string) => void;
+
+export interface ExplorerProps {
+  graphs: ExplorerComponentInputGraphs;
+  base_gqc_l?: string | undefined;
+  base_gqc_r?: string | undefined;
+  gqc_delta_l?: string | undefined;
+  on_gqc_delta_change_l?: CallbackFn | undefined;
+  gqc_delta_r?: string | undefined;
+  on_gqc_delta_change_r?: CallbackFn | undefined;
+  graph_settings?: string | undefined;
+  on_graph_settings_change: CallbackFn;
+  home_href?: string | undefined;
+}
 import ErrorBoundary from "./components/ErrorBoundary";
 import { DebugModeContextProvider } from "./context/DebugModeContext";
 import {
