@@ -1,10 +1,13 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 use std::any::type_name;
+use std::io::BufRead;
+use std::io::BufReader;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Child;
 use std::process::Command;
+use std::process::Stdio;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -24,6 +27,7 @@ use tower_http::services::ServeFile;
 use tower_http::trace::TraceLayer;
 use tracing::Span;
 use tracing::info;
+use tracing::warn;
 use unigraph_app::Unigraph;
 use unigraph_app::UnigraphRequest;
 use unigraph_core::ArrayGraphSerializable;
@@ -97,28 +101,22 @@ pub async fn start(
 
     let project_root = PathBuf::from(THIS_FILES_DIR).join("../..");
 
+    // Hold the Vite child process (if any) so it lives until the server exits.
+    // Dropped after axum::serve returns, which triggers graceful Vite shutdown.
+    let _vite_guard: Option<ViteProcess>;
+
     let app = match mode {
         ServeMode::Dev => {
             let vite = start_vite(&project_root)?;
             wait_for_vite(5173).await?;
             info!("Vite dev server is ready");
 
-            // Keep the vite process alive as long as the server runs.
-            // The Drop impl kills it on shutdown.
-            let vite_guard = Arc::new(vite);
-
-            let app = api.fallback(proxy_to_vite);
-
-            // Spawn a task to keep the guard alive until ctrl-c
-            let guard = vite_guard.clone();
-            tokio::spawn(async move {
-                tokio::signal::ctrl_c().await.ok();
-                drop(guard);
-            });
-
-            app
+            _vite_guard = Some(vite);
+            api.fallback(proxy_to_vite)
         }
         ServeMode::Release => {
+            _vite_guard = None;
+
             let build_dir = project_root.join("build/client");
             if !build_dir.exists() {
                 bail!(
@@ -148,8 +146,19 @@ pub async fn start(
             info!(status = resp.status().as_u16(), latency_ms = latency.as_millis(), "done");
         });
 
-    axum::serve(listener, app.layer(trace_layer)).await?;
+    axum::serve(listener, app.layer(trace_layer))
+        .with_graceful_shutdown(shutdown_signal())
+        .await?;
+
+    // _vite_guard is dropped here, cleanly killing the Vite process.
     Ok(())
+}
+
+async fn shutdown_signal() {
+    tokio::signal::ctrl_c()
+        .await
+        .expect("failed to listen for ctrl-c");
+    info!("Shutting down...");
 }
 
 // --- Favicons (embedded at compile time) ---
@@ -225,6 +234,18 @@ struct ViteProcess(Child);
 
 impl Drop for ViteProcess {
     fn drop(&mut self) {
+        info!("Stopping Vite dev server...");
+
+        // Vite shares our process group, so it already received SIGINT from
+        // Ctrl-C. Give it a moment to exit gracefully before force-killing.
+        for _ in 0..20 {
+            if self.0.try_wait().ok().flatten().is_some() {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+
+        // Fallback: hard kill.
         let _ = self.0.kill();
         let _ = self.0.wait();
     }
@@ -233,11 +254,38 @@ impl Drop for ViteProcess {
 fn start_vite(project_root: &Path) -> Result<ViteProcess> {
     let vite_bin = project_root.join("node_modules/.bin/vite");
     info!("Starting Vite dev server...");
-    let child = Command::new(&vite_bin)
+    let mut child = Command::new(&vite_bin)
         .current_dir(project_root)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .spawn()
         .with_context(|| format!("Failed to start Vite at {}", vite_bin.display()))?;
+
+    pipe_output(child.stdout.take(), false);
+    pipe_output(child.stderr.take(), true);
+
     Ok(ViteProcess(child))
+}
+
+/// Spawn a background thread that reads lines from a stdio stream and logs them.
+fn pipe_output<R: std::io::Read + Send + 'static>(stream: Option<R>, is_err: bool) {
+    let Some(stream) = stream else { return };
+    std::thread::spawn(move || {
+        let reader = BufReader::new(stream);
+        for line in reader.lines() {
+            match line {
+                Ok(line) if line.is_empty() => {}
+                Ok(line) => {
+                    if is_err {
+                        warn!(target: "vite", "{line}");
+                    } else {
+                        info!(target: "vite", "{line}");
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+    });
 }
 
 async fn wait_for_vite(port: u16) -> Result<()> {

@@ -1,6 +1,7 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-import { Home, Info, SlidersHorizontal, Waypoints, Wrench } from "lucide-react";
+import { Home, Wrench } from "lucide-react";
+import type { PanelTabPlugin } from "./Explorer";
 import type { SidebarPanel } from "./__generated__/ts/SidebarPanel";
 import UTooltip from "./components/UTooltip";
 import { Button } from "./components/ui/button";
@@ -12,9 +13,11 @@ import TraversalConfigInspector from "./sidebar_panels/TraversalConfigInspector"
 export default function Sidebar({
   selectedPanelTab,
   homeHref,
+  panels,
 }: {
-  selectedPanelTab: SidebarPanel;
+  selectedPanelTab: string;
   homeHref?: string;
+  panels: PanelTabPlugin[];
 }) {
   const [debugMode, setDebugMode] = useDebugMode();
   const tg = useTwinGraph();
@@ -35,18 +38,13 @@ export default function Sidebar({
             </Button>
           </UTooltip>
         )}
-        <TabSelector tabName="Simulation" selectedPanelTab={selectedPanelTab}>
-          <Waypoints />
-        </TabSelector>
-        <TabSelector tabName="GraphInfo" selectedPanelTab={selectedPanelTab}>
-          <Info />
-        </TabSelector>
-        <TabSelector
-          tabName="TraversalConfigEditor"
-          selectedPanelTab={selectedPanelTab}
-        >
-          <SlidersHorizontal />
-        </TabSelector>
+        {panels.map((panel) => (
+          <UTooltip key={panel.id} tooltip={panel.tooltip ?? panel.id}>
+            <TabSelector tabName={panel.id} selectedPanelTab={selectedPanelTab}>
+              {panel.icon}
+            </TabSelector>
+          </UTooltip>
+        ))}
         {debugMode && <TraversalConfigInspector />}
       </div>
       <UTooltip tooltip="Toggle debug mode that shows additional info">
@@ -71,11 +69,10 @@ export default function Sidebar({
 function TabSelector({
   tabName,
   selectedPanelTab,
-
   children,
 }: {
-  tabName: SidebarPanel;
-  selectedPanelTab: SidebarPanel;
+  tabName: string;
+  selectedPanelTab: string;
   children: React.ReactNode;
 }) {
   const selected = selectedPanelTab === tabName;
@@ -101,7 +98,7 @@ function TabSelector({
             ...settings,
             ui_settings: {
               ...settings.ui_settings,
-              selected_sidebar_panel: tabName,
+              selected_sidebar_panel: tabName as SidebarPanel,
             },
           });
         }

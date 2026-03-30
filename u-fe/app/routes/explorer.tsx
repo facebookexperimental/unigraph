@@ -8,7 +8,7 @@ import type {
 } from "../../Explorer";
 import type { GraphQueryConfig } from "../../__generated__/ts/GraphQueryConfig";
 import type { GraphQueryOutput } from "../../__generated__/ts/GraphQueryOutput";
-import { call_rpc } from "../../api/rpc";
+import { callUnigraphRPC } from "../../api/rpc";
 import { Explorer } from "../../Explorer";
 
 const QUERY_PARAM_GQC_DELTA_L = "gqc_deltaL";
@@ -122,14 +122,16 @@ export default function ExplorerRoute() {
   return (
     <Explorer
       graphs={graphs}
-      base_gqc_l={baseGqcLJson}
-      base_gqc_r={baseGqcRJson}
-      gqc_delta_l={gqcDeltaL}
-      on_gqc_delta_change_l={onGqcDeltaChangeL}
-      gqc_delta_r={gqcDeltaR}
-      on_gqc_delta_change_r={onGqcDeltaChangeR}
-      graph_settings={graphSettings}
-      on_graph_settings_change={onGraphSettingsChange}
+      config={{
+        base_gqc_l: baseGqcLJson,
+        base_gqc_r: baseGqcRJson,
+        gqc_delta_l: gqcDeltaL,
+        on_gqc_delta_change_l: onGqcDeltaChangeL,
+        gqc_delta_r: gqcDeltaR,
+        on_gqc_delta_change_r: onGqcDeltaChangeR,
+        graph_settings: graphSettings,
+        on_graph_settings_change: onGraphSettingsChange,
+      }}
       home_href={isLocal ? undefined : "/"}
     />
   );
@@ -164,9 +166,9 @@ function graphQueryOutputToInputGraph(
 
 async function fetchHandleGraph(handle: string): Promise<GraphQueryOutput> {
   if (handle.startsWith("gqc-")) {
-    return call_rpc("GraphQuery", { graph_query_config_key: handle });
+    return callUnigraphRPC("GraphQuery", { graph_query_config_key: handle });
   }
-  return call_rpc("GraphQuery", {
+  return callUnigraphRPC("GraphQuery", {
     graph_query_config: { roots: [], handle },
   });
 }

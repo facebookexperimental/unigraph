@@ -33,7 +33,11 @@
     "resolveJsonModule": true,
 
     // JSX configuration (if needed)
-    "jsx": "react-jsx"
+    "jsx": "react-jsx",
+
+    // Skip type checking of .d.ts files — avoids duplicate type conflicts
+    // from transitive deps like @types/chai (pulled in by vitest).
+    "skipLibCheck": true
   },
   "include": ["u-fe/**/*.ts", "u-fe/**/*.tsx"],
   "exclude": ["node_modules", "build", "u-fe/app"]

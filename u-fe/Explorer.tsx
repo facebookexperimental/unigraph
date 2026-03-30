@@ -1,6 +1,7 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useRef, type ReactNode } from "react";
+import { Info, SlidersHorizontal, Waypoints } from "lucide-react";
 import {
   apply_gqc_delta,
   derive_gqc_delta,
@@ -48,8 +49,7 @@ export interface ExplorerComponentInputGraphs {
 
 export type CallbackFn = (value: string) => void;
 
-export interface ExplorerProps {
-  graphs: ExplorerComponentInputGraphs;
+export interface ExplorerConfig {
   base_gqc_l?: string | undefined;
   base_gqc_r?: string | undefined;
   gqc_delta_l?: string | undefined;
@@ -58,7 +58,33 @@ export interface ExplorerProps {
   on_gqc_delta_change_r?: CallbackFn | undefined;
   graph_settings?: string | undefined;
   on_graph_settings_change: CallbackFn;
+}
+
+export type BuiltinSidebarPanel =
+  | "Simulation"
+  | "GraphInfo"
+  | "TraversalConfigEditor";
+
+export interface PanelTabPlugin {
+  id: string;
+  icon: ReactNode;
+  tooltip?: string;
+  render: () => ReactNode;
+}
+
+export interface ExplorerProps {
+  graphs: ExplorerComponentInputGraphs;
+  config: ExplorerConfig;
   home_href?: string | undefined;
+  panels?: PanelTabPlugin[];
+  hidden_panels?: BuiltinSidebarPanel[];
+}
+
+interface ResolvedPanel {
+  id: string;
+  icon: ReactNode;
+  tooltip?: string;
+  render: () => ReactNode;
 }
 import ErrorBoundary from "./components/ErrorBoundary";
 import { DebugModeContextProvider } from "./context/DebugModeContext";
@@ -96,7 +122,13 @@ export function Explorer(props: ExplorerProps) {
   initWasm();
 
   const {
-    graphs,
+    graphs: rawGraphs,
+    config,
+    home_href,
+    panels: customPanels,
+    hidden_panels,
+  } = props;
+  const {
     base_gqc_l,
     base_gqc_r,
     gqc_delta_l,
@@ -105,8 +137,11 @@ export function Explorer(props: ExplorerProps) {
     on_gqc_delta_change_r,
     graph_settings,
     on_graph_settings_change,
-    home_href,
-  } = props;
+  } = config;
+
+  // Stabilize graphs reference so consumers don't need to memoize.
+  // Only re-parses through WASM when the actual serialized data changes.
+  const graphs = useStableGraphs(rawGraphs);
 
   const [nativeGraphNoTVCL, nativeGraphNoTVCR] = useMemo(
     () => NativeGraph.fromSerialized(graphs),
@@ -125,6 +160,38 @@ export function Explorer(props: ExplorerProps) {
     on_gqc_delta_change_r,
     nativeGraphNoTVCR ?? null,
   );
+
+  const BUILTIN_PANELS: ResolvedPanel[] = useMemo(
+    () => [
+      {
+        id: "Simulation",
+        icon: <Waypoints />,
+        tooltip: "Simulation",
+        render: () => <Simulation />,
+      },
+      {
+        id: "GraphInfo",
+        icon: <Info />,
+        tooltip: "Graph Info",
+        render: () => <GraphInfoPanel />,
+      },
+      {
+        id: "TraversalConfigEditor",
+        icon: <SlidersHorizontal />,
+        tooltip: "Traversal Config",
+        render: () => <TraversalConfigEditorPanel />,
+      },
+    ],
+    [],
+  );
+
+  const resolvedPanels = useMemo(() => {
+    const hiddenSet = new Set(hidden_panels ?? []);
+    const builtins = BUILTIN_PANELS.filter(
+      (p) => !hiddenSet.has(p.id as BuiltinSidebarPanel),
+    );
+    return [...builtins, ...(customPanels ?? [])];
+  }, [BUILTIN_PANELS, customPanels, hidden_panels]);
 
   const settings = useMemo(() => {
     return graph_settings == null
@@ -162,7 +229,7 @@ export function Explorer(props: ExplorerProps) {
                       setSettings={setSettingsCb}
                     >
                       <SelectedPathContextProvider syncToURL={true}>
-                        <Page homeHref={home_href} />
+                        <Page homeHref={home_href} panels={resolvedPanels} />
                       </SelectedPathContextProvider>
                     </GraphSettingsContextProvider>
                   </SelectedNodesContextProvider>
@@ -176,7 +243,13 @@ export function Explorer(props: ExplorerProps) {
   );
 }
 
-function Page({ homeHref }: { homeHref?: string }) {
+function Page({
+  homeHref,
+  panels,
+}: {
+  homeHref?: string;
+  panels: ResolvedPanel[];
+}) {
   const [nativeGraphL, nativeGraphR] = useNativeGraphs();
   const [settings] = useGraphSettings();
   const [selectedNodes] = useSelectedNodes();
@@ -186,22 +259,8 @@ function Page({ homeHref }: { homeHref?: string }) {
   const selectedSidebarPanel =
     settings.ui_settings?.selected_sidebar_panel ?? "None";
 
-  const panelTab: React.ReactNode = (() => {
-    switch (selectedSidebarPanel) {
-      case "Simulation":
-        return <Simulation />;
-      case "None":
-        return null;
-      case "GraphInfo":
-        return <GraphInfoPanel />;
-      case "TraversalConfigEditor":
-        return <TraversalConfigEditorPanel />;
-      default: {
-        const exhaustiveCheck: never = selectedSidebarPanel;
-        throw new Error(`Unexpected panel tab: ${exhaustiveCheck}`);
-      }
-    }
-  })();
+  const panelTab =
+    panels.find((p) => p.id === selectedSidebarPanel)?.render() ?? null;
 
   const roots = useMemo(() => {
     const rootsL = getRoots(
@@ -235,7 +294,11 @@ function Page({ homeHref }: { homeHref?: string }) {
       className="flex grow-1 shrink flex-row bg-background text-foreground min-h-0"
       ref={portalRef}
     >
-      <Sidebar selectedPanelTab={selectedSidebarPanel} homeHref={homeHref} />
+      <Sidebar
+        selectedPanelTab={selectedSidebarPanel}
+        homeHref={homeHref}
+        panels={panels}
+      />
       {panelTab}
       <div className="flex flex-col h-full grow-1">
         <GraphTreeTable focusOnMount={true} roots={roots} />
@@ -345,4 +408,31 @@ function applyDelta(
   }
   const resultJson = apply_gqc_delta(JSON.stringify(base), deltaBase64);
   return JSON.parse(resultJson);
+}
+
+// Stabilize graphs object reference so consumers don't need to memoize.
+// Compares the underlying serialized data strings rather than object identity,
+// preventing expensive WASM re-parsing on unrelated re-renders.
+function useStableGraphs(
+  graphs: ExplorerComponentInputGraphs,
+): ExplorerComponentInputGraphs {
+  const ref = useRef(graphs);
+  if (
+    getGraphData(graphs.left) !== getGraphData(ref.current.left) ||
+    getGraphData(graphs.right) !== getGraphData(ref.current.right)
+  ) {
+    ref.current = graphs;
+  }
+  return ref.current;
+}
+
+function getGraphData(
+  g: ExplorerComponentInputGraph | undefined,
+): string | undefined {
+  if (g == null) return undefined;
+  if ("MapGraphSerialized" in g) return g.MapGraphSerialized.data;
+  if ("ArrayGraphSerialized" in g) return g.ArrayGraphSerialized.data;
+  if ("ArrayGraphSerializedPackageBase64" in g)
+    return g.ArrayGraphSerializedPackageBase64.data;
+  return undefined;
 }
