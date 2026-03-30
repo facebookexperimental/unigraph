@@ -14,6 +14,6 @@ path = "src/main.rs"
 [dependencies]
 anyhow = "1.0.102"
 cargo_metadata = "0.23.1"
-clap = { version = "4.5.42", features = ["derive", "env", "string", "unicode", "wrap_help"] }
+clap = { version = "4.6.0", features = ["derive", "env", "string", "unicode", "wrap_help"] }
 serde_json = { version = "1.0.140", features = ["alloc", "float_roundtrip", "raw_value", "unbounded_depth"] }
 unigraph_core = { path = "../unigraph_core" }
