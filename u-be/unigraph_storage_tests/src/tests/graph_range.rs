@@ -65,7 +65,7 @@ async fn store_and_load_single_range() -> Result<()> {
     let mut builder = GraphRangeBuilder::new(TimelineID(tl.to_string()));
     for i in 0..count {
         let key = make_graph_time_key(tl, i as i64, 1000 + i as i64);
-        builder.add(key, TestGraphTimeline::get_nth(i as u64))?;
+        builder.add(key, TestGraphTimeline::get_nth(i))?;
     }
     let range = builder.finalize();
 
