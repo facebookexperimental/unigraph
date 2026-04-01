@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import type { FrameInfo } from "../../__generated__/ts/FrameInfo";
-import { callUnigraphRPC } from "../../api/rpc";
+import { useRpc } from "../../api/rpc";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { cn } from "../../lib/utils";
@@ -37,18 +37,20 @@ function formatTimestamp(iso: string): string {
 export default function TimelinePage() {
   const { timelineId } = useParams();
   const navigate = useNavigate();
+  const rpc = useRpc();
   const [frames, setFrames] = useState<FrameInfo[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [compareGraphId, setCompareGraphId] = useState<number | null>(null);
 
   useEffect(() => {
     if (timelineId == null) return;
-    callUnigraphRPC("SelectFrames", { timeline_id: timelineId })
+    rpc
+      .call("SelectFrames", { timeline_id: timelineId })
       .then((data) => setFrames(data.frames))
       .catch((e: unknown) =>
         setError(e instanceof Error ? e.message : String(e)),
       );
-  }, [timelineId]);
+  }, [timelineId, rpc]);
 
   if (error != null) {
     return (

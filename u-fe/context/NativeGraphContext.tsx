@@ -39,7 +39,7 @@ export function useNativeGraphL(): NativeGraph {
 
 export function useNativeGraphR(): NativeGraph | null {
   const context = getCTX();
-  return context.l;
+  return context.r;
 }
 
 export function useNativeGraphs(): [NativeGraph, NativeGraph | null] {

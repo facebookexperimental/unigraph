@@ -8,15 +8,17 @@ import {
   CardTitle,
   CardDescription,
 } from "../../components/ui/card";
-import { callUnigraphRPC } from "../../api/rpc";
+import { useRpc } from "../../api/rpc";
 
 export default function Home() {
   const navigate = useNavigate();
+  const rpc = useRpc();
   const [timelineIds, setTimelineIds] = useState<string[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    callUnigraphRPC("ListTimelines", {})
+    rpc
+      .call("ListTimelines", {})
       .then((data) => {
         if (data.timeline_ids.length === 0) {
           navigate("/explorer/local", { replace: true });
@@ -31,7 +33,7 @@ export default function Home() {
         }
         setError(e instanceof Error ? e.message : String(e));
       });
-  }, [navigate]);
+  }, [navigate, rpc]);
 
   if (error != null) {
     return (

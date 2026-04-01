@@ -8,7 +8,7 @@ import type {
 } from "../../Explorer";
 import type { GraphQueryConfig } from "../../__generated__/ts/GraphQueryConfig";
 import type { GraphQueryOutput } from "../../__generated__/ts/GraphQueryOutput";
-import { callUnigraphRPC } from "../../api/rpc";
+import { useRpc, type UnigraphRpc } from "../../api/rpc";
 import { Explorer } from "../../Explorer";
 
 const QUERY_PARAM_GQC_DELTA_L = "gqc_deltaL";
@@ -23,6 +23,7 @@ interface LocalGraphsApiResponse {
 export default function ExplorerRoute() {
   const { handleL, handleR } = useParams();
   const isLocal = handleL == null;
+  const rpc = useRpc();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [graphs, setGraphs] = useState<ExplorerComponentInputGraphs | null>(
@@ -36,7 +37,7 @@ export default function ExplorerRoute() {
     if (isLocal) {
       fetchLocalGraphs().then(setGraphs).catch(handleError);
     } else {
-      fetchHandleGraphs(handleL, handleR)
+      fetchHandleGraphs(rpc, handleL, handleR)
         .then(applyHandleResults)
         .catch(handleError);
     }
@@ -50,7 +51,7 @@ export default function ExplorerRoute() {
       setBaseGqcL(results.baseGqcL);
       setBaseGqcR(results.baseGqcR);
     }
-  }, [isLocal, handleL, handleR]);
+  }, [isLocal, handleL, handleR, rpc]);
 
   const gqcDeltaL = searchParams.get(QUERY_PARAM_GQC_DELTA_L) ?? undefined;
   const gqcDeltaR = searchParams.get(QUERY_PARAM_GQC_DELTA_R) ?? undefined;
@@ -164,22 +165,26 @@ function graphQueryOutputToInputGraph(
   };
 }
 
-async function fetchHandleGraph(handle: string): Promise<GraphQueryOutput> {
+async function fetchHandleGraph(
+  rpc: UnigraphRpc,
+  handle: string,
+): Promise<GraphQueryOutput> {
   if (handle.startsWith("gqc-")) {
-    return callUnigraphRPC("GraphQuery", { graph_query_config_key: handle });
+    return rpc.call("GraphQuery", { graph_query_config_key: handle });
   }
-  return callUnigraphRPC("GraphQuery", {
+  return rpc.call("GraphQuery", {
     graph_query_config: { roots: [], handle },
   });
 }
 
 async function fetchHandleGraphs(
+  rpc: UnigraphRpc,
   handleL: string,
   handleR: string | undefined,
 ): Promise<HandleFetchResults> {
-  const leftPromise = fetchHandleGraph(handleL);
+  const leftPromise = fetchHandleGraph(rpc, handleL);
   const rightPromise =
-    handleR != null ? fetchHandleGraph(handleR) : Promise.resolve(null);
+    handleR != null ? fetchHandleGraph(rpc, handleR) : Promise.resolve(null);
 
   const [leftResult, rightResult] = await Promise.all([
     leftPromise,

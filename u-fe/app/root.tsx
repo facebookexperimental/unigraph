@@ -1,10 +1,10 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 import { Links, Meta, Outlet, Scripts, ScrollRestoration } from "react-router";
-import { createFetchTransport, initRpc } from "../api/rpc";
+import { createFetchTransport, RpcProvider } from "../api/rpc";
 import "../input.css";
 
-initRpc(createFetchTransport("/api/rpc"));
+const transport = createFetchTransport("/api/rpc");
 
 export function Layout({ children }: { children: React.ReactNode }) {
   return (
@@ -26,7 +26,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
 }
 
 export default function Root() {
-  return <Outlet />;
+  return (
+    <RpcProvider transport={transport}>
+      <Outlet />
+    </RpcProvider>
+  );
 }
 
 export function HydrateFallback() {
