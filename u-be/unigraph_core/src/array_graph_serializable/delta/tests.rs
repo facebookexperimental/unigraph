@@ -1163,6 +1163,7 @@ fn test_delta_json_snapshot() -> Result<()> {
     }"#,
     )?;
     base.graph_settings = Some(GraphSettings {
+        description: None,
         ui_settings: Some(ArrayGraphUISettings {
             selected_sidebar_panel: Some(SidebarPanel::Simulation),
             columns: Some(ColumnSettings {
@@ -1227,6 +1228,7 @@ fn test_delta_json_snapshot() -> Result<()> {
     }"#,
     )?;
     target.graph_settings = Some(GraphSettings {
+        description: None,
         ui_settings: Some(ArrayGraphUISettings {
             selected_sidebar_panel: Some(SidebarPanel::GraphInfo),
             columns: Some(ColumnSettings {
@@ -1430,6 +1432,7 @@ fn test_delta_json_snapshot_cleared_fields() -> Result<()> {
     }"#,
     )?;
     base.graph_settings = Some(GraphSettings {
+        description: None,
         ui_settings: Some(ArrayGraphUISettings {
             selected_sidebar_panel: Some(SidebarPanel::Simulation),
             ..Default::default()

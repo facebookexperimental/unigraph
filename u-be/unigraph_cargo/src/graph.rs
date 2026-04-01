@@ -182,6 +182,7 @@ pub fn build_map_graph(
     );
 
     let graph_settings = Some(GraphSettings {
+        description: None,
         ui_settings: Some(ArrayGraphUISettings {
             columns: Some(ColumnSettings {
                 metric_settings: Some(metric_settings),

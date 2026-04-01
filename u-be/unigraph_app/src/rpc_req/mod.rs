@@ -1,5 +1,6 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
+mod about_graph;
 mod explore_graph;
 mod get_configs;
 mod graph_query;

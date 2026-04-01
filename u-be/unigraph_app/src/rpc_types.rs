@@ -8,6 +8,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use typegen::TypeGen;
 use unigraph_core::ArrayGraphSerializablePackageBase64;
+use unigraph_core::ArrayGraphStats;
 use unigraph_core::DynamicEdgeInfo;
 use unigraph_core::TraversalConfig;
 use unigraph_core::config_key::GraphQueryConfigKey;
@@ -252,4 +253,38 @@ pub struct SearchNodesInput {
 #[derive(Debug, Clone, Serialize, Deserialize, TypeGen)]
 pub struct SearchNodesOutput {
     pub matches: Vec<String>,
+}
+
+// ── AboutGraph ──────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize, TypeGen)]
+pub struct AboutGraphInput {
+    /// Graph handle: a timeline_id ("cargo"), graph_key ("cargo~356"),
+    /// or gqc_key ("gqc-abc123").
+    pub handle: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TypeGen)]
+pub struct AboutGraphOutput {
+    /// Graph description from settings, if available.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+
+    /// Graph statistics (node/edge counts by kind, tier names, etc).
+    pub stats: ArrayGraphStats,
+
+    /// Available numeric metrics with optional descriptions.
+    pub metrics: Vec<AboutGraphMetricInfo>,
+
+    /// Human-readable markdown summary of the graph.
+    /// Optimized for LLM consumption — use this field to understand the graph
+    /// before exploring it with ExploreGraph.
+    pub text: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TypeGen)]
+pub struct AboutGraphMetricInfo {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
 }

@@ -68,6 +68,7 @@ pub use crate::types::array_graph::DynamicEdgeInfo;
 pub use crate::types::array_graph::array_graph_debug_utils::ArrayGraphDebugUtils;
 pub use crate::types::array_graph::array_graph_nodes::ArrayGraphNodes;
 pub use crate::types::array_graph::array_graph_nodes::GraphSide;
+pub use crate::types::array_graph::array_graph_stats::ArrayGraphStats;
 pub use crate::types::array_graph::budget_graph;
 pub use crate::types::array_graph::budget_graph::BudgetAlgo;
 pub use crate::types::array_graph::budget_graph::BudgetAlgoConfig;

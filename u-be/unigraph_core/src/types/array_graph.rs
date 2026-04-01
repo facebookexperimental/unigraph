@@ -8,7 +8,7 @@ pub(crate) mod array_graph_metrics;
 mod array_graph_name_search;
 pub(crate) mod array_graph_nodes;
 pub mod array_graph_state;
-mod array_graph_stats;
+pub mod array_graph_stats;
 pub mod budget_graph;
 mod conjoint_cost;
 pub mod graph_settings;

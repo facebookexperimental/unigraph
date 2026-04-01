@@ -10,10 +10,12 @@ use unigraph_db::UnigraphDb;
 use unigraph_rpc::RpcExec;
 
 mod graph_cache;
+mod graph_handle;
 mod rpc_req;
 mod rpc_types;
 
 pub use graph_cache::GraphCache;
+pub use graph_handle::GraphHandle;
 pub use rpc_types::*;
 
 /// The Unigraph application — wraps the database, caches, and cross-cutting concerns.
@@ -58,6 +60,9 @@ impl Unigraph {
             UnigraphRequest::SearchNodes(input) => {
                 Ok(UnigraphResponse::SearchNodes(input.exec(self, task).await?))
             }
+            UnigraphRequest::AboutGraph(input) => {
+                Ok(UnigraphResponse::AboutGraph(input.exec(self, task).await?))
+            }
         }
     }
 }
@@ -101,5 +106,6 @@ unigraph_rpc::define_rpc_for_exec! {
         SelectFrames(SelectFramesInput) -> SelectFramesOutput,
         ExploreGraph(ExploreGraphInput) -> ExploreGraphOutput,
         SearchNodes(SearchNodesInput) -> SearchNodesOutput,
+        AboutGraph(AboutGraphInput) -> AboutGraphOutput,
     }
 }

@@ -3,7 +3,7 @@
 use crate::ArrayGraph;
 use crate::types::array_graph::offset_graph::NonDirectedEdgeMetadata;
 
-#[derive(serde::Serialize, typegen::TypeGen)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, typegen::TypeGen)]
 pub struct ArrayGraphStats {
     pub num_all_nodes: usize,
     pub num_all_edges: usize,

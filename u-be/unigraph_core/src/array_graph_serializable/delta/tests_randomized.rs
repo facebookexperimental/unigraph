@@ -244,6 +244,11 @@ mod tests {
 
     fn random_graph_settings(rng: &mut XorShift64) -> GraphSettings {
         GraphSettings {
+            description: if rng.next_bool(30) {
+                Some(format!("graph-desc-{}", rng.next() % 1000))
+            } else {
+                None
+            },
             ui_settings: if rng.next_bool(70) {
                 Some(ArrayGraphUISettings {
                     selected_sidebar_panel: if rng.next_bool(50) {
@@ -575,13 +580,13 @@ mod tests {
         k9::snapshot!(
             hashes.join("\n"),
             "
-pair_00: b8f1692353b3b45f
+pair_00: 4ae858de85e38a28
 pair_01: a02df8dfe55f8271
 pair_02: c25b51c3f5f82221
-pair_03: 850f5ca4d12a621c
-pair_04: cff5a907da06f6ca
+pair_03: 8e44da27146fbd55
+pair_04: 88fe244ea2efed50
 pair_05: fc87c61336805b32
-pair_06: 8458bb4dbe5ef5cc
+pair_06: f135a477dcbcf458
 pair_07: 42b11e07603a1879
 pair_08: fc514a83ea82b9ad
 pair_09: e43733f9c1b5c7a6

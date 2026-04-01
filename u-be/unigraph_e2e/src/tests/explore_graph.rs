@@ -2,6 +2,7 @@
 
 use anyhow::Result;
 use k9::snapshot;
+use unigraph_app::AboutGraphInput;
 use unigraph_app::ExploreGraphInput;
 use unigraph_app::ExploreGraphTarget;
 use unigraph_app::NodeMetric;
@@ -522,6 +523,75 @@ button_ios     |               1 |                1 |    80 |   30 |            
 
 "
     );
+
+    Ok(())
+}
+
+// ── AboutGraph Tests ─────────────────────────────────────────
+
+#[tokio::test]
+async fn about_graph_by_timeline() -> Result<()> {
+    let t = init_app();
+    let handle = ingest_explore_graph(&t).await?;
+
+    let out = call_rpc!(
+        t,
+        AboutGraph(AboutGraphInput {
+            handle: handle.clone(),
+        })
+    );
+
+    assert_eq!(out.stats.num_all_nodes, 12);
+    assert!(out.stats.num_all_edges > 0);
+    assert_eq!(out.metrics.len(), 2);
+    assert!(out.description.is_none());
+
+    snapshot!(
+        out.text,
+        "
+# Graph: explore_test
+
+## Stats
+
+- **Nodes**: 12
+- **Edges**: 17 (13 directed, 2 tagged, 2 dynamic)
+
+## Metrics
+
+- `lines`
+- `size`
+
+## Tiers
+
+- eager
+- lazy
+
+"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn about_graph_by_gqc_key() -> Result<()> {
+    let t = init_app();
+    let handle = ingest_explore_graph(&t).await?;
+    let gqc_key = store_gqc(&t, &handle).await?;
+
+    let out = call_rpc!(
+        t,
+        AboutGraph(AboutGraphInput {
+            handle: gqc_key.to_string(),
+        })
+    );
+
+    assert_eq!(out.stats.num_all_nodes, 12);
+    assert_eq!(out.metrics.len(), 2);
+
+    // The GQC-resolved graph has the same stats, but the handle in the text
+    // is the gqc_key string. We just verify the structured fields above
+    // and check that the text starts with the right heading.
+    assert!(out.text.starts_with("# Graph: gqc-"));
 
     Ok(())
 }
