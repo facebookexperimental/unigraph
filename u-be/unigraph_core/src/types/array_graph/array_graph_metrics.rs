@@ -347,9 +347,16 @@ pub fn get_combined_metrics_for_entry_points(
 
     let mut metrics_result_vec = vec![0.0; metric_names.len()];
 
-    if let Some(TieredTraversalConfig::AscendingTiers(ascending_tiers)) = tier_config {
-        let entry_points = ag.determine_entrypoints();
+    let ascending_tiers = match tier_config {
+        Some(TieredTraversalConfig::AscendingTiers(at)) => Some(at),
+        _ => None,
+    };
 
+    let entry_points = ag.determine_entrypoints();
+
+    // Single traversal loop — tiered DFS when tiers are configured,
+    // plain DFS otherwise. Both produce (node_idx, Option<tier_idx>).
+    if let Some(ascending_tiers) = ascending_tiers {
         for next in ag
             .edges_forward
             .dfs_tiered_configured(&ascending_tiers.tiers, &entry_points)?
@@ -357,33 +364,40 @@ pub fn get_combined_metrics_for_entry_points(
             let (node_idx, tier_idx) = next?;
             node_count += 1;
 
-            //
-            for (metric_idx, _metric_name) in metric_names.iter().enumerate() {
-                let metric_value = metric_values[metric_idx][node_idx];
-
-                metrics_result_vec[metric_idx] += metric_value;
-
-                // make it cumulative. If the node appears on one tier, it's also
-                // included in all tiers above it.
+            for (metric_idx, _) in metric_names.iter().enumerate() {
+                let v = metric_values[metric_idx][node_idx];
+                metrics_result_vec[metric_idx] += v;
                 for item in &mut tiered_result_vec[metric_idx][tier_idx..] {
-                    *item += metric_value;
+                    *item += v;
                 }
             }
         }
+    } else {
+        for node_idx in ag.edges_forward.dfs_configured(&entry_points) {
+            node_count += 1;
 
+            for (metric_idx, _) in metric_names.iter().enumerate() {
+                metrics_result_vec[metric_idx] += metric_values[metric_idx][node_idx];
+            }
+        }
+    }
+
+    // Build flat metrics result (always)
+    for (metric_idx, metric_name) in metric_names.iter().enumerate() {
+        metric_result.insert(metric_name.clone(), metrics_result_vec[metric_idx]);
+    }
+
+    // Build tiered metrics result (only when tiers are configured)
+    if let Some(ascending_tiers) = ascending_tiers {
         for (metric_idx, tiered_metrics) in tiered_result_vec.iter().enumerate() {
             let metric_name = &metric_names[metric_idx];
-
-            metric_result.insert(metric_name.clone(), metrics_result_vec[metric_idx]);
-
             let mut tiered_map = BTreeMap::new();
 
             for (tier_idx, value) in tiered_metrics.iter().enumerate() {
                 if *value > 0.0
                     && let Some(tier) = ascending_tiers.tiers.get(tier_idx)
                 {
-                    let tier_name = tier.name.to_string();
-                    tiered_map.insert(tier_name, *value);
+                    tiered_map.insert(tier.name.to_string(), *value);
                 }
             }
 

@@ -4,7 +4,7 @@ mod array_graph_arrows;
 pub mod array_graph_debug_utils;
 pub mod array_graph_derived_state;
 mod array_graph_determine_entrypoints;
-pub(crate) mod array_graph_metrics;
+pub mod array_graph_metrics;
 mod array_graph_name_search;
 pub(crate) mod array_graph_nodes;
 pub mod array_graph_state;
@@ -38,6 +38,8 @@ use super::PropertyValue;
 use super::Tag;
 use crate::ArrayGraphDebugUtils;
 use crate::ArrayGraphSerializable;
+use crate::ArrayGraphSerializableEdges;
+use crate::ArrayGraphSerializableNodeMetadata;
 use crate::GraphBuilder;
 use crate::MapGraph;
 use crate::TraversalType;
@@ -171,6 +173,41 @@ impl ArrayGraph {
 
     pub fn into_serializable(self) -> ArrayGraphSerializable {
         self.into()
+    }
+
+    /// Creates a serializable snapshot by cloning fields.
+    /// `Arc<ArrayGraphNodes>` is cheap (refcount bump); the rest is value data.
+    pub fn to_serializable(&self) -> ArrayGraphSerializable {
+        let mut directed_edges = vec![];
+        let mut directed_edge_offsets = vec![0];
+
+        for node_idx in self.edges_forward.node_idx_iter() {
+            for edge in self.edges_forward.edges(node_idx) {
+                if !edge.is_tagged_or_dynamic() {
+                    directed_edges.push(edge.points_to);
+                }
+            }
+            directed_edge_offsets.push(directed_edges.len());
+        }
+
+        ArrayGraphSerializable {
+            node_names_ordered: self.nodes.node_names.clone(),
+            edges: ArrayGraphSerializableEdges {
+                directed: directed_edges,
+                directed_offsets: directed_edge_offsets,
+                tagged: self.edges_tagged.clone(),
+                dynamic: self.edges_dynamic.clone(),
+            },
+            node_metadata: ArrayGraphSerializableNodeMetadata {
+                metrics: self.metrics.clone(),
+                labels: self.labels.clone(),
+                properties: self.properties.clone(),
+            },
+            graph_settings: self.graph_settings.clone(),
+            traversal_config: self.state.traversal_config.clone(),
+            budget_configs: self.budget_configs.clone(),
+            entry_points: self.entry_points.clone(),
+        }
     }
 
     pub fn append_super_root(self, force: bool) -> Result<ArrayGraph> {

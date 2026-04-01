@@ -66,6 +66,7 @@ pub use crate::types::array_graph::ArrayGraphDynamicEdge;
 pub use crate::types::array_graph::Arrow;
 pub use crate::types::array_graph::DynamicEdgeInfo;
 pub use crate::types::array_graph::array_graph_debug_utils::ArrayGraphDebugUtils;
+pub use crate::types::array_graph::array_graph_metrics::CombinedMetricsForNodes;
 pub use crate::types::array_graph::array_graph_nodes::ArrayGraphNodes;
 pub use crate::types::array_graph::array_graph_nodes::GraphSide;
 pub use crate::types::array_graph::array_graph_stats::ArrayGraphStats;

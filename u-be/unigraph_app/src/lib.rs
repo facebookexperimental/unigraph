@@ -11,6 +11,7 @@ use unigraph_rpc::RpcExec;
 
 mod graph_cache;
 mod graph_handle;
+pub mod impact_analysis;
 mod rpc_req;
 mod rpc_types;
 

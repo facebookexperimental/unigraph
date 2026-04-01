@@ -68,7 +68,7 @@ use crate::types::array_graph::offset_graph::OffsetGraph;
 ///   - `remap_with_nodes()` (twin_graph/merge.rs)
 ///   - `MapGraph::to_array_graph_serializable()` (map_graph.rs)
 ///   - `super_root::append_super_root()` destructure + reconstruction
-#[derive(serde::Serialize, serde::Deserialize, typegen::TypeGen)]
+#[derive(serde::Serialize, serde::Deserialize, typegen::TypeGen, Clone)]
 pub struct ArrayGraphSerializable {
     pub node_names_ordered: Arc<ArrayGraphNodes>,
     pub edges: ArrayGraphSerializableEdges,
@@ -98,7 +98,7 @@ pub struct ArrayGraphSerializable {
 /// arrays — tagged and dynamic edges are excluded to avoid duplication, since
 /// they are stored separately. On deserialization the full offset graph is
 /// reconstructed by merging all three edge types back together.
-#[derive(serde::Serialize, serde::Deserialize, typegen::TypeGen)]
+#[derive(serde::Serialize, serde::Deserialize, typegen::TypeGen, Clone)]
 pub struct ArrayGraphSerializableEdges {
     /// Flat list of directed-edge target node indices.
     pub directed: Vec<NodeIDX>,
@@ -122,7 +122,7 @@ impl ArrayGraphSerializableEdges {
 }
 
 /// Serializable per-node metadata: numeric metrics, categorical labels, and string properties.
-#[derive(serde::Serialize, serde::Deserialize, typegen::TypeGen)]
+#[derive(serde::Serialize, serde::Deserialize, typegen::TypeGen, Clone)]
 pub struct ArrayGraphSerializableNodeMetadata {
     /// Named metrics — each entry maps a metric name to a `Vec<f32>` with one
     /// value per node (indexed by [`NodeIDX`]).
