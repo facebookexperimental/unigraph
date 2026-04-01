@@ -103,43 +103,8 @@ pub struct FrameInfo {
 
 // ── ExploreGraph ──────────────────────────────────────────────
 
-/// Specifies which metric to compute for each arrow.
-/// Each variant maps to a key in the flat `metrics` map on `ExploreGraphArrow`.
-#[derive(Debug, Clone, Serialize, Deserialize, TypeGen)]
-pub enum NodeMetric {
-    /// Self metric value. Key: `"{name}"`.
-    Metric { name: String },
-    /// Transitive metric sum (DFS over forward edges). Key: `"{name}_transitive"`.
-    MetricTransitive { name: String },
-    /// Dominated metric sum (DFS over dominator tree). Key: `"{name}_dominated"`.
-    MetricDominated { name: String },
-    /// Tiered transitive metric (cumulative at tier). Key: `"{name}_{tier}"`.
-    MetricTiered { name: String, tier: String },
-    /// Number of configured parents. Key: `"parents_count"`.
-    ParentsCount {},
-    /// Number of children in current graph structure. Key: `"children_count"`.
-    ChildrenCount {},
-    /// Transitive dependency count (forward DFS). Key: `"count_transitive"`.
-    CountTransitive {},
-    /// Dominated dependency count (dominator tree DFS). Key: `"count_dominated"`.
-    CountDominated {},
-}
-
-impl NodeMetric {
-    /// Returns the flat map key for this metric variant.
-    pub fn key(&self) -> String {
-        match self {
-            NodeMetric::Metric { name } => name.clone(),
-            NodeMetric::MetricTransitive { name } => format!("{name}_transitive"),
-            NodeMetric::MetricDominated { name } => format!("{name}_dominated"),
-            NodeMetric::MetricTiered { name, tier } => format!("{name}_{tier}"),
-            NodeMetric::ParentsCount {} => "parents_count".to_string(),
-            NodeMetric::ChildrenCount {} => "children_count".to_string(),
-            NodeMetric::CountTransitive {} => "count_transitive".to_string(),
-            NodeMetric::CountDominated {} => "count_dominated".to_string(),
-        }
-    }
-}
+/// Re-export MetricView for use in ExploreGraphInput.
+pub use unigraph_core::MetricView;
 
 /// What to explore.
 #[derive(Debug, Clone, Serialize, Deserialize, TypeGen)]
@@ -177,11 +142,11 @@ pub struct ExploreGraphInput {
 
     /// Which metrics to compute for each arrow.
     #[serde(default)]
-    pub metrics: Vec<NodeMetric>,
+    pub metrics: Vec<MetricView>,
 
     /// Metric to sort arrows by. Computed for all children (even beyond limit).
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub sort_by: Option<NodeMetric>,
+    pub sort_by: Option<MetricView>,
 
     /// Sort order. Defaults to Desc.
     #[serde(default, skip_serializing_if = "Option::is_none")]

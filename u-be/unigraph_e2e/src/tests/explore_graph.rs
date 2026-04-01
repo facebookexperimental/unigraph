@@ -5,7 +5,7 @@ use k9::snapshot;
 use unigraph_app::AboutGraphInput;
 use unigraph_app::ExploreGraphInput;
 use unigraph_app::ExploreGraphTarget;
-use unigraph_app::NodeMetric;
+use unigraph_app::MetricView;
 use unigraph_app::PutConfigsInput;
 use unigraph_app::call_rpc;
 use unigraph_core::config_key::GraphQueryConfigKey;
@@ -48,29 +48,28 @@ async fn all_nodes() -> Result<()> {
     let gqc_key = store_gqc(&t, &handle).await?;
 
     let metrics = [
-        NodeMetric::Metric {
+        MetricView::Metric {
             name: "size".into(),
         },
-        NodeMetric::Metric {
+        MetricView::Metric {
             name: "lines".into(),
         },
-        NodeMetric::MetricTransitive {
+        MetricView::Transitive {
             name: "size".into(),
         },
-        NodeMetric::MetricDominated {
+        MetricView::Dominated {
             name: "size".into(),
         },
-        NodeMetric::MetricTiered {
+        MetricView::Tiered {
             name: "size".into(),
-            tier: "eager".into(),
+            tier_name: "eager".into(),
         },
-        NodeMetric::MetricTiered {
+        MetricView::Tiered {
             name: "size".into(),
-            tier: "lazy".into(),
+            tier_name: "lazy".into(),
         },
-        NodeMetric::ChildrenCount {},
-        NodeMetric::CountDominated {},
-        NodeMetric::CountTransitive {},
+        MetricView::CountDominated {},
+        MetricView::CountTransitive {},
     ];
     let out = call_rpc!(
         t,
@@ -78,7 +77,7 @@ async fn all_nodes() -> Result<()> {
             Explore::new(gqc_key)
                 .all_nodes()
                 .metrics(&metrics)
-                .sort_by(NodeMetric::MetricTransitive {
+                .sort_by(MetricView::Transitive {
                     name: "size".into(),
                 })
                 .build()
@@ -93,20 +92,20 @@ async fn all_nodes() -> Result<()> {
         "
 All reachable nodes
 
-node_name      | children_count | count_dominated | count_transitive | lines | size | size_dominated | size_eager | size_lazy | size_transitive ▼
-===============+================+=================+==================+=======+======+================+============+===========+==================
-app            |              3 |              12 |               12 |  1200 |  500 |           1985 |       1775 |      1985 |              1985
-core           |              3 |               4 |                5 |   600 |  300 |            820 |        780 |       870 |               870
-ui             |              3 |               6 |                7 |   800 |  200 |            615 |        545 |       665 |               665
-auth           |              2 |               1 |                3 |   420 |  180 |            180 |        480 |       480 |               480
-dialogs        |              1 |               1 |                5 |   350 |  120 |            120 |        265 |       385 |               385
-db             |              1 |               1 |                2 |   500 |  250 |            250 |        300 |       300 |               300
-components     |              3 |               3 |                4 |   400 |  150 |            215 |        265 |       265 |               265
-analytics      |              1 |               1 |                2 |   250 |   90 |             90 |         50 |       140 |               140
-styles         |              0 |               1 |                1 |   200 |   80 |             80 |         80 |        80 |                80
-utils          |              0 |               1 |                1 |   100 |   50 |             50 |         50 |        50 |                50
-button_android |              0 |               1 |                1 |    90 |   35 |             35 |         35 |        35 |                35
-button_ios     |              0 |               1 |                1 |    80 |   30 |             30 |         30 |        30 |                30
+node_name      | lines | node-count~dominated | node-count~transitive | size | size~dominated | size~eager | size~lazy | size~transitive ▼
+===============+=======+======================+=======================+======+================+============+===========+==================
+app            |  1200 |                   12 |                    12 |  500 |           1985 |       1775 |      1985 |              1985
+core           |   600 |                    4 |                     5 |  300 |            820 |        780 |       870 |               870
+ui             |   800 |                    6 |                     7 |  200 |            615 |        545 |       665 |               665
+auth           |   420 |                    1 |                     3 |  180 |            180 |        480 |       480 |               480
+dialogs        |   350 |                    1 |                     5 |  120 |            120 |        265 |       385 |               385
+db             |   500 |                    1 |                     2 |  250 |            250 |        300 |       300 |               300
+components     |   400 |                    3 |                     4 |  150 |            215 |        265 |       265 |               265
+analytics      |   250 |                    1 |                     2 |   90 |             90 |         50 |       140 |               140
+styles         |   200 |                    1 |                     1 |   80 |             80 |         80 |        80 |                80
+utils          |   100 |                    1 |                     1 |   50 |             50 |         50 |        50 |                50
+button_android |    90 |                    1 |                     1 |   35 |             35 |         35 |        35 |                35
+button_ios     |    80 |                    1 |                     1 |   30 |             30 |         30 |        30 |                30
 
 "
     );
@@ -121,13 +120,12 @@ async fn drill_into_app() -> Result<()> {
     let gqc_key = store_gqc(&t, &handle).await?;
 
     let metrics = [
-        NodeMetric::Metric {
+        MetricView::Metric {
             name: "size".into(),
         },
-        NodeMetric::MetricTransitive {
+        MetricView::Transitive {
             name: "size".into(),
         },
-        NodeMetric::ChildrenCount {},
     ];
     let out = call_rpc!(
         t,
@@ -135,7 +133,7 @@ async fn drill_into_app() -> Result<()> {
             Explore::new(gqc_key)
                 .node("app")
                 .metrics(&metrics)
-                .sort_by(NodeMetric::MetricTransitive {
+                .sort_by(MetricView::Transitive {
                     name: "size".into(),
                 })
                 .build()
@@ -147,11 +145,11 @@ async fn drill_into_app() -> Result<()> {
 Edges: forward
 Edges of: app
 
-node_name | children_count | size | size_transitive ▼
-==========+================+======+==================
-core      |              3 |  300 |               870
-ui        |              3 |  200 |               665
-utils     |              0 |   50 |                50
+node_name | size | size~transitive ▼
+==========+======+==================
+core      |  300 |               870
+ui        |  200 |               665
+utils     |   50 |                50
 
 "
     );
@@ -165,12 +163,9 @@ async fn drill_into_ui_with_tags() -> Result<()> {
     let handle = ingest_explore_graph(&t).await?;
     let gqc_key = store_gqc(&t, &handle).await?;
 
-    let metrics = [
-        NodeMetric::Metric {
-            name: "size".into(),
-        },
-        NodeMetric::ChildrenCount {},
-    ];
+    let metrics = [MetricView::Metric {
+        name: "size".into(),
+    }];
     let out = call_rpc!(
         t,
         ExploreGraph(Explore::new(gqc_key).node("ui").metrics(&metrics).build())
@@ -181,11 +176,11 @@ async fn drill_into_ui_with_tags() -> Result<()> {
 Edges: forward
 Edges of: ui
 
-node_name  | children_count | size | tag
-===========+================+======+=====
-components |              3 |  150 |
-styles     |              0 |   80 |
-dialogs    |              1 |  120 | lazy
+node_name  | size | tag
+===========+======+=====
+components |  150 |
+styles     |   80 |
+dialogs    |  120 | lazy
 
 "
     );
@@ -199,7 +194,7 @@ async fn drill_into_components_with_dynamic() -> Result<()> {
     let handle = ingest_explore_graph(&t).await?;
     let gqc_key = store_gqc(&t, &handle).await?;
 
-    let metrics = [NodeMetric::Metric {
+    let metrics = [MetricView::Metric {
         name: "size".into(),
     }];
     let out = call_rpc!(
@@ -235,7 +230,7 @@ async fn reverse_edges() -> Result<()> {
     let handle = ingest_explore_graph(&t).await?;
     let gqc_key = store_gqc(&t, &handle).await?;
 
-    let metrics = [NodeMetric::Metric {
+    let metrics = [MetricView::Metric {
         name: "size".into(),
     }];
     let out = call_rpc!(
@@ -275,13 +270,13 @@ async fn dominator_tree() -> Result<()> {
     let gqc_key = store_gqc(&t, &handle).await?;
 
     let metrics = [
-        NodeMetric::Metric {
+        MetricView::Metric {
             name: "size".into(),
         },
-        NodeMetric::MetricDominated {
+        MetricView::Dominated {
             name: "size".into(),
         },
-        NodeMetric::CountDominated {},
+        MetricView::CountDominated {},
     ];
     let out = call_rpc!(
         t,
@@ -289,7 +284,7 @@ async fn dominator_tree() -> Result<()> {
             Explore::new(gqc_key)
                 .node("app")
                 .metrics(&metrics)
-                .sort_by(NodeMetric::MetricDominated {
+                .sort_by(MetricView::Dominated {
                     name: "size".into(),
                 })
                 .structure(GraphStructure::Dominator)
@@ -302,11 +297,11 @@ async fn dominator_tree() -> Result<()> {
 Edges: dominator
 Edges of: app
 
-node_name | count_dominated | size | size_dominated ▼
-==========+=================+======+=================
-core      |               4 |  300 |              820
-ui        |               6 |  200 |              615
-utils     |               1 |   50 |               50
+node_name | node-count~dominated | size | size~dominated ▼
+==========+======================+======+=================
+core      |                    4 |  300 |              820
+ui        |                    6 |  200 |              615
+utils     |                    1 |   50 |               50
 
 "
     );
@@ -320,7 +315,7 @@ async fn sort_ascending() -> Result<()> {
     let handle = ingest_explore_graph(&t).await?;
     let gqc_key = store_gqc(&t, &handle).await?;
 
-    let metrics = [NodeMetric::Metric {
+    let metrics = [MetricView::Metric {
         name: "size".into(),
     }];
     let out = call_rpc!(
@@ -329,7 +324,7 @@ async fn sort_ascending() -> Result<()> {
             Explore::new(gqc_key)
                 .node("app")
                 .metrics(&metrics)
-                .sort_by(NodeMetric::Metric {
+                .sort_by(MetricView::Metric {
                     name: "size".into(),
                 })
                 .sort_order(SortOrder::Asc)
@@ -360,10 +355,10 @@ async fn offset_and_limit() -> Result<()> {
     let handle = ingest_explore_graph(&t).await?;
     let gqc_key = store_gqc(&t, &handle).await?;
 
-    let metrics = [NodeMetric::Metric {
+    let metrics = [MetricView::Metric {
         name: "size".into(),
     }];
-    let sort_by = NodeMetric::Metric {
+    let sort_by = MetricView::Metric {
         name: "size".into(),
     };
 
@@ -431,16 +426,16 @@ async fn tiered_metrics() -> Result<()> {
     let gqc_key = store_gqc(&t, &handle).await?;
 
     let metrics = [
-        NodeMetric::Metric {
+        MetricView::Metric {
             name: "size".into(),
         },
-        NodeMetric::MetricTiered {
+        MetricView::Tiered {
             name: "size".into(),
-            tier: "eager".into(),
+            tier_name: "eager".into(),
         },
-        NodeMetric::MetricTiered {
+        MetricView::Tiered {
             name: "size".into(),
-            tier: "lazy".into(),
+            tier_name: "lazy".into(),
         },
     ];
     let out = call_rpc!(
@@ -453,7 +448,7 @@ async fn tiered_metrics() -> Result<()> {
 Edges: forward
 Edges of: ui
 
-node_name  | size | size_eager | size_lazy | tag
+node_name  | size | size~eager | size~lazy | tag
 ===========+======+============+===========+=====
 components |  150 |        265 |       265 |
 styles     |   80 |         80 |        80 |
@@ -473,29 +468,28 @@ async fn exhaustive_columns() -> Result<()> {
 
     // All metric types on a node with dynamic edges
     let metrics = [
-        NodeMetric::Metric {
+        MetricView::Metric {
             name: "size".into(),
         },
-        NodeMetric::Metric {
+        MetricView::Metric {
             name: "lines".into(),
         },
-        NodeMetric::MetricTransitive {
+        MetricView::Transitive {
             name: "size".into(),
         },
-        NodeMetric::MetricDominated {
+        MetricView::Dominated {
             name: "size".into(),
         },
-        NodeMetric::MetricTiered {
+        MetricView::Tiered {
             name: "size".into(),
-            tier: "eager".into(),
+            tier_name: "eager".into(),
         },
-        NodeMetric::MetricTiered {
+        MetricView::Tiered {
             name: "size".into(),
-            tier: "lazy".into(),
+            tier_name: "lazy".into(),
         },
-        NodeMetric::ChildrenCount {},
-        NodeMetric::CountDominated {},
-        NodeMetric::CountTransitive {},
+        MetricView::CountDominated {},
+        MetricView::CountTransitive {},
     ];
     let out = call_rpc!(
         t,
@@ -503,7 +497,7 @@ async fn exhaustive_columns() -> Result<()> {
             Explore::new(gqc_key)
                 .node("components")
                 .metrics(&metrics)
-                .sort_by(NodeMetric::MetricTransitive {
+                .sort_by(MetricView::Transitive {
                     name: "size".into(),
                 })
                 .build()
@@ -515,11 +509,11 @@ async fn exhaustive_columns() -> Result<()> {
 Edges: forward
 Edges of: components
 
-node_name      | count_dominated | count_transitive | lines | size | size_dominated | size_eager | size_lazy | size_transitive ▼ | dynamic
-===============+=================+==================+=======+======+================+============+===========+===================+========================
-utils          |               1 |                1 |   100 |   50 |             50 |         50 |        50 |                50 |
-button_android |               1 |                1 |    90 |   35 |             35 |         35 |        35 |                35 | platform:button/android
-button_ios     |               1 |                1 |    80 |   30 |             30 |         30 |        30 |                30 | platform:button/ios
+node_name      | lines | node-count~dominated | node-count~transitive | size | size~dominated | size~eager | size~lazy | size~transitive ▼ | dynamic
+===============+=======+======================+=======================+======+================+============+===========+===================+========================
+utils          |   100 |                    1 |                     1 |   50 |             50 |         50 |        50 |                50 |
+button_android |    90 |                    1 |                     1 |   35 |             35 |         35 |        35 |                35 | platform:button/android
+button_ios     |    80 |                    1 |                     1 |   30 |             30 |         30 |        30 |                30 | platform:button/ios
 
 "
     );
@@ -619,8 +613,8 @@ async fn store_gqc(t: &TestApp, handle: &str) -> Result<GraphQueryConfigKey> {
 struct Explore<'a> {
     gqc_key: GraphQueryConfigKey,
     target: ExploreGraphTarget,
-    metrics: &'a [NodeMetric],
-    sort_by: Option<NodeMetric>,
+    metrics: &'a [MetricView],
+    sort_by: Option<MetricView>,
     sort_order: Option<SortOrder>,
     graph_structure: GraphStructure,
     offset: Option<usize>,
@@ -653,12 +647,12 @@ impl<'a> Explore<'a> {
         self
     }
 
-    fn metrics(mut self, metrics: &'a [NodeMetric]) -> Self {
+    fn metrics(mut self, metrics: &'a [MetricView]) -> Self {
         self.metrics = metrics;
         self
     }
 
-    fn sort_by(mut self, sort_by: NodeMetric) -> Self {
+    fn sort_by(mut self, sort_by: MetricView) -> Self {
         self.sort_by = Some(sort_by);
         self
     }

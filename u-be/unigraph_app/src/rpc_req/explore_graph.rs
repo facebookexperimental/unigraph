@@ -20,7 +20,7 @@ use crate::ExploreGraphArrow;
 use crate::ExploreGraphInput;
 use crate::ExploreGraphOutput;
 use crate::ExploreGraphTarget;
-use crate::NodeMetric;
+use crate::MetricView;
 use crate::Unigraph;
 
 impl RpcExec<Unigraph> for ExploreGraphInput {
@@ -76,7 +76,7 @@ fn explore_node(ag: Arc<ArrayGraph>, input: &ExploreGraphInput) -> Result<Explor
         .transpose()?;
 
     let include_ascii = input.include_ascii.unwrap_or(false);
-    let sort_by_key = input.sort_by.as_ref().map(|m| m.key());
+    let sort_by_key = input.sort_by.as_ref().map(|m| m.to_string());
     let ascii = if include_ascii {
         Some(render_ascii(
             &input.target,
@@ -183,7 +183,7 @@ fn resolve_arrows(
 fn sort_arrows(
     ag: &ArrayGraph,
     mut arrows: Vec<ArrowData>,
-    sort_by: Option<&NodeMetric>,
+    sort_by: Option<&MetricView>,
     sort_order: SortOrder,
     graph_structure: GraphStructure,
 ) -> Result<Vec<ArrowData>> {
@@ -240,34 +240,26 @@ fn paginate(arrows: &[ArrowData], offset: usize, limit: usize) -> &[ArrowData] {
 fn compute_metric(
     ag: &ArrayGraph,
     node_idx: NodeIDX,
-    metric: &NodeMetric,
-    graph_structure: GraphStructure,
+    metric: &MetricView,
+    _graph_structure: GraphStructure,
 ) -> Result<f32> {
     match metric {
-        NodeMetric::Metric { name } => {
+        MetricView::Metric { name } => {
             Ok(ag.metrics.get(name.as_str()).map_or(0.0, |v| v[node_idx]))
         }
-        NodeMetric::MetricTransitive { name } => {
-            ag.get_transitive_metric_value(node_idx, name, false)
-        }
-        NodeMetric::MetricDominated { name } => {
-            ag.get_transitive_metric_value(node_idx, name, true)
-        }
-        NodeMetric::MetricTiered { name, tier } => {
+        MetricView::Transitive { name } => ag.get_transitive_metric_value(node_idx, name, false),
+        MetricView::Dominated { name } => ag.get_transitive_metric_value(node_idx, name, true),
+        MetricView::Tiered { name, tier_name } => {
             let tiered = ag.get_transitive_tiered_metric_values(node_idx, name, false)?;
-            Ok(*tiered.get(tier.as_str()).unwrap_or(&0.0))
+            Ok(*tiered.get(tier_name.as_str()).unwrap_or(&0.0))
         }
-        NodeMetric::ParentsCount {} => Ok(ag.parents_len_configured(node_idx) as f32),
-        NodeMetric::ChildrenCount {} => {
-            let offset_graph = match graph_structure {
-                GraphStructure::Forward => &ag.edges_forward,
-                GraphStructure::Reverse => &ag.derived_state.edges_reverse,
-                GraphStructure::Dominator => ag.edges_dom(),
-            };
-            Ok(offset_graph.edges_configured(node_idx).count() as f32)
+        MetricView::TieredDominated { name, tier_name } => {
+            let tiered = ag.get_transitive_tiered_metric_values(node_idx, name, true)?;
+            Ok(*tiered.get(tier_name.as_str()).unwrap_or(&0.0))
         }
-        NodeMetric::CountTransitive {} => Ok(ag.transitive_count_configured(node_idx) as f32),
-        NodeMetric::CountDominated {} => {
+        MetricView::ParentsCount {} => Ok(ag.parents_len_configured(node_idx) as f32),
+        MetricView::CountTransitive {} => Ok(ag.transitive_count_configured(node_idx) as f32),
+        MetricView::CountDominated {} => {
             Ok(ag.transitive_count_configured_dominated(node_idx) as f32)
         }
     }
@@ -277,14 +269,14 @@ fn compute_metric(
 fn build_metrics_map(
     ag: &ArrayGraph,
     node_idx: NodeIDX,
-    metrics: &[NodeMetric],
+    metrics: &[MetricView],
     graph_structure: GraphStructure,
 ) -> Result<BTreeMap<String, f32>> {
     let mut map = BTreeMap::new();
     for metric in metrics {
         let value = compute_metric(ag, node_idx, metric, graph_structure)?;
         if value != 0.0 {
-            map.insert(metric.key(), value);
+            map.insert(metric.to_string(), value);
         }
     }
     Ok(map)
@@ -295,7 +287,7 @@ fn build_metrics_map(
 fn build_explore_arrows(
     ag: &ArrayGraph,
     arrow_data: &[ArrowData],
-    metrics: &[NodeMetric],
+    metrics: &[MetricView],
     graph_structure: GraphStructure,
 ) -> Result<Vec<ExploreGraphArrow>> {
     arrow_data
@@ -315,7 +307,7 @@ fn build_explore_arrows(
 fn build_explore_arrow_for_node(
     ag: &ArrayGraph,
     node_idx: NodeIDX,
-    metrics: &[NodeMetric],
+    metrics: &[MetricView],
     graph_structure: GraphStructure,
 ) -> Result<ExploreGraphArrow> {
     let metrics = build_metrics_map(ag, node_idx, metrics, graph_structure)?;

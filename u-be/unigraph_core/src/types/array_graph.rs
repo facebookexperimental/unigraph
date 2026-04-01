@@ -42,6 +42,7 @@ use crate::ArrayGraphSerializableEdges;
 use crate::ArrayGraphSerializableNodeMetadata;
 use crate::GraphBuilder;
 use crate::MapGraph;
+use crate::MetricView;
 use crate::TraversalType;
 use crate::graph_settings::GraphSettings;
 use crate::graph_settings::GraphStructure;
@@ -416,6 +417,50 @@ impl ArrayGraph {
 
     pub fn get_arrows_reverse(&self, node_idx: NodeIDX) -> Result<Vec<Arrow>> {
         get_arrows(self, node_idx, GraphStructure::Reverse)
+    }
+
+    /// Returns all metric views available on this graph.
+    ///
+    /// Enumerates every combination of metric name × view type
+    /// (plain, transitive, dominated, tiered per tier) plus the
+    /// structural counts (parents, transitive count, dominated count).
+    pub fn available_metric_views(&self) -> Vec<MetricView> {
+        let tier_names: Vec<&str> = self
+            .state
+            .tiers
+            .iter()
+            .map(|(name, _)| name.as_str())
+            .collect();
+
+        let mut views = Vec::new();
+
+        for metric_name in self.metrics.keys() {
+            views.push(MetricView::Metric {
+                name: metric_name.clone(),
+            });
+            views.push(MetricView::Transitive {
+                name: metric_name.clone(),
+            });
+            views.push(MetricView::Dominated {
+                name: metric_name.clone(),
+            });
+            for &tier_name in &tier_names {
+                views.push(MetricView::Tiered {
+                    name: metric_name.clone(),
+                    tier_name: tier_name.to_string(),
+                });
+                views.push(MetricView::TieredDominated {
+                    name: metric_name.clone(),
+                    tier_name: tier_name.to_string(),
+                });
+            }
+        }
+
+        views.push(MetricView::ParentsCount {});
+        views.push(MetricView::CountTransitive {});
+        views.push(MetricView::CountDominated {});
+
+        views
     }
 
     pub fn search_name_fuzzy<'a>(
