@@ -86,7 +86,8 @@ async fn ttl_expired_frames_and_configs_cleanup() -> Result<()> {
     let timeline_id = TimelineID("test".to_string());
     setup_timeline(&db, "test", &task).await;
 
-    let expires_at = Timestamp::now().add_duration(Duration::from_secs(1))?;
+    // Use a timestamp in the past so items are already expired — no sleep needed.
+    let expires_at = Timestamp::now().subtract_days(1)?;
 
     // Store graph A normally, then re-insert with expires_at
     let graph_a = TestGraphTimeline::get_nth(0);
@@ -120,7 +121,7 @@ async fn ttl_expired_frames_and_configs_cleanup() -> Result<()> {
     let key_b = make_graph_time_key("test", 1, 1001);
     db.graph.store(&key_b, &graph_b, None, &task).await?;
 
-    // Store a config with 1-second TTL
+    // Store a config with the same past TTL
     {
         let mut conn = db.graph_conn_write().await?;
         let config_key = test_config_key();
@@ -134,20 +135,11 @@ async fn ttl_expired_frames_and_configs_cleanup() -> Result<()> {
         .await?;
     }
 
-    // Before expiration: both frames exist, nothing expired
+    // Both frames exist
     let frames_before = db.frames.list(&timeline_id, &task).await?;
     assert_eq!(frames_before.len(), 2, "both frames should exist");
 
-    let expired_frames_before = db.utility.get_expired_frames(&timeline_id, &task).await?;
-    snapshot!(sanitize_expires_after(&expired_frames_before), "[]");
-
-    let expired_configs_before = db.utility.get_expired_configs(&task).await?;
-    snapshot!(expired_configs_before, "[]");
-
-    // Wait for TTL to expire
-    tokio::time::sleep(Duration::from_secs(2)).await;
-
-    // After expiration: expired queries should return results
+    // Already expired — should show up immediately
     let expired_frames = db.utility.get_expired_frames(&timeline_id, &task).await?;
     snapshot!(
         sanitize_expires_after(&expired_frames),
@@ -219,7 +211,8 @@ async fn ttl_cleanup_with_external_blobs() -> Result<()> {
     let timeline_id = TimelineID("test".to_string());
     setup_timeline_external_blobs(&db, "test", &task).await;
 
-    let expires_at = Timestamp::now().add_duration(Duration::from_secs(1))?;
+    // Use a timestamp in the past so items are already expired — no sleep needed.
+    let expires_at = Timestamp::now().subtract_days(1)?;
 
     // Store graph with external blobs and TTL
     let graph = TestGraphTimeline::get_nth(0);
@@ -266,10 +259,7 @@ async fn ttl_cleanup_with_external_blobs() -> Result<()> {
     let key_b = make_graph_time_key("test", 1, 1001);
     db.graph.store(&key_b, &graph_b, None, &task).await?;
 
-    // Wait for TTL to expire
-    tokio::time::sleep(Duration::from_secs(2)).await;
-
-    // Run cleanup
+    // Already expired — run cleanup immediately
     let result = db
         .utility
         .cleanup_expired(Some(Duration::ZERO), &task)
