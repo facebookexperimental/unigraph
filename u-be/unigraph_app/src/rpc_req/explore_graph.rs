@@ -402,9 +402,7 @@ fn build_metrics_map(
     let mut map = BTreeMap::new();
     for metric in metrics {
         let value = compute_metric(ag, node_idx, metric, graph_structure)?;
-        if value != 0.0 {
-            map.insert(metric.to_string(), value);
-        }
+        map.insert(metric.to_string(), value);
     }
     Ok(map)
 }

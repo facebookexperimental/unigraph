@@ -31,9 +31,9 @@ async fn entry_points() -> Result<()> {
         "
 Entry points
 
-node_name | lines | lines~dominated | lines~transitive | node-count~conjoint | node-count~dominated | node-count~transitive | size#eager | size#eager~conjoint | size#eager~dominated | size#lazy | size#lazy~conjoint | size#lazy~dominated | size~dominated | size~transitive
-==========+=======+=================+==================+=====================+======================+=======================+============+=====================+======================+===========+====================+=====================+================+================
-app       |  1200 |            4990 |             4990 |                  12 |                   12 |                    12 |       1775 |                1775 |                 1775 |      1985 |               1985 |                1985 |           1985 |            1985
+node_name | lines | lines~dominated | lines~transitive | node-count~conjoint | node-count~dominated | node-count~transitive | parents-count | size#eager | size#eager~conjoint | size#eager~dominated | size#lazy | size#lazy~conjoint | size#lazy~dominated | size~dominated | size~transitive
+==========+=======+=================+==================+=====================+======================+=======================+===============+============+=====================+======================+===========+====================+=====================+================+================
+app       |  1200 |            4990 |             4990 |                  12 |                   12 |                    12 |             0 |       1775 |                1775 |                 1775 |      1985 |               1985 |                1985 |           1985 |            1985
 
 "
     );
