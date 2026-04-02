@@ -258,10 +258,21 @@ fn compute_metric(
             let tiered = ag.get_transitive_tiered_metric_values(node_idx, name, true)?;
             Ok(*tiered.get(tier_name.as_str()).unwrap_or(&0.0))
         }
+        MetricView::ConjointTiered { name, tier_name } => {
+            let tiered = ag.get_transitive_tiered_metric_values(node_idx, name, false)?;
+            let tiered_val = *tiered.get(tier_name.as_str()).unwrap_or(&0.0);
+            let parents = ag.parents_len_configured(node_idx).max(1) as f32;
+            Ok(tiered_val / parents)
+        }
         MetricView::ParentsCount {} => Ok(ag.parents_len_configured(node_idx) as f32),
         MetricView::CountTransitive {} => Ok(ag.transitive_count_configured(node_idx) as f32),
         MetricView::CountDominated {} => {
             Ok(ag.transitive_count_configured_dominated(node_idx) as f32)
+        }
+        MetricView::CountConjoint {} => {
+            let transitive = ag.transitive_count_configured(node_idx) as f32;
+            let parents = ag.parents_len_configured(node_idx).max(1) as f32;
+            Ok(transitive / parents)
         }
     }
 }

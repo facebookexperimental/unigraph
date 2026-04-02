@@ -8,7 +8,7 @@ use unigraph_core::graph_settings::ArrayGraphUISettings;
 use unigraph_core::graph_settings::ColumnSettings;
 use unigraph_core::graph_settings::GraphSettings;
 use unigraph_core::graph_settings::MetricFormat;
-use unigraph_core::graph_settings::MetricSettings;
+use unigraph_core::graph_settings::MetricViewSettings;
 use unigraph_core::graph_settings::SizeFormatConfig;
 use unigraph_core::graph_settings::SizeInputUnits;
 use unigraph_core::graph_settings::SizeOutputUnits;
@@ -110,7 +110,7 @@ pub fn build_map_graph(
     let mut metric_settings = BTreeMap::new();
     metric_settings.insert(
         "rlib_size".to_string(),
-        MetricSettings {
+        MetricViewSettings {
             description: Some("Compiled .rlib artifact size".to_string()),
             format: Some(MetricFormat::Size(SizeFormatConfig {
                 input_units: SizeInputUnits::Bytes,
@@ -119,34 +119,24 @@ pub fn build_map_graph(
                 max_precision: Some(2),
                 use_delimiter: None,
             })),
-            column_hide_self: None,
-            column_show_transitive: None,
-            column_show_tiered: None,
-            show_conjoint_tiered: None,
-            show_dominated: None,
-            show_dominated_tiered: None,
+            ..Default::default()
         },
     );
     metric_settings.insert(
         "build_time".to_string(),
-        MetricSettings {
+        MetricViewSettings {
             description: Some("Wall-clock build duration".to_string()),
             format: Some(MetricFormat::NumberWithVariablePrecision {
                 min_precision: Some(1),
                 max_precision: Some(2),
                 use_delimiter: None,
             }),
-            column_hide_self: None,
-            column_show_transitive: None,
-            column_show_tiered: None,
-            show_conjoint_tiered: None,
-            show_dominated: None,
-            show_dominated_tiered: None,
+            ..Default::default()
         },
     );
     metric_settings.insert(
         "rmeta_time".to_string(),
-        MetricSettings {
+        MetricViewSettings {
             description: Some(
                 "Time to produce rmeta (enables downstream crates to start building)".to_string(),
             ),
@@ -155,29 +145,19 @@ pub fn build_map_graph(
                 max_precision: Some(2),
                 use_delimiter: None,
             }),
-            column_hide_self: None,
-            column_show_transitive: None,
-            column_show_tiered: None,
-            show_conjoint_tiered: None,
-            show_dominated: None,
-            show_dominated_tiered: None,
+            ..Default::default()
         },
     );
     metric_settings.insert(
         "codegen_time".to_string(),
-        MetricSettings {
+        MetricViewSettings {
             description: Some("Time spent in codegen phase".to_string()),
             format: Some(MetricFormat::NumberWithVariablePrecision {
                 min_precision: Some(1),
                 max_precision: Some(2),
                 use_delimiter: None,
             }),
-            column_hide_self: None,
-            column_show_transitive: None,
-            column_show_tiered: None,
-            show_conjoint_tiered: None,
-            show_dominated: None,
-            show_dominated_tiered: None,
+            ..Default::default()
         },
     );
 

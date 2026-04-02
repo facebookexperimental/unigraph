@@ -6,7 +6,6 @@ use anyhow::Result;
 use anyhow::bail;
 
 use crate::types::NodeName;
-use crate::types::TierName;
 
 #[derive(
     Debug,
@@ -26,6 +25,32 @@ pub struct GraphSettings {
     pub ui_settings: Option<ArrayGraphUISettings>,
 }
 
+/// Controls when a metric view column is shown in the UI.
+#[derive(
+    Debug,
+    serde::Serialize,
+    serde::Deserialize,
+    typegen::TypeGen,
+    Clone,
+    PartialEq,
+    unigraph_delta::Deltable
+)]
+#[deltable(replace)]
+pub enum MetricViewVisibility {
+    /// Show when the relevant global toggle is on.
+    Enabled {},
+    /// Show only in dominator graph structure mode (and global toggle is on).
+    EnabledInDominatorMode {},
+    /// Never show.
+    Hidden {},
+    /// Not available — nonsensical combination (e.g. "size_transitive~transitive").
+    Unavailable { reason: String },
+}
+
+/// Per-view settings in the flat metric view map.
+///
+/// Keys are `MetricView.to_string()` values (e.g. `"size"`, `"size~transitive"`,
+/// `"node-count~dominated"`).
 #[derive(
     Debug,
     serde::Serialize,
@@ -37,32 +62,22 @@ pub struct GraphSettings {
     unigraph_delta::Deltable
 )]
 #[deltable(replace)]
-pub struct MetricSettings {
+pub struct MetricViewSettings {
+    /// Controls when this view is shown.
+    /// `None` = use default for this view type:
+    ///   - Non-dominated views default to `Enabled`
+    ///   - Dominated views default to `EnabledInDominatorMode`
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
+    pub visibility: Option<MetricViewVisibility>,
 
+    /// Display format. Derived views (transitive, dominated, tiered, conjoint)
+    /// inherit the format from their base metric key (e.g., `"size"`) if not set here.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub format: Option<MetricFormat>,
 
+    /// Description. Typically only set on base metric keys.
     #[serde(skip_serializing_if = "Option::is_none")]
-    /// Hide table column that displays the metric itself.
-    pub column_hide_self: Option<bool>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    /// Column that displays transitive value for the metric.
-    pub column_show_transitive: Option<IndividualOptionEnabled>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub column_show_tiered: Option<BTreeMap<TierName, IndividualOptionEnabled>>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub show_conjoint_tiered: Option<BTreeMap<TierName, IndividualOptionEnabled>>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub show_dominated: Option<IndividualDominatedOptionEnabled>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub show_dominated_tiered: Option<BTreeMap<TierName, IndividualDominatedOptionEnabled>>,
+    pub description: Option<String>,
 }
 
 #[derive(
@@ -361,18 +376,6 @@ pub struct ColumnSettings {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub graph_table_sort: Option<GraphTableSort>,
 
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub show_parents_count: Option<IndividualOptionEnabled>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub show_transitive_count: Option<IndividualOptionEnabled>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub show_conjoint_count: Option<IndividualOptionEnabled>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub show_dominated_count: Option<IndividualDominatedOptionEnabled>,
-
     /// Global setting for showing metric values
     /// (if tiers are defined)
     /// It is shown by default, but can be hidden
@@ -381,7 +384,7 @@ pub struct ColumnSettings {
 
     /// Global setting for showing tiered values for metrics
     /// (if tiers are defined)
-    /// It is hidden by default, but can be endabled
+    /// It is hidden by default, but can be enabled
     #[serde(skip_serializing_if = "Option::is_none")]
     pub show_tiered_metrics: Option<bool>,
 
@@ -390,18 +393,14 @@ pub struct ColumnSettings {
     pub show_conjoint_tiered_metrics: Option<bool>,
 
     /// Global setting for showing dominated metric values.
-    /// Individual columns will be enabled/disabled based on
-    /// their individual settings.
-    /// defaults to showing because individual values default
-    /// to only whowing when in Dominator mode
+    /// Defaults to showing because individual values default
+    /// to only showing when in Dominator mode.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hide_dominated_tiered_metrics: Option<bool>,
 
     /// Global setting for showing columns related to
     /// node counts, like transitive counts, parents counts,
     /// or conjoint cost for node counts.
-    /// Individual columns will be enabled/disabled based on
-    /// their individual settings.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub show_counts: Option<bool>,
 
@@ -409,56 +408,10 @@ pub struct ColumnSettings {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub show_tier_column: Option<bool>,
 
+    /// Per-view settings keyed by `MetricView.to_string()`.
+    /// E.g. `"size"`, `"size~transitive"`, `"node-count~dominated"`.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub metric_settings: Option<BTreeMap<String, MetricSettings>>,
-}
-
-/// Enum that defines whether an individual option is enabled or not.
-/// This is for cases where we have a global settings that can show/hide certain
-/// things plus individual settings for the same thing on each metric/tier/etc.
-/// E.g. we have dominator tree and dominated size columns we want to display.
-/// We have a single "show dominator tree" button that we can enable/disable.
-/// But normally that would add multiple dominated size/count columns. For graphs
-/// with many tiers/metrics we're talkinb about 10+ columns, while the user is likely
-/// to only care about one or two.
-/// For that reason we can add these settings to individual columns that can make them
-/// be disabled even when the global setting is enabled.
-#[derive(
-    Debug,
-    serde::Serialize,
-    serde::Deserialize,
-    typegen::TypeGen,
-    Clone,
-    Copy,
-    Default,
-    PartialEq,
-    unigraph_delta::Deltable
-)]
-#[deltable(replace)]
-pub enum IndividualOptionEnabled {
-    #[default]
-    WhenEnabledGlobally,
-    Never,
-}
-
-#[derive(
-    Debug,
-    serde::Serialize,
-    serde::Deserialize,
-    typegen::TypeGen,
-    Clone,
-    Copy,
-    Default,
-    PartialEq,
-    unigraph_delta::Deltable
-)]
-#[deltable(replace)]
-pub enum IndividualDominatedOptionEnabled {
-    // This will only show when global flag is enabled and we're in dominator mode.
-    #[default]
-    WhenEnabledGloballyAndInDominatorMode,
-    WhenEnabledGlobally,
-    Never,
+    pub metric_settings: Option<BTreeMap<String, MetricViewSettings>>,
 }
 
 #[derive(
@@ -479,22 +432,6 @@ pub struct GraphTableSort {
 #[derive(
     Clone,
     Debug,
-    Default,
-    serde::Serialize,
-    serde::Deserialize,
-    typegen::TypeGen,
-    PartialEq
-)]
-pub enum ColumnType {
-    #[default]
-    Left,
-    Right,
-    Delta,
-}
-
-#[derive(
-    Clone,
-    Debug,
     serde::Serialize,
     serde::Deserialize,
     typegen::TypeGen,
@@ -504,48 +441,10 @@ pub enum SortColumn {
     /// Sort by node name (tree column)
     NodeName {},
 
-    /// Transitive count column
-    TransitiveCount { t: ColumnType },
-
-    /// Transitive dominated count column
-    DominatedCount { t: ColumnType },
-
-    /// Number of parents for each node
-    ParentsCount { t: ColumnType },
-
-    /// Metric column for specified metric
-    Metric { t: ColumnType, name: String },
-    /// Metric column for specified metric (Right Graph)
-
-    /// Transitive metric column for specified metric
-    TransitiveMetric { t: ColumnType, name: String },
-
-    /// Dominated metric column for specified metric
-    DominatedMetric { t: ColumnType, name: String },
-
-    /// Tiered transitive metric column for specified metric
-    TieredTransitiveMetric {
-        t: ColumnType,
-        name: String,
-        tier: String,
-    },
-
-    /// Conjoint count
-    ConjointCount { t: ColumnType },
-
-    /// Conjoint tiered metric
-    ConjointTieredMetric {
-        t: ColumnType,
-        name: String,
-        tier: String,
-    },
-
-    /// Conjoint tiered metric
-    DominatedTieredMetric {
-        t: ColumnType,
-        name: String,
-        tier: String,
-    },
+    /// Sort by a metric view column. `key` is `MetricView.to_string()`,
+    /// optionally suffixed with `@right` or `@delta` to select the
+    /// comparison-graph or delta column in twin-graph mode.
+    MetricView { key: String },
 }
 
 impl Default for SortColumn {

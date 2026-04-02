@@ -17,6 +17,7 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import type { MetricViewSettings } from "./__generated__/ts/MetricViewSettings";
 import Metric from "./components/Metric";
 import UHoverCard from "./components/UHoverCard";
 import USplitToggleButton from "./components/USplitToggleButton";
@@ -42,7 +43,14 @@ import formatMetric from "./lib/formatMetric";
 import formatNumber from "./lib/formatNumber";
 import NodeSearch from "./NodeSearch";
 import { H2, H3 } from "./Typography";
-import { isEnabledForGraphStructure } from "./tree_table/columns/ColumnUtils";
+import {
+  ENABLED,
+  ENABLED_IN_DOMINATOR,
+  HIDDEN,
+  MV,
+  isEnabledForGraphStructure,
+  isViewVisible,
+} from "./tree_table/columns/ColumnUtils";
 
 export default function ExplorerFooter() {
   return (
@@ -240,10 +248,50 @@ function Toggles() {
   );
 }
 
+// ── Helpers for setting per-view visibility ─────────────────────
+
+function setViewVisibility(
+  graphSettings: ReturnType<typeof useGraphSettings>[0],
+  viewKey: string,
+  visibility: MetricViewSettings["visibility"],
+): ReturnType<typeof useGraphSettings>[0] {
+  const prev =
+    graphSettings?.ui_settings?.columns?.metric_settings?.[viewKey] ?? {};
+  return {
+    ...graphSettings,
+    ui_settings: {
+      ...graphSettings.ui_settings,
+      columns: {
+        ...graphSettings.ui_settings?.columns,
+        show_counts: true,
+        metric_settings: {
+          ...graphSettings?.ui_settings?.columns?.metric_settings,
+          [viewKey]: { ...prev, visibility },
+        },
+      },
+    },
+  };
+}
+
+// ── Count toggles hovercard ─────────────────────────────────────
+
 function CountsHovercardContent() {
   const [graphSettings, setGraphSettings] = useGraphSettings();
   const twinGraph = useTwinGraph();
   const singleGraph = twinGraph.r == null;
+
+  const transitiveVis =
+    graphSettings.ui_settings?.columns?.metric_settings?.[MV.countTransitive]
+      ?.visibility;
+  const parentsVis =
+    graphSettings.ui_settings?.columns?.metric_settings?.[MV.parentsCount]
+      ?.visibility;
+  const dominatedVis =
+    graphSettings.ui_settings?.columns?.metric_settings?.[MV.countDominated]
+      ?.visibility;
+  const conjointVis =
+    graphSettings.ui_settings?.columns?.metric_settings?.[MV.countConjoint]
+      ?.visibility;
 
   return (
     <div className="flex flex-col gap-2">
@@ -252,24 +300,15 @@ function CountsHovercardContent() {
         <UToggleButton
           size="sm"
           tooltip="Show transitive children count"
-          selected={
-            graphSettings.ui_settings?.columns?.show_transitive_count !==
-            "Never"
-          }
+          selected={isViewVisible(transitiveVis)}
           onSelectedChange={(selected) => {
-            setGraphSettings({
-              ...graphSettings,
-              ui_settings: {
-                ...graphSettings.ui_settings,
-                columns: {
-                  ...graphSettings.ui_settings?.columns,
-                  show_counts: true,
-                  show_transitive_count: selected
-                    ? "WhenEnabledGlobally"
-                    : "Never",
-                },
-              },
-            });
+            setGraphSettings(
+              setViewVisibility(
+                graphSettings,
+                MV.countTransitive,
+                selected ? ENABLED : HIDDEN,
+              ),
+            );
           }}
         >
           <Tally5 />
@@ -280,24 +319,15 @@ function CountsHovercardContent() {
             <UToggleButton
               tooltip="Show number of parent nodes"
               size="sm"
-              selected={
-                graphSettings.ui_settings?.columns?.show_parents_count ===
-                "WhenEnabledGlobally"
-              }
-              onSelectedChange={(checked) => {
-                setGraphSettings({
-                  ...graphSettings,
-                  ui_settings: {
-                    ...graphSettings.ui_settings,
-                    columns: {
-                      ...graphSettings.ui_settings?.columns,
-                      show_counts: true,
-                      show_parents_count: checked
-                        ? "WhenEnabledGlobally"
-                        : "Never",
-                    },
-                  },
-                });
+              selected={isViewVisible(parentsVis)}
+              onSelectedChange={(selected) => {
+                setGraphSettings(
+                  setViewVisibility(
+                    graphSettings,
+                    MV.parentsCount,
+                    selected ? ENABLED : HIDDEN,
+                  ),
+                );
               }}
             >
               <ArrowUpNarrowWide />
@@ -306,24 +336,18 @@ function CountsHovercardContent() {
             <UToggleButton
               tooltip="Show dominated nodes counts"
               size="sm"
-              selected={
-                graphSettings.ui_settings?.columns?.show_dominated_count ===
-                "WhenEnabledGlobally"
-              }
-              onSelectedChange={(checked) => {
-                setGraphSettings({
-                  ...graphSettings,
-                  ui_settings: {
-                    ...graphSettings.ui_settings,
-                    columns: {
-                      ...graphSettings.ui_settings?.columns,
-                      show_counts: true,
-                      show_dominated_count: checked
-                        ? "WhenEnabledGlobally"
-                        : "Never",
-                    },
-                  },
-                });
+              selected={isEnabledForGraphStructure(
+                graphSettings?.ui_settings?.graph_structure,
+                dominatedVis,
+              )}
+              onSelectedChange={(selected) => {
+                setGraphSettings(
+                  setViewVisibility(
+                    graphSettings,
+                    MV.countDominated,
+                    selected ? ENABLED_IN_DOMINATOR : HIDDEN,
+                  ),
+                );
               }}
             >
               <TreePalm />
@@ -332,24 +356,15 @@ function CountsHovercardContent() {
             <UHoverCard content={<ConjointCostDocs />}>
               <UToggleButton
                 size="sm"
-                selected={
-                  graphSettings.ui_settings?.columns?.show_conjoint_count ===
-                  "WhenEnabledGlobally"
-                }
+                selected={isViewVisible(conjointVis)}
                 onSelectedChange={(selected) => {
-                  setGraphSettings({
-                    ...graphSettings,
-                    ui_settings: {
-                      ...graphSettings.ui_settings,
-                      columns: {
-                        ...graphSettings.ui_settings?.columns,
-                        show_counts: true,
-                        show_conjoint_count: selected
-                          ? "WhenEnabledGlobally"
-                          : "Never",
-                      },
-                    },
-                  });
+                  setGraphSettings(
+                    setViewVisibility(
+                      graphSettings,
+                      MV.countConjoint,
+                      selected ? ENABLED : HIDDEN,
+                    ),
+                  );
                 }}
               >
                 <CircleDollarSign />
@@ -434,36 +449,19 @@ function MaxTierSelector() {
             /// When max tier is selected we want to hide columns for all tiers above it, because
             /// their value will be 0 anyway and showing it will clutter the UI and make it confusing.
             for (let idx = 0; idx < allTiers.length; idx++) {
-              const tierName = allTiers[idx] as string;
-              const value = idx > tierIDX ? "Never" : "WhenEnabledGlobally";
-              newGraphSettings = {
-                ...newGraphSettings,
-                ui_settings: {
-                  ...newGraphSettings.ui_settings,
-                  columns: {
-                    ...newGraphSettings?.ui_settings?.columns,
-                    metric_settings: {
-                      ...newGraphSettings?.ui_settings?.columns
-                        ?.metric_settings,
-                      [metricName]: {
-                        ...newGraphSettings?.ui_settings?.columns
-                          ?.metric_settings?.[metricName],
-                        column_show_tiered: {
-                          ...newGraphSettings?.ui_settings?.columns
-                            ?.metric_settings?.[metricName]?.column_show_tiered,
-                          [tierName]: value,
-                        },
-                        show_conjoint_tiered: {
-                          ...newGraphSettings?.ui_settings?.columns
-                            ?.metric_settings?.[metricName]
-                            ?.show_conjoint_tiered,
-                          [tierName]: value,
-                        },
-                      },
-                    },
-                  },
-                },
-              };
+              const tn = allTiers[idx] as string;
+              const vis = idx > tierIDX ? HIDDEN : ENABLED;
+              // Set visibility for tiered + conjoint-tiered views
+              newGraphSettings = setViewVisibility(
+                newGraphSettings,
+                MV.tiered(metricName, tn),
+                vis,
+              );
+              newGraphSettings = setViewVisibility(
+                newGraphSettings,
+                MV.conjointTiered(metricName, tn),
+                vis,
+              );
             }
           }
 
@@ -580,16 +578,16 @@ function ToggleTierForMetric({
   metricName: string;
 }) {
   const [graphSettings, setGraphSettings] = useGraphSettings();
-  const metricSettings =
-    graphSettings?.ui_settings?.columns?.metric_settings?.[metricName] ?? {};
+  const viewKey = MV.tiered(metricName, tierName);
+  const vis =
+    graphSettings?.ui_settings?.columns?.metric_settings?.[viewKey]?.visibility;
+
   return (
     <UToggleButton
       key={`tiered-${metricName}-${tierName}`}
       size="sm"
       tooltip={`Show a column for transitive values of '${metricName}' metric for ${tierName} tier`}
-      selected={
-        metricSettings?.column_show_tiered?.[tierName] === "WhenEnabledGlobally"
-      }
+      selected={isViewVisible(vis)}
       onSelectedChange={(selected) => {
         setGraphSettings({
           ...graphSettings,
@@ -601,12 +599,11 @@ function ToggleTierForMetric({
               show_tiered_metrics: true,
               metric_settings: {
                 ...graphSettings?.ui_settings?.columns?.metric_settings,
-                [metricName]: {
-                  ...metricSettings,
-                  column_show_tiered: {
-                    ...metricSettings?.column_show_tiered,
-                    [tierName]: selected ? "WhenEnabledGlobally" : "Never",
-                  },
+                [viewKey]: {
+                  ...graphSettings?.ui_settings?.columns?.metric_settings?.[
+                    viewKey
+                  ],
+                  visibility: selected ? ENABLED : HIDDEN,
                 },
               },
             },
@@ -627,17 +624,16 @@ function ToggleConjointForTierForMetric({
   metricName: string;
 }) {
   const [graphSettings, setGraphSettings] = useGraphSettings();
-  const metricSettings =
-    graphSettings?.ui_settings?.columns?.metric_settings?.[metricName] ?? {};
+  const viewKey = MV.conjointTiered(metricName, tierName);
+  const vis =
+    graphSettings?.ui_settings?.columns?.metric_settings?.[viewKey]?.visibility;
+
   return (
     <UToggleButton
       key={`conjoint-tiered-${metricName}-${tierName}`}
       size="sm"
       tooltip={`Conjoint cost of transitive values of '${metricName}' metric for ${tierName} tier`}
-      selected={
-        metricSettings?.show_conjoint_tiered?.[tierName] ===
-        "WhenEnabledGlobally"
-      }
+      selected={isViewVisible(vis)}
       onSelectedChange={(selected) => {
         setGraphSettings({
           ...graphSettings,
@@ -649,12 +645,11 @@ function ToggleConjointForTierForMetric({
               show_conjoint_tiered_metrics: true,
               metric_settings: {
                 ...graphSettings?.ui_settings?.columns?.metric_settings,
-                [metricName]: {
-                  ...metricSettings,
-                  show_conjoint_tiered: {
-                    ...metricSettings?.show_conjoint_tiered,
-                    [tierName]: selected ? "WhenEnabledGlobally" : "Never",
-                  },
+                [viewKey]: {
+                  ...graphSettings?.ui_settings?.columns?.metric_settings?.[
+                    viewKey
+                  ],
+                  visibility: selected ? ENABLED : HIDDEN,
                 },
               },
             },
@@ -674,12 +669,13 @@ function DominatedForTierForMetric({
   metricName: string;
 }) {
   const [graphSettings, setGraphSettings] = useGraphSettings();
-  const metricSettings =
-    graphSettings?.ui_settings?.columns?.metric_settings?.[metricName] ?? {};
+  const viewKey = MV.tieredDominated(metricName, tierName);
+  const vis =
+    graphSettings?.ui_settings?.columns?.metric_settings?.[viewKey]?.visibility;
 
   const selected = isEnabledForGraphStructure(
     graphSettings?.ui_settings?.graph_structure,
-    metricSettings?.show_dominated_tiered?.[tierName],
+    vis,
   );
 
   return (
@@ -699,12 +695,11 @@ function DominatedForTierForMetric({
               hide_dominated_tiered_metrics: false,
               metric_settings: {
                 ...graphSettings?.ui_settings?.columns?.metric_settings,
-                [metricName]: {
-                  ...metricSettings,
-                  show_dominated_tiered: {
-                    ...metricSettings?.show_dominated_tiered,
-                    [tierName]: selected ? "WhenEnabledGlobally" : "Never",
-                  },
+                [viewKey]: {
+                  ...graphSettings?.ui_settings?.columns?.metric_settings?.[
+                    viewKey
+                  ],
+                  visibility: selected ? ENABLED_IN_DOMINATOR : HIDDEN,
                 },
               },
             },
@@ -785,9 +780,10 @@ function ChangedNodesOnlyToggle() {
 
 function EnableSelfMetricToggle({ metricName }: { metricName: string }) {
   const [graphSettings, setGraphSettings] = useGraphSettings();
-  const metricSettings =
-    graphSettings?.ui_settings?.columns?.metric_settings?.[metricName] ?? {};
-  const selected = metricSettings?.column_hide_self !== true;
+  const viewKey = MV.metric(metricName);
+  const vis =
+    graphSettings?.ui_settings?.columns?.metric_settings?.[viewKey]?.visibility;
+  const selected = isViewVisible(vis);
 
   return (
     <UToggleButton
@@ -802,15 +798,14 @@ function EnableSelfMetricToggle({ metricName }: { metricName: string }) {
             ...graphSettings.ui_settings,
             columns: {
               ...graphSettings.ui_settings?.columns,
-              // if we select something under the metrics card
-              // we probably want to show these automatically to avoid
-              // "why is it not doing anything??" confusion
               hide_metrics: false,
               metric_settings: {
                 ...graphSettings?.ui_settings?.columns?.metric_settings,
-                [metricName]: {
-                  ...metricSettings,
-                  column_hide_self: !selected,
+                [viewKey]: {
+                  ...graphSettings?.ui_settings?.columns?.metric_settings?.[
+                    viewKey
+                  ],
+                  visibility: selected ? ENABLED : HIDDEN,
                 },
               },
             },
@@ -825,10 +820,10 @@ function EnableSelfMetricToggle({ metricName }: { metricName: string }) {
 
 function EnableTransitiveMetricToggle({ metricName }: { metricName: string }) {
   const [graphSettings, setGraphSettings] = useGraphSettings();
-  const metricSettings =
-    graphSettings?.ui_settings?.columns?.metric_settings?.[metricName] ?? {};
-  const selected =
-    metricSettings?.column_show_transitive === "WhenEnabledGlobally";
+  const viewKey = MV.transitive(metricName);
+  const vis =
+    graphSettings?.ui_settings?.columns?.metric_settings?.[viewKey]?.visibility;
+  const selected = isViewVisible(vis);
 
   return (
     <UToggleButton
@@ -843,17 +838,14 @@ function EnableTransitiveMetricToggle({ metricName }: { metricName: string }) {
             ...graphSettings.ui_settings,
             columns: {
               ...graphSettings.ui_settings?.columns,
-              // if we select something under the metrics card
-              // we probably want to show these automatically to avoid
-              // "why is it not doing anything??" confusion
               hide_metrics: false,
               metric_settings: {
                 ...graphSettings?.ui_settings?.columns?.metric_settings,
-                [metricName]: {
-                  ...metricSettings,
-                  column_show_transitive: selected
-                    ? "WhenEnabledGlobally"
-                    : "Never",
+                [viewKey]: {
+                  ...graphSettings?.ui_settings?.columns?.metric_settings?.[
+                    viewKey
+                  ],
+                  visibility: selected ? ENABLED : HIDDEN,
                 },
               },
             },
@@ -868,11 +860,12 @@ function EnableTransitiveMetricToggle({ metricName }: { metricName: string }) {
 
 function EnableDominatedMetricToggle({ metricName }: { metricName: string }) {
   const [graphSettings, setGraphSettings] = useGraphSettings();
-  const metricSettings =
-    graphSettings?.ui_settings?.columns?.metric_settings?.[metricName] ?? {};
+  const viewKey = MV.dominated(metricName);
+  const vis =
+    graphSettings?.ui_settings?.columns?.metric_settings?.[viewKey]?.visibility;
   const selected = isEnabledForGraphStructure(
     graphSettings?.ui_settings?.graph_structure,
-    metricSettings?.show_dominated,
+    vis,
   );
 
   return (
@@ -888,15 +881,14 @@ function EnableDominatedMetricToggle({ metricName }: { metricName: string }) {
             ...graphSettings.ui_settings,
             columns: {
               ...graphSettings.ui_settings?.columns,
-              // if we select something under the metrics card
-              // we probably want to show these automatically to avoid
-              // "why is it not doing anything??" confusion
               hide_metrics: false,
               metric_settings: {
                 ...graphSettings?.ui_settings?.columns?.metric_settings,
-                [metricName]: {
-                  ...metricSettings,
-                  show_dominated: selected ? "WhenEnabledGlobally" : "Never",
+                [viewKey]: {
+                  ...graphSettings?.ui_settings?.columns?.metric_settings?.[
+                    viewKey
+                  ],
+                  visibility: selected ? ENABLED_IN_DOMINATOR : HIDDEN,
                 },
               },
             },
@@ -927,9 +919,6 @@ function ConjointTieredToggle() {
             ...graphSettings.ui_settings,
             columns: {
               ...graphSettings.ui_settings?.columns,
-              // if we select something under the metrics card
-              // we probably want to show these automatically to avoid
-              // "why is it not doing anything??" confusion
               hide_metrics: false,
               show_conjoint_tiered_metrics: selected,
             },
@@ -960,9 +949,6 @@ function DominatedTieredToggle() {
             ...graphSettings.ui_settings,
             columns: {
               ...graphSettings.ui_settings?.columns,
-              // if we select something under the metrics card
-              // we probably want to show these automatically to avoid
-              // "why is it not doing anything??" confusion
               hide_metrics: false,
               hide_dominated_tiered_metrics: !selected,
             },
@@ -992,9 +978,6 @@ function EnableTieredMetricsToggle() {
             ...graphSettings.ui_settings,
             columns: {
               ...graphSettings.ui_settings?.columns,
-              // if we select something under the metrics card
-              // we probably want to show these automatically to avoid
-              // "why is it not doing anything??" confusion
               hide_metrics: false,
               show_tiered_metrics: selected,
             },

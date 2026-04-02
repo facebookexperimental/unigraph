@@ -456,12 +456,17 @@ impl ArrayGraph {
                     name: metric_name.clone(),
                     tier_name: tier_name.to_string(),
                 });
+                views.push(MetricView::ConjointTiered {
+                    name: metric_name.clone(),
+                    tier_name: tier_name.to_string(),
+                });
             }
         }
 
         views.push(MetricView::ParentsCount {});
         views.push(MetricView::CountTransitive {});
         views.push(MetricView::CountDominated {});
+        views.push(MetricView::CountConjoint {});
 
         views
     }

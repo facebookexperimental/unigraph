@@ -10,6 +10,7 @@ const NODE_COUNT: &str = "node-count";
 const PARENTS_COUNT: &str = "parents-count";
 const TRANSITIVE: &str = "transitive";
 const DOMINATED: &str = "dominated";
+const CONJOINT: &str = "conjoint";
 
 /// A user-facing metric specification.
 ///
@@ -28,8 +29,10 @@ const DOMINATED: &str = "dominated";
 /// size~dominated        → Dominated { name: "size" }
 /// size~T1               → Tiered { name: "size", tier_name: "T1" }
 /// size~dominated~T1     → TieredDominated { name: "size", tier_name: "T1" }
+/// size~conjoint~T1      → ConjointTiered { name: "size", tier_name: "T1" }
 /// node-count~transitive → CountTransitive
 /// node-count~dominated  → CountDominated
+/// node-count~conjoint   → CountConjoint
 /// parents-count         → ParentsCount
 /// ```
 #[derive(
@@ -52,12 +55,16 @@ pub enum MetricView {
     Tiered { name: String, tier_name: String },
     /// Tiered dominated metric (dominated sum at a specific tier).
     TieredDominated { name: String, tier_name: String },
+    /// Conjoint tiered metric (transitive cost / parent count at a specific tier).
+    ConjointTiered { name: String, tier_name: String },
     /// Number of configured parents (incoming edges).
     ParentsCount {},
     /// Transitive dependency count (forward DFS).
     CountTransitive {},
     /// Dominated dependency count (dominator tree DFS).
     CountDominated {},
+    /// Conjoint dependency count (transitive count / parent count).
+    CountConjoint {},
 }
 
 impl MetricView {
@@ -69,10 +76,12 @@ impl MetricView {
             | MetricView::Transitive { name }
             | MetricView::Dominated { name }
             | MetricView::Tiered { name, .. }
-            | MetricView::TieredDominated { name, .. } => Some(name),
+            | MetricView::TieredDominated { name, .. }
+            | MetricView::ConjointTiered { name, .. } => Some(name),
             MetricView::ParentsCount {}
             | MetricView::CountTransitive {}
-            | MetricView::CountDominated {} => None,
+            | MetricView::CountDominated {}
+            | MetricView::CountConjoint {} => None,
         }
     }
 }
@@ -89,9 +98,13 @@ impl fmt::Display for MetricView {
             MetricView::TieredDominated { name, tier_name } => {
                 write!(f, "{name}{SEPARATOR}{DOMINATED}{SEPARATOR}{tier_name}")
             }
+            MetricView::ConjointTiered { name, tier_name } => {
+                write!(f, "{name}{SEPARATOR}{CONJOINT}{SEPARATOR}{tier_name}")
+            }
             MetricView::ParentsCount {} => write!(f, "{PARENTS_COUNT}"),
             MetricView::CountTransitive {} => write!(f, "{NODE_COUNT}{SEPARATOR}{TRANSITIVE}"),
             MetricView::CountDominated {} => write!(f, "{NODE_COUNT}{SEPARATOR}{DOMINATED}"),
+            MetricView::CountConjoint {} => write!(f, "{NODE_COUNT}{SEPARATOR}{CONJOINT}"),
         }
     }
 }
@@ -105,9 +118,10 @@ impl FromStr for MetricView {
             [PARENTS_COUNT] => Ok(MetricView::ParentsCount {}),
             [NODE_COUNT, TRANSITIVE] => Ok(MetricView::CountTransitive {}),
             [NODE_COUNT, DOMINATED] => Ok(MetricView::CountDominated {}),
+            [NODE_COUNT, CONJOINT] => Ok(MetricView::CountConjoint {}),
             [NODE_COUNT, other] => {
                 bail!(
-                    "unknown node-count variant: '{other}' (expected 'transitive' or 'dominated')"
+                    "unknown node-count variant: '{other}' (expected 'transitive', 'dominated', or 'conjoint')"
                 )
             }
             [name] => Ok(MetricView::Metric {
@@ -120,6 +134,10 @@ impl FromStr for MetricView {
                 name: name.to_string(),
             }),
             [name, DOMINATED, tier_name] => Ok(MetricView::TieredDominated {
+                name: name.to_string(),
+                tier_name: tier_name.to_string(),
+            }),
+            [name, CONJOINT, tier_name] => Ok(MetricView::ConjointTiered {
                 name: name.to_string(),
                 tier_name: tier_name.to_string(),
             }),
@@ -157,9 +175,14 @@ mod tests {
                 name: "size".into(),
                 tier_name: "T1".into(),
             },
+            MetricView::ConjointTiered {
+                name: "size".into(),
+                tier_name: "T1".into(),
+            },
             MetricView::ParentsCount {},
             MetricView::CountTransitive {},
             MetricView::CountDominated {},
+            MetricView::CountConjoint {},
         ]
     }
 
@@ -192,9 +215,11 @@ size~transitive            size
 size~dominated             size          
 size~T1                    size          
 size~dominated~T1          size          
+size~conjoint~T1           size          
 parents-count              -             
 node-count~transitive      -             
 node-count~dominated       -             
+node-count~conjoint        -             
 
 "
         );

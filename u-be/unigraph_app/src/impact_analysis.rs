@@ -77,7 +77,7 @@ use unigraph_core::CombinedMetricsForNodes;
 use unigraph_core::Decision;
 use unigraph_core::TraversalConfig;
 use unigraph_core::graph_settings::MetricFormat;
-use unigraph_core::graph_settings::MetricSettings;
+use unigraph_core::graph_settings::MetricViewSettings;
 use unigraph_core::types::NodeIDX;
 
 // ── Public API ──────────────────────────────────────────────────────────
@@ -457,11 +457,10 @@ fn patch_graph(ag: &mut ArrayGraph, impact_metrics: Vec<(ImpactMetric, Vec<f32>)
 
         settings.insert(
             key.clone(),
-            MetricSettings {
+            MetricViewSettings {
                 description: Some(metric.description()),
                 format: metric.format(source_format),
-                column_hide_self: Some(true),
-                ..Default::default()
+                visibility: Some(unigraph_core::graph_settings::MetricViewVisibility::Hidden {}),
             },
         );
 
@@ -626,9 +625,9 @@ D                          1                     1                    40        
             });
             assert!(s.description.is_some(), "missing description for {key}");
             assert_eq!(
-                s.column_hide_self,
-                Some(true),
-                "impact metrics should hide self column for {key}"
+                s.visibility,
+                Some(unigraph_core::graph_settings::MetricViewVisibility::Hidden {}),
+                "impact metrics should be hidden for {key}"
             );
         }
 

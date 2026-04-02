@@ -1,6 +1,5 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-import type { ColumnType } from "../../__generated__/ts/ColumnType";
 import type { NodeIDX } from "../../__generated__/ts/NodeIDX";
 import type { SortOrder } from "../../__generated__/ts/SortOrder";
 import { ARROW_POINTS_FROM_NON_EXISTENT } from "../../ArrowUtils";
@@ -16,9 +15,32 @@ import {
   MissingMetric,
   WouldBeDeltaMetricCell,
 } from "./Cells";
-import { isEnabledForGraphStructure } from "./ColumnUtils";
+import { MV, isEnabledForGraphStructure, isViewVisible } from "./ColumnUtils";
 import { MetricDeltaRightHovercard } from "./hovercards";
 import type { Column, ColumnsCtx } from "./useGraphTreeTableColumns";
+
+// ── Helpers ────────────────────────────────────────────────────
+
+function sortableForView(ctx: ColumnsCtx, key: string): TSortable {
+  const sortable: TSortable = {
+    order: null,
+    onSortChange: (order: SortOrder | null) =>
+      ctx.onSortChange(order, { MetricView: { key } }),
+  };
+
+  const sort = ctx.sort();
+  if (
+    sort != null &&
+    "MetricView" in sort.column &&
+    sort.column.MetricView.key === key
+  ) {
+    sortable.order = sort.order;
+  }
+
+  return sortable;
+}
+
+// ── Self metric ────────────────────────────────────────────────
 
 export class MetricColumn implements Column {
   ctx: ColumnsCtx;
@@ -41,7 +63,7 @@ export class MetricColumn implements Column {
   isEnabled() {
     return (
       this.ctx.showMetrics &&
-      this.ctx.metricSettings(this.metricName)?.column_hide_self !== true
+      isViewVisible(this.ctx.viewVisibility(MV.metric(this.metricName)))
     );
   }
 
@@ -53,30 +75,11 @@ export class MetricColumn implements Column {
   }
 
   sortable() {
-    const columnType: ColumnType =
-      this.side === GRAPH_SIDE.R ? "Right" : "Left";
-    const sortable: TSortable = {
-      order: null,
-      onSortChange: (order: SortOrder | null) =>
-        this.ctx.onSortChange(order, {
-          Metric: {
-            t: columnType,
-            name: this.metricName,
-          },
-        }),
-    };
-
-    const sort = this.ctx.sort();
-    if (
-      sort != null &&
-      "Metric" in sort.column &&
-      sort.column.Metric.t === columnType &&
-      sort.column.Metric.name === this.metricName
-    ) {
-      sortable.order = sort.order;
-    }
-
-    return sortable;
+    const key =
+      this.side === GRAPH_SIDE.R
+        ? MV.right(MV.metric(this.metricName))
+        : MV.metric(this.metricName);
+    return sortableForView(this.ctx, key);
   }
 
   definition(): [string, NumericValueColumnDefinition] {
@@ -110,6 +113,8 @@ export class MetricColumn implements Column {
   }
 }
 
+// ── Transitive metric ──────────────────────────────────────────
+
 export class TransitiveMetricColumn implements Column {
   ctx: ColumnsCtx;
   nativeGraph: NativeGraph;
@@ -131,8 +136,7 @@ export class TransitiveMetricColumn implements Column {
   isEnabled() {
     return (
       this.ctx.showMetrics &&
-      this.ctx.metricSettings(this.metricName)?.column_show_transitive ===
-        "WhenEnabledGlobally"
+      isViewVisible(this.ctx.viewVisibility(MV.transitive(this.metricName)))
     );
   }
 
@@ -148,30 +152,11 @@ export class TransitiveMetricColumn implements Column {
   }
 
   sortable() {
-    const columnType: ColumnType =
-      this.side === GRAPH_SIDE.R ? "Right" : "Left";
-    const sortable: TSortable = {
-      order: null,
-      onSortChange: (order: SortOrder | null) =>
-        this.ctx.onSortChange(order, {
-          TransitiveMetric: {
-            t: columnType,
-            name: this.metricName,
-          },
-        }),
-    };
-
-    const sort = this.ctx.sort();
-    if (
-      sort != null &&
-      "TransitiveMetric" in sort.column &&
-      sort.column.TransitiveMetric.t === columnType &&
-      sort.column.TransitiveMetric.name === this.metricName
-    ) {
-      sortable.order = sort.order;
-    }
-
-    return sortable;
+    const key =
+      this.side === GRAPH_SIDE.R
+        ? MV.right(MV.transitive(this.metricName))
+        : MV.transitive(this.metricName);
+    return sortableForView(this.ctx, key);
   }
 
   getValuesFn(): (idxs: NodeIDX[]) => Float32Array {
@@ -207,6 +192,8 @@ export class TransitiveMetricColumn implements Column {
   }
 }
 
+// ── Dominated metric ───────────────────────────────────────────
+
 export class DominatedMetricColumn implements Column {
   ctx: ColumnsCtx;
   nativeGraph: NativeGraph;
@@ -230,7 +217,7 @@ export class DominatedMetricColumn implements Column {
       this.ctx.showMetrics &&
       isEnabledForGraphStructure(
         this.ctx.graphStructure,
-        this.ctx.metricSettings(this.metricName)?.show_dominated,
+        this.ctx.viewVisibility(MV.dominated(this.metricName)),
       )
     );
   }
@@ -247,30 +234,11 @@ export class DominatedMetricColumn implements Column {
   }
 
   sortable() {
-    const columnType: ColumnType =
-      this.side === GRAPH_SIDE.R ? "Right" : "Left";
-    const sortable: TSortable = {
-      order: null,
-      onSortChange: (order: SortOrder | null) =>
-        this.ctx.onSortChange(order, {
-          DominatedMetric: {
-            t: columnType,
-            name: this.metricName,
-          },
-        }),
-    };
-
-    const sort = this.ctx.sort();
-    if (
-      sort != null &&
-      "DominatedMetric" in sort.column &&
-      sort.column.DominatedMetric.t === columnType &&
-      sort.column.DominatedMetric.name === this.metricName
-    ) {
-      sortable.order = sort.order;
-    }
-
-    return sortable;
+    const key =
+      this.side === GRAPH_SIDE.R
+        ? MV.right(MV.dominated(this.metricName))
+        : MV.dominated(this.metricName);
+    return sortableForView(this.ctx, key);
   }
 
   getValuesFn(): (idxs: NodeIDX[]) => Float32Array {
@@ -309,6 +277,8 @@ export class DominatedMetricColumn implements Column {
   }
 }
 
+// ── Tiered transitive metric ───────────────────────────────────
+
 export class TransitiveTieredMetricColumn implements Column {
   ctx: ColumnsCtx;
   nativeGraph: NativeGraph;
@@ -335,9 +305,9 @@ export class TransitiveTieredMetricColumn implements Column {
     return (
       this.ctx.showMetrics &&
       this.ctx.showTieredMetrics &&
-      this.ctx.metricSettings(this.metricName)?.column_show_tiered?.[
-        this.tierName
-      ] === "WhenEnabledGlobally" &&
+      isViewVisible(
+        this.ctx.viewVisibility(MV.tiered(this.metricName, this.tierName)),
+      ) &&
       isBelowMaxTier(this.ctx, tierIDX)
     );
   }
@@ -353,32 +323,11 @@ export class TransitiveTieredMetricColumn implements Column {
   }
 
   sortable() {
-    const columnType: ColumnType =
-      this.side === GRAPH_SIDE.R ? "Right" : "Left";
-    const sortable: TSortable = {
-      order: null,
-      onSortChange: (order: SortOrder | null) =>
-        this.ctx.onSortChange(order, {
-          TieredTransitiveMetric: {
-            t: columnType,
-            name: this.metricName,
-            tier: this.tierName,
-          },
-        }),
-    };
-
-    const sort = this.ctx.sort();
-    if (
-      sort != null &&
-      "TieredTransitiveMetric" in sort.column &&
-      sort.column.TieredTransitiveMetric.t === columnType &&
-      sort.column.TieredTransitiveMetric.name === this.metricName &&
-      sort.column.TieredTransitiveMetric.tier === this.tierName
-    ) {
-      sortable.order = sort.order;
-    }
-
-    return sortable;
+    const key =
+      this.side === GRAPH_SIDE.R
+        ? MV.right(MV.tiered(this.metricName, this.tierName))
+        : MV.tiered(this.metricName, this.tierName);
+    return sortableForView(this.ctx, key);
   }
 
   getValuesFn(): (idxs: NodeIDX[]) => number[] {
@@ -408,8 +357,6 @@ export class TransitiveTieredMetricColumn implements Column {
         } else if (
           row.twinArrow.points_from === ARROW_POINTS_FROM_NON_EXISTENT
         ) {
-          // If the arrow is coming from a non-existent point, we don't know
-          // what to override
           return <MissingMetric />;
         } else {
           const currentValue =
@@ -439,6 +386,8 @@ export class TransitiveTieredMetricColumn implements Column {
   }
 }
 
+// ── Tiered dominated metric ────────────────────────────────────
+
 export class TieredDominatedMetricColumn implements Column {
   ctx: ColumnsCtx;
   nativeGraph: NativeGraph;
@@ -465,9 +414,9 @@ export class TieredDominatedMetricColumn implements Column {
 
     const enabledForStructure = isEnabledForGraphStructure(
       this.ctx.graphStructure,
-      this.ctx.metricSettings(this.metricName)?.show_dominated_tiered?.[
-        this.tierName
-      ],
+      this.ctx.viewVisibility(
+        MV.tieredDominated(this.metricName, this.tierName),
+      ),
     );
 
     return (
@@ -489,32 +438,11 @@ export class TieredDominatedMetricColumn implements Column {
   }
 
   sortable() {
-    const columnType: ColumnType =
-      this.side === GRAPH_SIDE.R ? "Right" : "Left";
-    const sortable: TSortable = {
-      order: null,
-      onSortChange: (order: SortOrder | null) =>
-        this.ctx.onSortChange(order, {
-          DominatedTieredMetric: {
-            t: columnType,
-            name: this.metricName,
-            tier: this.tierName,
-          },
-        }),
-    };
-
-    const sort = this.ctx.sort();
-    if (
-      sort != null &&
-      "DominatedTieredMetric" in sort.column &&
-      sort.column.DominatedTieredMetric.t === columnType &&
-      sort.column.DominatedTieredMetric.name === this.metricName &&
-      sort.column.DominatedTieredMetric.tier === this.tierName
-    ) {
-      sortable.order = sort.order;
-    }
-
-    return sortable;
+    const key =
+      this.side === GRAPH_SIDE.R
+        ? MV.right(MV.tieredDominated(this.metricName, this.tierName))
+        : MV.tieredDominated(this.metricName, this.tierName);
+    return sortableForView(this.ctx, key);
   }
 
   getValuesFn(): (idxs: NodeIDX[]) => number[] {
@@ -556,6 +484,8 @@ export class TieredDominatedMetricColumn implements Column {
   }
 }
 
+// ── Tiered transitive delta ────────────────────────────────────
+
 export class TransitiveTieredMetricDeltaColumn implements Column {
   ctx: ColumnsCtx;
   twinGraph: TwinGraph;
@@ -583,9 +513,9 @@ export class TransitiveTieredMetricDeltaColumn implements Column {
     return (
       this.ctx.showMetrics &&
       this.ctx.showTieredMetrics &&
-      this.ctx.metricSettings(this.metricName)?.column_show_tiered?.[
-        this.tierName
-      ] === "WhenEnabledGlobally" &&
+      isViewVisible(
+        this.ctx.viewVisibility(MV.tiered(this.metricName, this.tierName)),
+      ) &&
       isBelowMaxTier(this.ctx, tierIDX)
     );
   }
@@ -601,31 +531,10 @@ export class TransitiveTieredMetricDeltaColumn implements Column {
   }
 
   sortable() {
-    const columnType: ColumnType = "Delta";
-    const sortable: TSortable = {
-      order: null,
-      onSortChange: (order: SortOrder | null) =>
-        this.ctx.onSortChange(order, {
-          TieredTransitiveMetric: {
-            t: columnType,
-            name: this.metricName,
-            tier: this.tierName,
-          },
-        }),
-    };
-
-    const sort = this.ctx.sort();
-    if (
-      sort != null &&
-      "TieredTransitiveMetric" in sort.column &&
-      sort.column.TieredTransitiveMetric.t === columnType &&
-      sort.column.TieredTransitiveMetric.name === this.metricName &&
-      sort.column.TieredTransitiveMetric.tier === this.tierName
-    ) {
-      sortable.order = sort.order;
-    }
-
-    return sortable;
+    return sortableForView(
+      this.ctx,
+      MV.delta(MV.tiered(this.metricName, this.tierName)),
+    );
   }
 
   getValuesFn(): (idxs: NodeIDX[]) => number[] {
@@ -667,6 +576,8 @@ export class TransitiveTieredMetricDeltaColumn implements Column {
   }
 }
 
+// ── Tiered transitive right in delta view ──────────────────────
+
 export class TransitiveTieredMetricRightDeltaColumn implements Column {
   ctx: ColumnsCtx;
   twinGraph: TwinGraph;
@@ -694,9 +605,9 @@ export class TransitiveTieredMetricRightDeltaColumn implements Column {
     return (
       this.ctx.showMetrics &&
       this.ctx.showTieredMetrics &&
-      this.ctx.metricSettings(this.metricName)?.column_show_tiered?.[
-        this.tierName
-      ] === "WhenEnabledGlobally" &&
+      isViewVisible(
+        this.ctx.viewVisibility(MV.tiered(this.metricName, this.tierName)),
+      ) &&
       isBelowMaxTier(this.ctx, tierIDX)
     );
   }
@@ -712,32 +623,8 @@ export class TransitiveTieredMetricRightDeltaColumn implements Column {
   }
 
   sortable() {
-    const columnType: ColumnType = "Right";
-    const sortable: TSortable = {
-      order: null,
-      onSortChange: (order: SortOrder | null) =>
-        this.ctx.onSortChange(order, {
-          TieredTransitiveMetric: {
-            t: columnType,
-            name: this.metricName,
-            tier: this.tierName,
-          },
-        }),
-    };
-
-    const sort = this.ctx.sort();
-    if (
-      sort != null &&
-      "TieredTransitiveMetric" in sort.column &&
-      (sort.column.TieredTransitiveMetric.t === "Right" ||
-        sort.column.TieredTransitiveMetric.t === "Left") &&
-      sort.column.TieredTransitiveMetric.name === this.metricName &&
-      sort.column.TieredTransitiveMetric.tier === this.tierName
-    ) {
-      sortable.order = sort.order;
-    }
-
-    return sortable;
+    const key = MV.right(MV.tiered(this.metricName, this.tierName));
+    return sortableForView(this.ctx, key);
   }
 
   getValuesFn(side: GraphSide): (idxs: NodeIDX[]) => number[] {
@@ -796,6 +683,8 @@ export class TransitiveTieredMetricRightDeltaColumn implements Column {
   }
 }
 
+// ── Self metric right in delta view ────────────────────────────
+
 export class MetricRightInDeltaViewColumn implements Column {
   ctx: ColumnsCtx;
   twinGraph: TwinGraph;
@@ -813,7 +702,7 @@ export class MetricRightInDeltaViewColumn implements Column {
     }
     return (
       this.ctx.showMetrics &&
-      this.ctx.metricSettings(this.metricName)?.column_hide_self !== true
+      isViewVisible(this.ctx.viewVisibility(MV.metric(this.metricName)))
     );
   }
 
@@ -822,29 +711,7 @@ export class MetricRightInDeltaViewColumn implements Column {
   }
 
   sortable() {
-    const columnType: ColumnType = "Right";
-    const sortable: TSortable = {
-      order: null,
-      onSortChange: (order: SortOrder | null) =>
-        this.ctx.onSortChange(order, {
-          Metric: {
-            t: columnType,
-            name: this.metricName,
-          },
-        }),
-    };
-
-    const sort = this.ctx.sort();
-    if (
-      sort != null &&
-      "Metric" in sort.column &&
-      (sort.column.Metric.t === "Left" || sort.column.Metric.t === "Right") &&
-      sort.column.Metric.name === this.metricName
-    ) {
-      sortable.order = sort.order;
-    }
-
-    return sortable;
+    return sortableForView(this.ctx, MV.right(MV.metric(this.metricName)));
   }
 
   definition(): [string, NumericValueColumnDefinition] {
@@ -897,6 +764,8 @@ export class MetricRightInDeltaViewColumn implements Column {
   }
 }
 
+// ── Self metric delta ──────────────────────────────────────────
+
 export class MetricDeltaViewColumn implements Column {
   ctx: ColumnsCtx;
   twinGraph: TwinGraph;
@@ -914,7 +783,7 @@ export class MetricDeltaViewColumn implements Column {
     }
     return (
       this.ctx.showMetrics &&
-      this.ctx.metricSettings(this.metricName)?.column_hide_self !== true
+      isViewVisible(this.ctx.viewVisibility(MV.metric(this.metricName)))
     );
   }
 
@@ -923,29 +792,7 @@ export class MetricDeltaViewColumn implements Column {
   }
 
   sortable() {
-    const columnType: ColumnType = "Delta";
-    const sortable: TSortable = {
-      order: null,
-      onSortChange: (order: SortOrder | null) =>
-        this.ctx.onSortChange(order, {
-          Metric: {
-            t: columnType,
-            name: this.metricName,
-          },
-        }),
-    };
-
-    const sort = this.ctx.sort();
-    if (
-      sort != null &&
-      "Metric" in sort.column &&
-      sort.column.Metric.t === columnType &&
-      sort.column.Metric.name === this.metricName
-    ) {
-      sortable.order = sort.order;
-    }
-
-    return sortable;
+    return sortableForView(this.ctx, MV.delta(MV.metric(this.metricName)));
   }
 
   getValuesFn(): (idxs: NodeIDX[]) => Float32Array {
@@ -999,6 +846,8 @@ export class MetricDeltaViewColumn implements Column {
   }
 }
 
+// ── Conjoint tiered metric ─────────────────────────────────────
+
 export class ConjointTieredMetricColumn implements Column {
   ctx: ColumnsCtx;
   nativeGraph: NativeGraph;
@@ -1021,13 +870,15 @@ export class ConjointTieredMetricColumn implements Column {
   }
 
   isEnabled() {
-    const metricSettings = this.ctx.metricSettings(this.metricName);
     const tierIDX = this.nativeGraph.stats().tier_names.indexOf(this.tierName);
     return (
       this.ctx.showMetrics &&
       this.ctx.showConjointTieredMetrics &&
-      metricSettings?.show_conjoint_tiered?.[this.tierName] ===
-        "WhenEnabledGlobally" &&
+      isViewVisible(
+        this.ctx.viewVisibility(
+          MV.conjointTiered(this.metricName, this.tierName),
+        ),
+      ) &&
       isBelowMaxTier(this.ctx, tierIDX)
     );
   }
@@ -1043,32 +894,11 @@ export class ConjointTieredMetricColumn implements Column {
   }
 
   sortable() {
-    const columnType: ColumnType =
-      this.side === GRAPH_SIDE.R ? "Right" : "Left";
-    const sortable: TSortable = {
-      order: null,
-      onSortChange: (order: SortOrder | null) =>
-        this.ctx.onSortChange(order, {
-          ConjointTieredMetric: {
-            t: columnType,
-            name: this.metricName,
-            tier: this.tierName,
-          },
-        }),
-    };
-
-    const sort = this.ctx.sort();
-    if (
-      sort != null &&
-      "ConjointTieredMetric" in sort.column &&
-      sort.column.ConjointTieredMetric.t === columnType &&
-      sort.column.ConjointTieredMetric.name === this.metricName &&
-      sort.column.ConjointTieredMetric.tier === this.tierName
-    ) {
-      sortable.order = sort.order;
-    }
-
-    return sortable;
+    const key =
+      this.side === GRAPH_SIDE.R
+        ? MV.right(MV.conjointTiered(this.metricName, this.tierName))
+        : MV.conjointTiered(this.metricName, this.tierName);
+    return sortableForView(this.ctx, key);
   }
 
   definition(): [string, NumericValueColumnDefinition] {
@@ -1105,6 +935,8 @@ export class ConjointTieredMetricColumn implements Column {
     return [columnID, definition];
   }
 }
+
+// ── Helpers ────────────────────────────────────────────────────
 
 function isBelowMaxTier(ctx: ColumnsCtx, tierIDX: number): boolean {
   if (tierIDX == null) {

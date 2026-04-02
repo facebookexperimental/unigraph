@@ -6,9 +6,7 @@
 
 
 import type { GraphTableSort } from './GraphTableSort.ts';
-import type { IndividualDominatedOptionEnabled } from './IndividualDominatedOptionEnabled.ts';
-import type { IndividualOptionEnabled } from './IndividualOptionEnabled.ts';
-import type { MetricSettings } from './MetricSettings.ts';
+import type { MetricViewSettings } from './MetricViewSettings.ts';
 
 export interface ColumnSettings {
   /**
@@ -16,10 +14,6 @@ export interface ColumnSettings {
    * and order if any
    */
   graph_table_sort?: GraphTableSort | undefined;
-  show_parents_count?: IndividualOptionEnabled | undefined;
-  show_transitive_count?: IndividualOptionEnabled | undefined;
-  show_conjoint_count?: IndividualOptionEnabled | undefined;
-  show_dominated_count?: IndividualDominatedOptionEnabled | undefined;
   /**
    * Global setting for showing metric values
    * (if tiers are defined)
@@ -29,28 +23,28 @@ export interface ColumnSettings {
   /**
    * Global setting for showing tiered values for metrics
    * (if tiers are defined)
-   * It is hidden by default, but can be endabled
+   * It is hidden by default, but can be enabled
    */
   show_tiered_metrics?: boolean | undefined;
   /** Global setting for showing conjoint values for tiered metrics */
   show_conjoint_tiered_metrics?: boolean | undefined;
   /**
    * Global setting for showing dominated metric values.
-   * Individual columns will be enabled/disabled based on
-   * their individual settings.
-   * defaults to showing because individual values default
-   * to only whowing when in Dominator mode
+   * Defaults to showing because individual values default
+   * to only showing when in Dominator mode.
    */
   hide_dominated_tiered_metrics?: boolean | undefined;
   /**
    * Global setting for showing columns related to
    * node counts, like transitive counts, parents counts,
    * or conjoint cost for node counts.
-   * Individual columns will be enabled/disabled based on
-   * their individual settings.
    */
   show_counts?: boolean | undefined;
   /** Show a column that displays the tier each node */
   show_tier_column?: boolean | undefined;
-  metric_settings?: { [key: string]: MetricSettings } | undefined;
+  /**
+   * Per-view settings keyed by `MetricView.to_string()`.
+   * E.g. `"size"`, `"size~transitive"`, `"node-count~dominated"`.
+   */
+  metric_settings?: { [key: string]: MetricViewSettings } | undefined;
 }

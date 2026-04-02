@@ -5,4 +5,6 @@
  */
 
 
-export type ColumnType = "Left" | "Right" | "Delta";
+export interface SearchNodesOutput {
+  matches: string[];
+}

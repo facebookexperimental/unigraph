@@ -1,6 +1,5 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-import type { ColumnType } from "../../__generated__/ts/ColumnType";
 import type { NodeIDX } from "../../__generated__/ts/NodeIDX";
 import type { SortOrder } from "../../__generated__/ts/SortOrder";
 import { ARROW_POINTS_FROM_NON_EXISTENT } from "../../ArrowUtils";
@@ -22,7 +21,7 @@ import {
   NO_PRECISION_FORMAT,
   WouldBeDeltaMetricCell,
 } from "./Cells";
-import { isEnabledForGraphStructure } from "./ColumnUtils";
+import { MV, isEnabledForGraphStructure, isViewVisible } from "./ColumnUtils";
 import { MetricDeltaRightHovercard } from "./hovercards";
 import type { Column, ColumnsCtx } from "./useGraphTreeTableColumns";
 
@@ -39,27 +38,30 @@ export class TransitiveCountColumn implements Column {
   }
 
   isEnabled() {
-    return this.ctx.showTransitiveCount && this.ctx.showCounts;
+    return (
+      isViewVisible(this.ctx.viewVisibility(MV.countTransitive)) &&
+      this.ctx.showCounts
+    );
   }
 
   sortable(): TSortable | null {
-    const columnType: ColumnType =
-      this.side === GRAPH_SIDE.R ? "Right" : "Left";
+    const key =
+      this.side === GRAPH_SIDE.R
+        ? MV.right(MV.countTransitive)
+        : MV.countTransitive;
     const sortable: TSortable = {
       order: null,
       onSortChange: (order: SortOrder | null) =>
         this.ctx.onSortChange(order, {
-          TransitiveCount: {
-            t: columnType,
-          },
+          MetricView: { key },
         }),
     };
 
     const sort = this.ctx.sort();
     if (
       sort != null &&
-      "TransitiveCount" in sort.column &&
-      sort.column.TransitiveCount.t === columnType
+      "MetricView" in sort.column &&
+      sort.column.MetricView.key === key
     ) {
       sortable.order = sort.order;
     }
@@ -97,8 +99,6 @@ export class TransitiveCountColumn implements Column {
         } else if (
           row.twinArrow.points_from === ARROW_POINTS_FROM_NON_EXISTENT
         ) {
-          // If the arrow is coming from a non-existent point, we don't know
-          // what to override
           return <MissingMetric />;
         } else {
           const currentValue =
@@ -143,29 +143,29 @@ export class DominatedCountColumn implements Column {
       this.ctx.showCounts &&
       isEnabledForGraphStructure(
         this.ctx.graphStructure,
-        this.ctx.graphSettings.ui_settings?.columns?.show_dominated_count,
+        this.ctx.viewVisibility(MV.countDominated),
       )
     );
   }
 
   sortable(): TSortable | null {
-    const columnType: ColumnType =
-      this.side === GRAPH_SIDE.R ? "Right" : "Left";
+    const key =
+      this.side === GRAPH_SIDE.R
+        ? MV.right(MV.countDominated)
+        : MV.countDominated;
     const sortable: TSortable = {
       order: null,
       onSortChange: (order: SortOrder | null) =>
         this.ctx.onSortChange(order, {
-          DominatedCount: {
-            t: columnType,
-          },
+          MetricView: { key },
         }),
     };
 
     const sort = this.ctx.sort();
     if (
       sort != null &&
-      "DominatedCount" in sort.column &&
-      sort.column.DominatedCount.t === columnType
+      "MetricView" in sort.column &&
+      sort.column.MetricView.key === key
     ) {
       sortable.order = sort.order;
     }
@@ -224,26 +224,27 @@ export class TransitiveCountDeltaColumn implements Column {
   }
 
   isEnabled() {
-    return this.ctx.showTransitiveCount && this.ctx.showCounts;
+    return (
+      isViewVisible(this.ctx.viewVisibility(MV.countTransitive)) &&
+      this.ctx.showCounts
+    );
   }
 
   sortable(): TSortable | null {
-    const columnType: ColumnType = "Delta";
+    const key = MV.delta(MV.countTransitive);
     const sortable: TSortable = {
       order: null,
       onSortChange: (order: SortOrder | null) =>
         this.ctx.onSortChange(order, {
-          TransitiveCount: {
-            t: columnType,
-          },
+          MetricView: { key },
         }),
     };
 
     const sort = this.ctx.sort();
     if (
       sort != null &&
-      "TransitiveCount" in sort.column &&
-      sort.column.TransitiveCount.t === columnType
+      "MetricView" in sort.column &&
+      sort.column.MetricView.key === key
     ) {
       sortable.order = sort.order;
     }
@@ -303,33 +304,27 @@ export class TransitiveCountRightInDeltaViewColumn implements Column {
 
   isEnabled() {
     return (
-      this.ctx.showTransitiveCount &&
+      isViewVisible(this.ctx.viewVisibility(MV.countTransitive)) &&
       this.ctx.showCounts &&
       this.twinGraph.r != null
     );
   }
 
   sortable(): TSortable | null {
-    const columnType: ColumnType = "Right";
+    const key = MV.right(MV.countTransitive);
     const sortable: TSortable = {
       order: null,
       onSortChange: (order: SortOrder | null) =>
         this.ctx.onSortChange(order, {
-          TransitiveCount: {
-            t: columnType,
-          },
+          MetricView: { key },
         }),
     };
 
     const sort = this.ctx.sort();
     if (
       sort != null &&
-      "TransitiveCount" in sort.column &&
-      // This column sorta represents both left and right graphs while
-      // only showing the right value. Since left column does not exist
-      // we will take the `Left` sorting as sorting for `Right` as well.
-      (sort.column.TransitiveCount.t === "Right" ||
-        sort.column.TransitiveCount.t === "Left")
+      "MetricView" in sort.column &&
+      sort.column.MetricView.key === key
     ) {
       sortable.order = sort.order;
     }
@@ -464,7 +459,10 @@ export class ParentsCountColumn implements Column {
   }
 
   isEnabled() {
-    return this.ctx.showParentsCount && this.ctx.showCounts;
+    return (
+      isViewVisible(this.ctx.viewVisibility(MV.parentsCount)) &&
+      this.ctx.showCounts
+    );
   }
 
   getID(): string {
@@ -475,23 +473,21 @@ export class ParentsCountColumn implements Column {
   }
 
   sortable() {
-    const columnType: ColumnType =
-      this.side === GRAPH_SIDE.R ? "Right" : "Left";
+    const key =
+      this.side === GRAPH_SIDE.R ? MV.right(MV.parentsCount) : MV.parentsCount;
     const sortable: TSortable = {
       order: null,
       onSortChange: (order: SortOrder | null) =>
         this.ctx.onSortChange(order, {
-          ParentsCount: {
-            t: columnType,
-          },
+          MetricView: { key },
         }),
     };
 
     const sort = this.ctx.sort();
     if (
       sort != null &&
-      "ParentsCount" in sort.column &&
-      sort.column.ParentsCount.t === columnType
+      "MetricView" in sort.column &&
+      sort.column.MetricView.key === key
     ) {
       sortable.order = sort.order;
     }
@@ -542,7 +538,10 @@ export class ConjointCountColumn implements Column {
   }
 
   isEnabled() {
-    return this.ctx.showConjointCount && this.ctx.showCounts;
+    return (
+      isViewVisible(this.ctx.viewVisibility(MV.countConjoint)) &&
+      this.ctx.showCounts
+    );
   }
 
   getID(): string {
@@ -553,23 +552,23 @@ export class ConjointCountColumn implements Column {
   }
 
   sortable() {
-    const columnType: ColumnType =
-      this.side === GRAPH_SIDE.R ? "Right" : "Left";
+    const key =
+      this.side === GRAPH_SIDE.R
+        ? MV.right(MV.countConjoint)
+        : MV.countConjoint;
     const sortable: TSortable = {
       order: null,
       onSortChange: (order: SortOrder | null) =>
         this.ctx.onSortChange(order, {
-          ConjointCount: {
-            t: columnType,
-          },
+          MetricView: { key },
         }),
     };
 
     const sort = this.ctx.sort();
     if (
       sort != null &&
-      "ConjointCount" in sort.column &&
-      sort.column.ConjointCount.t === columnType
+      "MetricView" in sort.column &&
+      sort.column.MetricView.key === key
     ) {
       sortable.order = sort.order;
     }

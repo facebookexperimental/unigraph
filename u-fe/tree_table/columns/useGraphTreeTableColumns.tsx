@@ -4,7 +4,8 @@ import { useMemo } from "react";
 import type { GraphSettings } from "../../__generated__/ts/GraphSettings";
 import type { GraphStructure } from "../../__generated__/ts/GraphStructure";
 import type { GraphTableSort } from "../../__generated__/ts/GraphTableSort";
-import type { MetricSettings } from "../../__generated__/ts/MetricSettings";
+import type { MetricViewSettings } from "../../__generated__/ts/MetricViewSettings";
+import type { MetricViewVisibility } from "../../__generated__/ts/MetricViewVisibility";
 import type { SortColumn } from "../../__generated__/ts/SortColumn";
 import type { SortOrder } from "../../__generated__/ts/SortOrder";
 import type { TraversalConfig } from "../../__generated__/ts/TraversalConfig";
@@ -151,13 +152,10 @@ export class ColumnsCtx {
   graphSettings: GraphSettings;
   setGraphSettings: (gs: GraphSettings) => void;
   tvc: TraversalConfig;
-  showTransitiveCount: boolean;
-  showParentsCount: boolean;
   showMetrics: boolean;
   showTieredMetrics: boolean;
   showConjointTieredMetrics: boolean;
   hideDominatedTieredMetrics: boolean;
-  showConjointCount: boolean;
   showCounts: boolean;
   graphStructure: GraphStructure;
 
@@ -170,21 +168,12 @@ export class ColumnsCtx {
     this.setGraphSettings = setGraphSettings;
     this.tvc = tvc;
 
-    this.showTransitiveCount =
-      graphSettings.ui_settings?.columns?.show_transitive_count !== "Never";
-    this.showParentsCount =
-      graphSettings.ui_settings?.columns?.show_parents_count ===
-      "WhenEnabledGlobally";
     this.showMetrics =
       graphSettings.ui_settings?.columns?.hide_metrics !== true;
     this.showTieredMetrics =
       graphSettings.ui_settings?.columns?.show_tiered_metrics === true;
     this.showConjointTieredMetrics =
       graphSettings.ui_settings?.columns?.show_conjoint_tiered_metrics === true;
-
-    this.showConjointCount =
-      graphSettings.ui_settings?.columns?.show_conjoint_count ===
-      "WhenEnabledGlobally";
     this.hideDominatedTieredMetrics =
       graphSettings.ui_settings?.columns?.hide_dominated_tiered_metrics ===
       true;
@@ -193,11 +182,16 @@ export class ColumnsCtx {
       graphSettings.ui_settings?.graph_structure ?? "Forward";
   }
 
-  metricSettings(metricName: string): MetricSettings | null {
+  metricSettings(viewKey: string): MetricViewSettings | null {
     return (
-      this.graphSettings.ui_settings?.columns?.metric_settings?.[metricName] ??
+      this.graphSettings.ui_settings?.columns?.metric_settings?.[viewKey] ??
       null
     );
+  }
+
+  viewVisibility(viewKey: string): MetricViewVisibility | undefined {
+    return this.graphSettings.ui_settings?.columns?.metric_settings?.[viewKey]
+      ?.visibility;
   }
 
   sort(): GraphTableSort | null {
