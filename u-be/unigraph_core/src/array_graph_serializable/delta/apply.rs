@@ -184,7 +184,7 @@ pub fn apply_deltas(
 fn apply_node_changes(
     nodes: &MapDelta<String, GraphNode, GraphNodeDelta>,
     final_nodes: &ArrayGraphNodes,
-    directed_adj: &mut Vec<BTreeSet<NodeIDX>>,
+    directed_adj: &mut [BTreeSet<NodeIDX>],
     tagged: &mut BTreeMap<NodeIDX, BTreeMap<Tag, BTreeSet<NodeIDX>>>,
     dynamic: &mut BTreeMap<
         NodeIDX,
@@ -375,7 +375,7 @@ fn build_final_nodes(
 /// Clear all data for a removed node.
 fn clear_node(
     idx: NodeIDX,
-    directed_adj: &mut Vec<BTreeSet<NodeIDX>>,
+    directed_adj: &mut [BTreeSet<NodeIDX>],
     tagged: &mut BTreeMap<NodeIDX, BTreeMap<Tag, BTreeSet<NodeIDX>>>,
     dynamic: &mut BTreeMap<
         NodeIDX,
@@ -436,7 +436,7 @@ fn apply_graph_node(
     src_idx: NodeIDX,
     graph_node: &GraphNode,
     final_nodes: &ArrayGraphNodes,
-    directed_adj: &mut Vec<BTreeSet<NodeIDX>>,
+    directed_adj: &mut [BTreeSet<NodeIDX>],
     tagged: &mut BTreeMap<NodeIDX, BTreeMap<Tag, BTreeSet<NodeIDX>>>,
     dynamic: &mut BTreeMap<
         NodeIDX,
@@ -523,7 +523,7 @@ fn apply_graph_node_delta(
     src_idx: NodeIDX,
     node_delta: &GraphNodeDelta,
     final_nodes: &ArrayGraphNodes,
-    directed_adj: &mut Vec<BTreeSet<NodeIDX>>,
+    directed_adj: &mut [BTreeSet<NodeIDX>],
     tagged: &mut BTreeMap<NodeIDX, BTreeMap<Tag, BTreeSet<NodeIDX>>>,
     dynamic: &mut BTreeMap<
         NodeIDX,

@@ -76,6 +76,12 @@ impl<T> IndexMut<NodeIDX> for Vec<T> {
     }
 }
 
+impl<T> IndexMut<NodeIDX> for [T] {
+    fn index_mut(&mut self, idx: NodeIDX) -> &mut Self::Output {
+        &mut self[idx.0 as usize]
+    }
+}
+
 impl From<usize> for NodeIDX {
     fn from(idx: usize) -> Self {
         NodeIDX(idx as u32)
