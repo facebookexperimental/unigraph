@@ -83,6 +83,9 @@ pub struct ArrayGraphSerializable {
     /// If present, these graph will use these entrypoints instead
     /// of automatically determining them.
     pub entry_points: Option<BTreeSet<NodeName>>,
+
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub properties: BTreeMap<PropertyName, PropertyValue>,
 }
 
 /// Serializable edge data for an array graph.
@@ -220,6 +223,7 @@ impl ArrayGraphSerializable {
             traversal_config: self.traversal_config,
             budget_configs: self.budget_configs,
             entry_points: self.entry_points,
+            properties: self.properties,
         })
     }
 }
@@ -257,14 +261,15 @@ impl From<ArrayGraph> for ArrayGraphSerializable {
                 dynamic: graph.edges_dynamic,
             },
             node_metadata: ArrayGraphSerializableNodeMetadata {
-                metrics: graph.metrics,
-                labels: graph.labels,
-                properties: graph.properties,
+                metrics: graph.node_metrics,
+                labels: graph.node_labels,
+                properties: graph.node_properties,
             },
             graph_settings: graph.graph_settings,
             traversal_config: graph.state.traversal_config,
             budget_configs: graph.budget_configs,
             entry_points: graph.entry_points,
+            properties: graph.properties,
         }
     }
 }
@@ -357,9 +362,9 @@ impl From<ArrayGraphSerializable> for ArrayGraph {
             derived_state,
             edges_tagged: serializable.edges.tagged,
             edges_dynamic: serializable.edges.dynamic,
-            metrics: serializable.node_metadata.metrics,
-            labels: serializable.node_metadata.labels,
-            properties: serializable.node_metadata.properties,
+            node_metrics: serializable.node_metadata.metrics,
+            node_labels: serializable.node_metadata.labels,
+            node_properties: serializable.node_metadata.properties,
             node_flags,
             state: ArrayGraphState {
                 traversal_config: serializable.traversal_config.clone(),
@@ -369,6 +374,7 @@ impl From<ArrayGraphSerializable> for ArrayGraph {
             graph_settings: serializable.graph_settings,
             budget_configs: serializable.budget_configs,
             entry_points: serializable.entry_points,
+            properties: serializable.properties,
         }
     }
 }

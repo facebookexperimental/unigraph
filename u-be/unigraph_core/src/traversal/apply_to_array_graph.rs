@@ -53,7 +53,7 @@ pub fn apply_traversal_config_to_array_graph(
     } = &indexed_config;
 
     let exclude_tags = exclude_tags_for_tier_above_the_max(tiered_traversal);
-    let labels = &ag.labels;
+    let labels = &ag.node_labels;
 
     for (parent_idx, edge, md) in ag.edges_forward.iter_edges_mut() {
         // we need to start fresh and make sure all edges that were previously excluded

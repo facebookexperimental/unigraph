@@ -17,6 +17,7 @@ pub fn to_map_graph(graph: &ArrayGraph) -> Result<MapGraph> {
         graph_settings: graph.graph_settings.clone(),
         budget_configs: graph.budget_configs.clone(),
         entry_points: graph.entry_points.clone(),
+        properties: graph.properties.clone(),
     };
 
     for node_idx in graph.node_idx_iter() {
@@ -76,7 +77,7 @@ pub fn to_map_graph(graph: &ArrayGraph) -> Result<MapGraph> {
 
         // Collect labels for this node from the inverted index
         let mut node_labels: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
-        for (label_name, node_map) in &graph.labels {
+        for (label_name, node_map) in &graph.node_labels {
             if let Some(values) = node_map.get(&node_idx) {
                 node_labels.insert(label_name.clone(), values.clone());
             }
@@ -84,7 +85,7 @@ pub fn to_map_graph(graph: &ArrayGraph) -> Result<MapGraph> {
 
         // Collect properties for this node from the inverted index
         let mut node_properties: BTreeMap<String, String> = BTreeMap::new();
-        for (prop_name, node_map) in &graph.properties {
+        for (prop_name, node_map) in &graph.node_properties {
             if let Some(value) = node_map.get(&node_idx) {
                 node_properties.insert(prop_name.clone(), value.clone());
             }
@@ -92,7 +93,7 @@ pub fn to_map_graph(graph: &ArrayGraph) -> Result<MapGraph> {
 
         // Filter out zero-valued metrics for lossless roundtrip
         let metrics: BTreeMap<String, f32> = graph
-            .metrics
+            .node_metrics
             .iter()
             .filter_map(|(name, values)| {
                 let v = values[node_idx];

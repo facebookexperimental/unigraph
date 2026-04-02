@@ -47,13 +47,14 @@ pub fn append_super_root(
         derived_state: _, // this is invalidated and need to be recomputed
         edges_tagged,
         edges_dynamic,
-        mut metrics,
-        labels,
-        properties,
+        mut node_metrics,
+        node_labels,
+        node_properties,
         graph_settings,
         budget_configs,
         entry_points: _, // we get them by determining
         state,
+        properties,
     } = ag;
 
     let highest_unicode_char =
@@ -75,7 +76,7 @@ be no other node already on the list that doesn't start from the same character"
 
     node_flags.push(NodeFlags::empty());
     append_super_root_edges(entrypoints, &mut edges_forward);
-    metrics.values_mut().for_each(|m| m.push(0.0));
+    node_metrics.values_mut().for_each(|m| m.push(0.0));
 
     let derived_state = ArrayGraphDerivedState::from_forward_edges(&edges_forward);
 
@@ -88,13 +89,14 @@ be no other node already on the list that doesn't start from the same character"
         derived_state,
         edges_tagged,
         edges_dynamic,
-        metrics,
-        labels,
-        properties,
+        node_metrics,
+        node_labels,
+        node_properties,
         state,
         graph_settings,
         budget_configs,
         entry_points: Some(BTreeSet::from([super_root_name])),
+        properties,
     })
 }
 

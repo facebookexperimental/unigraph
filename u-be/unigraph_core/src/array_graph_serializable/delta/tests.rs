@@ -208,6 +208,9 @@ fn format_delta(d: &MapGraphDelta) -> String {
     if d.entry_points.is_some() {
         out.push_str("Entry points: changed\n");
     }
+    if d.properties.is_some() {
+        out.push_str("Graph properties: changed\n");
+    }
 
     if out.is_empty() {
         return "<empty delta>".to_string();
@@ -231,6 +234,7 @@ fn empty_delta() -> MapGraphDelta {
         traversal_config: None,
         budget_configs: None,
         entry_points: None,
+        properties: None,
     }
 }
 

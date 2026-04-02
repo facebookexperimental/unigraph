@@ -66,6 +66,7 @@ pub fn apply_deltas(
         traversal_config: base_traversal_config,
         budget_configs: base_budget_configs,
         entry_points: base_entry_points,
+        properties: base_properties,
     } = base;
 
     // Phase 1: Compute the final set of node names by replaying add/remove
@@ -140,6 +141,7 @@ pub fn apply_deltas(
     let mut traversal_config = base_traversal_config;
     let mut budget_configs = base_budget_configs;
     let mut entry_points = base_entry_points;
+    let mut graph_properties = base_properties;
 
     for delta in deltas {
         if let Some(ref gs_delta) = delta.graph_settings {
@@ -153,6 +155,9 @@ pub fn apply_deltas(
         }
         if let Some(ref ep_delta) = delta.entry_points {
             entry_points.apply_delta(ep_delta.clone())?;
+        }
+        if let Some(ref p_delta) = delta.properties {
+            graph_properties.apply_delta(p_delta.clone())?;
         }
     }
 
@@ -176,6 +181,7 @@ pub fn apply_deltas(
         traversal_config,
         budget_configs,
         entry_points,
+        properties: graph_properties,
     })
 }
 

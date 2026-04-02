@@ -215,7 +215,7 @@ pub fn get_metric_names(side: u32) -> Result<Vec<String>, WasmJSError> {
         .get()
         .twin_graph
         .graph_u32(side)?
-        .metrics
+        .node_metrics
         .keys()
         .cloned()
         .collect())
@@ -232,7 +232,7 @@ pub fn get_node_metrics(
     if let Some(metrics) = graph_state
         .twin_graph
         .graph_u32(side)?
-        .metrics
+        .node_metrics
         .get(metric_name)
     {
         for node_idx in node_idxs {

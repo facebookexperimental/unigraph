@@ -52,7 +52,7 @@ impl TwinGraph {
             node_names: Arc::clone(&l.nodes.node_names),
             node_diff: Arc::clone(&l.nodes.node_diff),
             changed_nodes: Some(ChangedNodesGraph::new()),
-            metric_names: l.metrics.keys().cloned().collect(),
+            metric_names: l.node_metrics.keys().cloned().collect(),
             l,
             r: None,
         })

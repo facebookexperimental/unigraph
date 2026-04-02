@@ -117,6 +117,7 @@ pub fn derive_delta(
     let traversal_config = base.traversal_config.derive_delta(&target.traversal_config);
     let budget_configs = base.budget_configs.derive_delta(&target.budget_configs);
     let entry_points = base.entry_points.derive_delta(&target.entry_points);
+    let properties = base.properties.derive_delta(&target.properties);
 
     let nodes = if nodes_added.is_empty() && nodes_removed.is_empty() && nodes_changed.is_empty() {
         None
@@ -134,6 +135,7 @@ pub fn derive_delta(
         traversal_config,
         budget_configs,
         entry_points,
+        properties,
     })
 }
 

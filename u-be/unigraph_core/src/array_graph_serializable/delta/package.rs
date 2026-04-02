@@ -65,6 +65,8 @@ pub struct DeltaManifestStats {
     pub labels_changed: u32,
     /// Number of nodes with property changes.
     pub properties_changed: u32,
+    /// Whether graph-level properties changed.
+    pub graph_properties_changed: bool,
 }
 
 /// A fully self-contained delta package: the manifest plus all blob data.
@@ -136,6 +138,7 @@ impl DeltaManifestStats {
             metrics_changed,
             labels_changed,
             properties_changed,
+            graph_properties_changed: delta.properties.is_some(),
         }
     }
 }

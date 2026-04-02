@@ -497,12 +497,12 @@ fn transitive_budget_algo(
     // Pre-index metric vecs for fast access
     let flat_metrics: Vec<(&MetricName, Option<&Vec<f32>>)> = flat_metric_names
         .iter()
-        .map(|name| (name, source.metrics.get(name)))
+        .map(|name| (name, source.node_metrics.get(name)))
         .collect();
 
     let tiered_metrics: Vec<(&MetricName, Option<&Vec<f32>>)> = tiered_metric_names
         .iter()
-        .map(|name| (name, source.metrics.get(name)))
+        .map(|name| (name, source.node_metrics.get(name)))
         .collect();
 
     // Compute metrics for each budget
@@ -688,7 +688,7 @@ mod tests {
         for node_idx in ag.node_idx_iter() {
             let name = ag.idx_to_name(node_idx);
             let mut metric_strs: Vec<String> = ag
-                .metrics
+                .node_metrics
                 .iter()
                 .map(|(metric_name, values)| format!("{metric_name}={}", values[node_idx]))
                 .collect();

@@ -141,7 +141,7 @@ impl SimulationGraph {
 
         if let Some(selected_metrics) = selected_metric
             .as_ref()
-            .and_then(|m| array_graph.metrics.get(m))
+            .and_then(|m| array_graph.node_metrics.get(m))
         {
             graph.recalculate_adjusted_sizes(selected_metrics)?;
         }

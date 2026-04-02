@@ -34,6 +34,8 @@ use crate::ArrayGraphSerializable;
 use crate::ArrayGraphSerializableEdges;
 use crate::ArrayGraphSerializableNodeMetadata;
 use crate::graph_settings::GraphSettings;
+use crate::types::PropertyName;
+use crate::types::PropertyValue;
 use crate::types::array_graph::budget_graph::BudgetConfig;
 
 /// Default maximum size of each blob chunk before splitting (2 MB).
@@ -80,6 +82,10 @@ pub struct ArrayGraphSerializableManifest {
 
     /// Optional graph-level settings (e.g. display configuration).
     pub graph_settings: Option<GraphSettings>,
+
+    /// Graph-level key-value properties (not per-node).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub properties: BTreeMap<PropertyName, PropertyValue>,
 }
 
 /// Maps each logical field of the graph to the [`BlobID`](s) that hold its
@@ -118,6 +124,10 @@ pub struct ManifestBlobs {
     pub budget_configs: Vec<BlobID>,
     /// Explicit graph entry points, if set.
     pub entry_points: Vec<BlobID>,
+
+    /// Graph-level key-value properties (stored in manifest, not as blobs).
+    #[serde(default)]
+    pub graph_properties: Vec<BlobID>,
 }
 
 /// Summary statistics recorded at pack time.
@@ -174,6 +184,7 @@ impl ManifestBlobs {
             traversal_config,
             budget_configs,
             entry_points,
+            graph_properties,
         } = self;
 
         [
@@ -189,6 +200,7 @@ impl ManifestBlobs {
             traversal_config,
             budget_configs,
             entry_points,
+            graph_properties,
         ]
         .into_iter()
         .flatten()
@@ -298,6 +310,7 @@ pub fn pack(
         traversal_config,
         budget_configs,
         entry_points,
+        properties: graph_properties,
     } = &graph;
 
     let ArrayGraphSerializableEdges {
@@ -375,6 +388,7 @@ pub fn pack(
         traversal_config: take_field!(traversal_config),
         budget_configs: take_field!(budget_configs),
         entry_points: take_field!(entry_points),
+        graph_properties: vec![],
     };
 
     let mut manifest_blob_id = BlobID::from("_manifest.json");
@@ -390,6 +404,7 @@ pub fn pack(
         stats,
         blobs: manifest_blobs,
         graph_settings: graph_settings.clone(),
+        properties: graph_properties.clone(),
     };
 
     b.insert(
@@ -414,6 +429,7 @@ pub fn unpack(package: &ArrayGraphSerializablePackage) -> Result<ArrayGraphSeria
             stats: _,
             blobs,
             graph_settings,
+            properties: graph_properties,
         } = &package.manifest;
 
         let ManifestBlobs {
@@ -429,6 +445,7 @@ pub fn unpack(package: &ArrayGraphSerializablePackage) -> Result<ArrayGraphSeria
             traversal_config,
             budget_configs,
             entry_points,
+            graph_properties: _, // stored in manifest directly, not as blobs
         } = &blobs;
 
         let b = &package.blobs;
@@ -480,6 +497,7 @@ pub fn unpack(package: &ArrayGraphSerializablePackage) -> Result<ArrayGraphSeria
             traversal_config,
             budget_configs,
             entry_points,
+            properties: graph_properties.clone(),
         })
     })()
     .context("Failed to unpack graph")
@@ -719,7 +737,8 @@ mod tests {
     ],
     "entry_points": [
       "entry_points_9535545603450022154"
-    ]
+    ],
+    "graph_properties": []
   },
   "graph_settings": null
 }

@@ -142,6 +142,10 @@ fn make_conversion_test_graph() -> MapGraph {
         graph_settings: Some(GraphSettings::default()),
         budget_configs: BTreeMap::new(),
         entry_points: Some(btreeset! { "A".into(), "F".into() }),
+        properties: btreemap! {
+            "source".into() => "test".into(),
+            "version".into() => "1.0".into(),
+        },
     }
 }
 

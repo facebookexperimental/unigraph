@@ -98,9 +98,9 @@ pub fn merge_into_twin(
     right.nodes = shared_node_names_r;
 
     let metric_names = left
-        .metrics
+        .node_metrics
         .keys()
-        .chain(right.metrics.keys())
+        .chain(right.node_metrics.keys())
         .cloned()
         .collect::<BTreeSet<_>>()
         .into_iter()
@@ -207,6 +207,7 @@ fn remap_with_nodes(
         traversal_config: graph.traversal_config,
         budget_configs: graph.budget_configs,
         entry_points: graph.entry_points,
+        properties: graph.properties,
     })
 }
 

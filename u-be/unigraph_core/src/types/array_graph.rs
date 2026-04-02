@@ -89,9 +89,9 @@ pub struct ArrayGraph {
         BTreeMap<DynamicTypeKey, BTreeMap<DynamicEdgeName, ArrayGraphDynamicEdge>>,
     >,
 
-    pub metrics: BTreeMap<MetricName, Vec<f32>>,
-    pub labels: BTreeMap<LabelName, BTreeMap<NodeIDX, BTreeSet<LabelValue>>>,
-    pub properties: BTreeMap<PropertyName, BTreeMap<NodeIDX, PropertyValue>>,
+    pub node_metrics: BTreeMap<MetricName, Vec<f32>>,
+    pub node_labels: BTreeMap<LabelName, BTreeMap<NodeIDX, BTreeSet<LabelValue>>>,
+    pub node_properties: BTreeMap<PropertyName, BTreeMap<NodeIDX, PropertyValue>>,
 
     pub graph_settings: Option<GraphSettings>,
 
@@ -100,6 +100,8 @@ pub struct ArrayGraph {
     /// If present, these graph will use these entrypoints instead
     /// of automatically determining them.
     pub entry_points: Option<BTreeSet<NodeName>>,
+
+    pub properties: BTreeMap<PropertyName, PropertyValue>,
 }
 
 bitflags::bitflags! {
@@ -200,14 +202,15 @@ impl ArrayGraph {
                 dynamic: self.edges_dynamic.clone(),
             },
             node_metadata: ArrayGraphSerializableNodeMetadata {
-                metrics: self.metrics.clone(),
-                labels: self.labels.clone(),
-                properties: self.properties.clone(),
+                metrics: self.node_metrics.clone(),
+                labels: self.node_labels.clone(),
+                properties: self.node_properties.clone(),
             },
             graph_settings: self.graph_settings.clone(),
             traversal_config: self.state.traversal_config.clone(),
             budget_configs: self.budget_configs.clone(),
             entry_points: self.entry_points.clone(),
+            properties: self.properties.clone(),
         }
     }
 
@@ -273,7 +276,7 @@ impl ArrayGraph {
 
     /// Collect all labels for a specific node from the inverted labels index.
     pub fn labels_for_node(&self, node_idx: NodeIDX) -> BTreeMap<&str, &BTreeSet<LabelValue>> {
-        self.labels
+        self.node_labels
             .iter()
             .filter_map(|(label_name, node_map)| {
                 node_map
@@ -434,7 +437,7 @@ impl ArrayGraph {
 
         let mut views = Vec::new();
 
-        for metric_name in self.metrics.keys() {
+        for metric_name in self.node_metrics.keys() {
             views.push(MetricView::Metric {
                 name: metric_name.clone(),
             });

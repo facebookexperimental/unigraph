@@ -145,7 +145,7 @@ pub fn get_transitive_tiered_metric_values(
         .as_ref()
         .and_then(|config| config.tiered_traversal.as_ref());
 
-    let metrics = ag.metrics.get(metric_name);
+    let metrics = ag.node_metrics.get(metric_name);
 
     match (metrics, tier_config) {
         (Some(metrics), Some(TieredTraversalConfig::AscendingTiers(ascending_tiers))) => {
@@ -224,7 +224,7 @@ pub fn get_transitive_metric_value(
     };
 
     let mut total = 0.0;
-    if let Some(metrics) = ag.metrics.get(metric_name) {
+    if let Some(metrics) = ag.node_metrics.get(metric_name) {
         for node_idx in edges.dfs_configured(&[node_idx]) {
             let value = metrics[node_idx];
             total += value
@@ -241,7 +241,7 @@ pub fn get_metrics_sums_for_nodes(
 ) -> Result<BTreeMap<String, f32>> {
     let mut result = BTreeMap::new();
 
-    for (metric_name, metrics) in &ag.metrics {
+    for (metric_name, metrics) in &ag.node_metrics {
         let mut total = 0.0;
 
         for node_idx in node_idxs {
@@ -276,7 +276,7 @@ pub fn get_metrics_sums_tiered_for_nodes(
         .and_then(|config| config.tiered_traversal.as_ref());
 
     if let Some(TieredTraversalConfig::AscendingTiers(ascending_tiers)) = tier_config {
-        for (metric_name, metrics) in &ag.metrics {
+        for (metric_name, metrics) in &ag.node_metrics {
             let mut tiered_metrics = [0.0; 4];
 
             for node_idx in node_idxs {
@@ -337,8 +337,8 @@ pub fn get_combined_metrics_for_entry_points(
 
     // get the indexed vec for metrics so we don't acess maps with a string key
     // on every iteration.
-    let metric_names = ag.metrics.keys().cloned().collect::<Vec<_>>();
-    let metric_values = ag.metrics.values().collect::<Vec<&Vec<f32>>>();
+    let metric_names = ag.node_metrics.keys().cloned().collect::<Vec<_>>();
+    let metric_values = ag.node_metrics.values().collect::<Vec<&Vec<f32>>>();
 
     let mut tiered_result_vec: Vec<[f32; 4]> = metric_names
         .iter()

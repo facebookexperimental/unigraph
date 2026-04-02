@@ -239,6 +239,7 @@ mod tests {
             traversal_config,
             budget_configs,
             entry_points,
+            properties: random_graph_properties(&mut rng),
         }
     }
 
@@ -402,6 +403,23 @@ mod tests {
             }
         }
         configs
+    }
+
+    /// Random graph-level properties (~30% chance, 1-3 key-value pairs)
+    fn random_graph_properties(rng: &mut XorShift64) -> BTreeMap<String, String> {
+        if rng.next_bool(30) {
+            let count = 1 + (rng.next() % 3) as usize;
+            (0..count)
+                .map(|_| {
+                    (
+                        format!("gprop_{}", rng.next() % 5),
+                        format!("gval_{}", rng.next() % 10),
+                    )
+                })
+                .collect()
+        } else {
+            BTreeMap::new()
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -584,7 +602,7 @@ pair_00: 4ae858de85e38a28
 pair_01: a02df8dfe55f8271
 pair_02: c25b51c3f5f82221
 pair_03: 8e44da27146fbd55
-pair_04: 88fe244ea2efed50
+pair_04: ff411adb14a69ba5
 pair_05: fc87c61336805b32
 pair_06: f135a477dcbcf458
 pair_07: 42b11e07603a1879

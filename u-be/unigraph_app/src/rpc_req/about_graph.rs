@@ -56,7 +56,7 @@ fn collect_metrics_info(ag: &ArrayGraph) -> Vec<AboutGraphMetricInfo> {
         .and_then(|ui| ui.columns.as_ref())
         .and_then(|cols| cols.metric_settings.as_ref());
 
-    ag.metrics
+    ag.node_metrics
         .keys()
         .map(|name| {
             let description = metric_settings

@@ -198,5 +198,6 @@ pub fn build_map_graph(
         graph_settings,
         budget_configs: BTreeMap::new(),
         entry_points,
+        properties: BTreeMap::new(),
     }
 }

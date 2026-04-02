@@ -54,12 +54,12 @@ impl<'a> ConjointCostBuilder<'a> {
 
         let scc_conj_counts = vec![0.0; sccs.len()];
         let scc_conj_metrics: BTreeMap<MetricName, Vec<f32>> = ag
-            .metrics
+            .node_metrics
             .keys()
             .map(|metric_name| (metric_name.clone(), vec![0.0; sccs.len()]))
             .collect();
         let scc_conj_tiered_metrics: BTreeMap<MetricName, Vec<Vec<f32>>> = ag
-            .metrics
+            .node_metrics
             .keys()
             .map(|metric_name| {
                 let tiered: Vec<Vec<f32>> = ag
@@ -144,7 +144,7 @@ impl<'a> ConjointCostBuilder<'a> {
         self.scc_conj_counts[scc_idx] = count;
 
         for &node_idx in scc {
-            for (metric_name, metrics) in &self.ag.metrics {
+            for (metric_name, metrics) in &self.ag.node_metrics {
                 let current_v = self.get_scc_value_for_metric(metric_name, scc_idx)?;
                 let node_v = metrics[node_idx];
 
@@ -171,7 +171,7 @@ impl<'a> ConjointCostBuilder<'a> {
         let child_count = self.scc_conj_counts[child_scc_idx];
         self.scc_conj_counts[scc_idx] += child_count;
 
-        for metric_name in self.ag.metrics.keys() {
+        for metric_name in self.ag.node_metrics.keys() {
             let current_v = self.get_scc_value_for_metric(metric_name, scc_idx)?;
             let child_v = self.get_scc_value_for_metric(metric_name, child_scc_idx)?;
             self.set_scc_value_for_metric(metric_name, scc_idx, current_v + child_v)?;
@@ -258,7 +258,7 @@ impl<'a> ConjointCostBuilder<'a> {
 
         self.scc_conj_counts[scc_idx] /= count;
 
-        for metric_name in self.ag.metrics.keys() {
+        for metric_name in self.ag.node_metrics.keys() {
             let v = self.get_scc_value_for_metric(metric_name, scc_idx)?;
             self.set_scc_value_for_metric(metric_name, scc_idx, v / count)?;
 
@@ -282,7 +282,7 @@ impl<'a> ConjointCostBuilder<'a> {
             result.count[node_idx] = self.scc_conj_counts[scc_idx];
         }
 
-        for metric_name in self.ag.metrics.keys() {
+        for metric_name in self.ag.node_metrics.keys() {
             let mut for_metric = vec![0.0; self.ag.nodes_len()];
             let mut for_tiered_metric = BTreeMap::new();
 
@@ -313,7 +313,7 @@ impl<'a> ConjointCostBuilder<'a> {
         }
 
         // make tiered metrics cumulative
-        for metric_name in self.ag.metrics.keys() {
+        for metric_name in self.ag.node_metrics.keys() {
             if result.tiered_metric.is_empty() {
                 break;
             }

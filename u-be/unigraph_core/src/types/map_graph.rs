@@ -45,6 +45,10 @@ pub struct MapGraph {
     /// If present, these graph will use these entry points instead
     /// of automatically determining them.
     pub entry_points: Option<BTreeSet<NodeName>>,
+
+    /// Graph-level key-value properties (not per-node).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub properties: BTreeMap<PropertyName, PropertyValue>,
 }
 
 #[derive(
@@ -106,6 +110,7 @@ impl MapGraphDelta {
             && self.traversal_config.is_none()
             && self.budget_configs.is_none()
             && self.entry_points.is_none()
+            && self.properties.is_none()
     }
 }
 
@@ -258,6 +263,7 @@ impl MapGraph {
             traversal_config: self.traversal_config.clone(),
             budget_configs: self.budget_configs.clone(),
             entry_points: self.entry_points.clone(),
+            properties: self.properties.clone(),
         })
     }
 

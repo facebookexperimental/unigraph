@@ -102,7 +102,7 @@ fn explore_node(ag: Arc<ArrayGraph>, input: &ExploreGraphInput) -> Result<Explor
 }
 
 fn collect_metric_names(ag: &ArrayGraph) -> Vec<String> {
-    ag.metrics.keys().cloned().collect()
+    ag.node_metrics.keys().cloned().collect()
 }
 
 fn collect_tier_names(ag: &ArrayGraph) -> Vec<String> {
@@ -244,9 +244,10 @@ fn compute_metric(
     _graph_structure: GraphStructure,
 ) -> Result<f32> {
     match metric {
-        MetricView::Metric { name } => {
-            Ok(ag.metrics.get(name.as_str()).map_or(0.0, |v| v[node_idx]))
-        }
+        MetricView::Metric { name } => Ok(ag
+            .node_metrics
+            .get(name.as_str())
+            .map_or(0.0, |v| v[node_idx])),
         MetricView::Transitive { name } => ag.get_transitive_metric_value(node_idx, name, false),
         MetricView::Dominated { name } => ag.get_transitive_metric_value(node_idx, name, true),
         MetricView::Tiered { name, tier_name } => {

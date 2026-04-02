@@ -402,6 +402,7 @@ J (labels: assert_tags: [a, b]):
             traversal_config: None,
             budget_configs: BTreeMap::new(),
             entry_points: None,
+            properties: BTreeMap::new(),
         };
 
         let new_g = new_sg.into_array_graph();

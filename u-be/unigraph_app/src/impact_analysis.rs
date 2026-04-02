@@ -465,7 +465,7 @@ fn patch_graph(ag: &mut ArrayGraph, impact_metrics: Vec<(ImpactMetric, Vec<f32>)
             },
         );
 
-        ag.metrics.insert(key, values);
+        ag.node_metrics.insert(key, values);
     }
 }
 
@@ -519,7 +519,7 @@ mod tests {
 
     fn format_impact_table(ag: &ArrayGraph) -> String {
         let mut metric_names: Vec<&String> = ag
-            .metrics
+            .node_metrics
             .keys()
             .filter(|k| k.starts_with("impact_"))
             .collect();
@@ -538,7 +538,7 @@ mod tests {
             let name = ag.idx_to_name(node_idx);
             out.push_str(&format!("{:<6}", name));
             for metric_name in &metric_names {
-                let v = ag.metrics[*metric_name][node_idx];
+                let v = ag.node_metrics[*metric_name][node_idx];
                 if v == 0.0 {
                     out.push_str(&format!("  {:>20}", "-"));
                 } else {
@@ -620,7 +620,7 @@ D                          1                     1                    40        
             .unwrap();
 
         // All impact metrics should have settings with descriptions
-        for key in ag.metrics.keys().filter(|k| k.starts_with("impact_")) {
+        for key in ag.node_metrics.keys().filter(|k| k.starts_with("impact_")) {
             let s = settings.get(key).unwrap_or_else(|| {
                 panic!("missing metric settings for {key}");
             });
