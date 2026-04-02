@@ -59,6 +59,7 @@ pub use crate::traversal::DynamicEdgeOverride;
 pub use crate::traversal::DynamicTypeConfig;
 pub use crate::traversal::NodeLabelPredicate;
 pub use crate::traversal::TraversalConfig;
+pub use crate::traversal::messages::Message;
 pub use crate::traversal::tiered_traversal::AscendingTier;
 pub use crate::traversal::tiered_traversal::AscendingTiersConfig;
 pub use crate::traversal::tiered_traversal::TieredTraversalConfig;
