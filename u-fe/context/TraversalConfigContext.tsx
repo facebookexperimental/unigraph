@@ -5,15 +5,15 @@ import type { Arrow } from "@/__generated__/ts/Arrow";
 import type { TraversalConfig } from "@/__generated__/ts/TraversalConfig";
 import {
   ARROW_POINTS_FROM_NON_EXISTENT,
-  useCanEdgeBeForcedL,
-  useCanNodeBeForceExcludedL,
+  useCanEdgeBeForcedR,
+  useCanNodeBeForceExcludedR,
 } from "../ArrowUtils";
-import { useNativeGraphL } from "./NativeGraphContext";
+import { useNativeGraphR } from "./NativeGraphContext";
 
 export type TraversalConfigContextType = {
-  tvcL: TraversalConfig;
+  tvcL: TraversalConfig | null;
   setTvcL: (tvc: TraversalConfig) => void;
-  tvcR: TraversalConfig | null;
+  tvcR: TraversalConfig;
   setTvcR: (tvc: TraversalConfig) => void;
 };
 
@@ -29,9 +29,9 @@ export function TraversalConfigContextProvider({
   setTvcR,
 }: {
   children: React.ReactNode;
-  tvcL: TraversalConfig;
+  tvcL: TraversalConfig | null;
   setTvcL: (tvc: TraversalConfig) => void;
-  tvcR: TraversalConfig | null;
+  tvcR: TraversalConfig;
   setTvcR: (tvc: TraversalConfig) => void;
 }) {
   const value = useMemo(
@@ -59,8 +59,8 @@ export function useFlipForceEdgeL(arrow: Arrow | null): {
   forceEdge: () => void;
   action: "Include" | "Exclude";
 } {
-  const { tvcL: tvc, setTvcL: setTvc } = useTVC();
-  const nativeGraph = useNativeGraphL();
+  const { tvcR: tvc, setTvcR: setTvc } = useTVC();
+  const nativeGraph = useNativeGraphR();
 
   const pointsTo = arrow?.points_to ?? null;
   const pointsFrom = arrow?.points_from ?? null;
@@ -71,7 +71,7 @@ export function useFlipForceEdgeL(arrow: Arrow | null): {
       : null;
   const toName = pointsTo != null ? nativeGraph.getNodeName(pointsTo) : null;
 
-  const enabled = useCanEdgeBeForcedL(arrow);
+  const enabled = useCanEdgeBeForcedR(arrow);
 
   // true/false if forced. null if there is no force edge/not set
   const isForcedTo =
@@ -113,9 +113,9 @@ export function useFlipForceExcludeNodeL(arrow: Arrow | null): {
   action: "Include" | "Exclude";
   forceExcludeNode: () => void;
 } {
-  const { tvcL: tvc, setTvcL: setTvc } = useTVC();
-  const nativeGraph = useNativeGraphL();
-  const enabled = useCanNodeBeForceExcludedL(arrow);
+  const { tvcR: tvc, setTvcR: setTvc } = useTVC();
+  const nativeGraph = useNativeGraphR();
+  const enabled = useCanNodeBeForceExcludedR(arrow);
 
   const pointsTo = arrow?.points_to ?? null;
   const nodeName = pointsTo != null ? nativeGraph.getNodeName(pointsTo) : null;

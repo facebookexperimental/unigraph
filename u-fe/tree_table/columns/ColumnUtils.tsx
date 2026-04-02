@@ -23,7 +23,7 @@ export const MV = {
   countDominated: `node-count${SEP}dominated`,
   countConjoint: `node-count${SEP}conjoint`,
 
-  right: (key: string) => `${key}${SIDE_SEP}right`,
+  left: (key: string) => `${key}${SIDE_SEP}left`,
   delta: (key: string) => `${key}${SIDE_SEP}delta`,
 };
 

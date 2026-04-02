@@ -134,8 +134,8 @@ impl ChangedNodesGraphOneSide {
         };
 
         let ag: &ArrayGraph = match side {
-            GraphSide::Left => &tg.l,
-            GraphSide::Right => tg.graph(GraphSide::Right)?,
+            GraphSide::Left => tg.graph(GraphSide::Left)?,
+            GraphSide::Right => &tg.r,
         };
 
         let offset_graph = &graph.offset_graph;
@@ -205,8 +205,8 @@ fn make_offset_graph(
         GraphStructure::Dominator => target_graph.edges_dom(),
     };
 
-    let left_g = &tg.l;
-    let right_g = tg.graph(GraphSide::Right)?;
+    let left_g = tg.graph(GraphSide::Left)?;
+    let right_g = &tg.r;
 
     let mut edges_map: HashMap<NodeIDX, Vec<(Edge, NonDirectedEdgeMetadata, usize)>> =
         HashMap::new();
@@ -348,7 +348,7 @@ mod tests {
 
         snapshot!(
             print_twin_arrows(
-                &tg.l,
+                &tg.r,
                 &tg.get_twin_arrows(a_idx, GraphStructure::Forward, true)?
             ),
             "

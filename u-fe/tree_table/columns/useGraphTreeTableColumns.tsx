@@ -54,13 +54,12 @@ export interface Column {
 
 export default function useGraphTreeTableColumns(): ColumnDefinitions {
   const twinGraph = useTwinGraph();
-  const l = twinGraph.l;
   const [graphSettings, setGraphSettings] = useGraphSettings();
-  const { tvcL: tvc } = useTVC();
+  const { tvcR: tvc } = useTVC();
 
   return useMemo(() => {
     const builder =
-      twinGraph.r !== null
+      twinGraph.l !== null
         ? new DeltaGraphColumnsBuilder(
             twinGraph,
             graphSettings,
@@ -100,7 +99,8 @@ export default function useGraphTreeTableColumns(): ColumnDefinitions {
 
     const treeColumn: TreeColumnDefinition = {
       label: "Node Name",
-      getNodeName: (idx: NodeIDX) => displayNodeName(l.getNodeName(idx)),
+      getNodeName: (idx: NodeIDX) =>
+        displayNodeName(twinGraph.r.getNodeName(idx)),
       flexGrow: 1,
       sortable: {
         order: nodeNameSortOrder,
@@ -125,7 +125,7 @@ export default function useGraphTreeTableColumns(): ColumnDefinitions {
       },
     };
 
-    if (twinGraph.r === null) {
+    if (twinGraph.l === null) {
       // only add the `...` column when it's a single graph.
       // We should have something eventually for delta graph, but
       // it'll require some thought on what actually goes there.
@@ -143,7 +143,7 @@ export default function useGraphTreeTableColumns(): ColumnDefinitions {
       treeColumn,
       columns: nonTreeColumns,
     };
-  }, [twinGraph, l, graphSettings, setGraphSettings, tvc]);
+  }, [twinGraph, graphSettings, setGraphSettings, tvc]);
 }
 
 /// Simple context type to capture the current settings on the graph
@@ -236,7 +236,7 @@ class SingleGraphColumnsBuilder {
 
   makeColumns(): Column[] {
     const { ctx, twinGraph } = this;
-    const g = twinGraph.l;
+    const g = twinGraph.r;
     const columns: Column[] = [
       new NodeTierColumn(this.ctx, this.twinGraph),
       new TransitiveCountColumn(ctx, g),
@@ -276,7 +276,7 @@ class DeltaGraphColumnsBuilder {
   }
 
   makeColumns(): Column[] {
-    const r = this.twinGraph.rightGraphX();
+    const r = this.twinGraph.r;
     const columns: Column[] = [
       new NodeTierColumn(this.ctx, this.twinGraph),
       new TransitiveCountRightInDeltaViewColumn(this.ctx, this.twinGraph),

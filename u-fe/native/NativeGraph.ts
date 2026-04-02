@@ -94,10 +94,10 @@ export default class NativeGraph {
 
   static fromSerialized(
     serialized: ExplorerComponentInputGraphs,
-  ): [NativeGraph, NativeGraph | null] {
+  ): [NativeGraph | null, NativeGraph] {
     set_graphs(JSON.stringify(serialized));
-    if (serialized.right == null) {
-      return [new NativeGraph(GRAPH_SIDE.L), null];
+    if (serialized.left == null) {
+      return [null, new NativeGraph(GRAPH_SIDE.R)];
     } else {
       return [new NativeGraph(GRAPH_SIDE.L), new NativeGraph(GRAPH_SIDE.R)];
     }

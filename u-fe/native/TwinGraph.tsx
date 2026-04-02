@@ -25,21 +25,21 @@ import {
   TRAVERSAL_TYPE,
 } from "./NativeGraph";
 
-/// This is a wrapper class over One or Two Native Graphs (left + ?right)
+/// This is a wrapper class over One or Two Native Graphs (?left + right)
 export default class TwinGraph {
   readonly nodeCount: number;
-  readonly l: NativeGraph;
-  readonly r: NativeGraph | null;
+  readonly l: NativeGraph | null;
+  readonly r: NativeGraph;
   private entrypointsCache: NodeIDXVecSet | null = null;
   private transitiveCountDeltaCache: SingleMetricsCache;
   private transitiveTieredDeltaCache: Map<string, KeyedMetricsCache>;
 
-  constructor(l: NativeGraph, r: NativeGraph | null) {
+  constructor(l: NativeGraph | null, r: NativeGraph) {
     this.l = l;
     this.r = r;
-    this.nodeCount = get_graph_node_count(GRAPH_SIDE.L);
+    this.nodeCount = get_graph_node_count(GRAPH_SIDE.R);
     this.transitiveCountDeltaCache = new SingleMetricsCache(
-      l.nodeCount,
+      r.nodeCount,
       (nodeIDXs: NodeIDX[]) =>
         new Float32Array(get_transitive_count_delta(new Uint32Array(nodeIDXs))),
     );
@@ -47,20 +47,20 @@ export default class TwinGraph {
   }
 
   isDeltaGraph(): boolean {
-    return this.r != null;
+    return this.l != null;
   }
 
-  rightGraphX(): NativeGraph {
-    if (this.r == null) {
-      throw new Error("twin graph does not have a graph on the right side.");
+  leftGraphX(): NativeGraph {
+    if (this.l == null) {
+      throw new Error("twin graph does not have a graph on the left side.");
     }
-    return this.r;
+    return this.l;
   }
 
   determineEntrypoints() {
     if (this.entrypointsCache == null) {
-      if (this.r == null) {
-        this.entrypointsCache = this.l.determineEntrypoints();
+      if (this.l == null) {
+        this.entrypointsCache = this.r.determineEntrypoints();
       } else {
         const resultR = this.r.determineEntrypoints();
         const resultL = this.l.determineEntrypoints();

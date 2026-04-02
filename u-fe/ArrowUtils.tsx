@@ -2,7 +2,7 @@
 
 import type { Arrow } from "@/__generated__/ts/Arrow";
 import { useGraphSettings } from "./context/GraphSettingsContext";
-import { useNativeGraphL } from "./context/NativeGraphContext";
+import { useNativeGraphR } from "./context/NativeGraphContext";
 import { useTVC } from "./context/TraversalConfigContext";
 
 // JS indexes are not u32 so -1 is a valid value.
@@ -10,8 +10,8 @@ import { useTVC } from "./context/TraversalConfigContext";
 // don't have parents
 export const ARROW_POINTS_FROM_NON_EXISTENT = -1;
 
-export function useCanEdgeBeForcedL(arrow: Arrow | null): boolean {
-  const nativeGraph = useNativeGraphL();
+export function useCanEdgeBeForcedR(arrow: Arrow | null): boolean {
+  const nativeGraph = useNativeGraphR();
 
   const isExclusionEnabledForGraphStructure =
     useIsExclusionEnabledForGraphStructure();
@@ -51,9 +51,9 @@ export function useIsExclusionEnabledForGraphStructure(): boolean {
   return true;
 }
 
-export function useCanNodeBeForceExcludedL(arrow: Arrow | null): boolean {
-  const nativeGraph = useNativeGraphL();
-  const { tvcL: tvc } = useTVC();
+export function useCanNodeBeForceExcludedR(arrow: Arrow | null): boolean {
+  const nativeGraph = useNativeGraphR();
+  const { tvcR: tvc } = useTVC();
 
   const isExclusionEnabledForGraphStructure =
     useIsExclusionEnabledForGraphStructure();

@@ -30,7 +30,7 @@ import {
   KeyboardShortcutLabel,
 } from "./context/GlobalKeyboardShortcutsContext";
 import { useGraphSettings } from "./context/GraphSettingsContext";
-import { useNativeGraphL, useTwinGraph } from "./context/NativeGraphContext";
+import { useNativeGraphR, useTwinGraph } from "./context/NativeGraphContext";
 import { useSelectedNodes } from "./context/SelectedNodesContext";
 import { useTVC } from "./context/TraversalConfigContext";
 import {
@@ -67,7 +67,7 @@ function SelectedNodesMetrics() {
   const [graphSettings] = useGraphSettings();
   const [selectedNodes, _setSelectedNodes, resetSelectedNodes] =
     useSelectedNodes();
-  const nativeGraph = useNativeGraphL();
+  const nativeGraph = useNativeGraphR();
 
   const combinedMetrics = useMemo(() => {
     return nativeGraph.getCombinedMetrics(selectedNodes);
@@ -147,7 +147,7 @@ function SelectedNodesMetrics() {
 
 function Toggles() {
   const [graphSettings, setGraphSettings] = useGraphSettings();
-  const nativeGraph = useNativeGraphL();
+  const nativeGraph = useNativeGraphR();
   const hasMetrics = nativeGraph.metricNames.length > 0;
 
   const [flatViewEnabled, toggleFlatListView] = useToggleFlatListView();
@@ -278,7 +278,7 @@ function setViewVisibility(
 function CountsHovercardContent() {
   const [graphSettings, setGraphSettings] = useGraphSettings();
   const twinGraph = useTwinGraph();
-  const singleGraph = twinGraph.r == null;
+  const singleGraph = twinGraph.l == null;
 
   const transitiveVis =
     graphSettings.ui_settings?.columns?.metric_settings?.[MV.countTransitive]
@@ -381,8 +381,8 @@ function MetricsHovercardContent() {
   const twinGraph = useTwinGraph();
   const [graphSettings, setGraphSettings] = useGraphSettings();
 
-  const hasTiers = twinGraph.l.stats().tier_names.length > 0;
-  const metricCards = twinGraph.l.metricNames.map((metricName) => {
+  const hasTiers = twinGraph.r.stats().tier_names.length > 0;
+  const metricCards = twinGraph.r.metricNames.map((metricName) => {
     return <MetricCard key={metricName} metricName={metricName} />;
   });
 
@@ -425,13 +425,13 @@ function MetricsHovercardContent() {
 }
 
 function MaxTierSelector() {
-  const nativeGraph = useNativeGraphL();
+  const nativeGraph = useNativeGraphR();
   const [graphSettings, setGraphSettings] = useGraphSettings();
   const { tvcL, setTvcL, tvcR, setTvcR } = useTVC();
   const allTiers = nativeGraph.stats().tier_names;
   const maxTiers = allTiers.map((tierName, tierIDX) => {
     const selected =
-      tvcL.tiered_traversal?.AscendingTiers?.max_tier === tierIDX;
+      tvcR.tiered_traversal?.AscendingTiers?.max_tier === tierIDX;
 
     return (
       <UToggleButton
@@ -466,24 +466,26 @@ function MaxTierSelector() {
           }
 
           setGraphSettings(newGraphSettings);
-          setTvcL({
-            ...tvcL,
-            tiered_traversal: {
-              AscendingTiers: {
-                tiers: tvcL.tiered_traversal?.AscendingTiers?.tiers ?? [],
-                max_tier: selected ? tierIDX : undefined,
-              },
-            },
-          });
           setTvcR({
             ...tvcR,
             tiered_traversal: {
               AscendingTiers: {
-                tiers: tvcR?.tiered_traversal?.AscendingTiers?.tiers ?? [],
+                tiers: tvcR.tiered_traversal?.AscendingTiers?.tiers ?? [],
                 max_tier: selected ? tierIDX : undefined,
               },
             },
           });
+          if (tvcL != null) {
+            setTvcL({
+              ...tvcL,
+              tiered_traversal: {
+                AscendingTiers: {
+                  tiers: tvcL.tiered_traversal?.AscendingTiers?.tiers ?? [],
+                  max_tier: selected ? tierIDX : undefined,
+                },
+              },
+            });
+          }
         }}
       >
         <span className="text-sm">{tierName}</span>
@@ -500,9 +502,9 @@ function MaxTierSelector() {
 }
 
 function MetricCard({ metricName }: { metricName: string }) {
-  const nativeGraph = useNativeGraphL();
+  const nativeGraph = useNativeGraphR();
   const twinGraph = useTwinGraph();
-  const singleGraph = twinGraph.r == null;
+  const singleGraph = twinGraph.l == null;
 
   const allTiers = nativeGraph.stats().tier_names;
   const hasTiers = allTiers.length > 0;
@@ -746,7 +748,7 @@ function ChangedNodesOnlyToggle() {
   const twinGraph = useTwinGraph();
   const [graphSettings, setGraphSettings] = useGraphSettings();
 
-  if (twinGraph.r == null) {
+  if (twinGraph.l == null) {
     return null;
   }
 

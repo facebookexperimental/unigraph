@@ -18,7 +18,7 @@ import { Separator } from "./components/ui/separator.js";
 import { Slider } from "./components/ui/slider";
 import { Toggle } from "./components/ui/toggle";
 import { useDebugMode } from "./context/DebugModeContext.js";
-import { useNativeGraphL } from "./context/NativeGraphContext.js";
+import { useNativeGraphR } from "./context/NativeGraphContext.js";
 import { useSelectedNodes } from "./context/SelectedNodesContext.js";
 import { useSimulationParams } from "./context/SimulationParamsContext.js";
 import formatNumber from "./lib/formatNumber.js";
@@ -27,7 +27,7 @@ import { H2 } from "./Typography.js";
 const HIDE_IF_TOO_MANY_NODES_THRESHOLD = 50000;
 
 export default function Simulation() {
-  const nativeGraph = useNativeGraphL();
+  const nativeGraph = useNativeGraphR();
   const [paramsVisible, setParamsVisible] = useState(false);
 
   const reachableCount =

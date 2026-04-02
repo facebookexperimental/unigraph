@@ -9,15 +9,15 @@ import { SidebarPanel, SidebarPanelHeader } from "./SidebarPanel";
 export default function GraphInfoPanel() {
   const [nativeGraphL, nativeGraphR] = useNativeGraphs();
 
-  const labelL = nativeGraphR == null ? "" : " (Left)";
-  const labelR = " (Right)";
+  const labelR = nativeGraphL == null ? "" : " (Right)";
+  const labelL = " (Left)";
 
   return (
     <SidebarPanel>
       <div className="flex flex-col gap-8">
-        <StatsForNativeGraph nativeGraph={nativeGraphL} label={labelL} />
-        {nativeGraphR != null && (
-          <StatsForNativeGraph nativeGraph={nativeGraphR} label={labelR} />
+        <StatsForNativeGraph nativeGraph={nativeGraphR} label={labelR} />
+        {nativeGraphL != null && (
+          <StatsForNativeGraph nativeGraph={nativeGraphL} label={labelL} />
         )}
       </div>
     </SidebarPanel>

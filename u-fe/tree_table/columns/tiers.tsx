@@ -40,16 +40,16 @@ export class NodeTierColumn implements Column {
       t: "non_sortable_column",
       label: columnID,
       renderer: (row: Readonly<Row>) => {
-        const tierL = left.getNodeTierName(row.twinArrow.points_to);
-        const tierR = right?.getNodeTierName(row.twinArrow.points_to) ?? null;
+        const tierR = right.getNodeTierName(row.twinArrow.points_to);
+        const tierL = left?.getNodeTierName(row.twinArrow.points_to) ?? null;
 
-        if (right == null || tierL?.[1] === tierR?.[1]) {
-          if (tierL == null) {
+        if (left == null || tierL?.[1] === tierR?.[1]) {
+          if (tierR == null) {
             return null;
           }
           return (
             <div className="flex justify-center w-full">
-              <TierBadge tier={tierL} />
+              <TierBadge tier={tierR} />
             </div>
           );
         } else {

@@ -12,8 +12,8 @@ export function NativeGraphContextProvider({
   nativeGraphR,
   children,
 }: {
-  nativeGraphL: NativeGraph;
-  nativeGraphR: NativeGraph | null;
+  nativeGraphL: NativeGraph | null;
+  nativeGraphR: NativeGraph;
   children: React.ReactNode;
 }) {
   const value = useMemo(() => {
@@ -29,20 +29,20 @@ export function NativeGraphContextProvider({
 
 export function useIsDeltaGraph(): boolean {
   const context = getCTX();
-  return context.r != null;
+  return context.l != null;
 }
 
-export function useNativeGraphL(): NativeGraph {
+export function useNativeGraphL(): NativeGraph | null {
   const context = getCTX();
   return context.l;
 }
 
-export function useNativeGraphR(): NativeGraph | null {
+export function useNativeGraphR(): NativeGraph {
   const context = getCTX();
   return context.r;
 }
 
-export function useNativeGraphs(): [NativeGraph, NativeGraph | null] {
+export function useNativeGraphs(): [NativeGraph | null, NativeGraph] {
   const context = getCTX();
   return [context.l, context.r];
 }

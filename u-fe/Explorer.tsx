@@ -43,8 +43,8 @@ export type ExplorerComponentInputGraphVariants =
   | "ArrayGraphSerializedPackageBase64";
 
 export interface ExplorerComponentInputGraphs {
-  left: ExplorerComponentInputGraph;
-  right?: ExplorerComponentInputGraph | undefined;
+  left?: ExplorerComponentInputGraph | undefined;
+  right: ExplorerComponentInputGraph;
 }
 
 export type CallbackFn = (value: string) => void;
@@ -152,13 +152,13 @@ export function Explorer(props: ExplorerProps) {
     base_gqc_l,
     gqc_delta_l,
     on_gqc_delta_change_l,
-    nativeGraphNoTVCL,
+    nativeGraphNoTVCL ?? null,
   );
   const right = useResolvedSide(
     base_gqc_r,
     gqc_delta_r,
     on_gqc_delta_change_r,
-    nativeGraphNoTVCR ?? null,
+    nativeGraphNoTVCR,
   );
 
   const BUILTIN_PANELS: ResolvedPanel[] = useMemo(
@@ -195,9 +195,9 @@ export function Explorer(props: ExplorerProps) {
 
   const settings = useMemo(() => {
     return graph_settings == null
-      ? nativeGraphNoTVCL.getGraphSettings()
+      ? nativeGraphNoTVCR.getGraphSettings()
       : JSON.parse(from_zstd_base64_url_safe_no_pad(graph_settings));
-  }, [graph_settings, nativeGraphNoTVCL]);
+  }, [graph_settings, nativeGraphNoTVCR]);
 
   const setSettingsCb = useCallback(
     (settings: GraphSettings) => {
@@ -213,13 +213,13 @@ export function Explorer(props: ExplorerProps) {
         <GlobalElementRefsContextProvider>
           <ErrorBoundary>
             <NativeGraphContextProvider
-              nativeGraphL={left.nativeGraph!}
-              nativeGraphR={right.nativeGraph}
+              nativeGraphL={left.nativeGraph}
+              nativeGraphR={right.nativeGraph!}
             >
               <TraversalConfigContextProvider
-                tvcL={left.tvc!}
+                tvcL={left.tvc}
                 setTvcL={left.setTvc}
-                tvcR={right.tvc}
+                tvcR={right.tvc!}
                 setTvcR={right.setTvc}
               >
                 <SimulationParamsContextProvider>
@@ -263,18 +263,18 @@ function Page({
     panels.find((p) => p.id === selectedSidebarPanel)?.render() ?? null;
 
   const roots = useMemo(() => {
-    const rootsL = getRoots(
-      nativeGraphL,
+    const rootsR = getRoots(
+      nativeGraphR,
       selectedNodes,
       settings.ui_settings?.entry_points_specified ?? null,
       settings.ui_settings?.entry_points,
     );
 
-    if (nativeGraphR == null) {
-      return rootsL;
+    if (nativeGraphL == null) {
+      return rootsR;
     } else {
-      const rootsR = getRoots(
-        nativeGraphR,
+      const rootsL = getRoots(
+        nativeGraphL,
         selectedNodes,
         settings.ui_settings?.entry_points_specified ?? null,
         settings.ui_settings?.entry_points,
@@ -418,8 +418,8 @@ function useStableGraphs(
 ): ExplorerComponentInputGraphs {
   const ref = useRef(graphs);
   if (
-    getGraphData(graphs.left) !== getGraphData(ref.current.left) ||
-    getGraphData(graphs.right) !== getGraphData(ref.current.right)
+    getGraphData(graphs.right) !== getGraphData(ref.current.right) ||
+    getGraphData(graphs.left) !== getGraphData(ref.current.left)
   ) {
     ref.current = graphs;
   }

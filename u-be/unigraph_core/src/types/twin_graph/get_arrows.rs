@@ -24,12 +24,12 @@ pub(crate) fn get_twin_arrows(
     node_idx: NodeIDX,
     graph_structure: GraphStructure,
 ) -> Result<Vec<TwinArrow>> {
-    let l = tg.l.get_arrows(node_idx, graph_structure)?;
-    let r =
-        tg.r.as_ref()
-            .map(|r| r.get_arrows(node_idx, graph_structure))
+    let l =
+        tg.l.as_ref()
+            .map(|l| l.get_arrows(node_idx, graph_structure))
             .transpose()?
             .unwrap_or_default();
+    let r = tg.r.get_arrows(node_idx, graph_structure)?;
 
     merge_arrows(tg, l, r)
 }
@@ -149,7 +149,7 @@ mod tests {
 
         snapshot!(
             print_twin_arrows(
-                &tg.l,
+                &tg.r,
                 &get_twin_arrows(&tg, f_idx, GraphStructure::Forward)?
             ),
             r#"
@@ -184,7 +184,7 @@ R: F -> I
 
         snapshot!(
             print_twin_arrows(
-                &tg.l,
+                &tg.r,
                 &get_twin_arrows(&tg, j_idx, GraphStructure::Forward)?
             ),
             "
@@ -215,7 +215,7 @@ R: J -> S
 
         snapshot!(
             print_twin_arrows(
-                &tg.l,
+                &tg.r,
                 &get_twin_arrows(&tg, b_idx, GraphStructure::Forward)?
             ),
             "
@@ -238,7 +238,7 @@ R: B -> J
         let h_idx = tg.node_names.name_to_idx_log("H").unwrap();
         snapshot!(
             print_twin_arrows(
-                &tg.l,
+                &tg.r,
                 &get_twin_arrows(&tg, h_idx, GraphStructure::Reverse)?
             ),
             r#"
@@ -253,7 +253,7 @@ R: H -> F
         let q_idx = tg.node_names.name_to_idx_log("Q").unwrap();
         snapshot!(
             print_twin_arrows(
-                &tg.l,
+                &tg.r,
                 &get_twin_arrows(&tg, q_idx, GraphStructure::Reverse)?
             ),
             "

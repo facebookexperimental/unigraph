@@ -224,7 +224,7 @@ function isExcludedInBoth(twinGraph: TwinGraph, twinArrow: TwinArrow) {
       twinArrow.r.excluded === true
     );
   } else {
-    return twinArrow.l && twinArrow.l.excluded === true;
+    return twinArrow.r && twinArrow.r.excluded === true;
   }
 }
 
@@ -242,7 +242,7 @@ type ArrowDiff =
   | "no_change";
 
 function getArrowDiff(twinGraph: TwinGraph, twinArrow: TwinArrow): ArrowDiff {
-  if (twinGraph.r != null) {
+  if (twinGraph.l != null) {
     const reachableL = twinGraph.l.isNodeReachable(twinArrow.points_to);
     const reachableR = twinGraph.r.isNodeReachable(twinArrow.points_to);
 
@@ -274,10 +274,10 @@ function getArrowDiff(twinGraph: TwinGraph, twinArrow: TwinArrow): ArrowDiff {
       }
     }
   } else {
-    const reachableL = twinGraph.l.isNodeReachable(twinArrow.points_to);
-    if (!reachableL) {
+    const reachableR = twinGraph.r.isNodeReachable(twinArrow.points_to);
+    if (!reachableR) {
       return "single_graph_unreachable";
-    } else if (twinArrow.l?.excluded) {
+    } else if (twinArrow.r?.excluded) {
       return "single_graph_edge_excluded";
     }
   }
@@ -444,7 +444,7 @@ function SkippedNodes({
   const selectedPath = useSelectedPath();
   const [graphSettings, setGraphSettings] = useGraphSettings();
 
-  if (twinGraph.r == null) {
+  if (twinGraph.l == null) {
     return null;
   }
 

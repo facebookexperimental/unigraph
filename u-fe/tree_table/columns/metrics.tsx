@@ -76,8 +76,8 @@ export class MetricColumn implements Column {
 
   sortable() {
     const key =
-      this.side === GRAPH_SIDE.R
-        ? MV.right(MV.metric(this.metricName))
+      this.side === GRAPH_SIDE.L
+        ? MV.left(MV.metric(this.metricName))
         : MV.metric(this.metricName);
     return sortableForView(this.ctx, key);
   }
@@ -153,8 +153,8 @@ export class TransitiveMetricColumn implements Column {
 
   sortable() {
     const key =
-      this.side === GRAPH_SIDE.R
-        ? MV.right(MV.transitive(this.metricName))
+      this.side === GRAPH_SIDE.L
+        ? MV.left(MV.transitive(this.metricName))
         : MV.transitive(this.metricName);
     return sortableForView(this.ctx, key);
   }
@@ -235,8 +235,8 @@ export class DominatedMetricColumn implements Column {
 
   sortable() {
     const key =
-      this.side === GRAPH_SIDE.R
-        ? MV.right(MV.dominated(this.metricName))
+      this.side === GRAPH_SIDE.L
+        ? MV.left(MV.dominated(this.metricName))
         : MV.dominated(this.metricName);
     return sortableForView(this.ctx, key);
   }
@@ -324,8 +324,8 @@ export class TransitiveTieredMetricColumn implements Column {
 
   sortable() {
     const key =
-      this.side === GRAPH_SIDE.R
-        ? MV.right(MV.tiered(this.metricName, this.tierName))
+      this.side === GRAPH_SIDE.L
+        ? MV.left(MV.tiered(this.metricName, this.tierName))
         : MV.tiered(this.metricName, this.tierName);
     return sortableForView(this.ctx, key);
   }
@@ -439,8 +439,8 @@ export class TieredDominatedMetricColumn implements Column {
 
   sortable() {
     const key =
-      this.side === GRAPH_SIDE.R
-        ? MV.right(MV.tieredDominated(this.metricName, this.tierName))
+      this.side === GRAPH_SIDE.L
+        ? MV.left(MV.tieredDominated(this.metricName, this.tierName))
         : MV.tieredDominated(this.metricName, this.tierName);
     return sortableForView(this.ctx, key);
   }
@@ -505,7 +505,7 @@ export class TransitiveTieredMetricDeltaColumn implements Column {
   }
 
   isEnabled() {
-    if (this.twinGraph.r == null) {
+    if (this.twinGraph.l == null) {
       return false;
     }
     const tierIDX = this.twinGraph.r.stats().tier_names.indexOf(this.tierName);
@@ -521,7 +521,7 @@ export class TransitiveTieredMetricDeltaColumn implements Column {
   }
 
   getID(): string {
-    const graphHasMoreThanOneMetric = this.twinGraph.l.metricNames.length > 1;
+    const graphHasMoreThanOneMetric = this.twinGraph.r.metricNames.length > 1;
 
     const base = graphHasMoreThanOneMetric
       ? `∆ ${this.tierName} ${this.metricName}`
@@ -597,7 +597,7 @@ export class TransitiveTieredMetricRightDeltaColumn implements Column {
   }
 
   isEnabled() {
-    if (this.twinGraph.r == null) {
+    if (this.twinGraph.l == null) {
       return false;
     }
     const tierIDX = this.twinGraph.r.stats().tier_names.indexOf(this.tierName);
@@ -613,7 +613,7 @@ export class TransitiveTieredMetricRightDeltaColumn implements Column {
   }
 
   getID(): string {
-    const graphHasMoreThanOneMetric = this.twinGraph.l.metricNames.length > 1;
+    const graphHasMoreThanOneMetric = this.twinGraph.r.metricNames.length > 1;
 
     const base = graphHasMoreThanOneMetric
       ? `${this.tierName} ${this.metricName}`
@@ -623,13 +623,13 @@ export class TransitiveTieredMetricRightDeltaColumn implements Column {
   }
 
   sortable() {
-    const key = MV.right(MV.tiered(this.metricName, this.tierName));
+    const key = MV.tiered(this.metricName, this.tierName);
     return sortableForView(this.ctx, key);
   }
 
   getValuesFn(side: GraphSide): (idxs: NodeIDX[]) => number[] {
     const g =
-      side === GRAPH_SIDE.L ? this.twinGraph.l : this.twinGraph.rightGraphX();
+      side === GRAPH_SIDE.L ? this.twinGraph.leftGraphX() : this.twinGraph.r;
 
     return (idxs: NodeIDX[]) => {
       return g
@@ -643,7 +643,7 @@ export class TransitiveTieredMetricRightDeltaColumn implements Column {
     const getValuesL = this.getValuesFn(GRAPH_SIDE.L);
     const getValuesR = this.getValuesFn(GRAPH_SIDE.R);
     const format = this.ctx.metricSettings(this.metricName)?.format;
-    const r = this.twinGraph.rightGraphX();
+    const r = this.twinGraph.r;
 
     const definition: NumericValueColumnDefinition = {
       t: "numeric_value_column",
@@ -697,7 +697,7 @@ export class MetricRightInDeltaViewColumn implements Column {
   }
 
   isEnabled() {
-    if (this.twinGraph.r == null) {
+    if (this.twinGraph.l == null) {
       return false;
     }
     return (
@@ -711,14 +711,14 @@ export class MetricRightInDeltaViewColumn implements Column {
   }
 
   sortable() {
-    return sortableForView(this.ctx, MV.right(MV.metric(this.metricName)));
+    return sortableForView(this.ctx, MV.metric(this.metricName));
   }
 
   definition(): [string, NumericValueColumnDefinition] {
-    const r = this.twinGraph.rightGraphX();
+    const r = this.twinGraph.r;
     const columnID = this.getID();
     const getValuesL = (idxs: NodeIDX[]) =>
-      this.twinGraph.l.getNodeMetricBatched(idxs, this.metricName);
+      this.twinGraph.leftGraphX().getNodeMetricBatched(idxs, this.metricName);
     const getValuesR = (idxs: NodeIDX[]) =>
       r.getNodeMetricBatched(idxs, this.metricName);
     const metricSettings = this.ctx.metricSettings(this.metricName);
@@ -778,7 +778,7 @@ export class MetricDeltaViewColumn implements Column {
   }
 
   isEnabled() {
-    if (this.twinGraph.r == null) {
+    if (this.twinGraph.l == null) {
       return false;
     }
     return (
@@ -796,8 +796,8 @@ export class MetricDeltaViewColumn implements Column {
   }
 
   getValuesFn(): (idxs: NodeIDX[]) => Float32Array {
-    const r = this.twinGraph.rightGraphX();
-    const l = this.twinGraph.l;
+    const r = this.twinGraph.r;
+    const l = this.twinGraph.leftGraphX();
     return (idxs: NodeIDX[]) => {
       const valuesL = l.getNodeMetricBatched(idxs, this.metricName);
       const valuesR = r.getNodeMetricBatched(idxs, this.metricName);
@@ -817,7 +817,7 @@ export class MetricDeltaViewColumn implements Column {
   }
 
   definition(): [string, NumericValueColumnDefinition] {
-    const r = this.twinGraph.rightGraphX();
+    const r = this.twinGraph.r;
     const columnID = this.getID();
     const metricSettings = this.ctx.metricSettings(this.metricName);
     const getValues = this.getValuesFn();
@@ -895,8 +895,8 @@ export class ConjointTieredMetricColumn implements Column {
 
   sortable() {
     const key =
-      this.side === GRAPH_SIDE.R
-        ? MV.right(MV.conjointTiered(this.metricName, this.tierName))
+      this.side === GRAPH_SIDE.L
+        ? MV.left(MV.conjointTiered(this.metricName, this.tierName))
         : MV.conjointTiered(this.metricName, this.tierName);
     return sortableForView(this.ctx, key);
   }

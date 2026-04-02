@@ -95,12 +95,12 @@ pub fn get_transitive_tiered_delta(
     metric_name: &str,
 ) -> Result<BTreeMap<String, f32>> {
     {
-        if tg.r.is_none() {
+        if tg.l.is_none() {
             return Ok(BTreeMap::new());
         }
 
-        let l = &tg.l;
-        let r = tg.graph(GraphSide::Right)?;
+        let l = tg.graph(GraphSide::Left)?;
+        let r = &tg.r;
         let should_count = CountChangedNodesMetricsForDelta {
             l,
             r,
@@ -143,8 +143,8 @@ mod tests {
         let tg = make_twin_graph()?;
         let t_idx = tg.node_names.name_to_idx_log("T").unwrap();
 
-        let t_left = tg.l.transitive_count_configured(t_idx);
-        let t_right = tg.r.as_ref().unwrap().transitive_count_configured(t_idx);
+        let t_left = tg.l.as_ref().unwrap().transitive_count_configured(t_idx);
+        let t_right = tg.r.transitive_count_configured(t_idx);
         let t_delta = tg.get_transitive_count_delta(t_idx)?;
 
         assert_equal!(t_left, 0);

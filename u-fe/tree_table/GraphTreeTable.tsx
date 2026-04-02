@@ -22,7 +22,7 @@ export default function GraphTreeTable(props: {
     settings.ui_settings?.entry_points ?? "Determine";
   const changedNodesOnly =
     settings.ui_settings?.show_changed_nodes_only === "WhenRightGraphPresent" &&
-    twinGraph.r != null;
+    twinGraph.l != null;
 
   const getTwinArrows = useCallback(
     (nodeIDX: NodeIDX) => {

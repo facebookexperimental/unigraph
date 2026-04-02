@@ -23,38 +23,38 @@ use crate::types::twin_graph::changed_nodes_graph::ChangedNodesGraph;
 use crate::types::twin_graph::get_arrows::TwinArrow;
 use crate::types::twin_graph::metrics::get_transitive_tiered_delta;
 
-const MISSING_RIGHT_ERROR: &str = "TwinGraph: You are trying to access the right graph, but it is not present. \
-     Please ensure that the TwinGraph was initialized with a right graph.";
+const MISSING_LEFT_ERROR: &str = "TwinGraph: You are trying to access the left graph, but it is not present. \
+     Please ensure that the TwinGraph was initialized with a left graph.";
 
 /// TwinGraph is a struct that represent a pair of graph that we normally
 /// compare to each other.
 /// The most common use case is to compare dependency graphs of the same codebase
 /// at two different points in time, e.g. before and after a refactor/pull request/commit.
 /// We use this struct as a first class citizen even if we only have one graph.
+/// Right graph must always be present.
 #[readonly::make]
 pub struct TwinGraph {
     #[readonly]
     pub node_names: Arc<ArrayGraphNodes>,
     pub node_diff: Arc<Vec<NodeDiff>>,
 
-    /// Left graph must always be present.
+    pub l: Option<ArrayGraph>,
     #[readonly]
-    pub l: ArrayGraph,
-    pub r: Option<ArrayGraph>,
+    pub r: ArrayGraph,
     changed_nodes: Option<ChangedNodesGraph>,
     #[readonly]
     pub metric_names: Vec<String>,
 }
 
 impl TwinGraph {
-    pub fn from_one(l: ArrayGraph) -> Result<Self> {
+    pub fn from_one(r: ArrayGraph) -> Result<Self> {
         Ok(Self {
-            node_names: Arc::clone(&l.nodes.node_names),
-            node_diff: Arc::clone(&l.nodes.node_diff),
+            node_names: Arc::clone(&r.nodes.node_names),
+            node_diff: Arc::clone(&r.nodes.node_diff),
             changed_nodes: Some(ChangedNodesGraph::new()),
-            metric_names: l.node_metrics.keys().cloned().collect(),
-            l,
-            r: None,
+            metric_names: r.node_metrics.keys().cloned().collect(),
+            l: None,
+            r,
         })
     }
 
@@ -64,15 +64,15 @@ impl TwinGraph {
 
     pub fn graph(&self, side: GraphSide) -> Result<&ArrayGraph> {
         match side {
-            GraphSide::Left => Ok(&self.l),
-            GraphSide::Right => self.r.as_ref().context(MISSING_RIGHT_ERROR),
+            GraphSide::Left => self.l.as_ref().context(MISSING_LEFT_ERROR),
+            GraphSide::Right => Ok(&self.r),
         }
     }
 
     pub fn graph_mut(&mut self, side: GraphSide) -> Result<&mut ArrayGraph> {
         match side {
-            GraphSide::Left => Ok(&mut self.l),
-            GraphSide::Right => self.r.as_mut().context(MISSING_RIGHT_ERROR),
+            GraphSide::Left => self.l.as_mut().context(MISSING_LEFT_ERROR),
+            GraphSide::Right => Ok(&mut self.r),
         }
     }
 
@@ -119,8 +119,8 @@ impl TwinGraph {
     }
 
     pub fn get_transitive_count_delta(&self, node_idx: NodeIDX) -> Result<i32> {
-        if let Some(r) = &self.r {
-            metrics::get_transitive_count_delta(&self.l, r, node_idx)
+        if let Some(l) = &self.l {
+            metrics::get_transitive_count_delta(l, &self.r, node_idx)
         } else {
             Ok(0)
         }
@@ -146,15 +146,14 @@ impl TwinGraph {
             if let (Some(changed_nodes), true) = (&self.changed_nodes, changed_node_only) {
                 changed_nodes.shortest_path(self, from, to, graph_structure, traversal_type)
             } else {
-                if let Some(r) = &self.r {
-                    let left_path = self
-                        .l
-                        .shortest_path(from, to, graph_structure, traversal_type);
-                    let right_path = r.shortest_path(from, to, graph_structure, traversal_type);
+                if let Some(l) = &self.l {
+                    let left_path = l.shortest_path(from, to, graph_structure, traversal_type);
+                    let right_path =
+                        self.r
+                            .shortest_path(from, to, graph_structure, traversal_type);
 
                     match (left_path, right_path) {
                         (Some(l), Some(r)) => {
-                            // if both sides have a path, return the shorter one
                             if l.len() <= r.len() {
                                 Ok(Some(l))
                             } else {
@@ -167,7 +166,7 @@ impl TwinGraph {
                     }
                 } else {
                     Ok(self
-                        .l
+                        .r
                         .shortest_path(from, to, graph_structure, traversal_type))
                 }
             }
@@ -189,8 +188,8 @@ mod tests {
     fn test_twin_graphs() -> Result<()> {
         let tg = make_twin_graph()?;
 
-        let l = &tg.l;
-        let r = tg.graph(GraphSide::Right)?;
+        let l = tg.graph(GraphSide::Left)?;
+        let r = &tg.r;
 
         let entrypoints_l = l.determine_entrypoints();
         let entrypoints_r = r.determine_entrypoints();

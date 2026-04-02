@@ -121,27 +121,27 @@ pub fn set_graphs(explorer_component_input_graphs_json: String) -> Result<(), Wa
             .context("Failed to deserialize ExplorerComponentInputGraphs")?;
 
     let (left, right) = match graphs {
-        ExplorerComponentInputGraphs { left, right: None } => {
-            let left = parse_input_graph(left).context("left")?;
-            (left, None)
+        ExplorerComponentInputGraphs { left: None, right } => {
+            let right = parse_input_graph(right).context("right")?;
+            (None, right)
         }
         ExplorerComponentInputGraphs {
-            left,
-            right: Some(right),
+            left: Some(left),
+            right,
         } => {
             let left = parse_input_graph(left).context("left")?;
             let right = parse_input_graph(right).context("right")?;
-            (left, Some(right))
+            (Some(left), right)
         }
     };
 
-    match right {
-        Some(right) => {
+    match left {
+        Some(left) => {
             let twin_graph = TwinGraph::from_two(left, right)?;
             GlobalGraphState::graph_state().replace_graph(twin_graph)?;
         }
         None => {
-            let array_graph: ArrayGraph = left.into();
+            let array_graph: ArrayGraph = right.into();
             let twin_graph = TwinGraph::from_one(array_graph.append_super_root(false)?)?;
             GlobalGraphState::graph_state().replace_graph(twin_graph)?;
         }

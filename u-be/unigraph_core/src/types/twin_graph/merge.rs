@@ -110,8 +110,8 @@ pub fn merge_into_twin(
         node_names,
         node_diff: Arc::clone(&node_diff),
         metric_names,
-        l: left,
-        r: Some(right),
+        l: Some(left),
+        r: right,
         changed_nodes: Some(ChangedNodesGraph::new()),
     })
 }

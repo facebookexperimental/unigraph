@@ -177,9 +177,9 @@ async fn favicon_png() -> Response {
 // --- File-based graph endpoint ---
 
 async fn api_local_graphs(State(state): State<AppState>) -> impl IntoResponse {
-    let mut body = format!(r#"{{"left":{}"#, *state.left_graph);
+    let mut body = format!(r#"{{"right":{}"#, *state.left_graph);
     if let Some(ref right) = *state.right_graph {
-        body.push_str(&format!(r#","right":{right}"#));
+        body.push_str(&format!(r#","left":{right}"#));
     }
     body.push('}');
     ([(http::header::CONTENT_TYPE, "application/json")], body)

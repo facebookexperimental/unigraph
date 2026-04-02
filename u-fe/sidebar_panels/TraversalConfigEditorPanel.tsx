@@ -24,18 +24,18 @@ import { useTVC } from "../context/TraversalConfigContext";
 import { SidebarPanel, SidebarPanelHeader } from "./SidebarPanel";
 
 export default function TraversalConfigEditorPanel() {
-  const [, nativeGraphR] = useNativeGraphs();
+  const [nativeGraphL] = useNativeGraphs();
   const { tvcL, setTvcL, tvcR, setTvcR } = useTVC();
 
-  const labelL = nativeGraphR == null ? "" : " (Left)";
-  const labelR = " (Right)";
+  const labelR = nativeGraphL == null ? "" : " (Right)";
+  const labelL = " (Left)";
 
   return (
     <SidebarPanel>
       <div className="flex flex-col gap-6">
-        <TraversalConfigEditor tvc={tvcL} setTvc={setTvcL} label={labelL} />
-        {nativeGraphR != null && tvcR != null && (
-          <TraversalConfigEditor tvc={tvcR} setTvc={setTvcR} label={labelR} />
+        <TraversalConfigEditor tvc={tvcR} setTvc={setTvcR} label={labelR} />
+        {nativeGraphL != null && tvcL != null && (
+          <TraversalConfigEditor tvc={tvcL} setTvc={setTvcL} label={labelL} />
         )}
       </div>
     </SidebarPanel>

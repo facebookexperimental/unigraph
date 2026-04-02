@@ -4,8 +4,8 @@ use unigraph_serialization::SerializedStr;
 
 #[derive(serde::Deserialize)]
 pub struct ExplorerComponentInputGraphs {
-    pub left: ExplorerComponentInputGraph,
-    pub right: Option<ExplorerComponentInputGraph>,
+    pub left: Option<ExplorerComponentInputGraph>,
+    pub right: ExplorerComponentInputGraph,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]

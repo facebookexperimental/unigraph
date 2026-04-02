@@ -46,8 +46,8 @@ export class TransitiveCountColumn implements Column {
 
   sortable(): TSortable | null {
     const key =
-      this.side === GRAPH_SIDE.R
-        ? MV.right(MV.countTransitive)
+      this.side === GRAPH_SIDE.L
+        ? MV.left(MV.countTransitive)
         : MV.countTransitive;
     const sortable: TSortable = {
       order: null,
@@ -150,8 +150,8 @@ export class DominatedCountColumn implements Column {
 
   sortable(): TSortable | null {
     const key =
-      this.side === GRAPH_SIDE.R
-        ? MV.right(MV.countDominated)
+      this.side === GRAPH_SIDE.L
+        ? MV.left(MV.countDominated)
         : MV.countDominated;
     const sortable: TSortable = {
       order: null,
@@ -306,12 +306,12 @@ export class TransitiveCountRightInDeltaViewColumn implements Column {
     return (
       isViewVisible(this.ctx.viewVisibility(MV.countTransitive)) &&
       this.ctx.showCounts &&
-      this.twinGraph.r != null
+      this.twinGraph.l != null
     );
   }
 
   sortable(): TSortable | null {
-    const key = MV.right(MV.countTransitive);
+    const key = MV.countTransitive;
     const sortable: TSortable = {
       order: null,
       onSortChange: (order: SortOrder | null) =>
@@ -336,11 +336,11 @@ export class TransitiveCountRightInDeltaViewColumn implements Column {
     const graph = (() => {
       switch (side) {
         case GRAPH_SIDE.L:
+          if (this.twinGraph.l == null) {
+            throw new Error("Left graph is not available");
+          }
           return this.twinGraph.l;
         case GRAPH_SIDE.R:
-          if (this.twinGraph.r == null) {
-            throw new Error("Right graph is not available");
-          }
           return this.twinGraph.r;
       }
     })();
@@ -357,9 +357,6 @@ export class TransitiveCountRightInDeltaViewColumn implements Column {
     const getValuesLeft = this.getValuesFn(GRAPH_SIDE.L);
     const columnID = this.getID();
     const r = this.twinGraph.r;
-    if (r == null) {
-      throw new Error("Right graph must be available");
-    }
 
     const definition: NumericValueColumnDefinition = {
       t: "numeric_value_column",
@@ -474,7 +471,7 @@ export class ParentsCountColumn implements Column {
 
   sortable() {
     const key =
-      this.side === GRAPH_SIDE.R ? MV.right(MV.parentsCount) : MV.parentsCount;
+      this.side === GRAPH_SIDE.L ? MV.left(MV.parentsCount) : MV.parentsCount;
     const sortable: TSortable = {
       order: null,
       onSortChange: (order: SortOrder | null) =>
@@ -553,9 +550,7 @@ export class ConjointCountColumn implements Column {
 
   sortable() {
     const key =
-      this.side === GRAPH_SIDE.R
-        ? MV.right(MV.countConjoint)
-        : MV.countConjoint;
+      this.side === GRAPH_SIDE.L ? MV.left(MV.countConjoint) : MV.countConjoint;
     const sortable: TSortable = {
       order: null,
       onSortChange: (order: SortOrder | null) =>

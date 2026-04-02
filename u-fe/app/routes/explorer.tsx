@@ -16,8 +16,8 @@ const QUERY_PARAM_GQC_DELTA_R = "gqc_deltaR";
 const QUERY_PARAM_GRAPH_SETTINGS = "graph_settings";
 
 interface LocalGraphsApiResponse {
-  left: ExplorerComponentInputGraph;
-  right?: ExplorerComponentInputGraph;
+  left?: ExplorerComponentInputGraph;
+  right: ExplorerComponentInputGraph;
 }
 
 export default function ExplorerRoute() {
@@ -47,7 +47,7 @@ export default function ExplorerRoute() {
     }
 
     function applyHandleResults(results: HandleFetchResults) {
-      setGraphs({ left: results.leftGraph, right: results.rightGraph });
+      setGraphs({ right: results.rightGraph, left: results.leftGraph });
       setBaseGqcL(results.baseGqcL);
       setBaseGqcR(results.baseGqcR);
     }
@@ -144,12 +144,12 @@ async function fetchLocalGraphs(): Promise<ExplorerComponentInputGraphs> {
   const r = await fetch("/api/local_graphs");
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   const data: LocalGraphsApiResponse = await r.json();
-  return { left: data.left, right: data.right };
+  return { right: data.right, left: data.left };
 }
 
 interface HandleFetchResults {
-  leftGraph: ExplorerComponentInputGraph;
-  rightGraph?: ExplorerComponentInputGraph;
+  rightGraph: ExplorerComponentInputGraph;
+  leftGraph?: ExplorerComponentInputGraph;
   baseGqcL: GraphQueryConfig;
   baseGqcR: GraphQueryConfig | null;
 }
@@ -192,8 +192,8 @@ async function fetchHandleGraphs(
   ]);
 
   return {
-    leftGraph: graphQueryOutputToInputGraph(leftResult),
-    rightGraph:
+    rightGraph: graphQueryOutputToInputGraph(leftResult),
+    leftGraph:
       rightResult != null
         ? graphQueryOutputToInputGraph(rightResult)
         : undefined,

@@ -95,8 +95,8 @@ impl GraphState {
     pub fn new(twin_graph: TwinGraph) -> Result<Self> {
         // by default we'll grab whatever metric is first in the list
 
-        let selected_metric = twin_graph.l.node_metrics.keys().next().cloned();
-        let simulation_graph = SimulationGraph::new(&twin_graph.l, &selected_metric, None)?;
+        let selected_metric = twin_graph.r.node_metrics.keys().next().cloned();
+        let simulation_graph = SimulationGraph::new(&twin_graph.r, &selected_metric, None)?;
 
         let result = Self {
             twin_graph,
@@ -108,7 +108,7 @@ impl GraphState {
 
     pub fn get_selected_metrics_vec(&self) -> Option<&Vec<f32>> {
         if let Some(selected_metric) = &self.selected_metric {
-            self.twin_graph.l.node_metrics.get(selected_metric)
+            self.twin_graph.r.node_metrics.get(selected_metric)
         } else {
             None
         }
@@ -116,7 +116,7 @@ impl GraphState {
 
     pub fn sync_node_attributes(&mut self) -> Result<()> {
         self.simulation_graph = SimulationGraph::new(
-            &self.twin_graph.l,
+            &self.twin_graph.r,
             &self.selected_metric,
             Some(&self.simulation_graph),
         )?;
