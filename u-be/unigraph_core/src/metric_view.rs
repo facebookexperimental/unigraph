@@ -6,6 +6,7 @@ use std::str::FromStr;
 use anyhow::bail;
 
 const SEPARATOR: char = '~';
+const TIER_SEPARATOR: char = '#';
 const NODE_COUNT: &str = "node-count";
 const PARENTS_COUNT: &str = "parents-count";
 const TRANSITIVE: &str = "transitive";
@@ -20,16 +21,17 @@ const CONJOINT: &str = "conjoint";
 ///
 /// ## String format
 ///
-/// `MetricView` implements `Display` and `FromStr` using `~` as a separator
-/// between the metric name and the view variant:
+/// `MetricView` implements `Display` and `FromStr`. The `~` separator
+/// separates the metric name from the view variant, while `#` introduces
+/// a tier name:
 ///
 /// ```text
 /// size                  → Metric { name: "size" }
 /// size~transitive       → Transitive { name: "size" }
 /// size~dominated        → Dominated { name: "size" }
-/// size~T1               → Tiered { name: "size", tier_name: "T1" }
-/// size~dominated~T1     → TieredDominated { name: "size", tier_name: "T1" }
-/// size~conjoint~T1      → ConjointTiered { name: "size", tier_name: "T1" }
+/// size#T1               → Tiered { name: "size", tier_name: "T1" }
+/// size#T1~dominated     → TieredDominated { name: "size", tier_name: "T1" }
+/// size#T1~conjoint      → ConjointTiered { name: "size", tier_name: "T1" }
 /// node-count~transitive → CountTransitive
 /// node-count~dominated  → CountDominated
 /// node-count~conjoint   → CountConjoint
@@ -93,13 +95,13 @@ impl fmt::Display for MetricView {
             MetricView::Transitive { name } => write!(f, "{name}{SEPARATOR}{TRANSITIVE}"),
             MetricView::Dominated { name } => write!(f, "{name}{SEPARATOR}{DOMINATED}"),
             MetricView::Tiered { name, tier_name } => {
-                write!(f, "{name}{SEPARATOR}{tier_name}")
+                write!(f, "{name}{TIER_SEPARATOR}{tier_name}")
             }
             MetricView::TieredDominated { name, tier_name } => {
-                write!(f, "{name}{SEPARATOR}{DOMINATED}{SEPARATOR}{tier_name}")
+                write!(f, "{name}{TIER_SEPARATOR}{tier_name}{SEPARATOR}{DOMINATED}")
             }
             MetricView::ConjointTiered { name, tier_name } => {
-                write!(f, "{name}{SEPARATOR}{CONJOINT}{SEPARATOR}{tier_name}")
+                write!(f, "{name}{TIER_SEPARATOR}{tier_name}{SEPARATOR}{CONJOINT}")
             }
             MetricView::ParentsCount {} => write!(f, "{PARENTS_COUNT}"),
             MetricView::CountTransitive {} => write!(f, "{NODE_COUNT}{SEPARATOR}{TRANSITIVE}"),
@@ -113,40 +115,59 @@ impl FromStr for MetricView {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> anyhow::Result<Self> {
-        let parts: Vec<&str> = s.split(SEPARATOR).collect();
-        match parts.as_slice() {
-            [PARENTS_COUNT] => Ok(MetricView::ParentsCount {}),
-            [NODE_COUNT, TRANSITIVE] => Ok(MetricView::CountTransitive {}),
-            [NODE_COUNT, DOMINATED] => Ok(MetricView::CountDominated {}),
-            [NODE_COUNT, CONJOINT] => Ok(MetricView::CountConjoint {}),
-            [NODE_COUNT, other] => {
-                bail!(
-                    "unknown node-count variant: '{other}' (expected 'transitive', 'dominated', or 'conjoint')"
-                )
-            }
-            [name] => Ok(MetricView::Metric {
-                name: name.to_string(),
-            }),
-            [name, TRANSITIVE] => Ok(MetricView::Transitive {
-                name: name.to_string(),
-            }),
-            [name, DOMINATED] => Ok(MetricView::Dominated {
-                name: name.to_string(),
-            }),
-            [name, DOMINATED, tier_name] => Ok(MetricView::TieredDominated {
-                name: name.to_string(),
-                tier_name: tier_name.to_string(),
-            }),
-            [name, CONJOINT, tier_name] => Ok(MetricView::ConjointTiered {
-                name: name.to_string(),
-                tier_name: tier_name.to_string(),
-            }),
-            [name, tier_name] => Ok(MetricView::Tiered {
-                name: name.to_string(),
-                tier_name: tier_name.to_string(),
-            }),
-            _ => bail!("invalid metric view: '{s}'"),
+        // Split on '#' first to separate metric name from tier info.
+        if let Some((metric_part, tier_part)) = s.split_once(TIER_SEPARATOR) {
+            return parse_tiered(metric_part, tier_part);
         }
+        parse_non_tiered(s)
+    }
+}
+
+/// Parse a tiered metric view: `name#tier` or `name#tier~modifier`.
+fn parse_tiered(name: &str, tier_part: &str) -> anyhow::Result<MetricView> {
+    let name = name.to_string();
+    match tier_part.split_once(SEPARATOR) {
+        None => Ok(MetricView::Tiered {
+            name,
+            tier_name: tier_part.to_string(),
+        }),
+        Some((tier_name, DOMINATED)) => Ok(MetricView::TieredDominated {
+            name,
+            tier_name: tier_name.to_string(),
+        }),
+        Some((tier_name, CONJOINT)) => Ok(MetricView::ConjointTiered {
+            name,
+            tier_name: tier_name.to_string(),
+        }),
+        Some((_, modifier)) => {
+            bail!("unknown tiered modifier: '{modifier}' (expected 'dominated' or 'conjoint')")
+        }
+    }
+}
+
+/// Parse a non-tiered metric view (no `#` present).
+fn parse_non_tiered(s: &str) -> anyhow::Result<MetricView> {
+    let parts: Vec<&str> = s.split(SEPARATOR).collect();
+    match parts.as_slice() {
+        [PARENTS_COUNT] => Ok(MetricView::ParentsCount {}),
+        [NODE_COUNT, TRANSITIVE] => Ok(MetricView::CountTransitive {}),
+        [NODE_COUNT, DOMINATED] => Ok(MetricView::CountDominated {}),
+        [NODE_COUNT, CONJOINT] => Ok(MetricView::CountConjoint {}),
+        [NODE_COUNT, other] => {
+            bail!(
+                "unknown node-count variant: '{other}' (expected 'transitive', 'dominated', or 'conjoint')"
+            )
+        }
+        [name] => Ok(MetricView::Metric {
+            name: name.to_string(),
+        }),
+        [name, TRANSITIVE] => Ok(MetricView::Transitive {
+            name: name.to_string(),
+        }),
+        [name, DOMINATED] => Ok(MetricView::Dominated {
+            name: name.to_string(),
+        }),
+        _ => bail!("invalid metric view: '{s}'"),
     }
 }
 
@@ -213,9 +234,9 @@ display                    metric_name
 size                       size          
 size~transitive            size          
 size~dominated             size          
-size~T1                    size          
-size~dominated~T1          size          
-size~conjoint~T1           size          
+size#T1                    size          
+size#T1~dominated          size          
+size#T1~conjoint           size          
 parents-count              -             
 node-count~transitive      -             
 node-count~dominated       -             
@@ -228,5 +249,6 @@ node-count~conjoint        -
     #[test]
     fn test_parse_errors() {
         assert!("node-count~unknown".parse::<MetricView>().is_err());
+        assert!("size#T1~unknown".parse::<MetricView>().is_err());
     }
 }

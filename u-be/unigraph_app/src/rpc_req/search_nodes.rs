@@ -4,12 +4,31 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
+use serde::Deserialize;
+use serde::Serialize;
+use typegen::TypeGen;
 use unigraph_core::ArrayGraph;
 use unigraph_rpc::RpcExec;
+use unigraph_storage_core::TimelineID;
 
-use crate::SearchNodesInput;
-use crate::SearchNodesOutput;
 use crate::Unigraph;
+
+// ── Types ────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize, TypeGen)]
+pub struct SearchNodesInput {
+    pub timeline_id: TimelineID,
+    pub pattern: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub limit: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TypeGen)]
+pub struct SearchNodesOutput {
+    pub matches: Vec<String>,
+}
+
+// ── Handler ──────────────────────────────────────────────────
 
 const DEFAULT_TTL_HOURS: u64 = 6;
 

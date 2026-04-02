@@ -1,15 +1,45 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 use anyhow::Result;
+use serde::Deserialize;
+use serde::Serialize;
+use typegen::TypeGen;
 use unigraph_rpc::RpcExec;
 use unigraph_storage_core::FrameQuery;
 use unigraph_storage_core::FrameRow;
 use unigraph_storage_core::Order;
+use unigraph_storage_core::TimelineID;
 
-use crate::FrameInfo;
-use crate::SelectFramesInput;
-use crate::SelectFramesOutput;
 use crate::Unigraph;
+
+// ── Types ────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize, TypeGen)]
+pub struct SelectFramesInput {
+    pub timeline_id: TimelineID,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub limit: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub frame_types: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub order: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TypeGen)]
+pub struct SelectFramesOutput {
+    pub frames: Vec<FrameInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TypeGen)]
+pub struct FrameInfo {
+    pub graph_id: i64,
+    pub timestamp: String,
+    pub frame_type: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base: Option<String>,
+}
+
+// ── Handler ──────────────────────────────────────────────────
 
 impl RpcExec<Unigraph> for SelectFramesInput {
     type Output = SelectFramesOutput;

@@ -69,5 +69,34 @@
       }
     }
   },
-  "entry_points": ["app"]
+  "entry_points": ["app"],
+  "graph_settings": {
+    "ui_settings": {
+      "columns": {
+        "metric_settings": {
+          "size": {
+            "visibility": { "Unavailable": { "reason": "use tiered instead" } }
+          },
+          "lines#eager": {
+            "visibility": { "Hidden": {} }
+          },
+          "lines#eager~dominated": {
+            "visibility": { "Hidden": {} }
+          },
+          "lines#eager~conjoint": {
+            "visibility": { "Hidden": {} }
+          },
+          "lines#lazy": {
+            "visibility": { "Hidden": {} }
+          },
+          "lines#lazy~dominated": {
+            "visibility": { "Hidden": {} }
+          },
+          "lines#lazy~conjoint": {
+            "visibility": { "Hidden": {} }
+          }
+        }
+      }
+    }
+  }
 }

@@ -4,6 +4,7 @@ mod array_graph_arrows;
 pub mod array_graph_debug_utils;
 pub mod array_graph_derived_state;
 mod array_graph_determine_entrypoints;
+mod array_graph_metric_views;
 pub mod array_graph_metrics;
 mod array_graph_name_search;
 pub(crate) mod array_graph_nodes;
@@ -422,53 +423,13 @@ impl ArrayGraph {
         get_arrows(self, node_idx, GraphStructure::Reverse)
     }
 
-    /// Returns all metric views available on this graph.
+    /// Returns metric views that are enabled (not Hidden or Unavailable).
     ///
-    /// Enumerates every combination of metric name × view type
-    /// (plain, transitive, dominated, tiered per tier) plus the
-    /// structural counts (parents, transitive count, dominated count).
-    pub fn available_metric_views(&self) -> Vec<MetricView> {
-        let tier_names: Vec<&str> = self
-            .state
-            .tiers
-            .iter()
-            .map(|(name, _)| name.as_str())
-            .collect();
-
-        let mut views = Vec::new();
-
-        for metric_name in self.node_metrics.keys() {
-            views.push(MetricView::Metric {
-                name: metric_name.clone(),
-            });
-            views.push(MetricView::Transitive {
-                name: metric_name.clone(),
-            });
-            views.push(MetricView::Dominated {
-                name: metric_name.clone(),
-            });
-            for &tier_name in &tier_names {
-                views.push(MetricView::Tiered {
-                    name: metric_name.clone(),
-                    tier_name: tier_name.to_string(),
-                });
-                views.push(MetricView::TieredDominated {
-                    name: metric_name.clone(),
-                    tier_name: tier_name.to_string(),
-                });
-                views.push(MetricView::ConjointTiered {
-                    name: metric_name.clone(),
-                    tier_name: tier_name.to_string(),
-                });
-            }
-        }
-
-        views.push(MetricView::ParentsCount {});
-        views.push(MetricView::CountTransitive {});
-        views.push(MetricView::CountDominated {});
-        views.push(MetricView::CountConjoint {});
-
-        views
+    /// Enumerates every combination of metric name × view type, then filters
+    /// through `graph_settings.metric_settings` visibility. Views with no
+    /// explicit setting are kept (default = enabled).
+    pub fn enabled_metric_views(&self) -> Vec<MetricView> {
+        array_graph_metric_views::enabled_metric_views(self)
     }
 
     pub fn search_name_fuzzy<'a>(

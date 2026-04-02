@@ -31,12 +31,85 @@ async fn entry_points() -> Result<()> {
         "
 Entry points
 
-node_name
-=========
-app
+node_name | lines | lines~dominated | lines~transitive | node-count~conjoint | node-count~dominated | node-count~transitive | size#eager | size#eager~conjoint | size#eager~dominated | size#lazy | size#lazy~conjoint | size#lazy~dominated | size~dominated | size~transitive
+==========+=======+=================+==================+=====================+======================+=======================+============+=====================+======================+===========+====================+=====================+================+================
+app       |  1200 |            4990 |             4990 |                  12 |                   12 |                    12 |       1775 |                1775 |                 1775 |      1985 |               1985 |                1985 |           1985 |            1985
 
 "
     );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn metrics_none_returns_all() -> Result<()> {
+    let t = init_app();
+    let handle = ingest_explore_graph(&t).await?;
+    let gqc_key = store_gqc(&t, &handle).await?;
+
+    // No .metrics() call → None → all available metric views
+    let out = call_rpc!(
+        t,
+        ExploreGraph(
+            Explore::new(gqc_key)
+                .node("app")
+                .sort_by("size~transitive")
+                .build()
+        )
+    );
+    snapshot!(
+        out.ascii.unwrap(),
+        "
+Edges: forward
+Edges of: app
+
+node_name | lines | lines~dominated | lines~transitive | node-count~conjoint | node-count~dominated | node-count~transitive | parents-count | size#eager | size#eager~conjoint | size#eager~dominated | size#lazy | size#lazy~conjoint | size#lazy~dominated | size~dominated | size~transitive ▼
+==========+=======+=================+==================+=====================+======================+=======================+===============+============+=====================+======================+===========+====================+=====================+================+==================
+core      |   600 |            1770 |             1870 |                   5 |                    4 |                     5 |             1 |        780 |                 780 |                  730 |       870 |                870 |                 820 |            820 |               870
+ui        |   800 |            1920 |             2020 |                   7 |                    6 |                     7 |             1 |        545 |                 545 |                  495 |       665 |                665 |                 615 |            615 |               665
+utils     |   100 |             100 |              100 |                0.20 |                    1 |                     1 |             5 |         50 |                  10 |                   50 |        50 |                 10 |                  50 |             50 |                50
+
+"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn metrics_empty_returns_none() -> Result<()> {
+    let t = init_app();
+    let handle = ingest_explore_graph(&t).await?;
+    let gqc_key = store_gqc(&t, &handle).await?;
+
+    // .no_metrics() → Some([]) → no metric columns
+    let out = call_rpc!(
+        t,
+        ExploreGraph(Explore::new(gqc_key).node("app").no_metrics().build())
+    );
+    snapshot!(
+        out.ascii.unwrap(),
+        "
+Edges: forward
+Edges of: app
+
+node_name
+=========
+core
+ui
+utils
+
+"
+    );
+
+    // Verify arrows have empty metrics maps
+    for arrow in &out.arrows {
+        assert!(
+            arrow.metrics.is_empty(),
+            "expected no metrics on arrow '{}', got {:?}",
+            arrow.name,
+            arrow.metrics
+        );
+    }
 
     Ok(())
 }
@@ -47,39 +120,22 @@ async fn all_nodes() -> Result<()> {
     let handle = ingest_explore_graph(&t).await?;
     let gqc_key = store_gqc(&t, &handle).await?;
 
-    let metrics = [
-        MetricView::Metric {
-            name: "size".into(),
-        },
-        MetricView::Metric {
-            name: "lines".into(),
-        },
-        MetricView::Transitive {
-            name: "size".into(),
-        },
-        MetricView::Dominated {
-            name: "size".into(),
-        },
-        MetricView::Tiered {
-            name: "size".into(),
-            tier_name: "eager".into(),
-        },
-        MetricView::Tiered {
-            name: "size".into(),
-            tier_name: "lazy".into(),
-        },
-        MetricView::CountDominated {},
-        MetricView::CountTransitive {},
-    ];
     let out = call_rpc!(
         t,
         ExploreGraph(
             Explore::new(gqc_key)
                 .all_nodes()
-                .metrics(&metrics)
-                .sort_by(MetricView::Transitive {
-                    name: "size".into(),
-                })
+                .metrics(&[
+                    "size",
+                    "lines",
+                    "size~transitive",
+                    "size~dominated",
+                    "size#eager",
+                    "size#lazy",
+                    "node-count~dominated",
+                    "node-count~transitive",
+                ])
+                .sort_by("size~transitive")
                 .build()
         )
     );
@@ -92,20 +148,20 @@ async fn all_nodes() -> Result<()> {
         "
 All reachable nodes
 
-node_name      | lines | node-count~dominated | node-count~transitive | size | size~dominated | size~eager | size~lazy | size~transitive ▼
-===============+=======+======================+=======================+======+================+============+===========+==================
-app            |  1200 |                   12 |                    12 |  500 |           1985 |       1775 |      1985 |              1985
-core           |   600 |                    4 |                     5 |  300 |            820 |        780 |       870 |               870
-ui             |   800 |                    6 |                     7 |  200 |            615 |        545 |       665 |               665
-auth           |   420 |                    1 |                     3 |  180 |            180 |        480 |       480 |               480
-dialogs        |   350 |                    1 |                     5 |  120 |            120 |        265 |       385 |               385
-db             |   500 |                    1 |                     2 |  250 |            250 |        300 |       300 |               300
-components     |   400 |                    3 |                     4 |  150 |            215 |        265 |       265 |               265
-analytics      |   250 |                    1 |                     2 |   90 |             90 |         50 |       140 |               140
-styles         |   200 |                    1 |                     1 |   80 |             80 |         80 |        80 |                80
-utils          |   100 |                    1 |                     1 |   50 |             50 |         50 |        50 |                50
-button_android |    90 |                    1 |                     1 |   35 |             35 |         35 |        35 |                35
-button_ios     |    80 |                    1 |                     1 |   30 |             30 |         30 |        30 |                30
+node_name      | lines | node-count~dominated | node-count~transitive | size | size#eager | size#lazy | size~dominated | size~transitive ▼
+===============+=======+======================+=======================+======+============+===========+================+==================
+app            |  1200 |                   12 |                    12 |  500 |       1775 |      1985 |           1985 |              1985
+core           |   600 |                    4 |                     5 |  300 |        780 |       870 |            820 |               870
+ui             |   800 |                    6 |                     7 |  200 |        545 |       665 |            615 |               665
+auth           |   420 |                    1 |                     3 |  180 |        480 |       480 |            180 |               480
+dialogs        |   350 |                    1 |                     5 |  120 |        265 |       385 |            120 |               385
+db             |   500 |                    1 |                     2 |  250 |        300 |       300 |            250 |               300
+components     |   400 |                    3 |                     4 |  150 |        265 |       265 |            215 |               265
+analytics      |   250 |                    1 |                     2 |   90 |         50 |       140 |             90 |               140
+styles         |   200 |                    1 |                     1 |   80 |         80 |        80 |             80 |                80
+utils          |   100 |                    1 |                     1 |   50 |         50 |        50 |             50 |                50
+button_android |    90 |                    1 |                     1 |   35 |         35 |        35 |             35 |                35
+button_ios     |    80 |                    1 |                     1 |   30 |         30 |        30 |             30 |                30
 
 "
     );
@@ -119,23 +175,13 @@ async fn drill_into_app() -> Result<()> {
     let handle = ingest_explore_graph(&t).await?;
     let gqc_key = store_gqc(&t, &handle).await?;
 
-    let metrics = [
-        MetricView::Metric {
-            name: "size".into(),
-        },
-        MetricView::Transitive {
-            name: "size".into(),
-        },
-    ];
     let out = call_rpc!(
         t,
         ExploreGraph(
             Explore::new(gqc_key)
                 .node("app")
-                .metrics(&metrics)
-                .sort_by(MetricView::Transitive {
-                    name: "size".into(),
-                })
+                .metrics(&["size", "size~transitive"])
+                .sort_by("size~transitive")
                 .build()
         )
     );
@@ -163,12 +209,9 @@ async fn drill_into_ui_with_tags() -> Result<()> {
     let handle = ingest_explore_graph(&t).await?;
     let gqc_key = store_gqc(&t, &handle).await?;
 
-    let metrics = [MetricView::Metric {
-        name: "size".into(),
-    }];
     let out = call_rpc!(
         t,
-        ExploreGraph(Explore::new(gqc_key).node("ui").metrics(&metrics).build())
+        ExploreGraph(Explore::new(gqc_key).node("ui").metrics(&["size"]).build())
     );
     snapshot!(
         out.ascii.unwrap(),
@@ -194,15 +237,12 @@ async fn drill_into_components_with_dynamic() -> Result<()> {
     let handle = ingest_explore_graph(&t).await?;
     let gqc_key = store_gqc(&t, &handle).await?;
 
-    let metrics = [MetricView::Metric {
-        name: "size".into(),
-    }];
     let out = call_rpc!(
         t,
         ExploreGraph(
             Explore::new(gqc_key.clone())
                 .node("components")
-                .metrics(&metrics)
+                .metrics(&["size"])
                 .build()
         )
     );
@@ -230,15 +270,12 @@ async fn reverse_edges() -> Result<()> {
     let handle = ingest_explore_graph(&t).await?;
     let gqc_key = store_gqc(&t, &handle).await?;
 
-    let metrics = [MetricView::Metric {
-        name: "size".into(),
-    }];
     let out = call_rpc!(
         t,
         ExploreGraph(
             Explore::new(gqc_key)
                 .node("utils")
-                .metrics(&metrics)
+                .metrics(&["size"])
                 .structure(GraphStructure::Reverse)
                 .build()
         )
@@ -269,24 +306,13 @@ async fn dominator_tree() -> Result<()> {
     let handle = ingest_explore_graph(&t).await?;
     let gqc_key = store_gqc(&t, &handle).await?;
 
-    let metrics = [
-        MetricView::Metric {
-            name: "size".into(),
-        },
-        MetricView::Dominated {
-            name: "size".into(),
-        },
-        MetricView::CountDominated {},
-    ];
     let out = call_rpc!(
         t,
         ExploreGraph(
             Explore::new(gqc_key)
                 .node("app")
-                .metrics(&metrics)
-                .sort_by(MetricView::Dominated {
-                    name: "size".into(),
-                })
+                .metrics(&["size", "size~dominated", "node-count~dominated"])
+                .sort_by("size~dominated")
                 .structure(GraphStructure::Dominator)
                 .build()
         )
@@ -315,18 +341,13 @@ async fn sort_ascending() -> Result<()> {
     let handle = ingest_explore_graph(&t).await?;
     let gqc_key = store_gqc(&t, &handle).await?;
 
-    let metrics = [MetricView::Metric {
-        name: "size".into(),
-    }];
     let out = call_rpc!(
         t,
         ExploreGraph(
             Explore::new(gqc_key)
                 .node("app")
-                .metrics(&metrics)
-                .sort_by(MetricView::Metric {
-                    name: "size".into(),
-                })
+                .metrics(&["size"])
+                .sort_by("size")
                 .sort_order(SortOrder::Asc)
                 .build()
         )
@@ -355,21 +376,14 @@ async fn offset_and_limit() -> Result<()> {
     let handle = ingest_explore_graph(&t).await?;
     let gqc_key = store_gqc(&t, &handle).await?;
 
-    let metrics = [MetricView::Metric {
-        name: "size".into(),
-    }];
-    let sort_by = MetricView::Metric {
-        name: "size".into(),
-    };
-
     // First page: limit 2
     let out = call_rpc!(
         t,
         ExploreGraph(
             Explore::new(gqc_key.clone())
                 .node("app")
-                .metrics(&metrics)
-                .sort_by(sort_by.clone())
+                .metrics(&["size"])
+                .sort_by("size")
                 .limit(2)
                 .build()
         )
@@ -395,8 +409,8 @@ ui        |    200
         ExploreGraph(
             Explore::new(gqc_key)
                 .node("app")
-                .metrics(&metrics)
-                .sort_by(sort_by)
+                .metrics(&["size"])
+                .sort_by("size")
                 .offset(2)
                 .limit(2)
                 .build()
@@ -425,22 +439,14 @@ async fn tiered_metrics() -> Result<()> {
     let handle = ingest_explore_graph(&t).await?;
     let gqc_key = store_gqc(&t, &handle).await?;
 
-    let metrics = [
-        MetricView::Metric {
-            name: "size".into(),
-        },
-        MetricView::Tiered {
-            name: "size".into(),
-            tier_name: "eager".into(),
-        },
-        MetricView::Tiered {
-            name: "size".into(),
-            tier_name: "lazy".into(),
-        },
-    ];
     let out = call_rpc!(
         t,
-        ExploreGraph(Explore::new(gqc_key).node("ui").metrics(&metrics).build())
+        ExploreGraph(
+            Explore::new(gqc_key)
+                .node("ui")
+                .metrics(&["size", "size#eager", "size#lazy"])
+                .build()
+        )
     );
     snapshot!(
         out.ascii.unwrap(),
@@ -448,7 +454,7 @@ async fn tiered_metrics() -> Result<()> {
 Edges: forward
 Edges of: ui
 
-node_name  | size | size~eager | size~lazy | tag
+node_name  | size | size#eager | size#lazy | tag
 ===========+======+============+===========+=====
 components |  150 |        265 |       265 |
 styles     |   80 |         80 |        80 |
@@ -467,39 +473,22 @@ async fn exhaustive_columns() -> Result<()> {
     let gqc_key = store_gqc(&t, &handle).await?;
 
     // All metric types on a node with dynamic edges
-    let metrics = [
-        MetricView::Metric {
-            name: "size".into(),
-        },
-        MetricView::Metric {
-            name: "lines".into(),
-        },
-        MetricView::Transitive {
-            name: "size".into(),
-        },
-        MetricView::Dominated {
-            name: "size".into(),
-        },
-        MetricView::Tiered {
-            name: "size".into(),
-            tier_name: "eager".into(),
-        },
-        MetricView::Tiered {
-            name: "size".into(),
-            tier_name: "lazy".into(),
-        },
-        MetricView::CountDominated {},
-        MetricView::CountTransitive {},
-    ];
     let out = call_rpc!(
         t,
         ExploreGraph(
             Explore::new(gqc_key)
                 .node("components")
-                .metrics(&metrics)
-                .sort_by(MetricView::Transitive {
-                    name: "size".into(),
-                })
+                .metrics(&[
+                    "size",
+                    "lines",
+                    "size~transitive",
+                    "size~dominated",
+                    "size#eager",
+                    "size#lazy",
+                    "node-count~dominated",
+                    "node-count~transitive",
+                ])
+                .sort_by("size~transitive")
                 .build()
         )
     );
@@ -509,11 +498,11 @@ async fn exhaustive_columns() -> Result<()> {
 Edges: forward
 Edges of: components
 
-node_name      | lines | node-count~dominated | node-count~transitive | size | size~dominated | size~eager | size~lazy | size~transitive ▼ | dynamic
-===============+=======+======================+=======================+======+================+============+===========+===================+========================
-utils          |   100 |                    1 |                     1 |   50 |             50 |         50 |        50 |                50 |
-button_android |    90 |                    1 |                     1 |   35 |             35 |         35 |        35 |                35 | platform:button/android
-button_ios     |    80 |                    1 |                     1 |   30 |             30 |         30 |        30 |                30 | platform:button/ios
+node_name      | lines | node-count~dominated | node-count~transitive | size | size#eager | size#lazy | size~dominated | size~transitive ▼ | dynamic
+===============+=======+======================+=======================+======+============+===========+================+===================+========================
+utils          |   100 |                    1 |                     1 |   50 |         50 |        50 |             50 |                50 |
+button_android |    90 |                    1 |                     1 |   35 |         35 |        35 |             35 |                35 | platform:button/android
+button_ios     |    80 |                    1 |                     1 |   30 |         30 |        30 |             30 |                30 | platform:button/ios
 
 "
     );
@@ -537,8 +526,34 @@ async fn about_graph_by_timeline() -> Result<()> {
 
     assert_eq!(out.stats.num_all_nodes, 12);
     assert!(out.stats.num_all_edges > 0);
-    assert_eq!(out.metrics.len(), 2);
     assert!(out.description.is_none());
+
+    // Enabled metric views: 22 total minus 1 Unavailable (size) minus 6 Hidden (lines tiered) = 15
+    let view_names: Vec<String> = out
+        .metric_views
+        .iter()
+        .map(|m| m.view.to_string())
+        .collect();
+    snapshot!(
+        view_names.join("\n"),
+        "
+lines
+lines~transitive
+lines~dominated
+size~transitive
+size~dominated
+size#eager
+size#eager~dominated
+size#eager~conjoint
+size#lazy
+size#lazy~dominated
+size#lazy~conjoint
+parents-count
+node-count~transitive
+node-count~dominated
+node-count~conjoint
+"
+    );
 
     snapshot!(
         out.text,
@@ -550,10 +565,23 @@ async fn about_graph_by_timeline() -> Result<()> {
 - **Nodes**: 12
 - **Edges**: 17 (13 directed, 2 tagged, 2 dynamic)
 
-## Metrics
+## Metric Views
 
 - `lines`
-- `size`
+- `lines~transitive`
+- `lines~dominated`
+- `size~transitive`
+- `size~dominated`
+- `size#eager`
+- `size#eager~dominated`
+- `size#eager~conjoint`
+- `size#lazy`
+- `size#lazy~dominated`
+- `size#lazy~conjoint`
+- `parents-count`
+- `node-count~transitive`
+- `node-count~dominated`
+- `node-count~conjoint`
 
 ## Tiers
 
@@ -580,7 +608,7 @@ async fn about_graph_by_gqc_key() -> Result<()> {
     );
 
     assert_eq!(out.stats.num_all_nodes, 12);
-    assert_eq!(out.metrics.len(), 2);
+    assert!(!out.metric_views.is_empty());
 
     // The GQC-resolved graph has the same stats, but the handle in the text
     // is the gqc_key string. We just verify the structured fields above
@@ -591,6 +619,15 @@ async fn about_graph_by_gqc_key() -> Result<()> {
 }
 
 // ── Helpers ─────────────────────────────────────────────────────
+
+fn parse_metrics(strs: &[&str]) -> Vec<MetricView> {
+    strs.iter()
+        .map(|s| {
+            s.parse()
+                .unwrap_or_else(|e| panic!("bad metric view '{s}': {e}"))
+        })
+        .collect()
+}
 
 async fn store_gqc(t: &TestApp, handle: &str) -> Result<GraphQueryConfigKey> {
     let gqc = GraphQueryConfig {
@@ -610,10 +647,10 @@ async fn store_gqc(t: &TestApp, handle: &str) -> Result<GraphQueryConfigKey> {
 
 // ── Input builder ───────────────────────────────────────────────
 
-struct Explore<'a> {
+struct Explore {
     gqc_key: GraphQueryConfigKey,
     target: ExploreGraphTarget,
-    metrics: &'a [MetricView],
+    metrics: Option<Vec<MetricView>>,
     sort_by: Option<MetricView>,
     sort_order: Option<SortOrder>,
     graph_structure: GraphStructure,
@@ -621,12 +658,12 @@ struct Explore<'a> {
     limit: Option<usize>,
 }
 
-impl<'a> Explore<'a> {
+impl Explore {
     fn new(gqc_key: GraphQueryConfigKey) -> Self {
         Self {
             gqc_key,
             target: ExploreGraphTarget::EntryPoints {},
-            metrics: &[],
+            metrics: None,
             sort_by: None,
             sort_order: None,
             graph_structure: GraphStructure::Forward,
@@ -647,13 +684,21 @@ impl<'a> Explore<'a> {
         self
     }
 
-    fn metrics(mut self, metrics: &'a [MetricView]) -> Self {
-        self.metrics = metrics;
+    fn metrics(mut self, strs: &[&str]) -> Self {
+        self.metrics = Some(parse_metrics(strs));
         self
     }
 
-    fn sort_by(mut self, sort_by: MetricView) -> Self {
-        self.sort_by = Some(sort_by);
+    fn no_metrics(mut self) -> Self {
+        self.metrics = Some(vec![]);
+        self
+    }
+
+    fn sort_by(mut self, s: &str) -> Self {
+        self.sort_by = Some(
+            s.parse()
+                .unwrap_or_else(|e| panic!("bad sort_by '{s}': {e}")),
+        );
         self
     }
 
@@ -683,7 +728,7 @@ impl<'a> Explore<'a> {
             graph_query_config_key: Some(self.gqc_key),
             target: self.target,
             graph_structure: self.graph_structure,
-            metrics: self.metrics.to_vec(),
+            metrics: self.metrics,
             sort_by: self.sort_by,
             sort_order: self.sort_order,
             offset: self.offset,

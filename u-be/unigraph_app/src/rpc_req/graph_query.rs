@@ -3,16 +3,39 @@
 use anyhow::Context;
 use anyhow::Result;
 use anyhow::bail;
+use serde::Deserialize;
+use serde::Serialize;
+use typegen::TypeGen;
 use unigraph_core::ArrayGraphSerializable;
+use unigraph_core::ArrayGraphSerializablePackageBase64;
 use unigraph_core::ArrayGraphSerializablePackageConfig;
+use unigraph_core::config_key::GraphQueryConfigKey;
 use unigraph_core::config_query::GraphQueryConfig;
 use unigraph_core::types::NodeName;
 use unigraph_rpc::RpcExec;
 use unigraph_storage_core::GraphKeyOrTimelineID;
 
-use crate::GraphQueryInput;
-use crate::GraphQueryOutput;
 use crate::Unigraph;
+
+// ── Types ────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize, TypeGen)]
+pub struct GraphQueryInput {
+    /// Inline graph query config. Either this or `graph_query_config_key` must be set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub graph_query_config: Option<GraphQueryConfig>,
+    /// Key referencing a stored graph query config. Resolved server-side.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub graph_query_config_key: Option<GraphQueryConfigKey>,
+}
+
+#[derive(Debug, Serialize, Deserialize, TypeGen)]
+pub struct GraphQueryOutput {
+    pub package: ArrayGraphSerializablePackageBase64,
+    pub graph_query_config: GraphQueryConfig,
+}
+
+// ── Handler ──────────────────────────────────────────────────
 
 impl RpcExec<Unigraph> for GraphQueryInput {
     type Output = GraphQueryOutput;

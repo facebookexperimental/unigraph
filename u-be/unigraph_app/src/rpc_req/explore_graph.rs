@@ -8,20 +8,126 @@ use std::time::Duration;
 use anyhow::Context;
 use anyhow::Result;
 use anyhow::bail;
+use serde::Deserialize;
+use serde::Serialize;
+use typegen::TypeGen;
 use unigraph_core::ArrayGraph;
 use unigraph_core::DynamicEdgeInfo;
+/// Re-export MetricView for use in ExploreGraphInput.
+pub use unigraph_core::MetricView;
 use unigraph_core::NodeIDX;
 use unigraph_core::config_key::GraphQueryConfigKey;
 use unigraph_core::graph_settings::GraphStructure;
 use unigraph_core::graph_settings::SortOrder;
 use unigraph_rpc::RpcExec;
 
-use crate::ExploreGraphArrow;
-use crate::ExploreGraphInput;
-use crate::ExploreGraphOutput;
-use crate::ExploreGraphTarget;
-use crate::MetricView;
 use crate::Unigraph;
+
+// ── Types ────────────────────────────────────────────────────
+
+/// What to explore.
+#[derive(Debug, Clone, Serialize, Deserialize, TypeGen)]
+pub enum ExploreGraphTarget {
+    /// Auto-detected entry points (nodes with no parents).
+    EntryPoints {},
+    /// Drill into a specific node's children.
+    Node { name: String },
+    /// Flat list of all reachable nodes.
+    AllNodes {},
+}
+
+impl Default for ExploreGraphTarget {
+    fn default() -> Self {
+        Self::EntryPoints {}
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TypeGen)]
+pub struct ExploreGraphInput {
+    /// Inline graph query config. Either this or `graph_query_config_key` must be set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub graph_query_config: Option<unigraph_core::config_query::GraphQueryConfig>,
+    /// Key referencing a stored graph query config. Resolved server-side.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub graph_query_config_key: Option<GraphQueryConfigKey>,
+
+    /// What to explore: entry points, a specific node, or all nodes.
+    #[serde(default)]
+    pub target: ExploreGraphTarget,
+
+    /// Which edge structure to follow.
+    #[serde(default)]
+    pub graph_structure: GraphStructure,
+
+    /// Which metrics to compute for each arrow.
+    /// - `None` (default): return all available metric views.
+    /// - `Some([])`: return no metrics.
+    /// - `Some([...])`: return exactly the listed metrics.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metrics: Option<Vec<MetricView>>,
+
+    /// Metric to sort arrows by. Computed for all children (even beyond limit).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sort_by: Option<MetricView>,
+
+    /// Sort order. Defaults to Desc.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sort_order: Option<SortOrder>,
+
+    /// Skip first N results (for pagination).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub offset: Option<usize>,
+
+    /// Maximum number of arrows to return. Defaults to 50.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub limit: Option<usize>,
+
+    /// When true, populate the `ascii` field in the response with a human-readable
+    /// ASCII table of the results (optimized for agent / LLM consumption).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub include_ascii: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TypeGen)]
+pub struct ExploreGraphOutput {
+    /// The node being explored, with its own metrics. None when showing entry points.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub node: Option<ExploreGraphArrow>,
+    /// Arrows to children (or to entry points when node is None).
+    pub arrows: Vec<ExploreGraphArrow>,
+    /// Available metric names in this graph.
+    pub metric_names: Vec<String>,
+    /// Tier names if tiered traversal is configured.
+    pub tier_names: Vec<String>,
+    /// Total number of arrows before offset/limit.
+    pub total_arrows_count: usize,
+    /// Human-readable ASCII table of the results. Only populated when
+    /// `include_ascii` is set to true in the request.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ascii: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TypeGen)]
+pub struct ExploreGraphArrow {
+    /// Node name.
+    pub name: String,
+    /// Flat metrics map. Keys follow naming conventions:
+    /// - "{metric}" — self value
+    /// - "{metric}_transitive" — transitive sum
+    /// - "{metric}_dominated" — dominated sum
+    /// - "{metric}_{tier}" — tiered transitive (if tiers configured)
+    /// - "parents_count" — number of configured parents
+    /// - "children_count" — number of children in current graph structure
+    pub metrics: BTreeMap<String, f32>,
+    /// Edge tag (e.g. "lazy"), if this is a tagged edge.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tag: Option<String>,
+    /// Dynamic edge info, if this is a dynamic edge.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dynamic: Option<DynamicEdgeInfo>,
+}
+
+// ── Handler ──────────────────────────────────────────────────
 
 impl RpcExec<Unigraph> for ExploreGraphInput {
     type Output = ExploreGraphOutput;
@@ -52,6 +158,7 @@ fn resolve_gqc_key(input: &ExploreGraphInput) -> Result<GraphQueryConfigKey> {
 fn explore_node(ag: Arc<ArrayGraph>, input: &ExploreGraphInput) -> Result<ExploreGraphOutput> {
     let metric_names = collect_metric_names(&ag);
     let tier_names = collect_tier_names(&ag);
+    let metrics = resolve_metrics(&ag, &input.metrics);
 
     let (parent_idx, arrow_data) = resolve_arrows(&ag, &input.target, input.graph_structure)?;
     let total_arrows_count = arrow_data.len();
@@ -69,10 +176,10 @@ fn explore_node(ag: Arc<ArrayGraph>, input: &ExploreGraphInput) -> Result<Explor
     let limit = input.limit.unwrap_or(50);
     let page = paginate(&sorted, offset, limit);
 
-    let arrows = build_explore_arrows(&ag, page, &input.metrics, input.graph_structure)?;
+    let arrows = build_explore_arrows(&ag, page, &metrics, input.graph_structure)?;
 
     let node = parent_idx
-        .map(|idx| build_explore_arrow_for_node(&ag, idx, &input.metrics, input.graph_structure))
+        .map(|idx| build_explore_arrow_for_node(&ag, idx, &metrics, input.graph_structure))
         .transpose()?;
 
     let include_ascii = input.include_ascii.unwrap_or(false);
@@ -116,6 +223,14 @@ fn collect_tier_names(ag: &ArrayGraph) -> Vec<String> {
             }
         })
         .unwrap_or_default()
+}
+
+/// Resolve the metrics list: `None` → all enabled, `Some(list)` → exactly that list.
+fn resolve_metrics(ag: &ArrayGraph, metrics: &Option<Vec<MetricView>>) -> Vec<MetricView> {
+    match metrics {
+        None => ag.enabled_metric_views(),
+        Some(list) => list.clone(),
+    }
 }
 
 // ── Arrow resolution ────────────────────────────────────────────

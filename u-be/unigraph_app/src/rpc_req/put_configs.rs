@@ -1,15 +1,32 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 use anyhow::Result;
+use serde::Deserialize;
+use serde::Serialize;
+use typegen::TypeGen;
 use unigraph_core::TraversalConfig;
 use unigraph_core::config_key::GraphQueryConfigKey;
 use unigraph_core::config_key::TraversalConfigKey;
 use unigraph_core::config_query::GraphQueryConfig;
 use unigraph_rpc::RpcExec;
 
-use crate::PutConfigsInput;
-use crate::PutConfigsOutput;
 use crate::Unigraph;
+
+// ── Types ────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize, TypeGen)]
+pub struct PutConfigsInput {
+    pub traversal_configs: Vec<TraversalConfig>,
+    pub graph_query_configs: Vec<GraphQueryConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TypeGen)]
+pub struct PutConfigsOutput {
+    pub traversal_configs: Vec<TraversalConfigKey>,
+    pub graph_query_configs: Vec<GraphQueryConfigKey>,
+}
+
+// ── Handler ──────────────────────────────────────────────────
 
 impl RpcExec<Unigraph> for PutConfigsInput {
     type Output = PutConfigsOutput;

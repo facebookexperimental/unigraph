@@ -13,11 +13,10 @@ mod graph_cache;
 mod graph_handle;
 pub mod impact_analysis;
 mod rpc_req;
-mod rpc_types;
 
 pub use graph_cache::GraphCache;
 pub use graph_handle::GraphHandle;
-pub use rpc_types::*;
+pub use rpc_req::*;
 
 /// The Unigraph application — wraps the database, caches, and cross-cutting concerns.
 ///

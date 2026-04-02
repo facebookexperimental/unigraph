@@ -1,11 +1,25 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 use anyhow::Result;
+use serde::Deserialize;
+use serde::Serialize;
+use typegen::TypeGen;
 use unigraph_rpc::RpcExec;
+use unigraph_storage_core::TimelineID;
 
-use crate::ListTimelinesInput;
-use crate::ListTimelinesOutput;
 use crate::Unigraph;
+
+// ── Types ────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize, TypeGen)]
+pub struct ListTimelinesInput {}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TypeGen)]
+pub struct ListTimelinesOutput {
+    pub timeline_ids: Vec<TimelineID>,
+}
+
+// ── Handler ──────────────────────────────────────────────────
 
 impl RpcExec<Unigraph> for ListTimelinesInput {
     type Output = ListTimelinesOutput;
