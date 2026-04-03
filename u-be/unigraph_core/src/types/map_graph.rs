@@ -272,6 +272,10 @@ impl MapGraph {
         Ok(graph)
     }
 
+    pub fn from_json_bytes(json: &[u8]) -> Result<Self> {
+        serde_json::from_slice(json).context("Failed to parse MapGraph from JSON bytes")
+    }
+
     pub fn to_json(&self) -> Result<String> {
         let json = serde_json::to_string(self).context("Failed to serialize")?;
         Ok(json)
