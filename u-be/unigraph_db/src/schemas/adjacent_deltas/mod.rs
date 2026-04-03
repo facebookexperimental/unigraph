@@ -200,14 +200,16 @@ pub async fn store_full(
 /// Fetch a graph from an AdjacentDeltas timeline without recursion.
 ///
 /// See module-level docs for the algorithm.
+#[ll::task]
 pub async fn fetch_graph(
     storage: &UnigraphStorage,
     key: &GraphKey,
     task: &ll::Task,
 ) -> Result<ArrayGraphSerializable> {
-    let full_frame = find_nearest_full_frame(storage, key, task).await?;
-    let range = load_frame_range(storage, key, full_frame.graph_id, task).await?;
-    reconstruct_from_range(storage, &range).await
+    task.data("graph_key", key.to_string());
+    let full_frame = find_nearest_full_frame(storage, key, &task).await?;
+    let range = load_frame_range(storage, key, full_frame.graph_id, &task).await?;
+    reconstruct_from_range(storage, &range, &task).await
 }
 
 /// Find the most recent Full frame at or before the target graph_id.
@@ -283,6 +285,7 @@ async fn load_frame_range(
 async fn reconstruct_from_range(
     storage: &UnigraphStorage,
     range: &FrameRange,
+    task: &ll::Task,
 ) -> Result<ArrayGraphSerializable> {
     let entries: Vec<_> = range.frames.values().collect();
 
@@ -300,7 +303,7 @@ async fn reconstruct_from_range(
         )
     })?;
 
-    let base_graph = storage.reconstruct_full_graph(data).await?;
+    let base_graph = storage.reconstruct_full_graph(data, task).await?;
 
     // If there are no deltas after the Full frame, we're done.
     let delta_rows = &entries[last_full_idx + 1..];
@@ -316,7 +319,7 @@ async fn reconstruct_from_range(
         let data = row.data.as_ref().with_context(|| {
             format!("delta frame graph_id={} has no data", row.frame.graph_id.0)
         })?;
-        let delta = storage.reconstruct_delta(data).await?;
+        let delta = storage.reconstruct_delta(data, task).await?;
         current = apply_delta(current, &delta).with_context(|| {
             format!("failed to apply delta at graph_id={}", row.frame.graph_id.0)
         })?;

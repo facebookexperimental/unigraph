@@ -150,7 +150,7 @@ impl UnigraphStorage {
             serde_json::from_str(&data.manifest_json).context("Failed to parse ErrorManifest")?;
 
         let blobs = self
-            .resolve_blobs(&manifest.errors_blob, data.inline_blobs.as_deref())
+            .resolve_blobs(&manifest.errors_blob, data.inline_blobs.as_deref(), task)
             .await?;
 
         let package = ErrorPackage { manifest, blobs };
@@ -311,13 +311,14 @@ impl UnigraphStorage {
     pub(crate) async fn reconstruct_full_graph(
         &self,
         data: &FrameData,
+        task: &ll::Task,
     ) -> Result<ArrayGraphSerializable> {
         let manifest: ArrayGraphSerializableManifest = serde_json::from_str(&data.manifest_json)
             .context("Failed to parse ArrayGraphSerializableManifest")?;
 
         let all_blob_ids = manifest.blobs.get_all_blob_ids();
         let blobs = self
-            .resolve_blobs(&all_blob_ids, data.inline_blobs.as_deref())
+            .resolve_blobs(&all_blob_ids, data.inline_blobs.as_deref(), task)
             .await?;
 
         // Also insert the manifest blob itself so unpack can find it
@@ -339,12 +340,13 @@ impl UnigraphStorage {
     pub(crate) async fn reconstruct_delta(
         &self,
         data: &FrameData,
+        task: &ll::Task,
     ) -> Result<unigraph_core::GraphDelta> {
         let manifest: DeltaManifest =
             serde_json::from_str(&data.manifest_json).context("Failed to parse DeltaManifest")?;
 
         let blobs = self
-            .resolve_blobs(&manifest.delta_blob, data.inline_blobs.as_deref())
+            .resolve_blobs(&manifest.delta_blob, data.inline_blobs.as_deref(), task)
             .await?;
 
         let package = DeltaPackage { manifest, blobs };
@@ -356,10 +358,12 @@ impl UnigraphStorage {
     /// Blob IDs already contain the full storage key (including the
     /// `timeline_id/graph_id/` prefix), so they are used directly as
     /// external blob keys.
+    #[ll::task]
     pub(crate) async fn resolve_blobs(
         &self,
         blob_ids: &[BlobID],
         inline_blobs: Option<&[u8]>,
+        _task: &ll::Task,
     ) -> Result<BTreeMap<BlobID, Vec<u8>>> {
         if let Some(compressed) = inline_blobs {
             // Inline: decompress → deserialize BTreeMap<BlobID, Vec<u8>>

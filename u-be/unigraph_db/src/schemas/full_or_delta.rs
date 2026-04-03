@@ -229,9 +229,9 @@ pub async fn fetch_graph(
     let (_, first_entry) = iter.next().expect("chain must have at least one entry");
 
     let mut current = match first_entry {
-        ChainEntry::Full(data) => storage.reconstruct_full_graph(&data).await?,
+        ChainEntry::Full(data) => storage.reconstruct_full_graph(&data, task).await?,
         ChainEntry::DeltaWithResolvedBase(data, base_graph) => {
-            let delta = storage.reconstruct_delta(&data).await?;
+            let delta = storage.reconstruct_delta(&data, task).await?;
             unigraph_core::apply_delta(base_graph, &delta)
                 .context("Failed to apply delta on cross-timeline base")?
         }
@@ -243,7 +243,7 @@ pub async fn fetch_graph(
     for (entry_key, entry) in iter {
         match entry {
             ChainEntry::Delta(data) => {
-                let delta = storage.reconstruct_delta(&data).await?;
+                let delta = storage.reconstruct_delta(&data, task).await?;
                 current = unigraph_core::apply_delta(current, &delta)
                     .with_context(|| format!("Failed to apply delta at {:?}", entry_key))?;
             }

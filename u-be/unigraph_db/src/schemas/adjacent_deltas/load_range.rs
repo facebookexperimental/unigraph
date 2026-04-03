@@ -24,6 +24,7 @@ use crate::graph_range::GraphRangeFrame;
 /// Only Full and Delta frames are loaded (Empty and Error are skipped).
 /// The range must start with a Full frame. Each frame is unpacked into
 /// domain data: Full → `ArrayGraphSerializable`, Delta → `GraphDelta`.
+#[ll::task]
 pub async fn load_range(
     timeline_id: &TimelineID,
     ctx: &UnigraphDbContext,
@@ -45,7 +46,7 @@ pub async fn load_range(
                 expires_before: None,
                 ..Default::default()
             },
-            task,
+            &task,
         )
         .await?;
     drop(conn);
@@ -69,11 +70,11 @@ pub async fn load_range(
 
         let frame = match row.frame_type {
             FrameType::Full => {
-                let graph = storage.reconstruct_full_graph(data).await?;
+                let graph = storage.reconstruct_full_graph(data, &task).await?;
                 GraphRangeFrame::Full(graph)
             }
             FrameType::Delta => {
-                let delta = storage.reconstruct_delta(data).await?;
+                let delta = storage.reconstruct_delta(data, &task).await?;
                 GraphRangeFrame::Delta(Box::new(delta))
             }
             other => anyhow::bail!(

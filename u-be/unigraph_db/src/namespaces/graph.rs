@@ -118,7 +118,7 @@ impl Graph {
     ///
     /// Finds the most recent `Full` or `Delta` frame (skipping `Empty` and `Error`)
     /// and reconstructs the graph from it.
-    #[task(tags(l3))]
+    #[task]
     pub async fn fetch_latest(
         &self,
         timeline_id: &TimelineID,
