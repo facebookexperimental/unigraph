@@ -1,12 +1,52 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 use std::collections::BinaryHeap;
+use std::sync::OnceLock;
 
 use anyhow::Result;
 use rayon::prelude::*;
 
+use super::array_graph_fst_search::FstSets;
+use super::array_graph_fst_search::search_fuzzy_fst;
 use crate::ArrayGraphNodes;
 use crate::NodeIDX;
+
+/// Graphs above this threshold use FST-based search (case-sensitive, much faster).
+/// Graphs below use regex-based search (case-insensitive).
+const FST_SEARCH_THRESHOLD: usize = 3_000_000;
+
+/// Encapsulates fuzzy name search with automatic strategy selection.
+///
+/// - Small graphs (< 3M nodes): regex-based subsequence search (case-insensitive)
+/// - Large graphs (>= 3M nodes): FST-based subsequence search (case-sensitive, cached)
+///
+/// FST sets are built lazily on first search and reused for subsequent queries.
+#[derive(Default, Clone)]
+pub struct NameSearch {
+    fst_sets: OnceLock<FstSets>,
+}
+
+impl NameSearch {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Fuzzy-search node names, returning up to `limit` matches
+    /// ordered by string length (shortest first).
+    pub fn search<'a>(
+        &self,
+        nodes: &'a ArrayGraphNodes,
+        pattern: &str,
+        limit: usize,
+    ) -> Result<Vec<(&'a str, NodeIDX)>> {
+        if nodes.combined_nodes_len() >= FST_SEARCH_THRESHOLD {
+            let fst_sets = self.fst_sets.get_or_try_init(|| FstSets::build(nodes))?;
+            search_fuzzy_fst(nodes, fst_sets, pattern, limit)
+        } else {
+            search_fuzzy_regex(nodes, pattern, limit)
+        }
+    }
+}
 
 /// Fuzzy-search node names using regex subsequence matching, parallelized with rayon.
 ///
@@ -14,7 +54,7 @@ use crate::NodeIDX;
 /// are merged pairwise. Memory usage is O(limit * num_threads), not O(total_matches).
 ///
 /// On WASM (no threads), rayon automatically falls back to sequential execution.
-pub fn search_fuzzy_regex<'a>(
+fn search_fuzzy_regex<'a>(
     nodes: &'a ArrayGraphNodes,
     pattern: &str,
     limit: usize,

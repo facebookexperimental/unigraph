@@ -4,6 +4,7 @@ mod array_graph_arrows;
 pub mod array_graph_debug_utils;
 pub mod array_graph_derived_state;
 mod array_graph_determine_entrypoints;
+mod array_graph_fst_search;
 mod array_graph_metric_views;
 pub mod array_graph_metrics;
 mod array_graph_name_search;

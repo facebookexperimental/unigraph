@@ -11,7 +11,7 @@ use anyhow::bail;
 use crate::remap_utils::RemapContext;
 use crate::types::NodeIDX;
 use crate::types::NodeName;
-use crate::types::array_graph::array_graph_name_search::search_fuzzy_regex;
+use crate::types::array_graph::array_graph_name_search::NameSearch;
 use crate::types::twin_graph;
 use crate::types::twin_graph::NodeDiff;
 
@@ -26,6 +26,13 @@ use crate::types::twin_graph::NodeDiff;
 pub struct ArrayGraphNodes {
     pub(super) node_names: String,
     offsets: Vec<usize>,
+
+    /// Encapsulated fuzzy name search with automatic strategy selection.
+    /// Skipped for serialization/deserialization — rebuilt on demand.
+    /// Clones rebuild internal caches lazily.
+    #[serde(skip)]
+    #[typegen(skip_all)]
+    search: NameSearch,
 }
 
 /// This struct represents the nodes for a specific side of the graph.
@@ -72,6 +79,7 @@ impl ArrayGraphNodes {
         Self {
             node_names,
             offsets,
+            search: NameSearch::new(),
         }
     }
 
@@ -140,7 +148,7 @@ impl ArrayGraphNodes {
         pattern: &str,
         limit: usize,
     ) -> Result<Vec<(&'a str, NodeIDX)>> {
-        search_fuzzy_regex(self, pattern, limit)
+        self.search.search(self, pattern, limit)
     }
 
     pub fn append_node_name(&mut self, name: &str) -> Result<NodeIDX> {
@@ -265,6 +273,7 @@ impl NodeNamesOrderedBuilder {
             ArrayGraphNodes {
                 node_names: node_names_flat,
                 offsets,
+                search: NameSearch::new(),
             },
             map,
         )
@@ -393,6 +402,7 @@ fn merge(
                     ArrayGraphNodes {
                         node_names: names,
                         offsets,
+                        search: NameSearch::new(),
                     },
                     ctx_a,
                     ctx_b,
@@ -415,6 +425,7 @@ mod tests {
         let mut nn = ArrayGraphNodes {
             node_names: String::new(),
             offsets: vec![0],
+            search: NameSearch::new(),
         };
 
         assert_equal!(nn.append_node_name("meow")?.0, 0);
@@ -456,10 +467,12 @@ Last name must be `<` the new name, which was not the case.
         let a = ArrayGraphNodes {
             node_names: names_a,
             offsets: offsets_a,
+            search: NameSearch::new(),
         };
         let b = ArrayGraphNodes {
             node_names: names_b,
             offsets: offsets_b,
+            search: NameSearch::new(),
         };
         let (merged, ctx_a, ctx_b) = merge(&a, &b);
         let names = merged
