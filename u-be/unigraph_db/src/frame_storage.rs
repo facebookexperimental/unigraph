@@ -214,10 +214,12 @@ impl UnigraphStorage {
             return Ok(0);
         }
 
-        // Delete from external blob storage (outside any transaction).
-        for key in &blob_keys {
-            self.blob.delete_blob(key).await?;
-        }
+        // Delete from external blob storage in parallel (outside any transaction).
+        let delete_futs: Vec<_> = blob_keys
+            .iter()
+            .map(|key| self.blob.delete_blob(key))
+            .collect();
+        futures::future::try_join_all(delete_futs).await?;
 
         // Unregister from cleanup table (separate short-lived connection).
         let mut conn = self.graph.conn_write().await?;
@@ -321,19 +323,22 @@ impl UnigraphStorage {
             .resolve_blobs(&all_blob_ids, data.inline_blobs.as_deref(), task)
             .await?;
 
-        // Also insert the manifest blob itself so unpack can find it
-        let mut blobs_with_manifest = blobs;
-        blobs_with_manifest.insert(
-            manifest.self_reference.clone(),
-            data.manifest_json.as_bytes().to_vec(),
-        );
+        let manifest_json_bytes = data.manifest_json.as_bytes().to_vec();
 
-        let package = ArrayGraphSerializablePackage {
-            manifest,
-            blobs: blobs_with_manifest,
-        };
+        // CPU-heavy: decompress + deserialize → off the tokio thread
+        tokio::task::spawn_blocking(move || {
+            let mut blobs_with_manifest = blobs;
+            blobs_with_manifest.insert(manifest.self_reference.clone(), manifest_json_bytes);
 
-        ArrayGraphSerializable::unpack(&package).context("Failed to unpack graph")
+            let package = ArrayGraphSerializablePackage {
+                manifest,
+                blobs: blobs_with_manifest,
+            };
+
+            ArrayGraphSerializable::unpack(&package).context("Failed to unpack graph")
+        })
+        .await
+        .context("spawn_blocking panicked")?
     }
 
     /// Reconstruct a delta from frame data.
@@ -349,8 +354,13 @@ impl UnigraphStorage {
             .resolve_blobs(&manifest.delta_blob, data.inline_blobs.as_deref(), task)
             .await?;
 
-        let package = DeltaPackage { manifest, blobs };
-        unpack_delta(&package).context("Failed to unpack delta")
+        // CPU-heavy: decompress + deserialize → off the tokio thread
+        tokio::task::spawn_blocking(move || {
+            let package = DeltaPackage { manifest, blobs };
+            unpack_delta(&package).context("Failed to unpack delta")
+        })
+        .await
+        .context("spawn_blocking panicked")?
     }
 
     /// Resolve blobs either from inline data or external blob storage.
@@ -366,24 +376,35 @@ impl UnigraphStorage {
         _task: &ll::Task,
     ) -> Result<BTreeMap<BlobID, Vec<u8>>> {
         if let Some(compressed) = inline_blobs {
-            // Inline: decompress → deserialize BTreeMap<BlobID, Vec<u8>>
-            let decompressed =
-                from_zstd(compressed).context("Failed to decompress inline blobs")?;
-            let all_blobs: BTreeMap<BlobID, Vec<u8>> = serde_json::from_slice(&decompressed)
-                .context("Failed to deserialize inline blobs map")?;
-            Ok(all_blobs)
+            // Inline: decompress → deserialize (CPU-heavy → off tokio thread)
+            let compressed = compressed.to_vec();
+            tokio::task::spawn_blocking(move || {
+                let decompressed =
+                    from_zstd(&compressed).context("Failed to decompress inline blobs")?;
+                let all_blobs: BTreeMap<BlobID, Vec<u8>> = serde_json::from_slice(&decompressed)
+                    .context("Failed to deserialize inline blobs map")?;
+                Ok(all_blobs)
+            })
+            .await
+            .context("spawn_blocking panicked")?
         } else {
-            // External: fetch each blob from blob storage
-            let mut result = BTreeMap::new();
-            for blob_id in blob_ids {
-                let data = self
-                    .blob
-                    .get_blob(&blob_id.0)
-                    .await?
-                    .ok_or_else(|| anyhow::anyhow!("Missing external blob: {}", blob_id.0))?;
-                result.insert(blob_id.clone(), data);
-            }
-            Ok(result)
+            // External: fetch all blobs in parallel
+            let futs: Vec<_> = blob_ids
+                .iter()
+                .map(|blob_id| {
+                    let blob_store = &self.blob;
+                    let id = blob_id.clone();
+                    async move {
+                        let data = blob_store
+                            .get_blob(&id.0)
+                            .await?
+                            .ok_or_else(|| anyhow::anyhow!("Missing external blob: {}", id.0))?;
+                        Ok::<_, anyhow::Error>((id, data))
+                    }
+                })
+                .collect();
+            let pairs = futures::future::try_join_all(futs).await?;
+            Ok(pairs.into_iter().collect())
         }
     }
 
@@ -408,13 +429,22 @@ impl UnigraphStorage {
             .await?;
         drop(reg_conn);
 
-        // Upload blobs (outside any transaction).
-        for (blob_id, data) in blobs {
-            self.blob
-                .put_blob(&blob_id.0, data)
-                .await
-                .with_context(|| format!("Failed to upload blob: {}", blob_id.0))?;
-        }
+        // Upload blobs in parallel (outside any transaction).
+        let upload_futs: Vec<_> = blobs
+            .iter()
+            .map(|(blob_id, data)| {
+                let blob_store = &self.blob;
+                let id = blob_id.0.clone();
+                let data = data.clone();
+                async move {
+                    blob_store
+                        .put_blob(&id, &data)
+                        .await
+                        .with_context(|| format!("Failed to upload blob: {}", id))
+                }
+            })
+            .collect();
+        futures::future::try_join_all(upload_futs).await?;
 
         Ok(blob_keys)
     }

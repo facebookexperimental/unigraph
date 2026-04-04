@@ -77,90 +77,103 @@ pub async fn store_range(
     };
 
     // -- Pack entries + prepare metric history (before transaction) --
+    // CPU-heavy: packing involves serialization + compression → off tokio thread.
 
-    let mut packed_entries: Vec<PackedEntry> = Vec::with_capacity(entries.len());
-    let mut merged_history: Option<crate::metric_history::PreparedHistoryEntries> = None;
-    let mut current_graph: Option<ArrayGraphSerializable> = None;
-    let mut prev_graph_id: Option<GraphID> = None;
+    let timeline_id_clone = timeline_id.clone();
+    let pack_configs: Vec<_> = entries
+        .iter()
+        .map(|(key, _)| ctx.pack_config_for_key(key))
+        .collect();
 
-    for (key, frame) in entries {
-        match frame {
-            GraphRangeFrame::Full(graph) => {
-                // Pack the graph.
-                let config = ctx.pack_config_for_key(&key);
-                let package = graph.pack(&config).context("Failed to pack graph")?;
-                let manifest_json = serde_json::to_string(&package.manifest)
-                    .context("Failed to serialize manifest")?;
+    let (packed_entries, merged_history) = tokio::task::spawn_blocking(move || {
+        let mut packed_entries: Vec<PackedEntry> = Vec::with_capacity(entries.len());
+        let mut merged_history: Option<crate::metric_history::PreparedHistoryEntries> = None;
+        let mut current_graph: Option<ArrayGraphSerializable> = None;
+        let mut prev_graph_id: Option<GraphID> = None;
 
-                packed_entries.push(PackedEntry {
-                    key: key.clone(),
-                    frame_type: FrameType::Full,
-                    base: None,
-                    manifest_json,
-                    blobs: package.blobs,
-                });
+        for ((key, frame), config) in entries.into_iter().zip(pack_configs) {
+            match frame {
+                GraphRangeFrame::Full(graph) => {
+                    let package = graph.pack(&config).context("Failed to pack graph")?;
+                    let manifest_json = serde_json::to_string(&package.manifest)
+                        .context("Failed to serialize manifest")?;
 
-                // Metric history.
-                if history_enabled {
-                    merge_history(
-                        &mut merged_history,
-                        crate::metric_history::prepare_history_entries(&[(key.clone(), &graph)]),
-                    );
-                }
+                    packed_entries.push(PackedEntry {
+                        key: key.clone(),
+                        frame_type: FrameType::Full,
+                        base: None,
+                        manifest_json,
+                        blobs: package.blobs,
+                    });
 
-                prev_graph_id = Some(key.graph_id);
-                current_graph = Some(graph);
-            }
-            GraphRangeFrame::Delta(delta) => {
-                // Pack the delta.
-                let config = ctx.pack_config_for_key(&key);
-                let package = pack_delta(&delta, &config).context("Failed to pack delta")?;
-                let manifest_json = serde_json::to_string(&package.manifest)
-                    .context("Failed to serialize delta manifest")?;
+                    if history_enabled {
+                        merge_history(
+                            &mut merged_history,
+                            crate::metric_history::prepare_history_entries(&[(
+                                key.clone(),
+                                &graph,
+                            )]),
+                        );
+                    }
 
-                let base_graph_id = prev_graph_id.with_context(|| {
-                    format!(
-                        "delta frame graph_id={} has no preceding frame",
-                        key.graph_id.0
-                    )
-                })?;
-
-                packed_entries.push(PackedEntry {
-                    key: key.clone(),
-                    frame_type: FrameType::Delta,
-                    base: Some(GraphKey {
-                        timeline_id: timeline_id.clone(),
-                        graph_id: base_graph_id,
-                    }),
-                    manifest_json,
-                    blobs: package.blobs,
-                });
-
-                // Reconstruct the graph for metric history and future deltas.
-                if history_enabled {
-                    let base = current_graph.take().with_context(|| {
-                        format!(
-                            "delta frame graph_id={} has no preceding full for history",
-                            key.graph_id.0,
-                        )
-                    })?;
-                    let graph = apply_delta(base, &delta).with_context(|| {
-                        format!(
-                            "failed to apply delta at graph_id={} for history",
-                            key.graph_id.0,
-                        )
-                    })?;
-                    merge_history(
-                        &mut merged_history,
-                        crate::metric_history::prepare_history_entries(&[(key.clone(), &graph)]),
-                    );
+                    prev_graph_id = Some(key.graph_id);
                     current_graph = Some(graph);
                 }
+                GraphRangeFrame::Delta(delta) => {
+                    let package = pack_delta(&delta, &config).context("Failed to pack delta")?;
+                    let manifest_json = serde_json::to_string(&package.manifest)
+                        .context("Failed to serialize delta manifest")?;
 
-                prev_graph_id = Some(key.graph_id);
+                    let base_graph_id = prev_graph_id.with_context(|| {
+                        format!(
+                            "delta frame graph_id={} has no preceding frame",
+                            key.graph_id.0
+                        )
+                    })?;
+
+                    packed_entries.push(PackedEntry {
+                        key: key.clone(),
+                        frame_type: FrameType::Delta,
+                        base: Some(GraphKey {
+                            timeline_id: timeline_id_clone.clone(),
+                            graph_id: base_graph_id,
+                        }),
+                        manifest_json,
+                        blobs: package.blobs,
+                    });
+
+                    if history_enabled {
+                        let base = current_graph.take().with_context(|| {
+                            format!(
+                                "delta frame graph_id={} has no preceding full for history",
+                                key.graph_id.0,
+                            )
+                        })?;
+                        let graph = apply_delta(base, &delta).with_context(|| {
+                            format!(
+                                "failed to apply delta at graph_id={} for history",
+                                key.graph_id.0,
+                            )
+                        })?;
+                        merge_history(
+                            &mut merged_history,
+                            crate::metric_history::prepare_history_entries(&[(
+                                key.clone(),
+                                &graph,
+                            )]),
+                        );
+                        current_graph = Some(graph);
+                    }
+
+                    prev_graph_id = Some(key.graph_id);
+                }
             }
         }
-    }
+
+        Ok::<_, anyhow::Error>((packed_entries, merged_history))
+    })
+    .await
+    .context("spawn_blocking panicked")??;
 
     // Dedup node names and ensure partitions (before transaction).
     let prepared_history = if let Some(mut prepared) = merged_history {
@@ -176,15 +189,13 @@ pub async fn store_range(
         None
     };
 
-    // -- Prepare blobs for all entries (before transaction) --
+    // -- Prepare blobs for all entries in parallel (before transaction) --
 
-    let mut prepared_blobs: Vec<PreparedBlobs> = Vec::with_capacity(packed_entries.len());
-    for entry in &packed_entries {
-        let prepared = storage
-            .prepare_blobs_for_storage(&timeline_id, &entry.blobs, task)
-            .await?;
-        prepared_blobs.push(prepared);
-    }
+    let blob_futs: Vec<_> = packed_entries
+        .iter()
+        .map(|entry| storage.prepare_blobs_for_storage(&timeline_id, &entry.blobs, task))
+        .collect();
+    let prepared_blobs: Vec<PreparedBlobs> = futures::future::try_join_all(blob_futs).await?;
 
     // -- Transaction: CAS check + store --
 

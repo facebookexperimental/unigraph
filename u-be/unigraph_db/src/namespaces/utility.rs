@@ -88,8 +88,12 @@ impl Utility {
         sweep_min_age: Option<std::time::Duration>,
         task: &ll::Task,
     ) -> Result<CleanupResult> {
-        let frames_deleted = self.cleanup_expired_frames(&task).await?;
-        let configs_deleted = self.cleanup_expired_configs(&task).await?;
+        // Frames and configs cleanup are independent — run in parallel.
+        let (frames_deleted, configs_deleted) = tokio::try_join!(
+            self.cleanup_expired_frames(&task),
+            self.cleanup_expired_configs(&task),
+        )?;
+        // Blob sweep must come after cleanup (they register blobs for sweeping).
         let min_age = sweep_min_age.unwrap_or(DEFAULT_SWEEP_MIN_AGE);
         let blobs_swept = self.ctx.storage.sweep_blobs(min_age, &task).await?;
 

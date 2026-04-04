@@ -450,28 +450,99 @@ pub fn unpack(package: &ArrayGraphSerializablePackage) -> Result<ArrayGraphSeria
 
         let b = &package.blobs;
 
-        // Reconstruct each field by combining chunks and deserializing
-        let node_names = from_blobs_field(node_names, b)?;
-        let node_name_offsets = from_blobs_field(node_names_offsets, b)?;
+        // Decompress + deserialize all fields in parallel via rayon::scope.
+        // Mirrors the parallel serialization in `pack()`.
+        // Each slot holds the result for one field; rayon tasks write into them.
+        macro_rules! field_slot {
+            () => {
+                std::sync::Mutex::new(None)
+            };
+        }
 
-        let directed = from_blobs_field(directed, b)?;
-        let directed_offsets = from_blobs_field(directed_offsets, b)?;
-        let tagged = from_blobs_field(tagged, b)?;
-        let dynamic = from_blobs_field(dynamic, b)?;
-        let metrics = from_blobs_field(metrics, b)?;
-        let labels = from_blobs_field(labels, b)?;
-        let properties = if properties.is_empty() {
-            BTreeMap::new()
-        } else {
-            from_blobs_field(properties, b)?
-        };
-        let traversal_config = from_blobs_field(traversal_config, b)?;
-        let budget_configs: BTreeMap<String, BudgetConfig> = if budget_configs.is_empty() {
-            BTreeMap::new()
-        } else {
-            from_blobs_field(budget_configs, b)?
-        };
-        let entry_points = from_blobs_field(entry_points, b)?;
+        let r_node_names = field_slot!();
+        let r_node_name_offsets = field_slot!();
+        let r_directed = field_slot!();
+        let r_directed_offsets = field_slot!();
+        let r_tagged = field_slot!();
+        let r_dynamic = field_slot!();
+        let r_metrics = field_slot!();
+        let r_labels = field_slot!();
+        let r_properties = field_slot!();
+        let r_traversal_config = field_slot!();
+        let r_budget_configs = field_slot!();
+        let r_entry_points = field_slot!();
+
+        rayon::scope(|s| {
+            s.spawn(|_| {
+                *r_node_names.lock().unwrap() = Some(from_blobs_field(node_names, b));
+            });
+            s.spawn(|_| {
+                *r_node_name_offsets.lock().unwrap() =
+                    Some(from_blobs_field(node_names_offsets, b));
+            });
+            s.spawn(|_| {
+                *r_directed.lock().unwrap() = Some(from_blobs_field(directed, b));
+            });
+            s.spawn(|_| {
+                *r_directed_offsets.lock().unwrap() = Some(from_blobs_field(directed_offsets, b));
+            });
+            s.spawn(|_| {
+                *r_tagged.lock().unwrap() = Some(from_blobs_field(tagged, b));
+            });
+            s.spawn(|_| {
+                *r_dynamic.lock().unwrap() = Some(from_blobs_field(dynamic, b));
+            });
+            s.spawn(|_| {
+                *r_metrics.lock().unwrap() = Some(from_blobs_field(metrics, b));
+            });
+            s.spawn(|_| {
+                *r_labels.lock().unwrap() = Some(from_blobs_field(labels, b));
+            });
+            s.spawn(|_| {
+                *r_properties.lock().unwrap() = Some(if properties.is_empty() {
+                    Ok(BTreeMap::new())
+                } else {
+                    from_blobs_field(properties, b)
+                });
+            });
+            s.spawn(|_| {
+                *r_traversal_config.lock().unwrap() = Some(from_blobs_field(traversal_config, b));
+            });
+            s.spawn(|_| {
+                *r_budget_configs.lock().unwrap() = Some(if budget_configs.is_empty() {
+                    Ok(BTreeMap::new())
+                } else {
+                    from_blobs_field(budget_configs, b)
+                });
+            });
+            s.spawn(|_| {
+                *r_entry_points.lock().unwrap() = Some(from_blobs_field(entry_points, b));
+            });
+        });
+
+        // Extract results — type inference works because each slot feeds
+        // directly into the struct field that determines its type.
+        macro_rules! take {
+            ($slot:ident) => {
+                $slot
+                    .into_inner()
+                    .unwrap()
+                    .expect(concat!("missing result for ", stringify!($slot)))?
+            };
+        }
+
+        let node_names = take!(r_node_names);
+        let node_name_offsets = take!(r_node_name_offsets);
+        let directed = take!(r_directed);
+        let directed_offsets = take!(r_directed_offsets);
+        let tagged = take!(r_tagged);
+        let dynamic = take!(r_dynamic);
+        let metrics = take!(r_metrics);
+        let labels = take!(r_labels);
+        let properties = take!(r_properties);
+        let traversal_config = take!(r_traversal_config);
+        let budget_configs = take!(r_budget_configs);
+        let entry_points = take!(r_entry_points);
 
         let edges = ArrayGraphSerializableEdges {
             directed,

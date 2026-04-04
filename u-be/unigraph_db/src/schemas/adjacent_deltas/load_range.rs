@@ -54,38 +54,40 @@ pub async fn load_range(
     // Validate chain before unpacking.
     validate_loaded_rows(&rows, timeline_id)?;
 
-    // Unpack each frame into domain data.
-    let mut entries = Vec::with_capacity(rows.len());
-    for row in rows {
-        let data = row
-            .data
-            .as_ref()
-            .with_context(|| format!("frame graph_id={} has no data", row.frame.graph_id.0))?;
+    // Unpack each frame into domain data in parallel.
+    let unpack_futs: Vec<_> =
+        rows.iter()
+            .map(|row| async {
+                let data = row.data.as_ref().with_context(|| {
+                    format!("frame graph_id={} has no data", row.frame.graph_id.0)
+                })?;
 
-        let key = GraphTimeKey {
-            timeline_id: timeline_id.clone(),
-            timestamp: row.frame.timestamp,
-            graph_id: row.frame.graph_id,
-        };
+                let key = GraphTimeKey {
+                    timeline_id: timeline_id.clone(),
+                    timestamp: row.frame.timestamp,
+                    graph_id: row.frame.graph_id,
+                };
 
-        let frame = match row.frame_type {
-            FrameType::Full => {
-                let graph = storage.reconstruct_full_graph(data, &task).await?;
-                GraphRangeFrame::Full(graph)
-            }
-            FrameType::Delta => {
-                let delta = storage.reconstruct_delta(data, &task).await?;
-                GraphRangeFrame::Delta(Box::new(delta))
-            }
-            other => anyhow::bail!(
-                "unexpected {:?} frame at graph_id={}",
-                other,
-                row.frame.graph_id.0,
-            ),
-        };
+                let frame = match &row.frame_type {
+                    FrameType::Full => {
+                        let graph = storage.reconstruct_full_graph(data, &task).await?;
+                        GraphRangeFrame::Full(graph)
+                    }
+                    FrameType::Delta => {
+                        let delta = storage.reconstruct_delta(data, &task).await?;
+                        GraphRangeFrame::Delta(Box::new(delta))
+                    }
+                    other => anyhow::bail!(
+                        "unexpected {:?} frame at graph_id={}",
+                        other,
+                        row.frame.graph_id.0,
+                    ),
+                };
 
-        entries.push((key, frame));
-    }
+                Ok::<_, anyhow::Error>((key, frame))
+            })
+            .collect();
+    let entries = futures::future::try_join_all(unpack_futs).await?;
 
     Ok(GraphRange::from_entries(timeline_id.clone(), entries))
 }

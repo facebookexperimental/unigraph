@@ -104,8 +104,20 @@ pub fn apply_deltas(
     // skipping delta_removed. No per-name allocation for base nodes that are unchanged.
     let final_nodes = build_final_nodes(&base_node_names, &delta_names, &delta_removed);
     let remap = build_remap_context(&base_node_names, &final_nodes);
-    let remapped_edges = base_edges.remap(&remap)?;
-    let remapped_metadata = base_node_metadata.remap(&remap)?;
+
+    // Remap edges and metadata in parallel (independent operations)
+    let r_edges = std::sync::Mutex::new(None);
+    let r_metadata = std::sync::Mutex::new(None);
+    rayon::scope(|s| {
+        s.spawn(|_| {
+            *r_edges.lock().unwrap() = Some(base_edges.remap(&remap));
+        });
+        s.spawn(|_| {
+            *r_metadata.lock().unwrap() = Some(base_node_metadata.remap(&remap));
+        });
+    });
+    let remapped_edges = r_edges.into_inner().unwrap().unwrap()?;
+    let remapped_metadata = r_metadata.into_inner().unwrap().unwrap()?;
 
     // Phase 3: Convert CSR to mutable adjacency lists ONCE
     let node_count = final_nodes.combined_nodes_len();

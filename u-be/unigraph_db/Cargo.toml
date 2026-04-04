@@ -10,6 +10,7 @@ license = "MIT"
 [dependencies]
 anyhow = "1.0.102"
 async-trait = "0.1.86"
+futures = { version = "0.3.31", features = ["async-await", "compat"] }
 ll = "8.1"
 rayon = "1.11.0"
 serde = { version = "1.0.219", features = ["derive", "rc"] }

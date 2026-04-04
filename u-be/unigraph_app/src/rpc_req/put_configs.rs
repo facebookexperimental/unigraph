@@ -32,9 +32,10 @@ impl RpcExec<Unigraph> for PutConfigsInput {
     type Output = PutConfigsOutput;
 
     async fn exec(self, ctx: &Unigraph, task: &ll::Task) -> Result<PutConfigsOutput> {
-        let traversal_configs = store_traversal_configs(ctx, self.traversal_configs, task).await?;
-        let graph_query_configs =
-            store_graph_query_configs(ctx, self.graph_query_configs, task).await?;
+        let (traversal_configs, graph_query_configs) = tokio::try_join!(
+            store_traversal_configs(ctx, self.traversal_configs, task),
+            store_graph_query_configs(ctx, self.graph_query_configs, task),
+        )?;
 
         Ok(PutConfigsOutput {
             traversal_configs,

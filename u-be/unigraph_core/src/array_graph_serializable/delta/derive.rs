@@ -43,23 +43,49 @@ pub fn derive_delta(
     let mut nodes_removed: BTreeSet<NodeName> = BTreeSet::new();
     let mut nodes_changed: BTreeMap<NodeName, GraphNodeDelta> = BTreeMap::new();
 
-    // Remap both graphs to the shared namespace
-    let base_remapped = base
-        .edges
-        .remap(&ctx_base)
-        .context("Failed to remap base edges")?;
-    let target_remapped = target
-        .edges
-        .remap(&ctx_target)
-        .context("Failed to remap target edges")?;
-    let base_metadata_remapped = base
-        .node_metadata
-        .remap(&ctx_base)
-        .context("Failed to remap base metadata")?;
-    let target_metadata_remapped = target
-        .node_metadata
-        .remap(&ctx_target)
-        .context("Failed to remap target metadata")?;
+    // Remap both graphs to the shared namespace (4 independent operations)
+    let r_base_edges = std::sync::Mutex::new(None);
+    let r_target_edges = std::sync::Mutex::new(None);
+    let r_base_metadata = std::sync::Mutex::new(None);
+    let r_target_metadata = std::sync::Mutex::new(None);
+
+    rayon::scope(|s| {
+        s.spawn(|_| {
+            *r_base_edges.lock().unwrap() = Some(
+                base.edges
+                    .remap(&ctx_base)
+                    .context("Failed to remap base edges"),
+            );
+        });
+        s.spawn(|_| {
+            *r_target_edges.lock().unwrap() = Some(
+                target
+                    .edges
+                    .remap(&ctx_target)
+                    .context("Failed to remap target edges"),
+            );
+        });
+        s.spawn(|_| {
+            *r_base_metadata.lock().unwrap() = Some(
+                base.node_metadata
+                    .remap(&ctx_base)
+                    .context("Failed to remap base metadata"),
+            );
+        });
+        s.spawn(|_| {
+            *r_target_metadata.lock().unwrap() = Some(
+                target
+                    .node_metadata
+                    .remap(&ctx_target)
+                    .context("Failed to remap target metadata"),
+            );
+        });
+    });
+
+    let base_remapped = r_base_edges.into_inner().unwrap().unwrap()?;
+    let target_remapped = r_target_edges.into_inner().unwrap().unwrap()?;
+    let base_metadata_remapped = r_base_metadata.into_inner().unwrap().unwrap()?;
+    let target_metadata_remapped = r_target_metadata.into_inner().unwrap().unwrap()?;
 
     for node_idx in merged_nodes.combined_node_idx_iter() {
         let name = merged_nodes.idx_to_name(node_idx).to_string();

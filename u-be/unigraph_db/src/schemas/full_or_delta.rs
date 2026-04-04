@@ -240,15 +240,33 @@ pub async fn fetch_graph(
         }
     };
 
-    for (entry_key, entry) in iter {
-        match entry {
-            ChainEntry::Delta(data) => {
-                let delta = storage.reconstruct_delta(&data, task).await?;
-                current = unigraph_core::apply_delta(current, &delta)
+    // Prefetch remaining deltas in parallel, then apply sequentially on blocking thread.
+    let remaining: Vec<_> = iter.collect();
+    if !remaining.is_empty() {
+        let delta_futs: Vec<_> = remaining
+            .iter()
+            .map(|(entry_key, entry)| async {
+                match entry {
+                    ChainEntry::Delta(data) => {
+                        let delta = storage.reconstruct_delta(data, task).await?;
+                        Ok::<_, anyhow::Error>((entry_key.clone(), delta))
+                    }
+                    _ => unreachable!("only the first entry can be Full or DeltaWithResolvedBase"),
+                }
+            })
+            .collect();
+        let prefetched = futures::future::try_join_all(delta_futs).await?;
+
+        current = tokio::task::spawn_blocking(move || {
+            let mut current = current;
+            for (entry_key, delta) in &prefetched {
+                current = unigraph_core::apply_delta(current, delta)
                     .with_context(|| format!("Failed to apply delta at {:?}", entry_key))?;
             }
-            _ => unreachable!("only the first entry can be Full or DeltaWithResolvedBase"),
-        }
+            Ok::<_, anyhow::Error>(current)
+        })
+        .await
+        .context("spawn_blocking panicked")??;
     }
 
     Ok(current)

@@ -311,19 +311,30 @@ async fn reconstruct_from_range(
         return Ok(base_graph);
     }
 
-    // Apply each delta sequentially.
-    // Each delta was derived from the preceding graph, so we fold:
-    // base → apply(delta_1) → apply(delta_2) → ... → result
-    let mut current = base_graph;
-    for row in delta_rows {
-        let data = row.data.as_ref().with_context(|| {
-            format!("delta frame graph_id={} has no data", row.frame.graph_id.0)
-        })?;
-        let delta = storage.reconstruct_delta(data, task).await?;
-        current = apply_delta(current, &delta).with_context(|| {
-            format!("failed to apply delta at graph_id={}", row.frame.graph_id.0)
-        })?;
-    }
+    // Prefetch all deltas in parallel (blob resolution + deserialization).
+    let delta_futs: Vec<_> = delta_rows
+        .iter()
+        .map(|row| async {
+            let data = row.data.as_ref().with_context(|| {
+                format!("delta frame graph_id={} has no data", row.frame.graph_id.0)
+            })?;
+            let delta = storage.reconstruct_delta(data, task).await?;
+            Ok::<_, anyhow::Error>((row.frame.graph_id, delta))
+        })
+        .collect();
+    let prefetched = futures::future::try_join_all(delta_futs).await?;
+
+    // Apply deltas sequentially on a blocking thread (CPU-heavy).
+    let current = tokio::task::spawn_blocking(move || {
+        let mut current = base_graph;
+        for (graph_id, delta) in &prefetched {
+            current = apply_delta(current, delta)
+                .with_context(|| format!("failed to apply delta at graph_id={}", graph_id.0))?;
+        }
+        Ok::<_, anyhow::Error>(current)
+    })
+    .await
+    .context("spawn_blocking panicked")??;
 
     Ok(current)
 }
@@ -442,21 +453,28 @@ async fn replace_full_with_delta(
         graph_id: target_frame.frame.graph_id,
     };
 
-    let base_graph = storage
-        .fetch_graph(base_key, task)
-        .await
-        .with_context(|| format!("Failed to fetch base graph {:?}", base_key))?;
-    let target_graph = storage
-        .fetch_graph(&target_key, task)
-        .await
-        .with_context(|| format!("Failed to fetch target graph {:?}", target_key))?;
+    let (base_graph, target_graph) = tokio::try_join!(
+        storage.fetch_graph(base_key, task),
+        storage.fetch_graph(&target_key, task),
+    )
+    .with_context(|| {
+        format!(
+            "Failed to fetch base {:?} or target {:?}",
+            base_key, target_key
+        )
+    })?;
 
-    let delta = derive_delta(&base_graph, &target_graph).context("Failed to derive delta")?;
-
+    // CPU-heavy: derive delta + pack → off the tokio thread
     let config = ctx.pack_config_for_key(&target_time_key);
-    let package = pack_delta(&delta, &config).context("Failed to pack delta")?;
-    let manifest_json =
-        serde_json::to_string(&package.manifest).context("Failed to serialize delta manifest")?;
+    let (package, manifest_json) = tokio::task::spawn_blocking(move || {
+        let delta = derive_delta(&base_graph, &target_graph).context("Failed to derive delta")?;
+        let package = pack_delta(&delta, &config).context("Failed to pack delta")?;
+        let manifest_json = serde_json::to_string(&package.manifest)
+            .context("Failed to serialize delta manifest")?;
+        Ok::<_, anyhow::Error>((package, manifest_json))
+    })
+    .await
+    .context("spawn_blocking panicked")??;
 
     // Determine inline vs. external for the new delta.
     let threshold = {
