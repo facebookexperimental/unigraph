@@ -1,23 +1,20 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-import { initSync } from "../.build/wasm/unigraph_wasm";
-import wasmBase64String from "../.build/wasm/unigraph_wasm_base64";
+import __wbg_init from "../.build/wasm/unigraph_wasm";
 
-let INITIALIZED = false;
+let promise: Promise<void> | null = null;
 
-export default function initWasm() {
-  if (INITIALIZED) {
-    return;
+/**
+ * Initialize the WASM module. Call once before rendering any Unigraph components.
+ *
+ * Accepts an optional URL to the .wasm file. If omitted, defaults to
+ * `unigraph_wasm_bg.wasm` relative to the JS bundle (via `import.meta.url`).
+ */
+export default function initWasm(wasmUrl?: string | URL): Promise<void> {
+  if (!promise) {
+    promise = __wbg_init(
+      wasmUrl ? { module_or_path: wasmUrl } : undefined,
+    ).then(() => {});
   }
-  // Decode the Base64 string to a binary string
-  const binaryString = atob(wasmBase64String);
-  // Convert the binary string to a Uint8Array
-  const binaryArray = new Uint8Array(binaryString.length);
-  for (let i = 0; i < binaryString.length; i++) {
-    binaryArray[i] = binaryString.charCodeAt(i);
-  }
-
-  const wasmModule = new WebAssembly.Module(binaryArray);
-  initSync(wasmModule);
-  INITIALIZED = true;
+  return promise;
 }

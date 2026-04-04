@@ -109,7 +109,6 @@ import { SelectedPathContextProvider } from "./context/SelectedPathContext";
 import { SimulationParamsContextProvider } from "./context/SimulationParamsContext";
 import { TraversalConfigContextProvider } from "./context/TraversalConfigContext";
 import ExplorerFooter from "./ExplorerFooter";
-import initWasm from "./init_wasm";
 import NativeGraph from "./native/NativeGraph";
 import Sidebar from "./Sidebar";
 import Simulation from "./Simulation";
@@ -119,8 +118,6 @@ import GraphTreeTable from "./tree_table/GraphTreeTable";
 import type { NodeIDX } from "./types";
 
 export function Explorer(props: ExplorerProps) {
-  initWasm();
-
   const {
     graphs: rawGraphs,
     config,

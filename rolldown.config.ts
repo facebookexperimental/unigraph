@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { defineConfig } from "rolldown";
 import { dts } from "rolldown-plugin-dts";
 
@@ -14,7 +13,7 @@ export default defineConfig({
     format: "esm",
     minify: false,
   },
-  plugins: [injectCSS(), dts()],
+  plugins: [docblock(), dts()],
 });
 
 const DOCBLOCK = `/**
@@ -23,14 +22,12 @@ const DOCBLOCK = `/**
  * @preserve-whitespace
  * @${"generated"}
  */`;
-const CSS_CONTENT = readFileSync(`${__dirname}/.build/output.css`, "utf-8");
 
-function injectCSS() {
+function docblock() {
   return {
-    name: "inject-css",
+    name: "docblock",
     renderChunk(code: string) {
-      const injectCss = `document.head.appendChild(document.createElement("style")).textContent=${JSON.stringify(CSS_CONTENT)};`;
-      return `${DOCBLOCK}\n\n${injectCss}\n\n${code}`;
+      return `${DOCBLOCK}\n\n${code}`;
     },
   };
 }

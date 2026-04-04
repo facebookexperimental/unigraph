@@ -4,7 +4,6 @@
 # dependencies = ["typer>=0.15"]
 # ///
 
-import base64
 import os
 import shlex
 import shutil
@@ -115,7 +114,7 @@ def build_wasm(
         bool, typer.Option("--skip-wasm-opt", help="Skip wasm-opt optimization.")
     ] = False,
 ) -> None:
-    """Build the WASM package and inline it as base64 TypeScript."""
+    """Build the WASM package."""
     WASM_OUT_DIR.mkdir(parents=True, exist_ok=True)
 
     run(
@@ -172,17 +171,11 @@ def build_wasm(
             ]
         )
 
-    # Encode wasm to base64 and create a TS module that inlines it
-    wasm_b64 = base64.b64encode(wasm_artifact.read_bytes()).decode()
-    wasm_ts = WASM_OUT_DIR / "unigraph_wasm_base64.ts"
-    wasm_ts.write_text(f"export default `\n{wasm_b64}\n`;\n")
-
     print_artifacts(
         [
             wasm_artifact,
             WASM_OUT_DIR / "unigraph_wasm.js",
             WASM_OUT_DIR / "unigraph_wasm.d.ts",
-            wasm_ts,
         ]
     )
 
@@ -207,9 +200,16 @@ def build_tailwind() -> None:
 @build_app.command("js")
 def build_js() -> None:
     """Build Tailwind CSS + JS bundle with type declarations."""
-    build_tailwind()
     build_wasm()
+    build_tailwind()
     run([str(BIN / "rolldown"), "-c", "rolldown.config.ts"])
+
+    # Copy the .wasm binary and CSS alongside the JS bundle
+    js_out = OUT_DIR / "js"
+    shutil.copy2(
+        WASM_OUT_DIR / "unigraph_wasm_bg.wasm", js_out / "unigraph_wasm_bg.wasm"
+    )
+    shutil.copy2(OUT_DIR / "output.css", js_out / "Unigraph.css")
 
 
 @build_app.command("all")

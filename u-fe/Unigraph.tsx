@@ -7,18 +7,27 @@
  * It produces a single self-contained ES module (`.build/js/Unigraph.js`) that
  * external consumers can import to embed the graph explorer in their own apps.
  *
- * The bundle includes everything needed to render: React components, WASM
- * (base64-inlined), wasm-bindgen glue, and Tailwind CSS (injected at runtime).
+ * The bundle includes everything needed to render: React components,
+ * wasm-bindgen glue, and Tailwind CSS (injected at runtime). The WASM binary
+ * (`unigraph_wasm_bg.wasm`) ships as a separate file alongside the bundle.
  * React itself is externalized — consumers must provide it.
  *
  * Usage:
  *
- *   import { Explorer, RpcProvider, createFetchTransport } from "Unigraph";
+ *   import { initWasm, Explorer, RpcProvider, createFetchTransport } from "Unigraph";
+ *
+ *   await initWasm(); // call once at app startup
  *
  *   <RpcProvider transport={createFetchTransport("/my/api/rpc")}>
  *     <Explorer graphs={{ left: myGraph }} />
  *   </RpcProvider>
  */
+
+// ---------------------------------------------------------------------------
+// WASM initialization — must be called (and awaited) once before rendering.
+// ---------------------------------------------------------------------------
+
+export { default as initWasm } from "./init_wasm";
 
 // ---------------------------------------------------------------------------
 // Explorer component

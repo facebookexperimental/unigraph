@@ -126,7 +126,7 @@
 }
 
 @layer base {
-  * {
+  .unigraph-explorer * {
     @apply border-border outline-ring/50;
   }
 
