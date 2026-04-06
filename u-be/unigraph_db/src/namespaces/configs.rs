@@ -230,7 +230,7 @@ impl Configs {
         // 1. Register for cleanup (separate conn — persists on crash)
         let mut reg_conn = self.ctx.storage.graph.conn_write().await?;
         reg_conn
-            .register_blobs_for_cleanup(&[blob_path.clone()], task)
+            .register_blobs_for_cleanup(std::slice::from_ref(&blob_path), task)
             .await?;
         drop(reg_conn);
 

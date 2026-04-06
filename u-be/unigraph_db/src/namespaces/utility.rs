@@ -179,7 +179,7 @@ impl Utility {
 
             // Register the external blob for cleanup if present.
             if let Some(ref bid) = blob_id {
-                conn.register_blobs_for_cleanup(&[bid.clone()], task)
+                conn.register_blobs_for_cleanup(std::slice::from_ref(bid), task)
                     .await?;
             }
 
