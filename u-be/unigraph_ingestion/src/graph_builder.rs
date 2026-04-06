@@ -6,10 +6,7 @@ use std::process::Command;
 
 use anyhow::Context;
 use anyhow::Result;
-use unigraph_core::ArrayGraphSerializable;
-use unigraph_core::BudgetConfig;
 use unigraph_core::MapGraph;
-use unigraph_core::build_budget_graph;
 
 /// Trait for building a graph from a repository checked out at a specific commit.
 ///
@@ -111,43 +108,16 @@ fn run_cargo_build(manifest_path: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Transforms a source graph into a budget graph.
-///
-/// Used with `AnotherTimeline` sources: reads a graph from an existing
-/// timeline and computes aggregated budget metrics via `build_budget_graph`.
-pub struct BudgetGraphBuilder {
-    /// Name for this builder (used in timeline IDs and logging).
-    pub name: String,
-    /// Budget query config. Defines which metrics to aggregate transitively,
-    /// whether to count nodes, etc.
-    pub budget_config: Option<BudgetConfig>,
-}
-
-impl BudgetGraphBuilder {
-    pub fn build(&self, source: ArrayGraphSerializable) -> Result<ArrayGraphSerializable> {
-        let config = self
-            .budget_config
-            .as_ref()
-            .context("BudgetGraphBuilder requires a budget_config")?;
-        let array_graph = source.into_array_graph();
-        let (_source, budget) = build_budget_graph(array_graph, config)?;
-        Ok(budget.into_serializable())
-    }
-}
-
-/// Unified builder: either builds from a repo path or transforms an existing graph.
+/// Unified builder: builds from a repo path.
 pub enum Builder<'a> {
     /// Builds a graph from a repo checkout (used with Git sources).
     FromRepo(&'a dyn GraphBuilder),
-    /// Transforms an existing graph into a budget graph (used with AnotherTimeline sources).
-    BudgetGraph(&'a BudgetGraphBuilder),
 }
 
 impl Builder<'_> {
     pub fn name(&self) -> &str {
         match self {
             Builder::FromRepo(b) => b.name(),
-            Builder::BudgetGraph(b) => &b.name,
         }
     }
 }

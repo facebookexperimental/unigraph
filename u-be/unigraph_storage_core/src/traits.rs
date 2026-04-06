@@ -87,6 +87,7 @@ pub trait UnigraphGraphConnection: Send {
     /// - `manifest_json`: JSON-serialized manifest
     /// - `inline_blobs`: optional ZSTD-compressed blob map (when blobs are small enough to inline)
     /// - `expires_at`: optional expiration timestamp; `None` means the frame never expires
+    #[allow(clippy::too_many_arguments)]
     async fn store_frame(
         &mut self,
         key: &GraphTimeKey,

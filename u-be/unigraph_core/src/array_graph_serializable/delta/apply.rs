@@ -64,7 +64,6 @@ pub fn apply_deltas(
         node_metadata: base_node_metadata,
         graph_settings: base_graph_settings,
         traversal_config: base_traversal_config,
-        budget_configs: base_budget_configs,
         entry_points: base_entry_points,
         properties: base_properties,
     } = base;
@@ -151,7 +150,6 @@ pub fn apply_deltas(
     // Phase 5: Apply top-level settings (last non-None wins)
     let mut graph_settings = base_graph_settings;
     let mut traversal_config = base_traversal_config;
-    let mut budget_configs = base_budget_configs;
     let mut entry_points = base_entry_points;
     let mut graph_properties = base_properties;
 
@@ -161,9 +159,6 @@ pub fn apply_deltas(
         }
         if let Some(ref tc_delta) = delta.traversal_config {
             traversal_config.apply_delta(tc_delta.clone())?;
-        }
-        if let Some(ref bc_delta) = delta.budget_configs {
-            budget_configs.apply_delta(bc_delta.clone())?;
         }
         if let Some(ref ep_delta) = delta.entry_points {
             entry_points.apply_delta(ep_delta.clone())?;
@@ -191,7 +186,6 @@ pub fn apply_deltas(
         },
         graph_settings,
         traversal_config,
-        budget_configs,
         entry_points,
         properties: graph_properties,
     })

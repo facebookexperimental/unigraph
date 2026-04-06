@@ -21,9 +21,6 @@ mod tests {
     use crate::ArrayGraphSerializable;
     use crate::ArrayGraphSerializableEdges;
     use crate::ArrayGraphSerializableNodeMetadata;
-    use crate::BudgetAlgoConfig;
-    use crate::BudgetConfig;
-    use crate::BudgetDefinition;
     use crate::NodeIDX;
     use crate::TraversalConfig;
     use crate::array_graph_serializable::delta::apply_delta;
@@ -216,9 +213,6 @@ mod tests {
             None
         };
 
-        // Optional budget configs (~25% chance)
-        let budget_configs = random_budget_configs(&mut rng, node_count);
-
         ArrayGraphSerializable {
             node_names_ordered: Arc::new(ArrayGraphNodes::from_parts(
                 node_names_str,
@@ -237,7 +231,6 @@ mod tests {
             },
             graph_settings,
             traversal_config,
-            budget_configs,
             entry_points,
             properties: random_graph_properties(&mut rng),
         }
@@ -347,62 +340,6 @@ mod tests {
             tiered_traversal: None,
             messages: None,
         }
-    }
-
-    fn random_budget_configs(
-        rng: &mut XorShift64,
-        node_count: usize,
-    ) -> BTreeMap<String, BudgetConfig> {
-        let mut configs = BTreeMap::new();
-        // ~25% chance of having budget configs
-        if rng.next_bool(25) {
-            let config_count = 1 + (rng.next() % 2) as usize;
-            for c in 0..config_count {
-                let metric_names = ["metric_0", "metric_1", "metric_2"];
-                let metric_count = 1 + (rng.next() % 3) as usize;
-                let metrics: BTreeSet<String> = (0..metric_count)
-                    .map(|_| rng.pick(&metric_names).to_string())
-                    .collect();
-
-                let budget_count = 1 + (rng.next() % 3) as usize;
-                let mut budgets = BTreeMap::new();
-                for b in 0..budget_count {
-                    let ep_count = 1 + (rng.next() % 2) as usize;
-                    let entry_points: BTreeSet<String> = (0..ep_count)
-                        .map(|_| format!("n_{:03}", rng.next() % node_count as u64))
-                        .collect();
-                    budgets.insert(
-                        format!("budget_{}", b),
-                        BudgetDefinition {
-                            entry_points,
-                            properties: if rng.next_bool(30) {
-                                Some(BTreeMap::from([(
-                                    "key".to_string(),
-                                    format!("val_{}", rng.next() % 5),
-                                )]))
-                            } else {
-                                None
-                            },
-                        },
-                    );
-                }
-
-                configs.insert(
-                    format!("project_{}", c),
-                    BudgetConfig {
-                        algo: BudgetAlgoConfig::Transitive {
-                            metrics,
-                            counts: rng.next_bool(50),
-                            tiered_metrics: BTreeSet::new(),
-                        },
-                        budgets,
-                        dynamic_budget_definitions: BTreeMap::new(),
-                        traversal_config: None,
-                    },
-                );
-            }
-        }
-        configs
     }
 
     /// Random graph-level properties (~30% chance, 1-3 key-value pairs)
@@ -599,15 +536,15 @@ mod tests {
             hashes.join("\n"),
             "
 pair_00: 4ae858de85e38a28
-pair_01: a02df8dfe55f8271
-pair_02: c25b51c3f5f82221
-pair_03: 8e44da27146fbd55
-pair_04: ff411adb14a69ba5
+pair_01: bf7829b9c166754a
+pair_02: f8089574919984e4
+pair_03: 0e0156e6a0db2671
+pair_04: 072c5794981a208c
 pair_05: fc87c61336805b32
 pair_06: f135a477dcbcf458
-pair_07: 42b11e07603a1879
+pair_07: 142d6ba1244cb6b5
 pair_08: fc514a83ea82b9ad
-pair_09: e43733f9c1b5c7a6
+pair_09: 3db1013295c78fce
 "
         );
         Ok(())

@@ -14,16 +14,17 @@
  * 
  * ## String format
  * 
- * `MetricView` implements `Display` and `FromStr` using `~` as a separator
- * between the metric name and the view variant:
+ * `MetricView` implements `Display` and `FromStr`. The `~` separator
+ * separates the metric name from the view variant, while `#` introduces
+ * a tier name:
  * 
  * ```text
  * size                  → Metric { name: "size" }
  * size~transitive       → Transitive { name: "size" }
  * size~dominated        → Dominated { name: "size" }
- * size~T1               → Tiered { name: "size", tier_name: "T1" }
- * size~dominated~T1     → TieredDominated { name: "size", tier_name: "T1" }
- * size~conjoint~T1      → ConjointTiered { name: "size", tier_name: "T1" }
+ * size#T1               → Tiered { name: "size", tier_name: "T1" }
+ * size#T1~dominated     → TieredDominated { name: "size", tier_name: "T1" }
+ * size#T1~conjoint      → ConjointTiered { name: "size", tier_name: "T1" }
  * node-count~transitive → CountTransitive
  * node-count~dominated  → CountDominated
  * node-count~conjoint   → CountConjoint

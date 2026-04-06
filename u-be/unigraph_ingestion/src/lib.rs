@@ -8,7 +8,6 @@ pub mod serializable_config;
 pub use config::IngestionPipelineConfig;
 pub use config::IngestionSource;
 pub use config::TimelineBuilderConfig;
-pub use graph_builder::BudgetGraphBuilder;
 pub use graph_builder::Builder;
 pub use graph_builder::CargoGraphBuilder;
 pub use graph_builder::GraphBuilder;

@@ -96,7 +96,7 @@ impl<'a> ConjointCostBuilder<'a> {
         // and their values have been calculated.
         for (scc_idx, scc) in self.scc.iter().enumerate() {
             let scc_children = self.get_scc_edges(scc, &self.ag.edges_forward);
-            let scc_parents = self.get_scc_edges(scc, &self.ag.derived_state.edges_reverse);
+            let scc_parents = self.get_scc_edges(scc, self.ag.edges_reverse());
 
             let uniq_parents_count = scc_parents.len();
 

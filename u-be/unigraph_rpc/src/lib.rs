@@ -60,6 +60,7 @@ macro_rules! define_rpc {
             }
 
             impl [<$name Request>] {
+                #[allow(dead_code)]
                 pub fn variant_name(&self) -> &'static str {
                     match self {
                         $( Self::$variant(_) => stringify!($variant), )*
@@ -74,6 +75,7 @@ macro_rules! define_rpc {
             }
 
             impl [<$name Response>] {
+                #[allow(dead_code)]
                 pub fn variant_name(&self) -> &'static str {
                     match self {
                         $( Self::$variant(_) => stringify!($variant), )*

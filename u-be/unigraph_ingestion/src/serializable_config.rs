@@ -7,7 +7,6 @@ use anyhow::Context;
 use anyhow::Result;
 use serde::Deserialize;
 use serde::Serialize;
-use unigraph_core::BudgetConfig;
 
 /// Root config: the `ingestion.json` file is a `Vec<IngestionConfig>`.
 ///
@@ -23,18 +22,11 @@ pub struct IngestionConfig {
 /// Source system for ingestion (externally tagged).
 ///
 /// Serializes as `{"Git": {"repo_path": "~/p/unigraph", "main_branch": "main"}}`.
-///
-/// Note: `external_id_namespace` is NOT here — it is derived at runtime
-/// from `repo_path` (Git) or read from the source timeline's DB config
-/// (AnotherTimeline).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum IngestionSourceConfig {
     Git {
         repo_path: PathBuf,
         main_branch: String,
-    },
-    AnotherTimeline {
-        source_timeline_id: String,
     },
 }
 
@@ -56,9 +48,6 @@ pub enum GraphBuilderConfig {
         collect_timings: bool,
         #[serde(default)]
         collect_sizes: bool,
-    },
-    BudgetGraph {
-        budget_config: Option<Box<BudgetConfig>>,
     },
 }
 

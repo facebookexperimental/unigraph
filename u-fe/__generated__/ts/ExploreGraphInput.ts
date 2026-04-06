@@ -21,8 +21,13 @@ export interface ExploreGraphInput {
   target: ExploreGraphTarget;
   /** Which edge structure to follow. */
   graph_structure: GraphStructure;
-  /** Which metrics to compute for each arrow. */
-  metrics: MetricView[];
+  /**
+   * Which metrics to compute for each arrow.
+   * - `None` (default): return all available metric views.
+   * - `Some([])`: return no metrics.
+   * - `Some([...])`: return exactly the listed metrics.
+   */
+  metrics?: MetricView[] | undefined;
   /** Metric to sort arrows by. Computed for all children (even beyond limit). */
   sort_by?: MetricView | undefined;
   /** Sort order. Defaults to Desc. */

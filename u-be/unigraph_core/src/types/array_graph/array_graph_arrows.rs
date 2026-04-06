@@ -37,7 +37,7 @@ pub fn get_arrows(
 ) -> Result<Vec<Arrow>> {
     let offset_graph = match graph_structure {
         GraphStructure::Forward => &ag.edges_forward,
-        GraphStructure::Reverse => &ag.derived_state.edges_reverse,
+        GraphStructure::Reverse => ag.edges_reverse(),
         GraphStructure::Dominator => ag.edges_dom(),
     };
 

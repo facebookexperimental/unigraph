@@ -431,6 +431,7 @@ async fn build_all_frames(
 }
 
 /// Deserialize blobs, reconstruct entries, merge across weeks, filter by time range.
+#[allow(clippy::type_complexity)]
 fn deserialize_and_merge(
     raw_blobs: Vec<(String, String, Vec<u8>)>,
     start_unix: i64,

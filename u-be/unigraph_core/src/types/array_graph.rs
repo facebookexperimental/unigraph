@@ -11,7 +11,6 @@ mod array_graph_name_search;
 pub(crate) mod array_graph_nodes;
 pub mod array_graph_state;
 pub mod array_graph_stats;
-pub mod budget_graph;
 mod conjoint_cost;
 pub mod graph_settings;
 pub(crate) mod offset_graph;
@@ -69,7 +68,6 @@ use crate::types::array_graph::array_graph_nodes::ArrayGraphNodesForGraphSide;
 use crate::types::array_graph::array_graph_nodes::NodeIDXsArcIter;
 use crate::types::array_graph::array_graph_state::ArrayGraphState;
 use crate::types::array_graph::array_graph_stats::ArrayGraphStats;
-use crate::types::array_graph::budget_graph::BudgetConfig;
 use crate::types::array_graph::conjoint_cost::ConjointCost;
 use crate::types::array_graph::offset_graph::lengauer_tarjan_dominator_tree::make_dominator_tree;
 use crate::types::array_graph::offset_graph::shortest_path::shortest_path;
@@ -96,8 +94,6 @@ pub struct ArrayGraph {
     pub node_properties: BTreeMap<PropertyName, BTreeMap<NodeIDX, PropertyValue>>,
 
     pub graph_settings: Option<GraphSettings>,
-
-    pub budget_configs: BTreeMap<String, BudgetConfig>,
 
     /// If present, these graph will use these entrypoints instead
     /// of automatically determining them.
@@ -210,7 +206,6 @@ impl ArrayGraph {
             },
             graph_settings: self.graph_settings.clone(),
             traversal_config: self.state.traversal_config.clone(),
-            budget_configs: self.budget_configs.clone(),
             entry_points: self.entry_points.clone(),
             properties: self.properties.clone(),
         }
@@ -234,6 +229,12 @@ impl ArrayGraph {
 
     pub fn children(&self, node_idx: NodeIDX) -> &[Edge] {
         self.edges_forward.edges(node_idx)
+    }
+
+    pub fn edges_reverse(&self) -> &OffsetGraph {
+        self.derived_state
+            .edges_reverse
+            .get_or_init(|| self.edges_forward.reverse_parallel())
     }
 
     pub fn edges_dom(&self) -> &OffsetGraph {
@@ -454,7 +455,7 @@ impl ArrayGraph {
     ) -> Option<Vec<NodeIDX>> {
         let offset_graph = match graph_structure {
             GraphStructure::Forward => &self.edges_forward,
-            GraphStructure::Reverse => &self.derived_state.edges_reverse,
+            GraphStructure::Reverse => self.edges_reverse(),
             GraphStructure::Dominator => self.edges_dom(),
         };
         shortest_path(offset_graph, from, to, traversal_type)
@@ -532,8 +533,8 @@ mod tests {
         assert_equal!(array_graph.edges_forward.node_count(), 6);
         assert_equal!(array_graph.edges_forward.edges_len(), 13);
 
-        assert_equal!(array_graph.derived_state.edges_reverse.node_count(), 6);
-        assert_equal!(array_graph.derived_state.edges_reverse.edges_len(), 13);
+        assert_equal!(array_graph.edges_reverse().node_count(), 6);
+        assert_equal!(array_graph.edges_reverse().edges_len(), 13);
 
         let children_names = |node_idx: u32| {
             array_graph

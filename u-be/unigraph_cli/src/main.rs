@@ -8,8 +8,6 @@ use anyhow::Context;
 use clap::Parser;
 use clap::Subcommand;
 use crossterm::tty::IsTty;
-use unigraph_core::BudgetConfig;
-use unigraph_core::build_budget_graph;
 use unigraph_storage_core::GraphKeyOrTimelineID;
 use unigraph_storage_core::TimelineID;
 use unigraph_web_service::ServeMode;
@@ -41,7 +39,6 @@ async fn main() {
         Commands::Compact(compact) => compact.run(sqlite_path, &task).await,
         Commands::Graph(g) => match g.command {
             GraphCommands::Get(get) => get.run(sqlite_path, &task).await,
-            GraphCommands::Budget(budget) => budget.run(sqlite_path, &task).await,
         },
         Commands::ImpactAnalysis(cmd) => cmd.run(&task),
     };
@@ -171,12 +168,10 @@ async fn run_one_config(
 
     // Resolve and own the builders
     let mut cargo_builders = Vec::new();
-    let mut budget_builders = Vec::new();
 
     // Track which builder type and index for each timeline entry
     enum BuilderRef {
         Cargo(usize),
-        Budget(usize),
     }
     let mut builder_refs = Vec::new();
     let mut timeline_ids = Vec::new();
@@ -197,14 +192,6 @@ async fn run_one_config(
                 ));
                 builder_refs.push(BuilderRef::Cargo(idx));
             }
-            unigraph_ingestion::GraphBuilderConfig::BudgetGraph { budget_config } => {
-                let idx = budget_builders.len();
-                budget_builders.push(unigraph_ingestion::BudgetGraphBuilder {
-                    name: entry.timeline_id.clone(),
-                    budget_config: budget_config.as_deref().cloned(),
-                });
-                builder_refs.push(BuilderRef::Budget(idx));
-            }
         }
     }
 
@@ -216,9 +203,6 @@ async fn run_one_config(
             let builder = match bref {
                 BuilderRef::Cargo(idx) => {
                     unigraph_ingestion::Builder::FromRepo(&cargo_builders[*idx])
-                }
-                BuilderRef::Budget(idx) => {
-                    unigraph_ingestion::Builder::BudgetGraph(&budget_builders[*idx])
                 }
             };
             unigraph_ingestion::TimelineBuilderConfig {
@@ -235,8 +219,8 @@ async fn run_one_config(
 
 async fn resolve_source(
     source_config: &unigraph_ingestion::IngestionSourceConfig,
-    db: &unigraph_db::UnigraphDb,
-    task: &ll::Task,
+    _db: &unigraph_db::UnigraphDb,
+    _task: &ll::Task,
 ) -> anyhow::Result<unigraph_ingestion::IngestionSource> {
     match source_config {
         unigraph_ingestion::IngestionSourceConfig::Git {
@@ -249,29 +233,6 @@ async fn resolve_source(
             Ok(unigraph_ingestion::IngestionSource::Git {
                 repo_path,
                 main_branch: main_branch.clone(),
-                external_id_namespace: ns,
-            })
-        }
-        unigraph_ingestion::IngestionSourceConfig::AnotherTimeline { source_timeline_id } => {
-            let timeline_id = TimelineID(source_timeline_id.clone());
-            let timeline_config = db
-                .timelines
-                .get_config(&timeline_id, task)
-                .await?
-                .with_context(|| {
-                    format!(
-                        "Source timeline '{}' not found in database",
-                        source_timeline_id
-                    )
-                })?;
-            let ns = timeline_config.external_id_namespace.with_context(|| {
-                format!(
-                    "Source timeline '{}' has no external_id_namespace",
-                    source_timeline_id
-                )
-            })?;
-            Ok(unigraph_ingestion::IngestionSource::AnotherTimeline {
-                source_timeline_id: timeline_id,
                 external_id_namespace: ns,
             })
         }
@@ -372,8 +333,6 @@ struct Graph {
 enum GraphCommands {
     /// Fetch a graph and dump it as MapGraph JSON
     Get(GraphGet),
-    /// Build a budget graph from a stored graph
-    Budget(GraphBudget),
 }
 
 #[derive(Parser)]
@@ -417,58 +376,6 @@ impl GraphGet {
         let json = serde_json::to_string_pretty(&map_graph)?;
 
         write_json_output(&json, self.stdout, &format!("graph_{}", key))
-    }
-}
-
-#[derive(Parser)]
-struct GraphBudget {
-    /// Graph key (cargo~356) or timeline ID (cargo) for latest
-    key: String,
-
-    /// Budget config as JSON string
-    #[arg(long)]
-    budget_config_json: String,
-
-    /// Print JSON to stdout instead of writing to a temp file
-    #[arg(long)]
-    stdout: bool,
-}
-
-impl GraphBudget {
-    async fn run(&self, sqlite_path: &Path, task: &ll::Task) -> anyhow::Result<()> {
-        let path = resolve_sqlite_path(sqlite_path);
-        let sqlite = Arc::new(unigraph_storage_sqlite::SqliteStorage::new(path)?);
-        let db = unigraph_db::UnigraphDb::new(sqlite.clone(), sqlite);
-        let app = unigraph_app::Unigraph::new(db);
-
-        let parsed: GraphKeyOrTimelineID = self.key.parse()?;
-        let budget_config: BudgetConfig = serde_json::from_str(&self.budget_config_json)
-            .context("failed to parse --budget-config-json")?;
-
-        let (_key, serializable) = match parsed {
-            GraphKeyOrTimelineID::GraphKey(key) => {
-                eprintln!("Fetching graph {}...", key);
-                let graph = app.db.graph.fetch(&key, task).await?;
-                (key, graph)
-            }
-            GraphKeyOrTimelineID::TimelineID(tid) => {
-                eprintln!("Fetching latest graph from timeline {}...", tid);
-                let (key, graph) = app.db.graph.fetch_latest(&tid, task).await?;
-                eprintln!("Resolved to {}", key);
-                (key, graph)
-            }
-        };
-
-        let node_count = serializable.node_names_ordered.combined_nodes_len();
-        let array_graph = serializable.into_array_graph();
-
-        eprintln!("Building budget graph ({} nodes in source)...", node_count);
-        let (_source, budget) = build_budget_graph(array_graph, &budget_config)?;
-
-        let map_graph = budget.to_map_graph()?;
-        let json = serde_json::to_string_pretty(&map_graph)?;
-
-        write_json_output(&json, self.stdout, "budget")
     }
 }
 

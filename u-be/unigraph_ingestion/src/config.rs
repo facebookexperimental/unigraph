@@ -21,26 +21,12 @@ pub enum IngestionSource {
         /// Namespace for external ID mappings (typically "{repo_path}/git").
         external_id_namespace: ExternalIDNamespace,
     },
-    /// Derives graphs from an existing timeline.
-    ///
-    /// Shares the same external ID namespace and GraphIDs as the source
-    /// timeline — no new external IDs are allocated.
-    AnotherTimeline {
-        /// Timeline to read source graphs from.
-        source_timeline_id: TimelineID,
-        /// Namespace shared with the source timeline.
-        external_id_namespace: ExternalIDNamespace,
-    },
 }
 
 impl IngestionSource {
     pub fn external_id_namespace(&self) -> &ExternalIDNamespace {
         match self {
             Self::Git {
-                external_id_namespace,
-                ..
-            } => external_id_namespace,
-            Self::AnotherTimeline {
                 external_id_namespace,
                 ..
             } => external_id_namespace,

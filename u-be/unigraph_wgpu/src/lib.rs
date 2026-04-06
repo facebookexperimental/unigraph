@@ -390,9 +390,9 @@ impl ApplicationHandler<UserEvent> for WGPUApplication {
             WindowEvent::RedrawRequested => {
                 let params = global_graph_state().simulation_params.get();
                 if params.active {
-                    let update_forces = self.frame_counter
-                        % cmp::max(params.compute_forces_every_n_frames as u64, 1)
-                        == 0;
+                    let update_forces = self
+                        .frame_counter
+                        .is_multiple_of(cmp::max(params.compute_forces_every_n_frames as u64, 1));
                     // NOTE: this requires a write lock on the graph state
                     global_graph_state()
                         .graph_state

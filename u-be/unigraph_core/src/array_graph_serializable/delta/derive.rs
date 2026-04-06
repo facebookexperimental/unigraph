@@ -141,7 +141,6 @@ pub fn derive_delta(
     // Diff top-level settings
     let graph_settings = base.graph_settings.derive_delta(&target.graph_settings);
     let traversal_config = base.traversal_config.derive_delta(&target.traversal_config);
-    let budget_configs = base.budget_configs.derive_delta(&target.budget_configs);
     let entry_points = base.entry_points.derive_delta(&target.entry_points);
     let properties = base.properties.derive_delta(&target.properties);
 
@@ -159,7 +158,6 @@ pub fn derive_delta(
         nodes,
         graph_settings,
         traversal_config,
-        budget_configs,
         entry_points,
         properties,
     })

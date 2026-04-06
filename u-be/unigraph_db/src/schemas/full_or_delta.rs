@@ -203,7 +203,7 @@ pub async fn fetch_graph(
                     })?;
                     chain.push((
                         current_key,
-                        ChainEntry::DeltaWithResolvedBase(data, base_graph),
+                        ChainEntry::DeltaWithResolvedBase(data, Box::new(base_graph)),
                     ));
                     break;
                 }
@@ -232,7 +232,7 @@ pub async fn fetch_graph(
         ChainEntry::Full(data) => storage.reconstruct_full_graph(&data, task).await?,
         ChainEntry::DeltaWithResolvedBase(data, base_graph) => {
             let delta = storage.reconstruct_delta(&data, task).await?;
-            unigraph_core::apply_delta(base_graph, &delta)
+            unigraph_core::apply_delta(*base_graph, &delta)
                 .context("Failed to apply delta on cross-timeline base")?
         }
         ChainEntry::Delta(_) => {
@@ -245,7 +245,7 @@ pub async fn fetch_graph(
     if !remaining.is_empty() {
         let delta_futs: Vec<_> = remaining
             .iter()
-            .map(|(entry_key, entry)| async {
+            .map(|(entry_key, entry)| async move {
                 match entry {
                     ChainEntry::Delta(data) => {
                         let delta = storage.reconstruct_delta(data, task).await?;
@@ -279,7 +279,10 @@ enum ChainEntry {
     /// Delta frame data — needs the preceding entry as base.
     Delta(unigraph_storage_core::FrameData),
     /// Delta whose base is in another timeline — base already resolved.
-    DeltaWithResolvedBase(unigraph_storage_core::FrameData, ArrayGraphSerializable),
+    DeltaWithResolvedBase(
+        unigraph_storage_core::FrameData,
+        Box<ArrayGraphSerializable>,
+    ),
 }
 
 // ---------------------------------------------------------------------------

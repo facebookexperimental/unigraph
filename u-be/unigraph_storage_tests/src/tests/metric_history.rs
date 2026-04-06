@@ -179,7 +179,6 @@ impl Scene {
             },
             graph_settings: None,
             traversal_config: None,
-            budget_configs: BTreeMap::new(),
             entry_points: None,
             properties: BTreeMap::new(),
         }

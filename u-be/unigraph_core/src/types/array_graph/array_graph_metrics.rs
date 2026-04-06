@@ -193,7 +193,7 @@ pub fn parents_len_configured(ag: &ArrayGraph, node_idx: NodeIDX) -> usize {
     }
 
     let mut count = 0;
-    for edge in ag.derived_state.edges_reverse.edges(node_idx) {
+    for edge in ag.edges_reverse().edges(node_idx) {
         if edge.flags.is_excluded() {
             continue;
         }

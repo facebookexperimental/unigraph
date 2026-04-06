@@ -22,6 +22,7 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use anyhow::Result;
+use rayon::prelude::*;
 
 use super::ArrayGraph;
 use super::ArrayGraphDynamicEdge;
@@ -48,7 +49,6 @@ use crate::types::array_graph::NodeFlags;
 use crate::types::array_graph::array_graph_derived_state::ArrayGraphDerivedState;
 use crate::types::array_graph::array_graph_nodes::ArrayGraphNodesForGraphSide;
 use crate::types::array_graph::array_graph_state::ArrayGraphState;
-use crate::types::array_graph::budget_graph::BudgetConfig;
 use crate::types::array_graph::offset_graph::Edge;
 use crate::types::array_graph::offset_graph::NonDirectedEdgeMetadata;
 use crate::types::array_graph::offset_graph::OffsetGraph;
@@ -76,9 +76,6 @@ pub struct ArrayGraphSerializable {
 
     pub graph_settings: Option<GraphSettings>,
     pub traversal_config: Option<TraversalConfig>,
-
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub budget_configs: BTreeMap<String, BudgetConfig>,
 
     /// If present, these graph will use these entrypoints instead
     /// of automatically determining them.
@@ -221,7 +218,6 @@ impl ArrayGraphSerializable {
             node_metadata: self.node_metadata.remap(ctx)?,
             graph_settings: self.graph_settings,
             traversal_config: self.traversal_config,
-            budget_configs: self.budget_configs,
             entry_points: self.entry_points,
             properties: self.properties,
         })
@@ -267,7 +263,6 @@ impl From<ArrayGraph> for ArrayGraphSerializable {
             },
             graph_settings: graph.graph_settings,
             traversal_config: graph.state.traversal_config,
-            budget_configs: graph.budget_configs,
             entry_points: graph.entry_points,
             properties: graph.properties,
         }
@@ -297,51 +292,68 @@ impl From<ArrayGraphSerializable> for ArrayGraph {
             ],
         };
 
-        let mut edges_forward = OffsetGraph {
-            edges: vec![],
-            edge_offsets: vec![0],
-            non_directed_edges_metadata: vec![],
-        };
+        // Compute per-node edge lists in parallel, then flatten into
+        // a single OffsetGraph with correct offsets.
+        let per_node: Vec<(Vec<Edge>, Vec<NonDirectedEdgeMetadata>)> = directed_only_offset_graph
+            .node_idx_iter()
+            .collect::<Vec<_>>()
+            .into_par_iter()
+            .map(|node_idx| {
+                let mut edges = Vec::new();
+                let mut metadata = Vec::new();
 
-        for node_idx in directed_only_offset_graph.node_idx_iter() {
-            for edge in directed_only_offset_graph.edges(node_idx) {
-                edges_forward.edges.push(Edge::new(edge.points_to));
-                edges_forward
-                    .non_directed_edges_metadata
-                    .push(NonDirectedEdgeMetadata::Directed);
-            }
+                for edge in directed_only_offset_graph.edges(node_idx) {
+                    edges.push(Edge::new(edge.points_to));
+                    metadata.push(NonDirectedEdgeMetadata::Directed);
+                }
 
-            if let Some(tagged) = serializable.edges.tagged.get(&node_idx) {
-                for (tag, points_to_set) in tagged {
-                    for &points_to in points_to_set {
-                        edges_forward.edges.push(Edge::new_tagged(points_to));
-                        edges_forward
-                            .non_directed_edges_metadata
-                            .push(NonDirectedEdgeMetadata::Tagged { tag: tag.clone() });
+                if let Some(tagged) = serializable.edges.tagged.get(&node_idx) {
+                    for (tag, points_to_set) in tagged {
+                        for &points_to in points_to_set {
+                            edges.push(Edge::new_tagged(points_to));
+                            metadata.push(NonDirectedEdgeMetadata::Tagged { tag: tag.clone() });
+                        }
                     }
                 }
-            }
 
-            if let Some(type_map) = serializable.edges.dynamic.get(&node_idx) {
-                for (type_key, edge_map) in type_map {
-                    for (edge_name, dynamic_edge) in edge_map {
-                        for (branch, node_idxs) in &dynamic_edge.branches {
-                            for &points_to in node_idxs {
-                                edges_forward.edges.push(Edge::new_dynamic(points_to));
-                                edges_forward.non_directed_edges_metadata.push(
-                                    NonDirectedEdgeMetadata::Dynamic {
+                if let Some(type_map) = serializable.edges.dynamic.get(&node_idx) {
+                    for (type_key, edge_map) in type_map {
+                        for (edge_name, dynamic_edge) in edge_map {
+                            for (branch, node_idxs) in &dynamic_edge.branches {
+                                for &points_to in node_idxs {
+                                    edges.push(Edge::new_dynamic(points_to));
+                                    metadata.push(NonDirectedEdgeMetadata::Dynamic {
                                         type_key: type_key.clone(),
                                         edge_name: edge_name.clone(),
                                         branch: branch.clone(),
-                                    },
-                                );
+                                    });
+                                }
                             }
                         }
                     }
                 }
-            }
-            edges_forward.edge_offsets.push(edges_forward.edges.len());
+
+                (edges, metadata)
+            })
+            .collect();
+
+        let total_edges: usize = per_node.iter().map(|(e, _)| e.len()).sum();
+        let mut all_edges = Vec::with_capacity(total_edges);
+        let mut all_metadata = Vec::with_capacity(total_edges);
+        let mut edge_offsets = Vec::with_capacity(per_node.len() + 1);
+        edge_offsets.push(0);
+
+        for (edges, metadata) in per_node {
+            all_edges.extend(edges);
+            all_metadata.extend(metadata);
+            edge_offsets.push(all_edges.len());
         }
+
+        let edges_forward = OffsetGraph {
+            edges: all_edges,
+            edge_offsets,
+            non_directed_edges_metadata: all_metadata,
+        };
 
         // Node flags are initialized on traversal config application, so we'll just create an empty vector
         let node_flags =
@@ -352,7 +364,7 @@ impl From<ArrayGraphSerializable> for ArrayGraph {
             .as_ref()
             .map_or_else(Default::default, |config| config.get_tiers());
 
-        let derived_state = ArrayGraphDerivedState::from_forward_edges(&edges_forward);
+        let derived_state = ArrayGraphDerivedState::new();
 
         let nodes = ArrayGraphNodesForGraphSide::new_left_only(serializable.node_names_ordered);
 
@@ -372,7 +384,6 @@ impl From<ArrayGraphSerializable> for ArrayGraph {
                 tiers,
             },
             graph_settings: serializable.graph_settings,
-            budget_configs: serializable.budget_configs,
             entry_points: serializable.entry_points,
             properties: serializable.properties,
         }

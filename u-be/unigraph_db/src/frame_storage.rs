@@ -310,6 +310,7 @@ impl UnigraphStorage {
     }
 
     /// Reconstruct a full graph from frame data.
+    #[ll::task]
     pub(crate) async fn reconstruct_full_graph(
         &self,
         data: &FrameData,
@@ -320,13 +321,13 @@ impl UnigraphStorage {
 
         let all_blob_ids = manifest.blobs.get_all_blob_ids();
         let blobs = self
-            .resolve_blobs(&all_blob_ids, data.inline_blobs.as_deref(), task)
+            .resolve_blobs(&all_blob_ids, data.inline_blobs.as_deref(), &task)
             .await?;
 
         let manifest_json_bytes = data.manifest_json.as_bytes().to_vec();
 
         // CPU-heavy: decompress + deserialize → off the tokio thread
-        tokio::task::spawn_blocking(move || {
+        task.spawn_blocking("unpack_graph", move |_| {
             let mut blobs_with_manifest = blobs;
             blobs_with_manifest.insert(manifest.self_reference.clone(), manifest_json_bytes);
 
@@ -338,7 +339,6 @@ impl UnigraphStorage {
             ArrayGraphSerializable::unpack(&package).context("Failed to unpack graph")
         })
         .await
-        .context("spawn_blocking panicked")?
     }
 
     /// Reconstruct a delta from frame data.

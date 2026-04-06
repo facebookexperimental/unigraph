@@ -201,7 +201,7 @@ fn make_offset_graph(
 
     let target_offset_graph = match graph_structure {
         GraphStructure::Forward => &target_graph.edges_forward,
-        GraphStructure::Reverse => &target_graph.derived_state.edges_reverse,
+        GraphStructure::Reverse => target_graph.edges_reverse(),
         GraphStructure::Dominator => target_graph.edges_dom(),
     };
 

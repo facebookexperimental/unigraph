@@ -205,7 +205,6 @@ fn remap_with_nodes(
         node_metadata: graph.node_metadata.remap(ctx)?,
         graph_settings: graph.graph_settings,
         traversal_config: graph.traversal_config,
-        budget_configs: graph.budget_configs,
         entry_points: graph.entry_points,
         properties: graph.properties,
     })

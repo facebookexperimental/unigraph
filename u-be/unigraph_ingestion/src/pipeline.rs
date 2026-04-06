@@ -11,7 +11,6 @@ use unigraph_storage_core::AdjacentDeltasConfig;
 use unigraph_storage_core::ExternalID;
 use unigraph_storage_core::Frame;
 use unigraph_storage_core::FrameType;
-use unigraph_storage_core::GraphKey;
 use unigraph_storage_core::GraphTimeKey;
 use unigraph_storage_core::TimelineConfig;
 use unigraph_storage_core::TimelineID;
@@ -42,9 +41,6 @@ pub async fn run_ingestion(
             main_branch,
             ..
         } => run_git_ingestion(config, db, repo_path, main_branch, options, &task).await,
-        IngestionSource::AnotherTimeline {
-            source_timeline_id, ..
-        } => run_timeline_ingestion(config, db, source_timeline_id, &task).await,
     }
 }
 
@@ -138,12 +134,7 @@ async fn run_git_ingestion(
         let mut stored_count = 0usize;
         let mut error_count = 0usize;
 
-        let Builder::FromRepo(builder) = &builder_config.builder else {
-            anyhow::bail!(
-                "Git source requires FromRepo builders, got BudgetGraph for timeline '{}'",
-                timeline_id.0
-            );
-        };
+        let Builder::FromRepo(builder) = &builder_config.builder;
 
         let mut range_builder = GraphRangeBuilder::new(timeline_id.clone());
 
@@ -209,220 +200,6 @@ async fn run_git_ingestion(
                     }
                     store_error(db, &key, &format!("Graph build failed: {e:#}"), task).await?;
                     commit_task.data("status", "error");
-                    error_count += 1;
-                }
-            }
-        }
-
-        // Store remaining range.
-        if !range_builder.is_empty() {
-            let final_range = range_builder.finalize();
-            db.graph
-                .adjacent_deltas
-                .store_range(final_range, task)
-                .await?;
-        }
-
-        builder_task.progress(total as i64, total as i64);
-        builder_task.data("stored", stored_count);
-        builder_task.data("skipped", already_done);
-        builder_task.data("errors", error_count);
-    }
-
-    Ok(())
-}
-
-// -------------------------------------------------------------------
-// AnotherTimeline source ingestion
-// -------------------------------------------------------------------
-
-/// Ingest by transforming graphs from an existing timeline.
-///
-/// **Phase A**: Discovers frames from the source timeline, registers empty frames
-/// in the derived timeline(s) using the same GraphIDs and timestamps.
-/// **Phase B**: For each empty frame, fetches the source graph and runs
-/// the budget builder to produce a derived graph.
-async fn run_timeline_ingestion(
-    config: &IngestionPipelineConfig<'_>,
-    db: &UnigraphDb,
-    source_timeline_id: &TimelineID,
-    task: &ll::Task,
-) -> Result<()> {
-    let ns = config.source.external_id_namespace();
-
-    // === Phase A: Registration ===
-
-    let registration_task = task.create("discover_frames");
-
-    let source_frames = db.frames.list(source_timeline_id, task).await?;
-
-    registration_task.data("source_timeline", &source_timeline_id.0);
-    registration_task.data("source_frames", source_frames.len());
-
-    if source_frames.is_empty() {
-        return Ok(());
-    }
-
-    for builder_config in &config.builders {
-        let timeline_id = &builder_config.timeline_id;
-        ensure_timeline(db, timeline_id, ns, task).await?;
-
-        let new_frames: Vec<Frame> = source_frames
-            .iter()
-            .map(|sf| Frame {
-                timestamp: sf.frame.timestamp,
-                graph_id: sf.frame.graph_id,
-            })
-            .collect();
-
-        db.graph
-            .adjacent_deltas
-            .put_new_empty_frames(timeline_id, new_frames, true, task)
-            .await?;
-    }
-
-    drop(registration_task);
-
-    // === Phase B: Processing ===
-
-    for builder_config in &config.builders {
-        let timeline_id = &builder_config.timeline_id;
-        let builder_task = task.create(&format!("build:{}", timeline_id.0));
-
-        let frames = db.frames.list(timeline_id, task).await?;
-        let empty_frames: Vec<_> = frames
-            .iter()
-            .filter(|f| f.frame_type == FrameType::Empty)
-            .collect();
-        let total = frames.len();
-        let to_process = empty_frames.len();
-        let already_done = total - to_process;
-
-        builder_task.data("total_frames", total);
-        builder_task.data("to_process", to_process);
-
-        let mut stored_count = 0usize;
-        let mut error_count = 0usize;
-
-        let Builder::BudgetGraph(budget_builder) = &builder_config.builder else {
-            anyhow::bail!(
-                "AnotherTimeline source requires BudgetGraph builders, \
-                 got FromRepo for timeline '{}'",
-                timeline_id.0
-            );
-        };
-
-        let mut range_builder = GraphRangeBuilder::new(timeline_id.clone());
-
-        for (i, frame) in empty_frames.iter().enumerate() {
-            let graph_id = frame.frame.graph_id;
-
-            // Resolve external ID for display
-            let display_id = match db.external_ids.to_external_id(ns, &graph_id, task).await? {
-                Some(eid) => {
-                    let hash = &eid.0;
-                    hash[..cmp::min(8, hash.len())].to_string()
-                }
-                None => format!("g:{}", graph_id.0),
-            };
-
-            let frame_task = builder_task.create(&format!("frame:{display_id}"));
-            builder_task.progress((already_done + i) as i64, total as i64);
-
-            let key = GraphTimeKey {
-                timeline_id: timeline_id.clone(),
-                timestamp: frame.frame.timestamp,
-                graph_id,
-            };
-
-            let source_key = GraphKey {
-                timeline_id: source_timeline_id.clone(),
-                graph_id,
-            };
-
-            // Check if the source frame has data
-            let source_frame = db.frames.get(&source_key, false, task).await?;
-            match &source_frame {
-                Some(sf)
-                    if sf.frame_type == FrameType::Full || sf.frame_type == FrameType::Delta =>
-                {
-                    // Source has data, proceed below
-                }
-                Some(sf) => {
-                    if !range_builder.is_empty() {
-                        let flushed = range_builder.take(timeline_id.clone());
-                        db.graph.adjacent_deltas.store_range(flushed, task).await?;
-                    }
-                    store_error(
-                        db,
-                        &key,
-                        &format!(
-                            "Source frame in timeline '{}' is {:?}, skipping",
-                            source_timeline_id.0, sf.frame_type
-                        ),
-                        task,
-                    )
-                    .await?;
-                    frame_task.data("status", "error");
-                    error_count += 1;
-                    continue;
-                }
-                None => {
-                    if !range_builder.is_empty() {
-                        let flushed = range_builder.take(timeline_id.clone());
-                        db.graph.adjacent_deltas.store_range(flushed, task).await?;
-                    }
-                    store_error(
-                        db,
-                        &key,
-                        &format!(
-                            "Source frame not found in timeline '{}'",
-                            source_timeline_id.0
-                        ),
-                        task,
-                    )
-                    .await?;
-                    frame_task.data("status", "error");
-                    error_count += 1;
-                    continue;
-                }
-            }
-
-            // Fetch the source graph
-            let source_graph = match db.graph.fetch(&source_key, task).await {
-                Ok(g) => g,
-                Err(e) => {
-                    if !range_builder.is_empty() {
-                        let flushed = range_builder.take(timeline_id.clone());
-                        db.graph.adjacent_deltas.store_range(flushed, task).await?;
-                    }
-                    store_error(
-                        db,
-                        &key,
-                        &format!("Failed to fetch source graph: {e:#}"),
-                        task,
-                    )
-                    .await?;
-                    frame_task.data("status", "error");
-                    error_count += 1;
-                    continue;
-                }
-            };
-
-            // Transform
-            match budget_builder.build(source_graph) {
-                Ok(result_graph) => {
-                    range_builder.add(key, result_graph)?;
-                    frame_task.data("status", "stored");
-                    stored_count += 1;
-                }
-                Err(e) => {
-                    if !range_builder.is_empty() {
-                        let flushed = range_builder.take(timeline_id.clone());
-                        db.graph.adjacent_deltas.store_range(flushed, task).await?;
-                    }
-                    store_error(db, &key, &format!("Transform failed: {e:#}"), task).await?;
-                    frame_task.data("status", "error");
                     error_count += 1;
                 }
             }

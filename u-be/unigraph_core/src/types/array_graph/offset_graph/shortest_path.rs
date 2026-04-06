@@ -165,8 +165,7 @@ mod tests {
 
         // REVERSE EDGES
         let p = ag
-            .derived_state
-            .edges_reverse
+            .edges_reverse()
             .shortest_path(
                 &[name_to_idx(&ag, "F"), name_to_idx(&ag, "H")],
                 name_to_idx(&ag, "A"),
@@ -177,7 +176,7 @@ mod tests {
         assert_equal!(idx_to_names(&ag, p), vec!["F", "D", "A"]);
 
         // NO PATHS
-        let p = ag.derived_state.edges_reverse.shortest_path(
+        let p = ag.edges_reverse().shortest_path(
             &[name_to_idx(&ag, "K"), name_to_idx(&ag, "E")],
             name_to_idx(&ag, "I"),
             TraversalType::Configured,

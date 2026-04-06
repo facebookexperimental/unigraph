@@ -5,9 +5,7 @@
 //!
 //! Exercises all node metadata (properties, labels, metrics), all edge types
 //! (directed, tagged, dynamic), and top-level fields (graph_settings,
-//! traversal_config, budget_configs, entry_points).
-
-use std::collections::BTreeMap;
+//! traversal_config, entry_points).
 
 use anyhow::Result;
 use k9::assert_equal;
@@ -140,7 +138,6 @@ fn make_conversion_test_graph() -> MapGraph {
             ..Default::default()
         }),
         graph_settings: Some(GraphSettings::default()),
-        budget_configs: BTreeMap::new(),
         entry_points: Some(btreeset! { "A".into(), "F".into() }),
         properties: btreemap! {
             "source".into() => "test".into(),

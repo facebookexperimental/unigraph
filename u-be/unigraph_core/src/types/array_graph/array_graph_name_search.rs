@@ -130,10 +130,10 @@ fn merge_heaps(
     a
 }
 
-fn sorted_results<'a>(
-    nodes: &'a ArrayGraphNodes,
+fn sorted_results(
+    nodes: &ArrayGraphNodes,
     heap: BinaryHeap<(i32, NodeIDX)>,
-) -> Vec<(&'a str, NodeIDX)> {
+) -> Vec<(&str, NodeIDX)> {
     heap.into_sorted_vec()
         .into_iter()
         .map(|(_len, node_idx)| (nodes.idx_to_name(node_idx), node_idx))

@@ -20,6 +20,7 @@ use anyhow::Result;
 use super::GraphDelta;
 use crate::array_graph_serializable::package::ArrayGraphSerializablePackageConfig;
 use crate::array_graph_serializable::package::BlobID;
+use crate::array_graph_serializable::package::from_blobs;
 use crate::array_graph_serializable::package::into_blobs;
 
 /// Manifest for a packaged delta.
@@ -101,11 +102,11 @@ impl DeltaManifestStats {
         let mut properties_changed: u32 = 0;
 
         for node_delta in nodes.changed.values() {
-            if let Some(ref dir) = node_delta.edges_directed {
-                if let unigraph_delta::OptionDelta::Changed(set_delta) = dir {
-                    directed_edges_added += set_delta.added.len() as u32;
-                    directed_edges_removed += set_delta.removed.len() as u32;
-                }
+            if let Some(unigraph_delta::OptionDelta::Changed(set_delta)) =
+                &node_delta.edges_directed
+            {
+                directed_edges_added += set_delta.added.len() as u32;
+                directed_edges_removed += set_delta.removed.len() as u32;
             }
             if node_delta.edges_tagged.is_some() {
                 tagged_edges_changed += 1;
@@ -178,30 +179,14 @@ pub fn pack_delta(
 
 /// Unpack a [`DeltaPackage`] back into a [`GraphDelta`].
 pub fn unpack_delta(package: &DeltaPackage) -> Result<GraphDelta> {
-    use unigraph_serialization::from_zstd;
-
-    (|| {
-        let mut combined_data = Vec::new();
-        for blob_id in &package.manifest.delta_blob {
-            let chunk = package
-                .blobs
-                .get(blob_id)
-                .ok_or_else(|| anyhow::anyhow!("Missing blob: {}", blob_id.0))?;
-            combined_data.extend_from_slice(chunk);
-        }
-
-        let json = from_zstd(&combined_data)?;
-        let delta: GraphDelta =
-            serde_json::from_slice(&json).context("Failed to deserialize GraphDelta JSON")?;
-        anyhow::Ok(delta)
-    })()
-    .context("Failed to unpack delta")
-    .with_context(|| {
-        format!(
-            "DeltaManifest: {}",
-            serde_json::to_string_pretty(&package.manifest).unwrap_or_default()
-        )
-    })
+    from_blobs(&package.manifest.delta_blob, &package.blobs)
+        .context("Failed to unpack delta")
+        .with_context(|| {
+            format!(
+                "DeltaManifest: {}",
+                serde_json::to_string_pretty(&package.manifest).unwrap_or_default()
+            )
+        })
 }
 
 #[cfg(test)]

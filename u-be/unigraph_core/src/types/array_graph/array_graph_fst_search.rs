@@ -27,7 +27,7 @@ impl FstSets {
     pub fn build(nodes: &ArrayGraphNodes) -> Result<Self> {
         let num_chunks = num_chunks();
         let total = nodes.combined_nodes_len();
-        let chunk_size = (total + num_chunks - 1) / num_chunks;
+        let chunk_size = total.div_ceil(num_chunks);
 
         let sets = (0..num_chunks)
             .into_par_iter()
@@ -271,7 +271,7 @@ application
 
         // Force 3 chunks to verify cross-chunk merging works
         let fst_sets = FstSets::build(&nodes)?;
-        assert!(fst_sets.sets.len() >= 1);
+        assert!(!fst_sets.sets.is_empty());
 
         // "an" subsequence: banana, bandana, application (a...n), //howdy/partner$^/meow (a...n)
         snapshot!(

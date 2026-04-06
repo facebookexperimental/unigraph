@@ -19,9 +19,11 @@
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
+use std::sync::Mutex;
 
 use anyhow::Context;
 use anyhow::Result;
+use rayon::prelude::*;
 use unigraph_serialization::ZSTDCompressionLevel;
 use unigraph_serialization::from_base64;
 use unigraph_serialization::from_zstd;
@@ -36,10 +38,10 @@ use crate::ArrayGraphSerializableNodeMetadata;
 use crate::graph_settings::GraphSettings;
 use crate::types::PropertyName;
 use crate::types::PropertyValue;
-use crate::types::array_graph::budget_graph::BudgetConfig;
 
-/// Default maximum size of each blob chunk before splitting (2 MB).
-const DEFAULT_BYTES_PER_BLOB_CHUNK: usize = 2_000_000; // 2 MB
+/// Default maximum size of each uncompressed serialized chunk before
+/// it is dispatched for compression (6 MB).
+const DEFAULT_BYTES_PER_BLOB_CHUNK: usize = 6_000_000; // 6 MB
 
 /// Default ZSTD compression level used when packing graphs.
 const DEFAULT_COMPRESSION_LEVEL: ZSTDCompressionLevel = ZSTDCompressionLevel::Normal;
@@ -119,9 +121,6 @@ pub struct ManifestBlobs {
 
     /// Optional traversal configuration (entry points, tier rules, etc.).
     pub traversal_config: Vec<BlobID>,
-    /// Budget configurations keyed by project name.
-    #[serde(default)]
-    pub budget_configs: Vec<BlobID>,
     /// Explicit graph entry points, if set.
     pub entry_points: Vec<BlobID>,
 
@@ -182,7 +181,6 @@ impl ManifestBlobs {
             labels,
             properties,
             traversal_config,
-            budget_configs,
             entry_points,
             graph_properties,
         } = self;
@@ -198,7 +196,6 @@ impl ManifestBlobs {
             labels,
             properties,
             traversal_config,
-            budget_configs,
             entry_points,
             graph_properties,
         ]
@@ -257,8 +254,10 @@ type ModifyBlobID = Option<Arc<dyn Fn(&str) -> BlobID + Send + Sync>>;
 /// generation.
 #[derive(Default, Clone)]
 pub struct ArrayGraphSerializablePackageConfig {
-    /// Maximum number of bytes per blob chunk. Larger fields are split into
-    /// multiple blobs at this boundary. Defaults to [`DEFAULT_BYTES_PER_BLOB_CHUNK`] (2 MB).
+    /// Maximum number of uncompressed serialized bytes per chunk. When a field's
+    /// JSON output exceeds this threshold during serialization, it is split into
+    /// multiple independently compressed blobs. Defaults to
+    /// [`DEFAULT_BYTES_PER_BLOB_CHUNK`] (6 MB).
     pub bytes_per_blob_chunk: Option<usize>,
 
     /// ZSTD compression level applied to each blob.
@@ -273,7 +272,7 @@ pub struct ArrayGraphSerializablePackageConfig {
 }
 
 impl ArrayGraphSerializablePackageConfig {
-    /// Returns the configured chunk size or the default (2 MB).
+    /// Returns the configured chunk size or the default (6 MB).
     pub fn bytes_per_chunk(&self) -> usize {
         self.bytes_per_blob_chunk
             .unwrap_or(DEFAULT_BYTES_PER_BLOB_CHUNK)
@@ -282,6 +281,67 @@ impl ArrayGraphSerializablePackageConfig {
     /// Returns the configured compression level or the default.
     pub fn compression_level(&self) -> ZSTDCompressionLevel {
         self.compression_level.unwrap_or(DEFAULT_COMPRESSION_LEVEL)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ChunkingWriter — pipelined serialize → compress
+// ---------------------------------------------------------------------------
+
+/// A [`std::io::Write`] adapter that buffers serialized bytes and invokes a
+/// callback for each full chunk. When used inside a [`rayon::scope`], the
+/// callback dispatches chunks for parallel ZSTD compression while serialization
+/// continues on the calling thread.
+///
+/// On WASM (where rayon has no thread pool), `scope.spawn()` executes inline,
+/// so the pipeline degrades to sequential serialize-then-compress per chunk.
+struct ChunkingWriter<F> {
+    threshold: usize,
+    current: Vec<u8>,
+    chunk_idx: usize,
+    on_chunk: F,
+}
+
+impl<F: FnMut(usize, Vec<u8>)> ChunkingWriter<F> {
+    fn new(threshold: usize, on_chunk: F) -> Self {
+        Self {
+            threshold,
+            current: Vec::with_capacity(threshold),
+            chunk_idx: 0,
+            on_chunk,
+        }
+    }
+
+    fn dispatch_chunk(&mut self, chunk: Vec<u8>) {
+        let idx = self.chunk_idx;
+        self.chunk_idx += 1;
+        (self.on_chunk)(idx, chunk);
+    }
+
+    /// Flush any remaining buffered data and return the total number of
+    /// chunks dispatched (including the final partial chunk, if any).
+    fn finish(mut self) -> usize {
+        if !self.current.is_empty() {
+            let chunk = std::mem::take(&mut self.current);
+            self.dispatch_chunk(chunk);
+        }
+        self.chunk_idx
+    }
+}
+
+impl<F: FnMut(usize, Vec<u8>)> std::io::Write for ChunkingWriter<F> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.current.extend_from_slice(buf);
+        while self.current.len() >= self.threshold {
+            let remainder = self.current.split_off(self.threshold);
+            let chunk = std::mem::replace(&mut self.current, remainder);
+            self.dispatch_chunk(chunk);
+        }
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
     }
 }
 
@@ -308,7 +368,6 @@ pub fn pack(
         node_metadata,
         graph_settings,
         traversal_config,
-        budget_configs,
         entry_points,
         properties: graph_properties,
     } = &graph;
@@ -356,7 +415,6 @@ pub fn pack(
             labels,
             properties,
             traversal_config,
-            budget_configs,
             entry_points,
         );
     });
@@ -386,7 +444,6 @@ pub fn pack(
         labels: take_field!(labels),
         properties: take_field!(properties),
         traversal_config: take_field!(traversal_config),
-        budget_configs: take_field!(budget_configs),
         entry_points: take_field!(entry_points),
         graph_properties: vec![],
     };
@@ -443,7 +500,6 @@ pub fn unpack(package: &ArrayGraphSerializablePackage) -> Result<ArrayGraphSeria
             labels,
             properties,
             traversal_config,
-            budget_configs,
             entry_points,
             graph_properties: _, // stored in manifest directly, not as blobs
         } = &blobs;
@@ -469,54 +525,45 @@ pub fn unpack(package: &ArrayGraphSerializablePackage) -> Result<ArrayGraphSeria
         let r_labels = field_slot!();
         let r_properties = field_slot!();
         let r_traversal_config = field_slot!();
-        let r_budget_configs = field_slot!();
         let r_entry_points = field_slot!();
 
         rayon::scope(|s| {
             s.spawn(|_| {
-                *r_node_names.lock().unwrap() = Some(from_blobs_field(node_names, b));
+                *r_node_names.lock().unwrap() = Some(from_blobs(node_names, b));
             });
             s.spawn(|_| {
-                *r_node_name_offsets.lock().unwrap() =
-                    Some(from_blobs_field(node_names_offsets, b));
+                *r_node_name_offsets.lock().unwrap() = Some(from_blobs(node_names_offsets, b));
             });
             s.spawn(|_| {
-                *r_directed.lock().unwrap() = Some(from_blobs_field(directed, b));
+                *r_directed.lock().unwrap() = Some(from_blobs(directed, b));
             });
             s.spawn(|_| {
-                *r_directed_offsets.lock().unwrap() = Some(from_blobs_field(directed_offsets, b));
+                *r_directed_offsets.lock().unwrap() = Some(from_blobs(directed_offsets, b));
             });
             s.spawn(|_| {
-                *r_tagged.lock().unwrap() = Some(from_blobs_field(tagged, b));
+                *r_tagged.lock().unwrap() = Some(from_blobs(tagged, b));
             });
             s.spawn(|_| {
-                *r_dynamic.lock().unwrap() = Some(from_blobs_field(dynamic, b));
+                *r_dynamic.lock().unwrap() = Some(from_blobs(dynamic, b));
             });
             s.spawn(|_| {
-                *r_metrics.lock().unwrap() = Some(from_blobs_field(metrics, b));
+                *r_metrics.lock().unwrap() = Some(from_blobs(metrics, b));
             });
             s.spawn(|_| {
-                *r_labels.lock().unwrap() = Some(from_blobs_field(labels, b));
+                *r_labels.lock().unwrap() = Some(from_blobs(labels, b));
             });
             s.spawn(|_| {
                 *r_properties.lock().unwrap() = Some(if properties.is_empty() {
                     Ok(BTreeMap::new())
                 } else {
-                    from_blobs_field(properties, b)
+                    from_blobs(properties, b)
                 });
             });
             s.spawn(|_| {
-                *r_traversal_config.lock().unwrap() = Some(from_blobs_field(traversal_config, b));
+                *r_traversal_config.lock().unwrap() = Some(from_blobs(traversal_config, b));
             });
             s.spawn(|_| {
-                *r_budget_configs.lock().unwrap() = Some(if budget_configs.is_empty() {
-                    Ok(BTreeMap::new())
-                } else {
-                    from_blobs_field(budget_configs, b)
-                });
-            });
-            s.spawn(|_| {
-                *r_entry_points.lock().unwrap() = Some(from_blobs_field(entry_points, b));
+                *r_entry_points.lock().unwrap() = Some(from_blobs(entry_points, b));
             });
         });
 
@@ -541,7 +588,6 @@ pub fn unpack(package: &ArrayGraphSerializablePackage) -> Result<ArrayGraphSeria
         let labels = take!(r_labels);
         let properties = take!(r_properties);
         let traversal_config = take!(r_traversal_config);
-        let budget_configs = take!(r_budget_configs);
         let entry_points = take!(r_entry_points);
 
         let edges = ArrayGraphSerializableEdges {
@@ -566,7 +612,6 @@ pub fn unpack(package: &ArrayGraphSerializablePackage) -> Result<ArrayGraphSeria
             node_metadata,
             graph_settings: graph_settings.clone(),
             traversal_config,
-            budget_configs,
             entry_points,
             properties: graph_properties.clone(),
         })
@@ -580,30 +625,39 @@ pub fn unpack(package: &ArrayGraphSerializablePackage) -> Result<ArrayGraphSeria
     })
 }
 
-/// Reconstructs a single graph field from one or more compressed blobs.
+/// Reconstructs a value from one or more independently compressed blobs.
 ///
-/// The blobs are concatenated in order, ZSTD-decompressed, and then
-/// deserialized from JSON back into `T`. Returns `T::default()` implicitly
-/// through deserialization if the data is empty.
-fn from_blobs_field<T: serde::de::DeserializeOwned + Default>(
+/// Each blob is decompressed in parallel via rayon, the results are concatenated
+/// in order, and the combined JSON is deserialized into `T`.
+///
+/// Returns `T::default()` when `blob_ids` is empty.
+pub fn from_blobs<T: serde::de::DeserializeOwned + Default>(
     blob_ids: &[BlobID],
     all_blobs: &BTreeMap<BlobID, Vec<u8>>,
 ) -> Result<T> {
     (|| {
-        // Reconstruct the original data by combining chunks in order
-        let mut combined_data = Vec::new();
-
-        for blob_id in blob_ids {
-            let chunk = all_blobs
-                .get(blob_id)
-                .ok_or_else(|| anyhow::anyhow!("Missing blob: {}", blob_id.0))?;
-            combined_data.extend_from_slice(chunk);
+        if blob_ids.is_empty() {
+            return Ok(T::default());
         }
 
-        // Decompress the combined data
-        let json = from_zstd(&combined_data)?;
+        // Decompress all chunks in parallel.
+        let decompressed: Vec<Vec<u8>> = blob_ids
+            .par_iter()
+            .map(|blob_id| {
+                let chunk = all_blobs
+                    .get(blob_id)
+                    .ok_or_else(|| anyhow::anyhow!("Missing blob: {}", blob_id.0))?;
+                from_zstd(chunk)
+            })
+            .collect::<Result<Vec<_>>>()?;
 
-        // Deserialize from JSON
+        // Concatenate in order, deserialize.
+        let total_len: usize = decompressed.iter().map(|d| d.len()).sum();
+        let mut json = Vec::with_capacity(total_len);
+        for chunk in &decompressed {
+            json.extend_from_slice(chunk);
+        }
+
         let value: T = serde_json::from_slice(&json).context("Failed to deserialize JSON")?;
         anyhow::Ok(value)
     })()
@@ -620,7 +674,8 @@ fn from_blobs_field<T: serde::de::DeserializeOwned + Default>(
 ///
 /// This enables parallel serialization — each field can produce its own blob map
 /// independently, and results are merged after all tasks complete.
-fn into_blobs_isolated<T: serde::Serialize>(
+#[allow(clippy::type_complexity)]
+fn into_blobs_isolated<T: serde::Serialize + Sync>(
     value: &T,
     name: &str,
     cfg: &ArrayGraphSerializablePackageConfig,
@@ -630,63 +685,69 @@ fn into_blobs_isolated<T: serde::Serialize>(
     Ok((ids, blobs))
 }
 
-/// Serializes a single graph field into one or more compressed blobs.
+/// Serializes a single graph field into one or more independently compressed blobs.
 ///
-/// The value is JSON-serialized, ZSTD-compressed, and then split into chunks
-/// of at most `cfg.bytes_per_chunk()` bytes. Each chunk is assigned a
-/// [`BlobID`] derived from the field `name` and an xxHash of its contents.
-/// The blobs are inserted into `all_blobs` and the corresponding IDs are
-/// returned in order.
-pub fn into_blobs<T: serde::Serialize>(
+/// Serialization and compression are **pipelined**: the value is JSON-serialized
+/// via [`serde_json::to_writer`] into a [`ChunkingWriter`] that splits the output
+/// at `cfg.bytes_per_chunk()` uncompressed bytes. Each full chunk is immediately
+/// dispatched to a rayon thread for ZSTD compression while serialization continues.
+///
+/// Each resulting blob is independently decompressible. Blob IDs are derived from
+/// the field `name` and an xxHash of the compressed contents.
+pub fn into_blobs<T: serde::Serialize + Sync>(
     value: &T,
     name: &str,
     all_blobs: &mut BTreeMap<BlobID, Vec<u8>>,
     cfg: &ArrayGraphSerializablePackageConfig,
 ) -> Result<Vec<BlobID>> {
-    let json = serde_json::to_vec(value)?;
-    let zstd = to_zstd(&json, cfg.compression_level())?;
+    let threshold = cfg.bytes_per_chunk();
+    let level = cfg.compression_level();
+    let results: Mutex<Vec<(usize, Result<Vec<u8>>)>> = Mutex::new(Vec::new());
+    let mut total_chunks = 0usize;
 
-    let chunks = into_chunks(zstd, cfg.bytes_per_chunk());
-    let multiple_chunks = chunks.len() > 1;
-    let result: Vec<(BlobID, Vec<u8>)> = chunks
-        .into_iter()
-        .enumerate()
-        .map(|(i, chunk)| {
-            let xx = xxh3_64(&chunk);
-            let chunk_suffix = if multiple_chunks {
-                format!("_chunk_{i}")
-            } else {
-                String::new()
-            };
+    // Pipeline: serialize on this thread, compress chunks on rayon threads.
+    // On WASM, rayon runs spawned tasks inline (sequential but correct).
+    rayon::scope(|s| -> Result<()> {
+        let results_ref = &results;
+        let mut writer = ChunkingWriter::new(threshold, |idx: usize, chunk: Vec<u8>| {
+            s.spawn(move |_| {
+                results_ref
+                    .lock()
+                    .unwrap()
+                    .push((idx, to_zstd(&chunk, level)));
+            });
+        });
+        serde_json::to_writer(&mut writer, value)?;
+        total_chunks = writer.finish();
+        Ok(())
+    })?;
 
-            let mut blob_id = BlobID(format!("{name}{chunk_suffix}_{xx}"));
-            if let Some(f) = cfg.modify_blob_id.as_ref() {
-                blob_id = f(&blob_id.0);
-            }
-            (blob_id, chunk)
-        })
-        .collect();
+    // Collect and sort compressed chunks by index.
+    let mut compressed = results.into_inner().unwrap();
+    compressed.sort_by_key(|(i, _)| *i);
 
-    let ids = result.iter().map(|(id, _)| id.clone()).collect();
-    all_blobs.extend(result);
-    Ok(ids)
-}
+    let multiple = total_chunks > 1;
+    let mut ids = Vec::with_capacity(total_chunks);
 
-/// Splits `blob` into sequential chunks of at most `chunk_size_bytes`.
-/// The last chunk may be smaller. Always returns at least one chunk (even if
-/// `blob` is empty).
-fn into_chunks(blob: Vec<u8>, chunk_size_bytes: usize) -> Vec<Vec<u8>> {
-    let mut chunks = Vec::new();
-    let mut remaining = blob;
+    for (i, data) in compressed {
+        let data = data?;
+        let xx = xxh3_64(&data);
+        let chunk_suffix = if multiple {
+            format!("_chunk_{i}")
+        } else {
+            String::new()
+        };
 
-    while remaining.len() > chunk_size_bytes {
-        let remainder = remaining.split_off(chunk_size_bytes);
-        chunks.push(remaining);
-        remaining = remainder;
+        let mut blob_id = BlobID(format!("{name}{chunk_suffix}_{xx}"));
+        if let Some(f) = cfg.modify_blob_id.as_ref() {
+            blob_id = f(&blob_id.0);
+        }
+
+        ids.push(blob_id.clone());
+        all_blobs.insert(blob_id, data);
     }
 
-    chunks.push(remaining);
-    chunks
+    Ok(ids)
 }
 
 impl ArrayGraphSerializablePackage {
@@ -748,22 +809,22 @@ mod tests {
   "self_reference": "_manifest.json",
   "stats": {
     "total_blobs": 15,
-    "total_size_bytes": 407,
+    "total_size_bytes": 457,
     "blob_sizes_bytes": {
-      "budget_configs_4370653166743570923": 11,
       "directed_1506826171969472540": 35,
       "directed_offsets_8316678694188447186": 40,
-      "dynamic_chunk_0_16704539601918712447": 50,
-      "dynamic_chunk_1_14093561304655809570": 11,
+      "dynamic_chunk_0_5678110360769255721": 56,
+      "dynamic_chunk_1_8887446987824866365": 17,
       "entry_points_9535545603450022154": 13,
-      "labels_chunk_0_13613338088011413788": 50,
-      "labels_chunk_1_15517762289522568128": 14,
-      "metrics_6304071051133242967": 30,
+      "labels_chunk_0_15787273898998467666": 59,
+      "labels_chunk_1_16684219789371696493": 22,
+      "metrics_chunk_0_5289880619835925526": 29,
+      "metrics_chunk_1_6943866561601348189": 21,
       "node_names_10311418653884441124": 27,
       "node_names_offsets_15446562321729131330": 43,
       "properties_4370653166743570923": 11,
-      "tagged_chunk_0_3600822166880560972": 50,
-      "tagged_chunk_1_8048188434168318281": 9,
+      "tagged_chunk_0_11587565309408646083": 54,
+      "tagged_chunk_1_6155307348235514257": 17,
       "traversal_config_9535545603450022154": 13
     },
     "node_count": 16,
@@ -783,28 +844,26 @@ mod tests {
       "directed_offsets_8316678694188447186"
     ],
     "tagged": [
-      "tagged_chunk_0_3600822166880560972",
-      "tagged_chunk_1_8048188434168318281"
+      "tagged_chunk_0_11587565309408646083",
+      "tagged_chunk_1_6155307348235514257"
     ],
     "dynamic": [
-      "dynamic_chunk_0_16704539601918712447",
-      "dynamic_chunk_1_14093561304655809570"
+      "dynamic_chunk_0_5678110360769255721",
+      "dynamic_chunk_1_8887446987824866365"
     ],
     "metrics": [
-      "metrics_6304071051133242967"
+      "metrics_chunk_0_5289880619835925526",
+      "metrics_chunk_1_6943866561601348189"
     ],
     "labels": [
-      "labels_chunk_0_13613338088011413788",
-      "labels_chunk_1_15517762289522568128"
+      "labels_chunk_0_15787273898998467666",
+      "labels_chunk_1_16684219789371696493"
     ],
     "properties": [
       "properties_4370653166743570923"
     ],
     "traversal_config": [
       "traversal_config_9535545603450022154"
-    ],
-    "budget_configs": [
-      "budget_configs_4370653166743570923"
     ],
     "entry_points": [
       "entry_points_9535545603450022154"
@@ -826,20 +885,20 @@ mod tests {
             r#"
 [
     "_manifest.json",
-    "budget_configs_4370653166743570923",
     "directed_1506826171969472540",
     "directed_offsets_8316678694188447186",
-    "dynamic_chunk_0_16704539601918712447",
-    "dynamic_chunk_1_14093561304655809570",
+    "dynamic_chunk_0_5678110360769255721",
+    "dynamic_chunk_1_8887446987824866365",
     "entry_points_9535545603450022154",
-    "labels_chunk_0_13613338088011413788",
-    "labels_chunk_1_15517762289522568128",
-    "metrics_6304071051133242967",
+    "labels_chunk_0_15787273898998467666",
+    "labels_chunk_1_16684219789371696493",
+    "metrics_chunk_0_5289880619835925526",
+    "metrics_chunk_1_6943866561601348189",
     "node_names_10311418653884441124",
     "node_names_offsets_15446562321729131330",
     "properties_4370653166743570923",
-    "tagged_chunk_0_3600822166880560972",
-    "tagged_chunk_1_8048188434168318281",
+    "tagged_chunk_0_11587565309408646083",
+    "tagged_chunk_1_6155307348235514257",
     "traversal_config_9535545603450022154",
 ]
 "#

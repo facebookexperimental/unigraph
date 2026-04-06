@@ -25,12 +25,7 @@ pub fn determine_entrypoints(array_graph: &ArrayGraph) -> Vec<NodeIDX> {
     // NOTE: this will not work when graph has big cycles. We would need
     // to find those we'd need to work on SCCs and find parentless SCCs instead.
     for node_idx in array_graph.node_idx_iter() {
-        if array_graph
-            .derived_state
-            .edges_reverse
-            .edges(node_idx)
-            .is_empty()
-        {
+        if array_graph.edges_reverse().edges(node_idx).is_empty() {
             entrypoints.push(node_idx);
         }
     }

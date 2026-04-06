@@ -5,10 +5,13 @@ pub(super) mod lengauer_tarjan_dominator_tree;
 mod offset_graph_traversal;
 pub(super) mod shortest_path;
 use std::collections::HashMap;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 
 use anyhow::Result;
 use offset_graph_traversal::EdgesIterMut;
 use offset_graph_traversal::OffsetGraphDFSConfigured;
+use rayon::prelude::*;
 
 use crate::AscendingTier;
 use crate::traversal::tiered_traversal::TieredTraversalIter;
@@ -19,6 +22,19 @@ use crate::types::NodeIDX;
 use crate::types::array_graph::offset_graph::edge_flags::EdgeFlags;
 use crate::types::array_graph::offset_graph::offset_graph_traversal::EdgesIter;
 use crate::types::array_graph::offset_graph::offset_graph_traversal::OffsetGraphDFSUnconfigured;
+
+/// Wrapper to send raw pointers across rayon threads.
+///
+/// SAFETY: The caller must ensure no two threads write to overlapping regions.
+struct SendPtr<T>(*mut T);
+impl<T> Clone for SendPtr<T> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+impl<T> Copy for SendPtr<T> {}
+unsafe impl<T> Send for SendPtr<T> {}
+unsafe impl<T> Sync for SendPtr<T> {}
 
 pub struct OffsetGraph {
     pub(crate) edges: Vec<Edge>,
@@ -211,6 +227,97 @@ impl OffsetGraph {
         reverse_graph
     }
 
+    /// Build the reverse (transposed) graph using parallel count → prefix-sum →
+    /// atomic scatter.
+    ///
+    /// Three phases:
+    ///
+    /// 1. **Count in-degrees** — each rayon chunk accumulates a thread-local
+    ///    `Vec<usize>` of length `node_count`, then the thread-local vectors are
+    ///    merged. Using thread-local counts instead of shared atomics avoids
+    ///    contention on high-in-degree hub nodes.
+    ///
+    /// 2. **Prefix sum** — sequential O(N) scan to compute `reverse_offsets`.
+    ///
+    /// 3. **Atomic scatter** — parallel loop over source nodes. For each forward
+    ///    edge `src → dst`, we write a reverse edge `dst → src` by claiming a
+    ///    write slot via `AtomicUsize::fetch_add` on the destination's cursor.
+    ///    Each destination's write region is bounded by its in-degree, so no two
+    ///    source nodes ever write to the same slot.
+    ///
+    /// # Why `unsafe`?
+    ///
+    /// The scatter phase writes into pre-allocated `Vec<Edge>` and
+    /// `Vec<NonDirectedEdgeMetadata>` through raw pointers because Rust's borrow
+    /// checker cannot prove that the atomic-index-claimed slots are disjoint.
+    /// The invariant is maintained by construction: the prefix sum reserves
+    /// exactly `in_degree[dst]` slots per destination, and each `fetch_add`
+    /// claims exactly one.
+    ///
+    /// `Edge` is `Copy` (8 bytes, no `Drop`), so we skip zero-initialization
+    /// with `set_len()` — every slot is written exactly once during scatter.
+    /// `NonDirectedEdgeMetadata` contains `String` fields in some variants, so
+    /// it must be initialized to a valid value before the scatter overwrites it
+    /// (safe `vec![...; n]`).
+    ///
+    /// # Peak memory (estimate for 30M nodes, 500M edges)
+    ///
+    /// | Allocation                        | Size                         | 30M×500M       |
+    /// |-----------------------------------|------------------------------|----------------|
+    /// | Thread-local in-degree vecs       | `T × N × 8` bytes           | 16 × 240 MB = ~3.8 GB |
+    /// | Merged in-degrees                 | `N × 8`                     | 240 MB         |
+    /// | Reverse offsets                   | `(N+1) × 8`                 | 240 MB         |
+    /// | Reverse edges (`Vec<Edge>`)       | `E × 8`                     | 4.0 GB         |
+    /// | Reverse metadata                  | `E × 56` (worst case Dynamic)| 28.0 GB        |
+    /// | Atomic cursors                    | `N × 8`                     | 240 MB         |
+    /// | **Peak total (excluding input)**  |                              | **~36 GB**     |
+    ///
+    /// The dominant cost is the reverse metadata vec. If all edges are
+    /// `Directed` (the common case), the enum is 1 byte + padding, so actual
+    /// memory is much lower (~4 GB for metadata). Thread-local counting adds
+    /// `T × N × 8` bytes where T = rayon thread count (typically 8–16).
+    /// The thread-local vecs are dropped before the scatter phase begins.
+    pub(crate) fn reverse_parallel(&self) -> OffsetGraph {
+        let node_count = self.node_count();
+        let edge_count = self.edges.len();
+
+        // Phase 1: count in-degree per target node using thread-local arrays.
+        let in_degrees = count_in_degrees(&self.edges, node_count, edge_count);
+
+        // Phase 2: prefix sum → reverse_offsets
+        let reverse_offsets = prefix_sum(&in_degrees);
+
+        // Phase 3: allocate output arrays.
+        // Edge is Copy (no Drop) — skip zero-init since scatter writes every slot.
+        // NonDirectedEdgeMetadata has String fields — must be initialized.
+        #[allow(clippy::uninit_vec)]
+        let mut rev_edges = {
+            let mut v = Vec::<Edge>::with_capacity(edge_count);
+            // SAFETY: Edge is Copy — no Drop, no invalid bit patterns.
+            // All slots are written exactly once in the scatter phase.
+            unsafe { v.set_len(edge_count) };
+            v
+        };
+        let mut rev_metadata = vec![NonDirectedEdgeMetadata::Directed; edge_count];
+
+        // Phase 4: scatter reverse edges in parallel via atomic cursors.
+        scatter_reverse_edges(
+            &self.edges,
+            &self.non_directed_edges_metadata,
+            &self.edge_offsets,
+            &reverse_offsets,
+            node_count,
+            &mut rev_edges,
+            &mut rev_metadata,
+        );
+
+        OffsetGraph {
+            edges: rev_edges,
+            edge_offsets: reverse_offsets,
+            non_directed_edges_metadata: rev_metadata,
+        }
+    }
+
     /// DFS that will follow only the edges that are not excluded.
     pub fn dfs_configured(&self, roots: &[NodeIDX]) -> OffsetGraphDFSConfigured<'_> {
         OffsetGraphDFSConfigured::new(self, roots)
@@ -267,4 +374,90 @@ impl OffsetGraph {
 pub struct EdgeOverride {
     original_edge: Edge,
     edge_idx: usize,
+}
+
+// ---------------------------------------------------------------------------
+// reverse_parallel helpers
+// ---------------------------------------------------------------------------
+
+/// Count in-degree per target node using thread-local arrays to avoid
+/// atomic contention on high-in-degree hub nodes.
+fn count_in_degrees(edges: &[Edge], node_count: usize, edge_count: usize) -> Vec<usize> {
+    let chunk_size = (edge_count / rayon::current_num_threads().max(1)).max(1024);
+
+    let thread_local_counts: Vec<Vec<usize>> = edges
+        .par_chunks(chunk_size)
+        .map(|chunk| {
+            let mut local = vec![0usize; node_count];
+            for edge in chunk {
+                local[usize::from(edge.points_to)] += 1;
+            }
+            local
+        })
+        .collect();
+
+    let mut merged = vec![0usize; node_count];
+    for local in &thread_local_counts {
+        for (i, &count) in local.iter().enumerate() {
+            merged[i] += count;
+        }
+    }
+    merged
+}
+
+/// Sequential prefix sum: `[3, 1, 2]` → `[0, 3, 4, 6]`.
+fn prefix_sum(counts: &[usize]) -> Vec<usize> {
+    let mut offsets = Vec::with_capacity(counts.len() + 1);
+    offsets.push(0);
+    for &count in counts {
+        let last = *offsets.last().unwrap();
+        offsets.push(last + count);
+    }
+    offsets
+}
+
+/// Scatter forward edges into reverse positions using per-destination atomic
+/// cursors. Each source node is processed in parallel; the atomic `fetch_add`
+/// on the destination's cursor guarantees every slot is claimed exactly once.
+fn scatter_reverse_edges(
+    fwd_edges: &[Edge],
+    fwd_metadata: &[NonDirectedEdgeMetadata],
+    fwd_offsets: &[usize],
+    rev_offsets: &[usize],
+    node_count: usize,
+    rev_edges: &mut [Edge],
+    rev_metadata: &mut [NonDirectedEdgeMetadata],
+) {
+    let cursors: Vec<AtomicUsize> = rev_offsets[..node_count]
+        .iter()
+        .map(|&off| AtomicUsize::new(off))
+        .collect();
+
+    let edges_ptr = SendPtr(rev_edges.as_mut_ptr());
+    let metadata_ptr = SendPtr(rev_metadata.as_mut_ptr());
+
+    (0..node_count).into_par_iter().for_each(|src| {
+        let ep = edges_ptr;
+        let mp = metadata_ptr;
+        let src_idx = NodeIDX::from(src);
+        let start = fwd_offsets[src];
+        let end = fwd_offsets[src + 1];
+        for edge_i in start..end {
+            let edge = fwd_edges[edge_i];
+            let metadata = &fwd_metadata[edge_i];
+            let dest = usize::from(edge.points_to);
+            let slot = cursors[dest].fetch_add(1, Ordering::Relaxed);
+            // SAFETY: `slot` is in [rev_offsets[dest], rev_offsets[dest+1]).
+            // Each fetch_add claims a unique slot within that range (bounded
+            // by in_degree[dest] slots reserved by the prefix sum). No two
+            // iterations write to the same slot.
+            unsafe {
+                ep.0.add(slot).write(Edge {
+                    points_to: src_idx,
+                    flags: edge.flags,
+                });
+                mp.0.add(slot).write(metadata.clone());
+            }
+        }
+    });
 }

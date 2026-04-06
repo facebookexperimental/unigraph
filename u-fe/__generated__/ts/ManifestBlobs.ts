@@ -33,8 +33,8 @@ export interface ManifestBlobs {
   properties: BlobID[];
   /** Optional traversal configuration (entry points, tier rules, etc.). */
   traversal_config: BlobID[];
-  /** Budget configurations keyed by project name. */
-  budget_configs: BlobID[];
   /** Explicit graph entry points, if set. */
   entry_points: BlobID[];
+  /** Graph-level key-value properties (stored in manifest, not as blobs). */
+  graph_properties: BlobID[];
 }

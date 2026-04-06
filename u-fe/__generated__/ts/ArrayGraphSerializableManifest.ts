@@ -31,4 +31,6 @@ export interface ArrayGraphSerializableManifest {
   blobs: ManifestBlobs;
   /** Optional graph-level settings (e.g. display configuration). */
   graph_settings?: GraphSettings | undefined;
+  /** Graph-level key-value properties (not per-node). */
+  properties: { [key: string]: string };
 }

@@ -274,7 +274,6 @@ graph_id             timestamp                type       base       expires_at
         format_blob_keys(&blobs),
         "
 graphs/test/1/_manifest.json
-graphs/test/1/budget_configs_5399181262045623723
 graphs/test/1/directed_6393609996011794433
 graphs/test/1/directed_offsets_194495599743061723
 graphs/test/1/dynamic_5399181262045623723
@@ -320,7 +319,6 @@ graph_id             timestamp                type       base       expires_at
         format_blob_keys(&blobs_after),
         "
 graphs/test/1/_manifest.json
-graphs/test/1/budget_configs_5399181262045623723
 graphs/test/1/directed_6393609996011794433
 graphs/test/1/directed_offsets_194495599743061723
 graphs/test/1/dynamic_5399181262045623723
@@ -341,7 +339,6 @@ graphs/test/1/traversal_config_252579103958576740
         format_blob_keys(&pending),
         "
 graphs/test/1/_manifest.json
-graphs/test/1/budget_configs_5399181262045623723
 graphs/test/1/directed_6393609996011794433
 graphs/test/1/directed_offsets_194495599743061723
 graphs/test/1/dynamic_5399181262045623723
@@ -430,7 +427,6 @@ async fn sweep_deleted_blobs() -> Result<()> {
         format_blob_keys(&blobs),
         "
 graphs/test/1/_manifest.json
-graphs/test/1/budget_configs_5399181262045623723
 graphs/test/1/directed_6393609996011794433
 graphs/test/1/directed_offsets_194495599743061723
 graphs/test/1/dynamic_5399181262045623723
@@ -457,7 +453,6 @@ graphs/test/1/traversal_config_252579103958576740
         format_blob_keys(&blobs_after_delete),
         "
 graphs/test/1/_manifest.json
-graphs/test/1/budget_configs_5399181262045623723
 graphs/test/1/directed_6393609996011794433
 graphs/test/1/directed_offsets_194495599743061723
 graphs/test/1/dynamic_5399181262045623723
@@ -476,7 +471,6 @@ graphs/test/1/traversal_config_252579103958576740
         format_blob_keys(&pending),
         "
 graphs/test/1/_manifest.json
-graphs/test/1/budget_configs_5399181262045623723
 graphs/test/1/directed_6393609996011794433
 graphs/test/1/directed_offsets_194495599743061723
 graphs/test/1/dynamic_5399181262045623723
@@ -496,7 +490,7 @@ graphs/test/1/traversal_config_252579103958576740
         .blob_storage
         .sweep(std::time::Duration::ZERO, &task)
         .await?;
-    assert_eq!(swept, 13);
+    assert_eq!(swept, 12);
 
     // After sweep: blobs physically gone, cleanup table empty
     let blobs_after_sweep = sqlite.list_blobs("").await?;

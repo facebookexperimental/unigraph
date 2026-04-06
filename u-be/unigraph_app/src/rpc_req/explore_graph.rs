@@ -278,7 +278,7 @@ fn resolve_arrows(
                 .nodes
                 .name_to_idx_log(name)
                 .with_context(|| format!("node '{name}' not found in graph"))?;
-            let arrows = ag
+            let mut arrows: Vec<ArrowData> = ag
                 .get_arrows(node_idx, graph_structure)?
                 .into_iter()
                 .filter(|a| !a.excluded)
@@ -288,6 +288,14 @@ fn resolve_arrows(
                     dynamic: a.dynamic,
                 })
                 .collect();
+
+            // Reverse edges are computed lazily and may arrive in
+            // non-deterministic order. Sort by node name so the natural
+            // (unsorted) output is stable across runs.
+            if graph_structure == GraphStructure::Reverse {
+                arrows.sort_by(|a, b| ag.idx_to_name(a.node_idx).cmp(ag.idx_to_name(b.node_idx)));
+            }
+
             Ok((Some(node_idx), arrows))
         }
     }

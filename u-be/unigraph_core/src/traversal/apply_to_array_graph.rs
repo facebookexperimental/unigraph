@@ -74,7 +74,7 @@ pub fn apply_traversal_config_to_array_graph(
 
     apply_node_reachability(ag, entry_points);
 
-    ag.derived_state = ArrayGraphDerivedState::from_forward_edges(&ag.edges_forward);
+    ag.derived_state = ArrayGraphDerivedState::new();
     ag.state = ArrayGraphState {
         tiers: traversal_config.get_tiers(),
         traversal_config: Some(traversal_config),

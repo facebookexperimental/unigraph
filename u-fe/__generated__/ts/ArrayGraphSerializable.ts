@@ -8,7 +8,6 @@
 import type { ArrayGraphNodes } from './ArrayGraphNodes.ts';
 import type { ArrayGraphSerializableEdges } from './ArrayGraphSerializableEdges.ts';
 import type { ArrayGraphSerializableNodeMetadata } from './ArrayGraphSerializableNodeMetadata.ts';
-import type { BudgetConfig } from './BudgetConfig.ts';
 import type { GraphSettings } from './GraphSettings.ts';
 import type { TraversalConfig } from './TraversalConfig.ts';
 
@@ -35,10 +34,10 @@ export interface ArrayGraphSerializable {
   node_metadata: ArrayGraphSerializableNodeMetadata;
   graph_settings?: GraphSettings | undefined;
   traversal_config?: TraversalConfig | undefined;
-  budget_configs: { [key: string]: BudgetConfig };
   /**
    * If present, these graph will use these entrypoints instead
    * of automatically determining them.
    */
   entry_points?: string[] | undefined;
+  properties: { [key: string]: string };
 }

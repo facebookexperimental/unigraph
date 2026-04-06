@@ -21,6 +21,7 @@ use anyhow::Result;
 
 use crate::array_graph_serializable::package::ArrayGraphSerializablePackageConfig;
 use crate::array_graph_serializable::package::BlobID;
+use crate::array_graph_serializable::package::from_blobs;
 use crate::array_graph_serializable::package::into_blobs;
 
 /// Manifest for packaged error data.
@@ -81,7 +82,7 @@ impl ErrorManifestStats {
 ///
 /// The generic type `T` is typically `Vec<TimestampedError>` but can be
 /// any serializable type.
-pub fn pack_errors<T: serde::Serialize>(
+pub fn pack_errors<T: serde::Serialize + Sync>(
     errors: &T,
     error_count: u32,
     config: &ArrayGraphSerializablePackageConfig,
@@ -112,31 +113,17 @@ pub fn pack_errors<T: serde::Serialize>(
 }
 
 /// Unpack an [`ErrorPackage`] back into the original error data.
-pub fn unpack_errors<T: serde::de::DeserializeOwned>(package: &ErrorPackage) -> Result<T> {
-    use unigraph_serialization::from_zstd;
-
-    (|| {
-        let mut combined_data = Vec::new();
-        for blob_id in &package.manifest.errors_blob {
-            let chunk = package
-                .blobs
-                .get(blob_id)
-                .ok_or_else(|| anyhow::anyhow!("Missing blob: {}", blob_id.0))?;
-            combined_data.extend_from_slice(chunk);
-        }
-
-        let json = from_zstd(&combined_data)?;
-        let errors: T =
-            serde_json::from_slice(&json).context("Failed to deserialize error data JSON")?;
-        anyhow::Ok(errors)
-    })()
-    .context("Failed to unpack errors")
-    .with_context(|| {
-        format!(
-            "ErrorManifest: {}",
-            serde_json::to_string_pretty(&package.manifest).unwrap_or_default()
-        )
-    })
+pub fn unpack_errors<T: serde::de::DeserializeOwned + Default>(
+    package: &ErrorPackage,
+) -> Result<T> {
+    from_blobs(&package.manifest.errors_blob, &package.blobs)
+        .context("Failed to unpack errors")
+        .with_context(|| {
+            format!(
+                "ErrorManifest: {}",
+                serde_json::to_string_pretty(&package.manifest).unwrap_or_default()
+            )
+        })
 }
 
 #[cfg(test)]
