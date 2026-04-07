@@ -19,7 +19,7 @@ async fn main() {
 
     // Show interactive task tree only on TTY terminals
     if std::io::stderr().is_tty() && args.task_tree {
-        ll::reporters::term_status::show();
+        ll_stdio::term_status::show();
     } else {
         tracing_subscriber::fmt()
             .compact()

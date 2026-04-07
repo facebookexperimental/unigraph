@@ -188,8 +188,9 @@ impl GraphCache {
         task: &ll::Task,
     ) -> Result<ArrayGraph> {
         let (_key, ag_ser) = self.db.graph.fetch_latest(timeline_id, task).await?;
-        task.spawn_blocking("into_array_graph", move |_| Ok(ag_ser.into_array_graph()))
+        tokio::task::spawn_blocking(move || ag_ser.into_array_graph())
             .await
+            .context("spawn_blocking panicked")
     }
 }
 

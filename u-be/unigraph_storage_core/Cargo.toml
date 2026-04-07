@@ -10,7 +10,7 @@ license = "MIT"
 [dependencies]
 anyhow = "1.0.102"
 async-trait = "0.1.86"
-ll = "8.1"
+ll = "10.0.0"
 serde = { version = "1.0.219", features = ["derive", "rc"] }
 typegen = { path = "../typegen" }
 unigraph_core = { path = "../unigraph_core" }

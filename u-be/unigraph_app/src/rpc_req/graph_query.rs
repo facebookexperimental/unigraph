@@ -109,9 +109,10 @@ async fn extract_subgraph(
         .filter_map(|name| ag.node_names_ordered.name_to_idx_log(name.as_str()))
         .collect();
 
-    task.spawn_blocking("get_reachable_subgraph_unconfigured", move |_| {
+    tokio::task::spawn_blocking(move || {
         ag.into_array_graph()
             .get_reachable_subgraph_unconfigured(&root_idxs)
     })
     .await
+    .context("spawn_blocking panicked")?
 }

@@ -11,7 +11,7 @@ license = "MIT"
 anyhow = "1.0.102"
 axum = { version = "0.8", features = ["macros", "ws"] }
 hyper-util = { version = "0.1.20", features = ["client-legacy", "http1", "http2", "server-auto", "service", "tokio"] }
-ll = "8.1"
+ll = "10.0.0"
 serde_json = { version = "1.0.140", features = ["alloc", "float_roundtrip", "raw_value", "unbounded_depth"] }
 tokio = { version = "1.50.0", features = ["full", "test-util", "tracing"] }
 tower-http = { version = "0.6.8", features = ["compression-full", "cors", "fs", "set-header", "trace"] }

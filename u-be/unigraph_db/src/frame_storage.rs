@@ -327,7 +327,7 @@ impl UnigraphStorage {
         let manifest_json_bytes = data.manifest_json.as_bytes().to_vec();
 
         // CPU-heavy: decompress + deserialize → off the tokio thread
-        task.spawn_blocking("unpack_graph", move |_| {
+        tokio::task::spawn_blocking(move || {
             let mut blobs_with_manifest = blobs;
             blobs_with_manifest.insert(manifest.self_reference.clone(), manifest_json_bytes);
 
@@ -339,6 +339,7 @@ impl UnigraphStorage {
             ArrayGraphSerializable::unpack(&package).context("Failed to unpack graph")
         })
         .await
+        .context("spawn_blocking panicked")?
     }
 
     /// Reconstruct a delta from frame data.
