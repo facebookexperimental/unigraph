@@ -38,7 +38,7 @@ pub async fn store_full(
     let prepared_history = storage.prepare_history_if_enabled(key, graph, task).await?;
 
     let config = ctx.pack_config_for_key(key);
-    let package = graph.pack(&config).context("Failed to pack graph")?;
+    let package = graph.pack(&config, task).context("Failed to pack graph")?;
     let manifest_json =
         serde_json::to_string(&package.manifest).context("Failed to serialize graph manifest")?;
 

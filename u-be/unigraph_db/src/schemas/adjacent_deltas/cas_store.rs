@@ -94,7 +94,10 @@ pub async fn store_range(
         for ((key, frame), config) in entries.into_iter().zip(pack_configs) {
             match frame {
                 GraphRangeFrame::Full(graph) => {
-                    let package = graph.pack(&config).context("Failed to pack graph")?;
+                    let pack_task = ll::Task::create_new("");
+                    let package = graph
+                        .pack(&config, &pack_task)
+                        .context("Failed to pack graph")?;
                     let manifest_json = serde_json::to_string(&package.manifest)
                         .context("Failed to serialize manifest")?;
 

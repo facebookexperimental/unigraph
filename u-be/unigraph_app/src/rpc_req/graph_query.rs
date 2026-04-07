@@ -56,7 +56,8 @@ impl RpcExec<Unigraph> for GraphQueryInput {
 
         let package = tokio::task::spawn_blocking(move || {
             let config = ArrayGraphSerializablePackageConfig::default();
-            ag.pack(&config)
+            let pack_task = ll::Task::create_new("");
+            ag.pack(&config, &pack_task)
         })
         .await??;
 

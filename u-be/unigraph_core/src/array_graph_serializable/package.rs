@@ -2,8 +2,11 @@
 
 //! Chunked, compressed blob packaging for [`ArrayGraphSerializable`].
 //!
-//! A graph is serialized by converting each field (node names, edges, metrics,
-//! etc.) to JSON, compressing with ZSTD, and splitting into fixed-size chunks.
+//! Each graph field is encoded via [`BlobCodec`], compressed with ZSTD, and
+//! split into fixed-size chunks. Hot-path fields (node names, edge arrays,
+//! offsets) use raw little-endian bytes; structured fields (tagged edges,
+//! metrics, labels, etc.) use JSON.
+//!
 //! The result is a set of content-addressed blobs plus a [`ArrayGraphSerializableManifest`]
 //! that records which blobs belong to which field.
 //!
@@ -18,6 +21,7 @@
 //! where each blob is base64-encoded instead of stored as raw bytes.
 
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -31,20 +35,284 @@ use unigraph_serialization::to_base_64;
 use unigraph_serialization::to_zstd;
 use xxhash_rust::xxh3::xxh3_64;
 
+use crate::ArrayGraphDynamicEdge;
 use crate::ArrayGraphNodes;
 use crate::ArrayGraphSerializable;
 use crate::ArrayGraphSerializableEdges;
 use crate::ArrayGraphSerializableNodeMetadata;
+use crate::TraversalConfig;
 use crate::graph_settings::GraphSettings;
+use crate::types::DynamicEdgeName;
+use crate::types::DynamicTypeKey;
+use crate::types::LabelName;
+use crate::types::LabelValue;
+use crate::types::MetricName;
+use crate::types::NodeIDX;
+use crate::types::NodeName;
 use crate::types::PropertyName;
 use crate::types::PropertyValue;
+use crate::types::Tag;
 
-/// Default maximum size of each uncompressed serialized chunk before
-/// it is dispatched for compression (6 MB).
-const DEFAULT_BYTES_PER_BLOB_CHUNK: usize = 6_000_000; // 6 MB
+/// Maximum number of independently compressed chunks per field.
+const MAX_CHUNKS_PER_FIELD: usize = 60;
+
+/// Minimum chunk size in bytes — avoids fragmenting small fields.
+const MIN_BYTES_PER_CHUNK: usize = 2_000_000; // 2 MB
 
 /// Default ZSTD compression level used when packing graphs.
-const DEFAULT_COMPRESSION_LEVEL: ZSTDCompressionLevel = ZSTDCompressionLevel::Normal;
+const DEFAULT_COMPRESSION_LEVEL: ZSTDCompressionLevel = ZSTDCompressionLevel::Best;
+
+// ---------------------------------------------------------------------------
+// BlobCodec — type-specific encode/decode for blob storage
+// ---------------------------------------------------------------------------
+
+/// Encodes/decodes a graph field to/from raw blob bytes.
+///
+/// Hot-path types (`String`, `Vec<NodeIDX>`, `Vec<usize>`) use raw
+/// little-endian bytes for zero-overhead serialization. Structured types
+/// (maps, options, sets) fall back to JSON via [`impl_blob_codec_json`].
+pub(crate) trait BlobCodec: Sized {
+    fn encode(&self, writer: &mut impl std::io::Write) -> Result<()>;
+    fn decode(bytes: &[u8]) -> Result<Self>;
+
+    /// Decode from an owned byte buffer, avoiding copies when possible.
+    /// Default calls `decode(&bytes)`. Override for types that can take
+    /// ownership of the buffer (e.g. String from Vec<u8>).
+    fn decode_owned(bytes: Vec<u8>) -> Result<Self> {
+        Self::decode(&bytes)
+    }
+
+    /// Exact or estimated encoded size in bytes.
+    /// Used to compute chunk thresholds (target ≤ 60 chunks, ≥ 2 MB each).
+    /// Raw-bytes impls return the exact size; JSON impls return 0 (falls
+    /// back to the minimum chunk size).
+    fn encoded_size_hint(&self) -> usize {
+        0
+    }
+
+    /// Borrow the encoded bytes directly, avoiding allocation.
+    /// Only possible for types whose encoded form is already in memory
+    /// (e.g. `String::as_bytes()`). Returns `None` by default.
+    fn borrow_encoded_bytes(&self) -> Option<&[u8]> {
+        None
+    }
+
+    /// Returns the encoded data as a contiguous byte buffer.
+    /// Default implementation calls `encode()` into a pre-sized `Vec`.
+    fn encode_to_bytes(&self) -> Result<Vec<u8>> {
+        let mut buf = Vec::with_capacity(self.encoded_size_hint());
+        self.encode(&mut buf)?;
+        Ok(buf)
+    }
+}
+
+/// Raw UTF-8 bytes. No JSON quoting, no escape scanning.
+/// Decode skips UTF-8 validation — we produced this data.
+impl BlobCodec for String {
+    fn encode(&self, writer: &mut impl std::io::Write) -> Result<()> {
+        writer.write_all(self.as_bytes())?;
+        Ok(())
+    }
+
+    fn decode(bytes: &[u8]) -> Result<Self> {
+        // SAFETY: we wrote this string — it is valid UTF-8.
+        Ok(unsafe { String::from_utf8_unchecked(bytes.to_vec()) })
+    }
+
+    fn decode_owned(bytes: Vec<u8>) -> Result<Self> {
+        // SAFETY: we wrote this string — it is valid UTF-8.
+        // Takes ownership of the buffer — zero copies.
+        Ok(unsafe { String::from_utf8_unchecked(bytes) })
+    }
+
+    fn encoded_size_hint(&self) -> usize {
+        self.len()
+    }
+
+    fn borrow_encoded_bytes(&self) -> Option<&[u8]> {
+        Some(self.as_bytes())
+    }
+}
+
+/// Raw LE u32 bytes, 4 bytes per element.
+///
+/// Decode reinterprets the byte buffer directly as u32 values when
+/// alignment and endianness allow, avoiding per-element iteration.
+impl BlobCodec for Vec<NodeIDX> {
+    fn encode(&self, writer: &mut impl std::io::Write) -> Result<()> {
+        for idx in self {
+            writer.write_all(&idx.0.to_le_bytes())?;
+        }
+        Ok(())
+    }
+
+    fn decode(bytes: &[u8]) -> Result<Self> {
+        anyhow::ensure!(
+            bytes.len().is_multiple_of(4),
+            "Vec<NodeIDX> blob size {} is not a multiple of 4",
+            bytes.len()
+        );
+        Ok(vec_node_idx_from_le_bytes(bytes))
+    }
+
+    fn decode_owned(bytes: Vec<u8>) -> Result<Self> {
+        anyhow::ensure!(
+            bytes.len().is_multiple_of(4),
+            "Vec<NodeIDX> blob size {} is not a multiple of 4",
+            bytes.len()
+        );
+        Ok(reinterpret_vec_u8_as_node_idx(bytes))
+    }
+
+    fn encoded_size_hint(&self) -> usize {
+        self.len() * 4
+    }
+}
+
+/// Raw LE u32 bytes on wire, cast to/from `usize`.
+/// u32 max (4.2B) is more than enough for any realistic graph.
+impl BlobCodec for Vec<usize> {
+    fn encode(&self, writer: &mut impl std::io::Write) -> Result<()> {
+        for &val in self {
+            writer.write_all(&(val as u32).to_le_bytes())?;
+        }
+        Ok(())
+    }
+
+    fn decode(bytes: &[u8]) -> Result<Self> {
+        anyhow::ensure!(
+            bytes.len().is_multiple_of(4),
+            "Vec<usize> blob size {} is not a multiple of 4",
+            bytes.len()
+        );
+        Ok(vec_usize_from_le_bytes(bytes))
+    }
+
+    fn decode_owned(bytes: Vec<u8>) -> Result<Self> {
+        // Can't reinterpret u32 as usize directly (different sizes),
+        // but we can reinterpret as u32 first, then widen.
+        anyhow::ensure!(
+            bytes.len().is_multiple_of(4),
+            "Vec<usize> blob size {} is not a multiple of 4",
+            bytes.len()
+        );
+        let u32s = reinterpret_vec_u8_as_u32(bytes);
+        Ok(u32s.into_iter().map(|v| v as usize).collect())
+    }
+
+    fn encoded_size_hint(&self) -> usize {
+        self.len() * 4
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Zero-copy byte reinterpretation helpers
+// ---------------------------------------------------------------------------
+
+/// Reinterpret a `Vec<u8>` as `Vec<NodeIDX>` (u32 newtype) without per-element
+/// iteration. On little-endian platforms (all targets we support), this is a
+/// zero-copy pointer cast. On big-endian it falls back to per-element decode.
+fn reinterpret_vec_u8_as_node_idx(bytes: Vec<u8>) -> Vec<NodeIDX> {
+    #[cfg(target_endian = "little")]
+    {
+        let u32s = reinterpret_vec_u8_as_u32(bytes);
+        // SAFETY: NodeIDX is #[repr(transparent)] over u32.
+        // Same size, same alignment, same bit representation.
+        unsafe {
+            let mut u32s = std::mem::ManuallyDrop::new(u32s);
+            Vec::from_raw_parts(
+                u32s.as_mut_ptr() as *mut NodeIDX,
+                u32s.len(),
+                u32s.capacity(),
+            )
+        }
+    }
+    #[cfg(not(target_endian = "little"))]
+    {
+        vec_node_idx_from_le_bytes(&bytes)
+    }
+}
+
+/// Reinterpret a `Vec<u8>` as `Vec<u32>` without per-element iteration.
+/// Requires the buffer length to be a multiple of 4 (caller must verify).
+/// On little-endian: zero-copy pointer cast.
+/// On big-endian: falls back to per-element `from_le_bytes`.
+fn reinterpret_vec_u8_as_u32(bytes: Vec<u8>) -> Vec<u32> {
+    debug_assert!(bytes.len().is_multiple_of(4));
+    #[cfg(target_endian = "little")]
+    {
+        let count = bytes.len() / 4;
+        let capacity = bytes.capacity() / 4;
+        let mut bytes = std::mem::ManuallyDrop::new(bytes);
+        let ptr = bytes.as_mut_ptr();
+        // SAFETY: u8 alignment (1) is compatible with u32 alignment (4) only
+        // if the pointer is 4-byte aligned. Vec guarantees its pointer is
+        // aligned to the maximum of the element alignment and the allocator's
+        // minimum alignment (which is at least 8 on all platforms we target).
+        unsafe { Vec::from_raw_parts(ptr as *mut u32, count, capacity) }
+    }
+    #[cfg(not(target_endian = "little"))]
+    {
+        bytes
+            .chunks_exact(4)
+            .map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+            .collect()
+    }
+}
+
+/// Fallback: decode `&[u8]` → `Vec<NodeIDX>` via per-element `from_le_bytes`.
+fn vec_node_idx_from_le_bytes(bytes: &[u8]) -> Vec<NodeIDX> {
+    let count = bytes.len() / 4;
+    let mut result = Vec::with_capacity(count);
+    for chunk in bytes.chunks_exact(4) {
+        result.push(NodeIDX(u32::from_le_bytes([
+            chunk[0], chunk[1], chunk[2], chunk[3],
+        ])));
+    }
+    result
+}
+
+/// Fallback: decode `&[u8]` → `Vec<usize>` via per-element `from_le_bytes`.
+fn vec_usize_from_le_bytes(bytes: &[u8]) -> Vec<usize> {
+    let count = bytes.len() / 4;
+    let mut result = Vec::with_capacity(count);
+    for chunk in bytes.chunks_exact(4) {
+        result.push(u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]) as usize);
+    }
+    result
+}
+
+/// JSON-backed codec for structured types (maps, options, sets).
+macro_rules! impl_blob_codec_json {
+    ($($ty:ty),+ $(,)?) => { $(
+        impl BlobCodec for $ty {
+            fn encode(&self, w: &mut impl std::io::Write) -> Result<()> {
+                serde_json::to_writer(w, self)?;
+                Ok(())
+            }
+            fn decode(bytes: &[u8]) -> Result<Self> {
+                serde_json::from_slice(bytes).context("Failed to deserialize JSON")
+            }
+        }
+    )+ };
+}
+
+impl_blob_codec_json!(
+    // tagged edges
+    BTreeMap<NodeIDX, BTreeMap<Tag, BTreeSet<NodeIDX>>>,
+    // dynamic edges
+    BTreeMap<NodeIDX, BTreeMap<DynamicTypeKey, BTreeMap<DynamicEdgeName, ArrayGraphDynamicEdge>>>,
+    // metrics
+    BTreeMap<MetricName, Vec<f32>>,
+    // labels
+    BTreeMap<LabelName, BTreeMap<NodeIDX, BTreeSet<LabelValue>>>,
+    // properties
+    BTreeMap<PropertyName, BTreeMap<NodeIDX, PropertyValue>>,
+    // traversal config
+    Option<TraversalConfig>,
+    // entry points
+    Option<BTreeSet<NodeName>>,
+);
 
 /// Unique identifier for a blob within a graph package.
 ///
@@ -254,11 +522,13 @@ type ModifyBlobID = Option<Arc<dyn Fn(&str) -> BlobID + Send + Sync>>;
 /// generation.
 #[derive(Default, Clone)]
 pub struct ArrayGraphSerializablePackageConfig {
-    /// Maximum number of uncompressed serialized bytes per chunk. When a field's
-    /// JSON output exceeds this threshold during serialization, it is split into
-    /// multiple independently compressed blobs. Defaults to
-    /// [`DEFAULT_BYTES_PER_BLOB_CHUNK`] (6 MB).
-    pub bytes_per_blob_chunk: Option<usize>,
+    /// Override for the maximum number of chunks per field.
+    /// Defaults to [`MAX_CHUNKS_PER_FIELD`] (60).
+    pub max_chunks: Option<usize>,
+
+    /// Override for the minimum bytes per chunk.
+    /// Defaults to [`MIN_BYTES_PER_CHUNK`] (2 MB).
+    pub min_bytes_per_chunk: Option<usize>,
 
     /// ZSTD compression level applied to each blob.
     /// Defaults to [`DEFAULT_COMPRESSION_LEVEL`].
@@ -272,10 +542,20 @@ pub struct ArrayGraphSerializablePackageConfig {
 }
 
 impl ArrayGraphSerializablePackageConfig {
-    /// Returns the configured chunk size or the default (6 MB).
-    pub fn bytes_per_chunk(&self) -> usize {
-        self.bytes_per_blob_chunk
-            .unwrap_or(DEFAULT_BYTES_PER_BLOB_CHUNK)
+    /// Computes the chunk threshold for a field with the given encoded size.
+    ///
+    /// Distributes data evenly across up to [`MAX_CHUNKS_PER_FIELD`] chunks,
+    /// but never smaller than [`MIN_BYTES_PER_CHUNK`].
+    fn bytes_per_chunk(&self, encoded_size: usize) -> usize {
+        let max_chunks = self.max_chunks.unwrap_or(MAX_CHUNKS_PER_FIELD);
+        let min_bytes = self.min_bytes_per_chunk.unwrap_or(MIN_BYTES_PER_CHUNK);
+
+        if encoded_size == 0 {
+            return min_bytes;
+        }
+
+        let even_split = encoded_size.div_ceil(max_chunks);
+        even_split.max(min_bytes)
     }
 
     /// Returns the configured compression level or the default.
@@ -356,9 +636,11 @@ impl<F: FnMut(usize, Vec<u8>)> std::io::Write for ChunkingWriter<F> {
 /// A tuple of (manifest, blobs) where:
 /// - manifest contains the metadata and blob IDs
 /// - blobs is a map from BlobID to the actual blob data
+#[ll::task(sync, tags(l2))]
 pub fn pack(
     graph: &ArrayGraphSerializable,
     c: &ArrayGraphSerializablePackageConfig,
+    task: &ll::Task,
 ) -> Result<ArrayGraphSerializablePackage> {
     let mut b = BTreeMap::new();
 
@@ -396,7 +678,9 @@ pub fn pack(
     macro_rules! spawn_field {
         ($s:expr, $($field:ident),+ $(,)?) => {$(
             $s.spawn(|_| {
-                let r = into_blobs_isolated(&$field, stringify!($field), c);
+                let r = task.spawn_sync(concat!(stringify!($field), " #l3"), |_| {
+                    into_blobs_isolated($field, stringify!($field), c)
+                });
                 results.lock().unwrap().insert(stringify!($field), r);
             });
         )+};
@@ -650,10 +934,10 @@ pub fn unpack(
 /// Reconstructs a value from one or more independently compressed blobs.
 ///
 /// Each blob is decompressed in parallel via rayon, the results are concatenated
-/// in order, and the combined JSON is deserialized into `T`.
+/// in order, and the combined bytes are decoded via [`BlobCodec`].
 ///
 /// Returns `T::default()` when `blob_ids` is empty.
-pub fn from_blobs<T: serde::de::DeserializeOwned + Default + Send>(
+pub(crate) fn from_blobs<T: BlobCodec + Default + Send>(
     blob_ids: &[BlobID],
     all_blobs: &BTreeMap<BlobID, Vec<u8>>,
     task: &ll::Task,
@@ -676,7 +960,51 @@ pub fn from_blobs<T: serde::de::DeserializeOwned + Default + Send>(
                 .collect::<Result<Vec<_>>>()
         })?;
 
-        // Concatenate in order, deserialize.
+        // Concatenate in order, decode via BlobCodec.
+        task.spawn_sync("deserialize", |_| {
+            let total_len: usize = decompressed.iter().map(|d| d.len()).sum();
+            let mut bytes = Vec::with_capacity(total_len);
+            for chunk in decompressed {
+                bytes.extend_from_slice(&chunk);
+            }
+
+            T::decode_owned(bytes)
+        })
+    })()
+    .with_context(|| {
+        format!(
+            "Failed to deserialize field: {:?}. BlobIDs: {:?}",
+            std::any::type_name::<T>(),
+            &blob_ids
+        )
+    })
+}
+
+/// JSON-specific variant of [`from_blobs`] for generic serde types.
+///
+/// Used by [`error_package`] which operates on arbitrary `T: DeserializeOwned`.
+pub fn from_blobs_json<T: serde::de::DeserializeOwned + Default + Send>(
+    blob_ids: &[BlobID],
+    all_blobs: &BTreeMap<BlobID, Vec<u8>>,
+    task: &ll::Task,
+) -> Result<T> {
+    (|| {
+        if blob_ids.is_empty() {
+            return Ok(T::default());
+        }
+
+        let decompressed: Vec<Vec<u8>> = task.spawn_sync("decompress", |_| {
+            blob_ids
+                .par_iter()
+                .map(|blob_id| {
+                    let chunk = all_blobs
+                        .get(blob_id)
+                        .ok_or_else(|| anyhow::anyhow!("Missing blob: {}", blob_id.0))?;
+                    from_zstd(chunk)
+                })
+                .collect::<Result<Vec<_>>>()
+        })?;
+
         task.spawn_sync("deserialize", |_| {
             let total_len: usize = decompressed.iter().map(|d| d.len()).sum();
             let mut json = Vec::with_capacity(total_len);
@@ -702,7 +1030,7 @@ pub fn from_blobs<T: serde::de::DeserializeOwned + Default + Send>(
 /// This enables parallel serialization — each field can produce its own blob map
 /// independently, and results are merged after all tasks complete.
 #[allow(clippy::type_complexity)]
-fn into_blobs_isolated<T: serde::Serialize + Sync>(
+fn into_blobs_isolated<T: BlobCodec + Sync>(
     value: &T,
     name: &str,
     cfg: &ArrayGraphSerializablePackageConfig,
@@ -714,26 +1042,67 @@ fn into_blobs_isolated<T: serde::Serialize + Sync>(
 
 /// Serializes a single graph field into one or more independently compressed blobs.
 ///
-/// Serialization and compression are **pipelined**: the value is JSON-serialized
-/// via [`serde_json::to_writer`] into a [`ChunkingWriter`] that splits the output
-/// at `cfg.bytes_per_chunk()` uncompressed bytes. Each full chunk is immediately
-/// dispatched to a rayon thread for ZSTD compression while serialization continues.
+/// Raw-bytes types (String, Vec<NodeIDX>, Vec<usize>) use the **direct path**:
+/// encode to a contiguous buffer, chunk with zero-copy slicing, and compress
+/// all chunks in parallel via `par_iter`.
 ///
-/// Each resulting blob is independently decompressible. Blob IDs are derived from
-/// the field `name` and an xxHash of the compressed contents.
-pub fn into_blobs<T: serde::Serialize + Sync>(
+/// JSON types use the **streaming path**: encode via ChunkingWriter which
+/// dispatches chunks to rayon threads as they fill up.
+pub(crate) fn into_blobs<T: BlobCodec + Sync>(
     value: &T,
     name: &str,
     all_blobs: &mut BTreeMap<BlobID, Vec<u8>>,
     cfg: &ArrayGraphSerializablePackageConfig,
 ) -> Result<Vec<BlobID>> {
-    let threshold = cfg.bytes_per_chunk();
+    if let Some(bytes) = value.borrow_encoded_bytes() {
+        // Zero-copy path: data already in memory (String)
+        into_blobs_direct(bytes, name, all_blobs, cfg)
+    } else if value.encoded_size_hint() > 0 {
+        // Raw type: encode once into a contiguous buffer, then direct path
+        let bytes = value.encode_to_bytes()?;
+        into_blobs_direct(&bytes, name, all_blobs, cfg)
+    } else {
+        // Structured JSON type: streaming ChunkingWriter (data is small)
+        into_blobs_streaming(value, name, all_blobs, cfg)
+    }
+}
+
+/// Direct path: chunk a contiguous byte slice and compress all chunks in parallel.
+fn into_blobs_direct(
+    bytes: &[u8],
+    name: &str,
+    all_blobs: &mut BTreeMap<BlobID, Vec<u8>>,
+    cfg: &ArrayGraphSerializablePackageConfig,
+) -> Result<Vec<BlobID>> {
+    if bytes.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let threshold = cfg.bytes_per_chunk(bytes.len());
+    let level = cfg.compression_level();
+
+    // Zero-copy chunking via slice::chunks, fully parallel compression.
+    let compressed: Vec<Result<Vec<u8>>> = bytes
+        .par_chunks(threshold)
+        .map(|chunk| to_zstd(chunk, level))
+        .collect();
+
+    collect_blob_ids(compressed, name, all_blobs, cfg)
+}
+
+/// Streaming path: encode via ChunkingWriter, compress chunks as they fill.
+/// Used for JSON-encoded types where size is unknown upfront.
+fn into_blobs_streaming<T: BlobCodec + Sync>(
+    value: &T,
+    name: &str,
+    all_blobs: &mut BTreeMap<BlobID, Vec<u8>>,
+    cfg: &ArrayGraphSerializablePackageConfig,
+) -> Result<Vec<BlobID>> {
+    let threshold = cfg.bytes_per_chunk(0);
     let level = cfg.compression_level();
     let results: Mutex<Vec<(usize, Result<Vec<u8>>)>> = Mutex::new(Vec::new());
     let mut total_chunks = 0usize;
 
-    // Pipeline: serialize on this thread, compress chunks on rayon threads.
-    // On WASM, rayon runs spawned tasks inline (sequential but correct).
     rayon::scope(|s| -> Result<()> {
         let results_ref = &results;
         let mut writer = ChunkingWriter::new(threshold, |idx: usize, chunk: Vec<u8>| {
@@ -744,19 +1113,29 @@ pub fn into_blobs<T: serde::Serialize + Sync>(
                     .push((idx, to_zstd(&chunk, level)));
             });
         });
-        serde_json::to_writer(&mut writer, value)?;
+        value.encode(&mut writer)?;
         total_chunks = writer.finish();
         Ok(())
     })?;
 
-    // Collect and sort compressed chunks by index.
     let mut compressed = results.into_inner().unwrap();
     compressed.sort_by_key(|(i, _)| *i);
 
-    let multiple = total_chunks > 1;
-    let mut ids = Vec::with_capacity(total_chunks);
+    let indexed: Vec<Result<Vec<u8>>> = compressed.into_iter().map(|(_, data)| data).collect();
+    collect_blob_ids(indexed, name, all_blobs, cfg)
+}
 
-    for (i, data) in compressed {
+/// Assign content-addressed blob IDs to a list of compressed chunks.
+fn collect_blob_ids(
+    compressed: Vec<Result<Vec<u8>>>,
+    name: &str,
+    all_blobs: &mut BTreeMap<BlobID, Vec<u8>>,
+    cfg: &ArrayGraphSerializablePackageConfig,
+) -> Result<Vec<BlobID>> {
+    let multiple = compressed.len() > 1;
+    let mut ids = Vec::with_capacity(compressed.len());
+
+    for (i, data) in compressed.into_iter().enumerate() {
         let data = data?;
         let xx = xxh3_64(&data);
         let chunk_suffix = if multiple {
@@ -775,6 +1154,42 @@ pub fn into_blobs<T: serde::Serialize + Sync>(
     }
 
     Ok(ids)
+}
+
+/// JSON-specific variant of [`into_blobs`] for generic serde types.
+///
+/// Used by [`error_package`] which operates on arbitrary `T: Serialize`.
+pub fn into_blobs_json<T: serde::Serialize + Sync>(
+    value: &T,
+    name: &str,
+    all_blobs: &mut BTreeMap<BlobID, Vec<u8>>,
+    cfg: &ArrayGraphSerializablePackageConfig,
+) -> Result<Vec<BlobID>> {
+    let threshold = cfg.bytes_per_chunk(0);
+    let level = cfg.compression_level();
+    let results: Mutex<Vec<(usize, Result<Vec<u8>>)>> = Mutex::new(Vec::new());
+    let mut total_chunks = 0usize;
+
+    rayon::scope(|s| -> Result<()> {
+        let results_ref = &results;
+        let mut writer = ChunkingWriter::new(threshold, |idx: usize, chunk: Vec<u8>| {
+            s.spawn(move |_| {
+                results_ref
+                    .lock()
+                    .unwrap()
+                    .push((idx, to_zstd(&chunk, level)));
+            });
+        });
+        serde_json::to_writer(&mut writer, value)?;
+        total_chunks = writer.finish();
+        Ok(())
+    })?;
+
+    let mut compressed = results.into_inner().unwrap();
+    compressed.sort_by_key(|(i, _)| *i);
+
+    let indexed: Vec<Result<Vec<u8>>> = compressed.into_iter().map(|(_, data)| data).collect();
+    collect_blob_ids(indexed, name, all_blobs, cfg)
 }
 
 impl ArrayGraphSerializablePackage {
@@ -819,14 +1234,17 @@ mod tests {
     #[test]
     fn serialize() -> Result<()> {
         let g = make_test_array_graph_2()?.into_serializable();
+        let task = ll::Task::create_new("");
 
         let package = pack(
             &g,
             &ArrayGraphSerializablePackageConfig {
-                bytes_per_blob_chunk: Some(50),
+                min_bytes_per_chunk: Some(50),
                 compression_level: Some(ZSTDCompressionLevel::Best),
                 modify_blob_id: Some(Arc::new(|id| BlobID(id.to_string()))),
+                max_chunks: None,
             },
+            &task,
         )?;
 
         snapshot!(
@@ -835,11 +1253,12 @@ mod tests {
 {
   "self_reference": "_manifest.json",
   "stats": {
-    "total_blobs": 15,
-    "total_size_bytes": 457,
+    "total_blobs": 17,
+    "total_size_bytes": 487,
     "blob_sizes_bytes": {
-      "directed_1506826171969472540": 35,
-      "directed_offsets_8316678694188447186": 40,
+      "directed_4701723338808295729": 35,
+      "directed_offsets_chunk_0_5054735039214514726": 29,
+      "directed_offsets_chunk_1_17584161237355671614": 27,
       "dynamic_chunk_0_5678110360769255721": 56,
       "dynamic_chunk_1_8887446987824866365": 17,
       "entry_points_9535545603450022154": 13,
@@ -847,8 +1266,9 @@ mod tests {
       "labels_chunk_1_16684219789371696493": 22,
       "metrics_chunk_0_5289880619835925526": 29,
       "metrics_chunk_1_6943866561601348189": 21,
-      "node_names_10311418653884441124": 27,
-      "node_names_offsets_15446562321729131330": 43,
+      "node_names_7792959244734820584": 25,
+      "node_names_offsets_chunk_0_8844594067930830932": 32,
+      "node_names_offsets_chunk_1_15706661496525575030": 27,
       "properties_4370653166743570923": 11,
       "tagged_chunk_0_11587565309408646083": 54,
       "tagged_chunk_1_6155307348235514257": 17,
@@ -859,16 +1279,18 @@ mod tests {
   },
   "blobs": {
     "node_names": [
-      "node_names_10311418653884441124"
+      "node_names_7792959244734820584"
     ],
     "node_names_offsets": [
-      "node_names_offsets_15446562321729131330"
+      "node_names_offsets_chunk_0_8844594067930830932",
+      "node_names_offsets_chunk_1_15706661496525575030"
     ],
     "directed": [
-      "directed_1506826171969472540"
+      "directed_4701723338808295729"
     ],
     "directed_offsets": [
-      "directed_offsets_8316678694188447186"
+      "directed_offsets_chunk_0_5054735039214514726",
+      "directed_offsets_chunk_1_17584161237355671614"
     ],
     "tagged": [
       "tagged_chunk_0_11587565309408646083",
@@ -912,8 +1334,9 @@ mod tests {
             r#"
 [
     "_manifest.json",
-    "directed_1506826171969472540",
-    "directed_offsets_8316678694188447186",
+    "directed_4701723338808295729",
+    "directed_offsets_chunk_0_5054735039214514726",
+    "directed_offsets_chunk_1_17584161237355671614",
     "dynamic_chunk_0_5678110360769255721",
     "dynamic_chunk_1_8887446987824866365",
     "entry_points_9535545603450022154",
@@ -921,8 +1344,9 @@ mod tests {
     "labels_chunk_1_16684219789371696493",
     "metrics_chunk_0_5289880619835925526",
     "metrics_chunk_1_6943866561601348189",
-    "node_names_10311418653884441124",
-    "node_names_offsets_15446562321729131330",
+    "node_names_7792959244734820584",
+    "node_names_offsets_chunk_0_8844594067930830932",
+    "node_names_offsets_chunk_1_15706661496525575030",
     "properties_4370653166743570923",
     "tagged_chunk_0_11587565309408646083",
     "tagged_chunk_1_6155307348235514257",
@@ -936,15 +1360,16 @@ mod tests {
     #[test]
     fn roundtrip_to_blobs_and_from_blobs() -> Result<()> {
         let original_graph = make_test_array_graph_2()?.into_serializable();
+        let task = ll::Task::create_new("");
 
         // Convert to blobs
         let package = pack(
             &original_graph,
             &ArrayGraphSerializablePackageConfig::default(),
+            &task,
         )?;
 
         // Convert back from blobs
-        let task = ll::Task::create_new("");
         let reconstructed_graph = unpack(&package, &task)?;
 
         // Verify they're the same (by comparing JSON representations)
@@ -964,6 +1389,7 @@ mod tests {
             let graph = MapGraph::from_json(&graph_json)?
                 .to_array_graph_serializable()
                 .context("Failed to convert to ArrayGraphSerializable")?;
+            let task = ll::Task::create_new("");
 
             let time_now = std::time::Instant::now();
             let result = pack(
@@ -972,6 +1398,7 @@ mod tests {
                     compression_level: Some(ZSTDCompressionLevel::Best),
                     ..Default::default()
                 },
+                &task,
             )?;
             let duration = time_now.elapsed();
             eprintln!("Preparation for storage took: {duration:?}");

@@ -201,8 +201,9 @@ impl ArrayGraphSerializable {
     pub fn pack(
         &self,
         config: &ArrayGraphSerializablePackageConfig,
+        task: &ll::Task,
     ) -> Result<ArrayGraphSerializablePackage> {
-        package::pack(self, config).context("Failed to pack graph")
+        package::pack(self, config, task).context("Failed to pack graph")
     }
 
     pub fn unpack(

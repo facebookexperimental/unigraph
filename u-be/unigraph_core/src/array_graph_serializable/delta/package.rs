@@ -20,8 +20,8 @@ use anyhow::Result;
 use super::GraphDelta;
 use crate::array_graph_serializable::package::ArrayGraphSerializablePackageConfig;
 use crate::array_graph_serializable::package::BlobID;
-use crate::array_graph_serializable::package::from_blobs;
-use crate::array_graph_serializable::package::into_blobs;
+use crate::array_graph_serializable::package::from_blobs_json;
+use crate::array_graph_serializable::package::into_blobs_json;
 
 /// Manifest for a packaged delta.
 ///
@@ -154,7 +154,7 @@ pub fn pack_delta(
 ) -> Result<DeltaPackage> {
     let mut blobs = BTreeMap::new();
 
-    let delta_blob = into_blobs(delta, "delta", &mut blobs, config)?;
+    let delta_blob = into_blobs_json(delta, "delta", &mut blobs, config)?;
 
     let mut manifest_blob_id = BlobID::from("_delta_manifest.json");
     if let Some(f) = config.modify_blob_id.as_ref() {
@@ -180,7 +180,7 @@ pub fn pack_delta(
 /// Unpack a [`DeltaPackage`] back into a [`GraphDelta`].
 pub fn unpack_delta(package: &DeltaPackage) -> Result<GraphDelta> {
     let task = ll::Task::create_new("");
-    from_blobs(&package.manifest.delta_blob, &package.blobs, &task)
+    from_blobs_json(&package.manifest.delta_blob, &package.blobs, &task)
         .context("Failed to unpack delta")
         .with_context(|| {
             format!(

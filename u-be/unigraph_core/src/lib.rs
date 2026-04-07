@@ -39,8 +39,8 @@ pub use crate::array_graph_serializable::package::ArrayGraphSerializablePackageC
 pub use crate::array_graph_serializable::package::BlobID;
 pub use crate::array_graph_serializable::package::ManifestBlobs;
 pub use crate::array_graph_serializable::package::ManifestStats;
-pub use crate::array_graph_serializable::package::from_blobs;
-pub use crate::array_graph_serializable::package::into_blobs;
+pub use crate::array_graph_serializable::package::from_blobs_json;
+pub use crate::array_graph_serializable::package::into_blobs_json;
 pub use crate::config_key::ConfigKeyLike;
 pub use crate::config_key::ConfigRow;
 pub use crate::config_key::GraphQueryConfigKey;

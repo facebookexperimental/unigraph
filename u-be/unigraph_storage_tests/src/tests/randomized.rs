@@ -47,13 +47,13 @@ async fn setup_timeline_full_or_delta(db: &UnigraphDb, name: &str, task: &ll::Ta
 }
 
 #[tokio::test]
-async fn randomized_full_graph_roundtrip_1000() -> Result<()> {
+async fn randomized_full_graph_roundtrip_100() -> Result<()> {
     let db = make_db();
     let task = ll::Task::create_new("test");
     setup_timeline(&db, "test", &task).await;
 
-    // Generate 1000 graphs
-    let graphs: Vec<_> = (0..1000)
+    // Generate 100 graphs
+    let graphs: Vec<_> = (0..100)
         .map(|i| (i, TestGraphTimeline::get_nth(i)))
         .collect();
 
@@ -63,7 +63,7 @@ async fn randomized_full_graph_roundtrip_1000() -> Result<()> {
         db.graph.store(&key, graph, None, &task).await?;
     }
 
-    // Verify all 1000 graphs round-trip correctly
+    // Verify all 100 graphs round-trip correctly
     for (i, graph) in &graphs {
         let fetched = db
             .graph

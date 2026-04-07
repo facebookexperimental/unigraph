@@ -302,8 +302,9 @@ async fn wait_for_vite(port: u16) -> Result<()> {
 // --- Graph serialization helpers ---
 
 fn array_graph_to_json(ag: &ArrayGraphSerializable) -> Result<String> {
+    let task = ll::Task::create_new("");
     let package_base64 = ag
-        .pack(&ArrayGraphSerializablePackageConfig::default())?
+        .pack(&ArrayGraphSerializablePackageConfig::default(), &task)?
         .into_base_64();
     let serialized_str = SerializationFormat::Json.to_serialized_str(
         &package_base64,

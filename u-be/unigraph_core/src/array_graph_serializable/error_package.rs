@@ -21,8 +21,8 @@ use anyhow::Result;
 
 use crate::array_graph_serializable::package::ArrayGraphSerializablePackageConfig;
 use crate::array_graph_serializable::package::BlobID;
-use crate::array_graph_serializable::package::from_blobs;
-use crate::array_graph_serializable::package::into_blobs;
+use crate::array_graph_serializable::package::from_blobs_json;
+use crate::array_graph_serializable::package::into_blobs_json;
 
 /// Manifest for packaged error data.
 ///
@@ -89,7 +89,7 @@ pub fn pack_errors<T: serde::Serialize + Sync>(
 ) -> Result<ErrorPackage> {
     let mut blobs = BTreeMap::new();
 
-    let errors_blob = into_blobs(errors, "errors", &mut blobs, config)?;
+    let errors_blob = into_blobs_json(errors, "errors", &mut blobs, config)?;
 
     let mut manifest_blob_id = BlobID::from("_error_manifest.json");
     if let Some(f) = config.modify_blob_id.as_ref() {
@@ -117,7 +117,7 @@ pub fn unpack_errors<T: serde::de::DeserializeOwned + Default + Send>(
     package: &ErrorPackage,
 ) -> Result<T> {
     let task = ll::Task::create_new("");
-    from_blobs(&package.manifest.errors_blob, &package.blobs, &task)
+    from_blobs_json(&package.manifest.errors_blob, &package.blobs, &task)
         .context("Failed to unpack errors")
         .with_context(|| {
             format!(
