@@ -12,6 +12,7 @@ anyhow = "1.0.102"
 bitflags = { version = "2.9", features = ["serde", "std"], default-features = false }
 bytemuck = { version = "1.24", features = ["const_zeroed", "derive", "min_const_generics", "must_cast", "nightly_portable_simd", "nightly_stdsimd"] }
 fst = "0.4"
+ll = "10.0.0"
 rayon = "1.11.0"
 readonly = "0.2.13"
 regex = "1.12.3"

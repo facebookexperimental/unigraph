@@ -205,8 +205,11 @@ impl ArrayGraphSerializable {
         package::pack(self, config).context("Failed to pack graph")
     }
 
-    pub fn unpack(package: &ArrayGraphSerializablePackage) -> Result<ArrayGraphSerializable> {
-        package::unpack(package).context("Failed to unpack graph")
+    pub fn unpack(
+        package: &ArrayGraphSerializablePackage,
+        task: &ll::Task,
+    ) -> Result<ArrayGraphSerializable> {
+        package::unpack(package, task).context("Failed to unpack graph")
     }
 
     /// Remaps node indices throughout the entire graph (names, edges, metadata)

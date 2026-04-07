@@ -644,7 +644,8 @@ fn parse_input_graph(g: ExplorerComponentInputGraph) -> Result<ArrayGraphSeriali
                 .parse::<ArrayGraphSerializablePackageBase64>()
                 .context("Failed to parse array graph serialized package")?;
             let package = ArrayGraphSerializablePackage::from_base64(package_base64)?;
-            ArrayGraphSerializable::unpack(&package)
+            let task = ll::Task::create_new("");
+            ArrayGraphSerializable::unpack(&package, &task)
         }
     }
     .context("Failed to parse input graph")

@@ -179,7 +179,8 @@ pub fn pack_delta(
 
 /// Unpack a [`DeltaPackage`] back into a [`GraphDelta`].
 pub fn unpack_delta(package: &DeltaPackage) -> Result<GraphDelta> {
-    from_blobs(&package.manifest.delta_blob, &package.blobs)
+    let task = ll::Task::create_new("");
+    from_blobs(&package.manifest.delta_blob, &package.blobs, &task)
         .context("Failed to unpack delta")
         .with_context(|| {
             format!(

@@ -479,7 +479,11 @@ pub fn pack(
 /// * `manifest` - The manifest containing metadata and blob IDs
 /// * `blobs` - Map from BlobID to the actual blob data. This would be fetched from
 ///   the underlying storage where the graph was stored (db/filesystem/etc)
-pub fn unpack(package: &ArrayGraphSerializablePackage) -> Result<ArrayGraphSerializable> {
+#[ll::task(sync, tags(l2))]
+pub fn unpack(
+    package: &ArrayGraphSerializablePackage,
+    task: &ll::Task,
+) -> Result<ArrayGraphSerializable> {
     (|| {
         let ArrayGraphSerializableManifest {
             self_reference: _,
@@ -529,41 +533,59 @@ pub fn unpack(package: &ArrayGraphSerializablePackage) -> Result<ArrayGraphSeria
 
         rayon::scope(|s| {
             s.spawn(|_| {
-                *r_node_names.lock().unwrap() = Some(from_blobs(node_names, b));
+                *r_node_names.lock().unwrap() =
+                    Some(task.spawn_sync("node_names #l3", |t| from_blobs(node_names, b, &t)));
             });
             s.spawn(|_| {
-                *r_node_name_offsets.lock().unwrap() = Some(from_blobs(node_names_offsets, b));
+                *r_node_name_offsets.lock().unwrap() =
+                    Some(task.spawn_sync("node_name_offsets #l3", |t| {
+                        from_blobs(node_names_offsets, b, &t)
+                    }));
             });
             s.spawn(|_| {
-                *r_directed.lock().unwrap() = Some(from_blobs(directed, b));
+                *r_directed.lock().unwrap() =
+                    Some(task.spawn_sync("directed #l3", |t| from_blobs(directed, b, &t)));
             });
             s.spawn(|_| {
-                *r_directed_offsets.lock().unwrap() = Some(from_blobs(directed_offsets, b));
+                *r_directed_offsets.lock().unwrap() =
+                    Some(task.spawn_sync("directed_offsets #l3", |t| {
+                        from_blobs(directed_offsets, b, &t)
+                    }));
             });
             s.spawn(|_| {
-                *r_tagged.lock().unwrap() = Some(from_blobs(tagged, b));
+                *r_tagged.lock().unwrap() =
+                    Some(task.spawn_sync("tagged #l3", |t| from_blobs(tagged, b, &t)));
             });
             s.spawn(|_| {
-                *r_dynamic.lock().unwrap() = Some(from_blobs(dynamic, b));
+                *r_dynamic.lock().unwrap() =
+                    Some(task.spawn_sync("dynamic #l3", |t| from_blobs(dynamic, b, &t)));
             });
             s.spawn(|_| {
-                *r_metrics.lock().unwrap() = Some(from_blobs(metrics, b));
+                *r_metrics.lock().unwrap() =
+                    Some(task.spawn_sync("metrics #l3", |t| from_blobs(metrics, b, &t)));
             });
             s.spawn(|_| {
-                *r_labels.lock().unwrap() = Some(from_blobs(labels, b));
+                *r_labels.lock().unwrap() =
+                    Some(task.spawn_sync("labels #l3", |t| from_blobs(labels, b, &t)));
             });
             s.spawn(|_| {
-                *r_properties.lock().unwrap() = Some(if properties.is_empty() {
-                    Ok(BTreeMap::new())
-                } else {
-                    from_blobs(properties, b)
-                });
+                *r_properties.lock().unwrap() = Some(task.spawn_sync("properties #l3", |t| {
+                    if properties.is_empty() {
+                        Ok(BTreeMap::new())
+                    } else {
+                        from_blobs(properties, b, &t)
+                    }
+                }));
             });
             s.spawn(|_| {
-                *r_traversal_config.lock().unwrap() = Some(from_blobs(traversal_config, b));
+                *r_traversal_config.lock().unwrap() =
+                    Some(task.spawn_sync("traversal_config #l3", |t| {
+                        from_blobs(traversal_config, b, &t)
+                    }));
             });
             s.spawn(|_| {
-                *r_entry_points.lock().unwrap() = Some(from_blobs(entry_points, b));
+                *r_entry_points.lock().unwrap() =
+                    Some(task.spawn_sync("entry_points #l3", |t| from_blobs(entry_points, b, &t)));
             });
         });
 
@@ -631,9 +653,10 @@ pub fn unpack(package: &ArrayGraphSerializablePackage) -> Result<ArrayGraphSeria
 /// in order, and the combined JSON is deserialized into `T`.
 ///
 /// Returns `T::default()` when `blob_ids` is empty.
-pub fn from_blobs<T: serde::de::DeserializeOwned + Default>(
+pub fn from_blobs<T: serde::de::DeserializeOwned + Default + Send>(
     blob_ids: &[BlobID],
     all_blobs: &BTreeMap<BlobID, Vec<u8>>,
+    task: &ll::Task,
 ) -> Result<T> {
     (|| {
         if blob_ids.is_empty() {
@@ -641,25 +664,29 @@ pub fn from_blobs<T: serde::de::DeserializeOwned + Default>(
         }
 
         // Decompress all chunks in parallel.
-        let decompressed: Vec<Vec<u8>> = blob_ids
-            .par_iter()
-            .map(|blob_id| {
-                let chunk = all_blobs
-                    .get(blob_id)
-                    .ok_or_else(|| anyhow::anyhow!("Missing blob: {}", blob_id.0))?;
-                from_zstd(chunk)
-            })
-            .collect::<Result<Vec<_>>>()?;
+        let decompressed: Vec<Vec<u8>> = task.spawn_sync("decompress", |_| {
+            blob_ids
+                .par_iter()
+                .map(|blob_id| {
+                    let chunk = all_blobs
+                        .get(blob_id)
+                        .ok_or_else(|| anyhow::anyhow!("Missing blob: {}", blob_id.0))?;
+                    from_zstd(chunk)
+                })
+                .collect::<Result<Vec<_>>>()
+        })?;
 
         // Concatenate in order, deserialize.
-        let total_len: usize = decompressed.iter().map(|d| d.len()).sum();
-        let mut json = Vec::with_capacity(total_len);
-        for chunk in &decompressed {
-            json.extend_from_slice(chunk);
-        }
+        task.spawn_sync("deserialize", |_| {
+            let total_len: usize = decompressed.iter().map(|d| d.len()).sum();
+            let mut json = Vec::with_capacity(total_len);
+            for chunk in &decompressed {
+                json.extend_from_slice(chunk);
+            }
 
-        let value: T = serde_json::from_slice(&json).context("Failed to deserialize JSON")?;
-        anyhow::Ok(value)
+            let value: T = serde_json::from_slice(&json).context("Failed to deserialize JSON")?;
+            anyhow::Ok(value)
+        })
     })()
     .with_context(|| {
         format!(
@@ -917,7 +944,8 @@ mod tests {
         )?;
 
         // Convert back from blobs
-        let reconstructed_graph = unpack(&package)?;
+        let task = ll::Task::create_new("");
+        let reconstructed_graph = unpack(&package, &task)?;
 
         // Verify they're the same (by comparing JSON representations)
         let original_json = serde_json::to_string_pretty(&original_graph)?;

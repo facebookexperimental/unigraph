@@ -113,10 +113,11 @@ pub fn pack_errors<T: serde::Serialize + Sync>(
 }
 
 /// Unpack an [`ErrorPackage`] back into the original error data.
-pub fn unpack_errors<T: serde::de::DeserializeOwned + Default>(
+pub fn unpack_errors<T: serde::de::DeserializeOwned + Default + Send>(
     package: &ErrorPackage,
 ) -> Result<T> {
-    from_blobs(&package.manifest.errors_blob, &package.blobs)
+    let task = ll::Task::create_new("");
+    from_blobs(&package.manifest.errors_blob, &package.blobs, &task)
         .context("Failed to unpack errors")
         .with_context(|| {
             format!(
