@@ -20,7 +20,7 @@ use crate::Unigraph;
 #[derive(Debug, Clone, Serialize, Deserialize, TypeGen)]
 pub struct AboutGraphInput {
     /// Graph handle: a timeline_id ("cargo"), graph_key ("cargo~356"),
-    /// or gqc_key ("gqc-abc123").
+    /// or gqc_key ("gqc_abc123").
     pub handle: String,
 }
 

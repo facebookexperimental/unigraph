@@ -155,7 +155,7 @@ async fn ttl_expired_frames_and_configs_cleanup() -> Result<()> {
         expired_configs,
         r#"
 [
-    "tvc-42638012cc37ff85",
+    "tvc_42638012cc37ff85",
 ]
 "#
     );

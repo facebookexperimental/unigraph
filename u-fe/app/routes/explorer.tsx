@@ -169,7 +169,7 @@ async function fetchHandleGraph(
   rpc: UnigraphRpc,
   handle: string,
 ): Promise<GraphQueryOutput> {
-  if (handle.startsWith("gqc-")) {
+  if (handle.startsWith("gqc_")) {
     return rpc.call("GraphQuery", { graph_query_config_key: handle });
   }
   return rpc.call("GraphQuery", {

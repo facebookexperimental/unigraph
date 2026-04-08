@@ -20,7 +20,7 @@ use crate::Unigraph;
 /// A parsed graph handle — resolves to a cached or fetched `ArrayGraph`.
 ///
 /// Handles come in three forms:
-/// - `gqc-{hash}` — GQC key (content-addressed config with embedded graph ref)
+/// - `gqc_{hash}` — GQC key (content-addressed config with embedded graph ref)
 /// - `{timeline}~{id}` — GraphKey (specific snapshot)
 /// - `{timeline}` — TimelineID (latest graph)
 #[derive(Debug, Clone)]

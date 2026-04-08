@@ -57,7 +57,7 @@ async fn traversal_config_store_and_fetch() -> Result<()> {
     let config = sample_traversal_config();
     let key = db.configs.store_traversal_config(&config, &task).await?;
 
-    assert!(key.as_str().starts_with("tvc-"));
+    assert!(key.as_str().starts_with("tvc_"));
 
     let fetched = db.configs.fetch_traversal_config(&key, &task).await?;
     assert_eq!(fetched, config);
@@ -90,7 +90,7 @@ async fn graph_query_config_store_and_fetch() -> Result<()> {
     let config = sample_graph_query_config();
     let key = db.configs.store_graph_query_config(&config, &task).await?;
 
-    assert!(key.as_str().starts_with("gqc-"));
+    assert!(key.as_str().starts_with("gqc_"));
 
     let fetched = db.configs.fetch_graph_query_config(&key, &task).await?;
     assert_eq!(fetched, config);
@@ -188,8 +188,8 @@ async fn key_prefixes_are_distinct() -> Result<()> {
     snapshot!(
         format!("TVC: {}\nGQC: {}", tvc_key, gqc_key),
         "
-TVC: tvc-f044e82cdcb5dff6
-GQC: gqc-6de22efebe3d43e1
+TVC: tvc_f044e82cdcb5dff6
+GQC: gqc_728a0dda5b62b9dc
 "
     );
 
@@ -273,7 +273,7 @@ async fn fetch_nonexistent_config_errors() -> Result<()> {
     let db = make_db();
     let task = ll::Task::create_new("test");
 
-    let fake_key = TraversalConfigKey::from_string("tvc-0000000000000000".to_string())?;
+    let fake_key = TraversalConfigKey::from_string("tvc_0000000000000000".to_string())?;
     let err = db
         .configs
         .fetch_traversal_config(&fake_key, &task)

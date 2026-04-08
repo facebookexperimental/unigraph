@@ -13,7 +13,7 @@
 //! Each entry carries its own TTL, set by the caller at fetch time.
 //!
 //! ```text
-//! get_by_gqc_key("gqc-abc", task, 5min)
+//! get_by_gqc_key("gqc_abc", task, 5min)
 //!   ├─ cache hit   → Arc::clone(cached_graph)
 //!   └─ cache miss  → resolve config → fetch graph → apply roots → apply traversal
 //!                    → store entry with TTL → return Arc::clone

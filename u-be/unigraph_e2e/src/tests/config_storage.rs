@@ -33,8 +33,8 @@ async fn store_and_fetch_configs() -> Result<()> {
             put.traversal_configs[0], put.graph_query_configs[0]
         ),
         "
-tvc_key: tvc-f044e82cdcb5dff6
-gqc_key: gqc-6de22efebe3d43e1
+tvc_key: tvc_f044e82cdcb5dff6
+gqc_key: gqc_728a0dda5b62b9dc
 "
     );
 

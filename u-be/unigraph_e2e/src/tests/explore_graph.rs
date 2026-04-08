@@ -613,7 +613,7 @@ async fn about_graph_by_gqc_key() -> Result<()> {
     // The GQC-resolved graph has the same stats, but the handle in the text
     // is the gqc_key string. We just verify the structured fields above
     // and check that the text starts with the right heading.
-    assert!(out.text.starts_with("# Graph: gqc-"));
+    assert!(out.text.starts_with("# Graph: gqc_"));
 
     Ok(())
 }

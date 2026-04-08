@@ -90,15 +90,15 @@ macro_rules! define_config_key {
 define_config_key!(
     /// Content-addressed key for a `TraversalConfig`.
     ///
-    /// Format: `"tvc-{xxh3_64_hex}"` (e.g. `"tvc-1a2b3c4d5e6f7890"`)
-    TraversalConfigKey, "tvc-"
+    /// Format: `"tvc_{xxh3_64_hex}"` (e.g. `"tvc_1a2b3c4d5e6f7890"`)
+    TraversalConfigKey, "tvc_"
 );
 
 define_config_key!(
     /// Content-addressed key for a `GraphQueryConfig`.
     ///
-    /// Format: `"gqc-{xxh3_64_hex}"` (e.g. `"gqc-abcdef0123456789"`)
-    GraphQueryConfigKey, "gqc-"
+    /// Format: `"gqc_{xxh3_64_hex}"` (e.g. `"gqc_abcdef0123456789"`)
+    GraphQueryConfigKey, "gqc_"
 );
 
 #[cfg(test)]
@@ -109,11 +109,11 @@ mod tests {
     fn key_from_blob_has_correct_prefix_and_length() {
         let blob = b"test data";
         let tvc = TraversalConfigKey::from_blob(blob);
-        assert!(tvc.0.starts_with("tvc-"));
+        assert!(tvc.0.starts_with("tvc_"));
         assert_eq!(tvc.0.len(), 4 + 16);
 
         let gqc = GraphQueryConfigKey::from_blob(blob);
-        assert!(gqc.0.starts_with("gqc-"));
+        assert!(gqc.0.starts_with("gqc_"));
         assert_eq!(gqc.0.len(), 4 + 16);
     }
 
@@ -141,8 +141,8 @@ mod tests {
 
     #[test]
     fn parse_wrong_prefix_fails() {
-        let err = "gqc-wrong".parse::<TraversalConfigKey>().unwrap_err();
-        assert!(err.to_string().contains("tvc-"), "{err}");
+        let err = "gqc_wrong".parse::<TraversalConfigKey>().unwrap_err();
+        assert!(err.to_string().contains("tvc_"), "{err}");
     }
 
     #[test]
