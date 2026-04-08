@@ -38,9 +38,12 @@ impl NameSearch {
         nodes: &'a ArrayGraphNodes,
         pattern: &str,
         limit: usize,
+        task: &ll::Task,
     ) -> Result<Vec<(&'a str, NodeIDX)>> {
         if nodes.combined_nodes_len() >= FST_SEARCH_THRESHOLD {
-            let fst_sets = self.fst_sets.get_or_try_init(|| FstSets::build(nodes))?;
+            let fst_sets = self
+                .fst_sets
+                .get_or_try_init(|| task.spawn_sync("fst_build", |_| FstSets::build(nodes)))?;
             search_fuzzy_fst(nodes, fst_sets, pattern, limit)
         } else {
             search_fuzzy_regex(nodes, pattern, limit)
@@ -167,8 +170,9 @@ mod tests {
     }
 
     fn search_fuzzy(nodes: &ArrayGraphNodes, query: &str, limit: usize) -> Result<String> {
+        let task = ll::Task::create_new("");
         Ok(nodes
-            .search_name_fuzzy(query, limit)?
+            .search_name_fuzzy(query, limit, &task)?
             .into_iter()
             .map(|(name, _idx)| name.to_string())
             .collect::<Vec<_>>()

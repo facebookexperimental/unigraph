@@ -45,7 +45,7 @@ impl GraphHandle {
             }
             GraphHandle::GraphKey(key) => {
                 let ag_ser = ctx.db.graph.fetch(key, task).await?;
-                Ok(Arc::new(ag_ser.into_array_graph()))
+                Ok(Arc::new(ag_ser.into_array_graph(task)?))
             }
         }
     }

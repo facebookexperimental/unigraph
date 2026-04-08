@@ -58,8 +58,12 @@ impl TwinGraph {
         })
     }
 
-    pub fn from_two(l: ArrayGraphSerializable, r: ArrayGraphSerializable) -> Result<Self> {
-        merge::merge_into_twin(l, r)
+    pub fn from_two(
+        l: ArrayGraphSerializable,
+        r: ArrayGraphSerializable,
+        task: &ll::Task,
+    ) -> Result<Self> {
+        merge::merge_into_twin(l, r, task)
     }
 
     pub fn graph(&self, side: GraphSide) -> Result<&ArrayGraph> {
@@ -114,8 +118,9 @@ impl TwinGraph {
         &'a self,
         pattern: &str,
         limit: usize,
+        task: &ll::Task,
     ) -> Result<Vec<(&'a str, NodeIDX)>> {
-        self.node_names.search_name_fuzzy(pattern, limit)
+        self.node_names.search_name_fuzzy(pattern, limit, task)
     }
 
     pub fn get_transitive_count_delta(&self, node_idx: NodeIDX) -> Result<i32> {

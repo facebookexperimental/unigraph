@@ -54,12 +54,16 @@ impl RpcExec<Unigraph> for GraphQueryInput {
         }
         ag.traversal_config = gqc.traversal_config.clone();
 
-        let package = tokio::task::spawn_blocking(move || {
-            let config = ArrayGraphSerializablePackageConfig::default();
-            let pack_task = ll::Task::create_new("");
-            ag.pack(&config, &pack_task)
-        })
-        .await??;
+        let package = task
+            .spawn("pack", |task| async move {
+                tokio::task::spawn_blocking(move || {
+                    let config = ArrayGraphSerializablePackageConfig::default();
+                    ag.pack(&config, &task)
+                })
+                .await
+                .context("spawn_blocking panicked")?
+            })
+            .await?;
 
         Ok(GraphQueryOutput {
             package: package.into_base_64(),
@@ -110,10 +114,13 @@ async fn extract_subgraph(
         .filter_map(|name| ag.node_names_ordered.name_to_idx_log(name.as_str()))
         .collect();
 
-    tokio::task::spawn_blocking(move || {
-        ag.into_array_graph()
-            .get_reachable_subgraph_unconfigured(&root_idxs)
+    task.spawn("extract_subgraph", |task| async move {
+        tokio::task::spawn_blocking(move || {
+            ag.into_array_graph(&task)?
+                .get_reachable_subgraph_unconfigured(&root_idxs)
+        })
+        .await
+        .context("spawn_blocking panicked")?
     })
     .await
-    .context("spawn_blocking panicked")?
 }

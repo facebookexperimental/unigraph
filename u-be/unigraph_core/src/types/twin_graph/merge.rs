@@ -17,9 +17,10 @@ use crate::types::twin_graph::changed_nodes_graph::ChangedNodesGraph;
 pub fn merge_into_twin(
     left: ArrayGraphSerializable,
     right: ArrayGraphSerializable,
+    task: &ll::Task,
 ) -> Result<TwinGraph> {
-    let mut ag_l = left.into_array_graph();
-    let mut ag_r = right.into_array_graph();
+    let mut ag_l = left.into_array_graph(task)?;
+    let mut ag_r = right.into_array_graph(task)?;
 
     let entrypoints_left = ag_l.determine_entrypoints();
     let entrypoints_right = ag_r.determine_entrypoints();
@@ -92,9 +93,9 @@ pub fn merge_into_twin(
         crate::GraphSide::Right,
     );
 
-    let mut left = remapped_left.into_array_graph();
+    let mut left = remapped_left.into_array_graph(task)?;
     left.nodes = shared_node_names_l;
-    let mut right = remapped_right.into_array_graph();
+    let mut right = remapped_right.into_array_graph(task)?;
     right.nodes = shared_node_names_r;
 
     let metric_names = left

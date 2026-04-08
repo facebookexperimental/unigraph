@@ -56,9 +56,8 @@ mod tests {
     fn extract_from_test_graph() {
         let graph = unigraph_core::make_test_graph()
             .unwrap()
-            .to_array_graph()
-            .unwrap()
-            .into_serializable();
+            .to_array_graph_serializable()
+            .unwrap();
 
         let metrics = extract_node_metrics(&graph);
 

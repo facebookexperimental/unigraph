@@ -3,6 +3,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use anyhow::Context;
 use anyhow::Result;
 use serde::Deserialize;
 use serde::Serialize;
@@ -43,15 +44,25 @@ impl RpcExec<Unigraph> for SearchNodesInput {
             .await?;
         let limit = self.limit.unwrap_or(30);
         let pattern = self.pattern;
-        let matches =
-            tokio::task::spawn_blocking(move || search_nodes(ag, &pattern, limit)).await??;
+        let matches = task
+            .spawn("search_nodes", |task| async move {
+                tokio::task::spawn_blocking(move || search_nodes(ag, &pattern, limit, &task))
+                    .await
+                    .context("spawn_blocking panicked")?
+            })
+            .await?;
         Ok(SearchNodesOutput { matches })
     }
 }
 
-fn search_nodes(ag: Arc<ArrayGraph>, pattern: &str, limit: usize) -> Result<Vec<String>> {
+fn search_nodes(
+    ag: Arc<ArrayGraph>,
+    pattern: &str,
+    limit: usize,
+    task: &ll::Task,
+) -> Result<Vec<String>> {
     Ok(ag
-        .search_name_fuzzy(pattern, limit)?
+        .search_name_fuzzy(pattern, limit, task)?
         .into_iter()
         .map(|(name, _idx)| name.to_string())
         .collect())

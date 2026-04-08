@@ -153,7 +153,7 @@ fn test_full_roundtrip() -> Result<()> {
 
     // MapGraph → ArrayGraphSerializable → ArrayGraph → (to_map_graph) → MapGraph
     let serializable = original.to_array_graph_serializable()?;
-    let array_graph = serializable.into_array_graph();
+    let array_graph = serializable.into_array_graph(&ll::Task::create_new(""))?;
     let roundtrip = array_graph.to_map_graph()?;
     let roundtrip_json = serde_json::to_string_pretty(&roundtrip)?;
 
@@ -174,7 +174,7 @@ fn test_roundtrip_through_json_serializable() -> Result<()> {
     let serializable = original.to_array_graph_serializable()?;
     let json = serializable.to_json()?;
     let deserialized = crate::ArrayGraphSerializable::from_json(&json)?;
-    let array_graph = deserialized.into_array_graph();
+    let array_graph = deserialized.into_array_graph(&ll::Task::create_new(""))?;
     let roundtrip = array_graph.to_map_graph()?;
     let roundtrip_json = serde_json::to_string_pretty(&roundtrip)?;
 
@@ -193,9 +193,9 @@ fn test_roundtrip_through_into_serializable() -> Result<()> {
 
     // MapGraph → ArrayGraphSerializable → ArrayGraph → into_serializable() → ArrayGraph → MapGraph
     let serializable = original.to_array_graph_serializable()?;
-    let ag = serializable.into_array_graph();
+    let ag = serializable.into_array_graph(&ll::Task::create_new(""))?;
     let serializable2 = ag.into_serializable();
-    let ag2 = serializable2.into_array_graph();
+    let ag2 = serializable2.into_array_graph(&ll::Task::create_new(""))?;
     let roundtrip = ag2.to_map_graph()?;
     let roundtrip_json = serde_json::to_string_pretty(&roundtrip)?;
 

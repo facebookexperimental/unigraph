@@ -96,7 +96,7 @@ impl ImpactAnalysis {
     /// measure the delta, and patch `self.ag` with the results.
     #[ll::task(sync)]
     pub fn run(mut self, task: &ll::Task) -> Result<ArrayGraph> {
-        let baseline = compute_baseline(&self.ag)?;
+        let baseline = compute_baseline(&self.ag, &task)?;
         let candidates = collect_candidates(&self.ag, self.max_parents);
         let base_tc = extract_base_traversal_config(&self.ag);
         let ags = self.ag.to_serializable();
@@ -115,9 +115,9 @@ impl ImpactAnalysis {
 
 // ── Internals ───────────────────────────────────────────────────────────
 
-fn compute_baseline(ag: &ArrayGraph) -> Result<CombinedMetricsForNodes> {
+fn compute_baseline(ag: &ArrayGraph, task: &ll::Task) -> Result<CombinedMetricsForNodes> {
     let ags = ag.to_serializable();
-    let mut baseline_ag: ArrayGraph = ags.into();
+    let mut baseline_ag: ArrayGraph = ags.into_array_graph(task)?;
     if let Some(tc) = ag.state.traversal_config.clone() {
         baseline_ag.apply_traversal_config(tc)?;
     }
@@ -170,7 +170,7 @@ fn simulate_chunk(
     total: usize,
     task: &ll::Task,
 ) -> Result<Vec<(NodeIDX, CombinedMetricsForNodes)>> {
-    let mut thread_ag: ArrayGraph = ags.clone().into();
+    let mut thread_ag: ArrayGraph = ags.clone().into_array_graph(task)?;
     let mut results = Vec::with_capacity(chunk.len());
 
     for &node_idx in chunk {
@@ -506,7 +506,7 @@ mod tests {
     }"#;
 
     fn make_graph(json: &str) -> Result<ArrayGraph> {
-        MapGraph::from_json(json)?.to_array_graph()
+        MapGraph::from_json(json)?.to_array_graph(&ll::Task::create_new("test"))
     }
 
     fn run(ag: ArrayGraph, max_parents: Option<usize>) -> Result<ArrayGraph> {

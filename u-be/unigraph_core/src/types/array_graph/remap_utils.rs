@@ -404,7 +404,7 @@ J (labels: assert_tags: [a, b]):
             properties: BTreeMap::new(),
         };
 
-        let new_g = new_sg.into_array_graph();
+        let new_g = new_sg.into_array_graph(&ll::Task::create_new(""))?;
         snapshot!(
             new_g.debug().to_forward_edges_string()?,
             "

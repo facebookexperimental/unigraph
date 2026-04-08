@@ -164,8 +164,8 @@ pub struct ArrayGraphDynamicEdge {
 }
 
 impl ArrayGraph {
-    pub fn empty() -> Result<Self> {
-        GraphBuilder::new().build().to_array_graph()
+    pub fn empty(task: &ll::Task) -> Result<Self> {
+        GraphBuilder::new().build().to_array_graph(task)
     }
 
     pub fn stats(&self) -> ArrayGraphStats {
@@ -438,8 +438,11 @@ impl ArrayGraph {
         &'a self,
         pattern: &str,
         limit: usize,
+        task: &ll::Task,
     ) -> Result<Vec<(&'a str, NodeIDX)>> {
-        self.nodes.node_names.search_name_fuzzy(pattern, limit)
+        self.nodes
+            .node_names
+            .search_name_fuzzy(pattern, limit, task)
     }
 
     pub fn debug(&self) -> ArrayGraphDebugUtils<'_> {
@@ -528,7 +531,7 @@ mod tests {
     #[test]
     pub fn basic_test() -> Result<()> {
         let test_graph = make_test_graph()?;
-        let array_graph = test_graph.to_array_graph()?;
+        let array_graph = test_graph.to_array_graph(&ll::Task::create_new("test"))?;
 
         assert_equal!(array_graph.edges_forward.node_count(), 6);
         assert_equal!(array_graph.edges_forward.edges_len(), 13);
@@ -564,7 +567,7 @@ mod tests {
     #[test]
     fn test_dfs() -> Result<()> {
         let test_graph = make_test_graph()?;
-        let array_graph = test_graph.to_array_graph()?;
+        let array_graph = test_graph.to_array_graph(&ll::Task::create_new("test"))?;
 
         let visited = array_graph
             .edges_forward

@@ -43,8 +43,8 @@ impl GlobalGraphState {
         Self::get().graph_state.get_mut()
     }
 
-    pub fn init() {
-        let empty_graph = ArrayGraph::empty().unwrap();
+    pub fn init(task: &ll::Task) {
+        let empty_graph = ArrayGraph::empty(task).unwrap();
         let twin_graph = unigraph_core::TwinGraph::from_one(empty_graph).unwrap();
 
         GLOBAL_GRAPH_STATE

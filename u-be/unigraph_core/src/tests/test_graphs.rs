@@ -25,17 +25,17 @@ pub(crate) fn make_test_graph_1() -> MapGraph {
 
 pub(crate) fn make_test_array_graph_1() -> Result<ArrayGraph> {
     let graph = make_test_graph_1();
-    graph.to_array_graph()
+    graph.to_array_graph(&ll::Task::create_new("test"))
 }
 
 pub(crate) fn make_test_array_graph_2() -> Result<ArrayGraph> {
-    MapGraph::from_json(TEST_GRAPH_2)?.to_array_graph()
+    MapGraph::from_json(TEST_GRAPH_2)?.to_array_graph(&ll::Task::create_new("test"))
 }
 
 pub fn make_twin_graph() -> Result<TwinGraph> {
     let left = MapGraph::from_json(TEST_GRAPH_2)?.to_array_graph_serializable()?;
     let right = MapGraph::from_json(TEST_GRAPH_2_RIGHT)?.to_array_graph_serializable()?;
-    TwinGraph::from_two(left, right)
+    TwinGraph::from_two(left, right, &ll::Task::create_new("test"))
 }
 
 pub fn make_twin_graph_with_tier_config() -> Result<TwinGraph> {

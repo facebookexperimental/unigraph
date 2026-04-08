@@ -176,7 +176,7 @@ impl GraphCache {
     ) -> Result<ArrayGraph> {
         let gqc = self.db.configs.fetch_graph_query_config(key, task).await?;
         let ag_ser = fetch_graph(&self.db, &gqc, task).await?;
-        let mut ag = ag_ser.into_array_graph();
+        let mut ag = ag_ser.into_array_graph(task)?;
         apply_traversal(&mut ag, &gqc)?;
         Ok(ag)
     }
@@ -188,9 +188,12 @@ impl GraphCache {
         task: &ll::Task,
     ) -> Result<ArrayGraph> {
         let (_key, ag_ser) = self.db.graph.fetch_latest(timeline_id, task).await?;
-        tokio::task::spawn_blocking(move || ag_ser.into_array_graph())
-            .await
-            .context("spawn_blocking panicked")
+        task.spawn("into_array_graph", |task| async move {
+            tokio::task::spawn_blocking(move || ag_ser.into_array_graph(&task))
+                .await
+                .context("spawn_blocking panicked")?
+        })
+        .await
     }
 }
 
@@ -256,7 +259,7 @@ async fn fetch_graph(
             .filter_map(|name| ag.node_names_ordered.name_to_idx_log(name.as_str()))
             .collect();
         ag = ag
-            .into_array_graph()
+            .into_array_graph(task)?
             .get_reachable_subgraph_unconfigured(&root_idxs)?;
     }
 

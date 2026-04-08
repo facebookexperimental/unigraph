@@ -31,7 +31,7 @@ async fn main() {
 
     let result = match args.command {
         Commands::Serve(serve) => {
-            serve.run(sqlite_path).await;
+            serve.run(sqlite_path, &task).await;
             Ok(())
         }
         Commands::Ingest(ingest) => ingest.run(sqlite_path, &task).await,
@@ -106,14 +106,14 @@ struct Serve {
 }
 
 impl Serve {
-    async fn run(&self, sqlite_path: &Path) {
+    async fn run(&self, sqlite_path: &Path, task: &ll::Task) {
         let mode = if self.release {
             ServeMode::Release
         } else {
             ServeMode::Dev
         };
         let sqlite_path = Some(sqlite_path.to_path_buf());
-        unigraph_web_service::start(&self.file_path, &self.right, &sqlite_path, mode)
+        unigraph_web_service::start(&self.file_path, &self.right, &sqlite_path, mode, task)
             .await
             .unwrap();
     }
@@ -369,7 +369,7 @@ impl GraphGet {
         };
 
         let node_count = serializable.node_names_ordered.combined_nodes_len();
-        let array_graph = serializable.into_array_graph();
+        let array_graph = serializable.into_array_graph(task)?;
 
         eprintln!("{} nodes", node_count);
         let map_graph = array_graph.to_map_graph()?;
@@ -391,7 +391,7 @@ struct ImpactAnalysisCmd {
 
 impl ImpactAnalysisCmd {
     fn run(&self, task: &ll::Task) -> anyhow::Result<()> {
-        let ag = load_graph_from_file(&self.file_path)?;
+        let ag = load_graph_from_file(&self.file_path, task)?;
         let node_count = ag.nodes_len();
 
         eprintln!(
@@ -416,11 +416,11 @@ impl ImpactAnalysisCmd {
     }
 }
 
-fn load_graph_from_file(path: &Path) -> anyhow::Result<unigraph_core::ArrayGraph> {
+fn load_graph_from_file(path: &Path, task: &ll::Task) -> anyhow::Result<unigraph_core::ArrayGraph> {
     let json = std::fs::read_to_string(path)
         .with_context(|| format!("failed to read {}", path.display()))?;
     let map_graph = unigraph_core::types::MapGraph::from_json(&json)?;
-    map_graph.to_array_graph()
+    map_graph.to_array_graph(task)
 }
 
 fn make_output_path(input: &Path, suffix: &str) -> PathBuf {

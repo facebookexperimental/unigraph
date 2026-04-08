@@ -174,8 +174,179 @@ impl ArrayGraphSerializable {
     }
 
     /// Converts this serializable representation back into an `ArrayGraph`.
-    pub fn into_array_graph(self) -> ArrayGraph {
-        self.into()
+    ///
+    /// Rebuilds the full [`OffsetGraph`] by merging the CSR-encoded directed edges
+    /// with the tagged and dynamic edges. Each phase is wrapped in an `#l3` task
+    /// for structured tracing.
+    ///
+    /// The algorithm avoids intermediate copies by:
+    /// 1. Counting edges per node in parallel (no allocations)
+    /// 2. Computing offsets via prefix sum
+    /// 3. Writing all edges directly into pre-allocated arrays in a single parallel pass
+    pub fn into_array_graph(self, task: &ll::Task) -> Result<ArrayGraph> {
+        let edges_ser = self.edges;
+        let node_names_ordered = self.node_names_ordered;
+        let node_metadata = self.node_metadata;
+        let traversal_config = self.traversal_config;
+        let graph_settings = self.graph_settings;
+        let entry_points = self.entry_points;
+        let properties = self.properties;
+
+        task.spawn_sync("into_array_graph", |task| {
+            let node_count = node_names_ordered.combined_nodes_len();
+
+            // Count edges per node in parallel (just arithmetic, no allocations).
+            let edge_counts: Vec<usize> = task.spawn_sync("count_edges #l3", |_| {
+                Ok((0..node_count)
+                    .into_par_iter()
+                    .map(|i| {
+                        let node_idx = NodeIDX::from(i);
+                        let dir = edges_ser.directed_offsets[i + 1] - edges_ser.directed_offsets[i];
+                        let tagged = edges_ser
+                            .tagged
+                            .get(&node_idx)
+                            .map_or(0, |t| t.values().map(|pts| pts.len()).sum());
+                        let dynamic = edges_ser.dynamic.get(&node_idx).map_or(0, |tm| {
+                            tm.values()
+                                .flat_map(|em| em.values())
+                                .flat_map(|de| de.branches.values())
+                                .map(|idxs| idxs.len())
+                                .sum()
+                        });
+                        dir + tagged + dynamic
+                    })
+                    .collect())
+            })?;
+
+            // Prefix sum → edge_offsets (sequential, but just 30M additions).
+            let total_edges: usize = edge_counts.iter().sum();
+            let mut edge_offsets = Vec::with_capacity(node_count + 1);
+            edge_offsets.push(0usize);
+            for &count in &edge_counts {
+                edge_offsets.push(edge_offsets[edge_offsets.len() - 1] + count);
+            }
+            drop(edge_counts);
+
+            // Pre-allocate final arrays and fill in a single parallel pass.
+            // Each thread writes to a non-overlapping range determined by edge_offsets.
+            let edges_forward = task.spawn_sync("fill_edges #l3", |_| {
+                let mut all_edges: Vec<Edge> = Vec::with_capacity(total_edges);
+                let mut all_metadata: Vec<NonDirectedEdgeMetadata> =
+                    Vec::with_capacity(total_edges);
+
+                // SAFETY: set_len is sound because every element is written exactly once
+                // in the parallel loop below via ptr::write, and Edge/NonDirectedEdgeMetadata
+                // don't implement Drop (no double-free on uninitialized memory).
+                unsafe {
+                    all_edges.set_len(total_edges);
+                    all_metadata.set_len(total_edges);
+                }
+
+                let edges_ptr = all_edges.as_mut_ptr() as usize;
+                let meta_ptr = all_metadata.as_mut_ptr() as usize;
+
+                (0..node_count).into_par_iter().for_each(|i| {
+                    let node_idx = NodeIDX::from(i);
+                    let base = edge_offsets[i];
+                    let mut pos = 0;
+
+                    let ep = edges_ptr as *mut Edge;
+                    let mp = meta_ptr as *mut NonDirectedEdgeMetadata;
+
+                    // Directed edges — read directly from serialized CSR.
+                    let dir_start = edges_ser.directed_offsets[i];
+                    let dir_end = edges_ser.directed_offsets[i + 1];
+                    for &points_to in &edges_ser.directed[dir_start..dir_end] {
+                        unsafe {
+                            std::ptr::write(ep.add(base + pos), Edge::new(points_to));
+                            std::ptr::write(mp.add(base + pos), NonDirectedEdgeMetadata::Directed);
+                        }
+                        pos += 1;
+                    }
+
+                    // Tagged edges.
+                    if let Some(tagged) = edges_ser.tagged.get(&node_idx) {
+                        for (tag, points_to_set) in tagged {
+                            for &points_to in points_to_set {
+                                unsafe {
+                                    std::ptr::write(
+                                        ep.add(base + pos),
+                                        Edge::new_tagged(points_to),
+                                    );
+                                    std::ptr::write(
+                                        mp.add(base + pos),
+                                        NonDirectedEdgeMetadata::Tagged { tag: tag.clone() },
+                                    );
+                                }
+                                pos += 1;
+                            }
+                        }
+                    }
+
+                    // Dynamic edges.
+                    if let Some(type_map) = edges_ser.dynamic.get(&node_idx) {
+                        for (type_key, edge_map) in type_map {
+                            for (edge_name, dynamic_edge) in edge_map {
+                                for (branch, node_idxs) in &dynamic_edge.branches {
+                                    for &points_to in node_idxs {
+                                        unsafe {
+                                            std::ptr::write(
+                                                ep.add(base + pos),
+                                                Edge::new_dynamic(points_to),
+                                            );
+                                            std::ptr::write(
+                                                mp.add(base + pos),
+                                                NonDirectedEdgeMetadata::Dynamic {
+                                                    type_key: type_key.clone(),
+                                                    edge_name: edge_name.clone(),
+                                                    branch: branch.clone(),
+                                                },
+                                            );
+                                        }
+                                        pos += 1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+
+                Ok(OffsetGraph {
+                    edges: all_edges,
+                    edge_offsets,
+                    non_directed_edges_metadata: all_metadata,
+                })
+            })?;
+
+            let node_flags = vec![NodeFlags::empty(); node_names_ordered.combined_nodes_len()];
+
+            let tiers = traversal_config
+                .as_ref()
+                .map_or_else(Default::default, |config| config.get_tiers());
+
+            let derived_state = ArrayGraphDerivedState::new();
+            let nodes = ArrayGraphNodesForGraphSide::new_left_only(node_names_ordered);
+
+            Ok(ArrayGraph {
+                nodes,
+                edges_forward,
+                derived_state,
+                edges_tagged: edges_ser.tagged,
+                edges_dynamic: edges_ser.dynamic,
+                node_metrics: node_metadata.metrics,
+                node_labels: node_metadata.labels,
+                node_properties: node_metadata.properties,
+                node_flags,
+                state: ArrayGraphState {
+                    traversal_config: traversal_config.clone(),
+                    indexed_messages: Default::default(),
+                    tiers,
+                },
+                graph_settings,
+                entry_points,
+                properties,
+            })
+        })
     }
 
     /// Serializes this graph to a JSON string.
@@ -269,127 +440,6 @@ impl From<ArrayGraph> for ArrayGraphSerializable {
             traversal_config: graph.state.traversal_config,
             entry_points: graph.entry_points,
             properties: graph.properties,
-        }
-    }
-}
-
-/// Reconstructs an [`ArrayGraph`] from its serializable form.
-///
-/// Rebuilds the full [`OffsetGraph`] by merging the CSR-encoded directed edges
-/// with the tagged and dynamic edges. Derived state (reverse edges, etc.) is
-/// recomputed from the reconstructed forward edges.
-impl From<ArrayGraphSerializable> for ArrayGraph {
-    fn from(serializable: ArrayGraphSerializable) -> Self {
-        // make an offset graph containing only directed edges so we
-        // can use its functions to build the ArrayGraph
-        let directed_only_offset_graph = OffsetGraph {
-            edges: serializable
-                .edges
-                .directed
-                .iter()
-                .map(|points_to| Edge::new(*points_to))
-                .collect(),
-            edge_offsets: serializable.edges.directed_offsets,
-            non_directed_edges_metadata: vec![
-                NonDirectedEdgeMetadata::Directed;
-                serializable.edges.directed.len()
-            ],
-        };
-
-        // Compute per-node edge lists in parallel, then flatten into
-        // a single OffsetGraph with correct offsets.
-        let per_node: Vec<(Vec<Edge>, Vec<NonDirectedEdgeMetadata>)> = directed_only_offset_graph
-            .node_idx_iter()
-            .collect::<Vec<_>>()
-            .into_par_iter()
-            .map(|node_idx| {
-                let mut edges = Vec::new();
-                let mut metadata = Vec::new();
-
-                for edge in directed_only_offset_graph.edges(node_idx) {
-                    edges.push(Edge::new(edge.points_to));
-                    metadata.push(NonDirectedEdgeMetadata::Directed);
-                }
-
-                if let Some(tagged) = serializable.edges.tagged.get(&node_idx) {
-                    for (tag, points_to_set) in tagged {
-                        for &points_to in points_to_set {
-                            edges.push(Edge::new_tagged(points_to));
-                            metadata.push(NonDirectedEdgeMetadata::Tagged { tag: tag.clone() });
-                        }
-                    }
-                }
-
-                if let Some(type_map) = serializable.edges.dynamic.get(&node_idx) {
-                    for (type_key, edge_map) in type_map {
-                        for (edge_name, dynamic_edge) in edge_map {
-                            for (branch, node_idxs) in &dynamic_edge.branches {
-                                for &points_to in node_idxs {
-                                    edges.push(Edge::new_dynamic(points_to));
-                                    metadata.push(NonDirectedEdgeMetadata::Dynamic {
-                                        type_key: type_key.clone(),
-                                        edge_name: edge_name.clone(),
-                                        branch: branch.clone(),
-                                    });
-                                }
-                            }
-                        }
-                    }
-                }
-
-                (edges, metadata)
-            })
-            .collect();
-
-        let total_edges: usize = per_node.iter().map(|(e, _)| e.len()).sum();
-        let mut all_edges = Vec::with_capacity(total_edges);
-        let mut all_metadata = Vec::with_capacity(total_edges);
-        let mut edge_offsets = Vec::with_capacity(per_node.len() + 1);
-        edge_offsets.push(0);
-
-        for (edges, metadata) in per_node {
-            all_edges.extend(edges);
-            all_metadata.extend(metadata);
-            edge_offsets.push(all_edges.len());
-        }
-
-        let edges_forward = OffsetGraph {
-            edges: all_edges,
-            edge_offsets,
-            non_directed_edges_metadata: all_metadata,
-        };
-
-        // Node flags are initialized on traversal config application, so we'll just create an empty vector
-        let node_flags =
-            vec![NodeFlags::empty(); serializable.node_names_ordered.combined_nodes_len()];
-
-        let tiers = serializable
-            .traversal_config
-            .as_ref()
-            .map_or_else(Default::default, |config| config.get_tiers());
-
-        let derived_state = ArrayGraphDerivedState::new();
-
-        let nodes = ArrayGraphNodesForGraphSide::new_left_only(serializable.node_names_ordered);
-
-        ArrayGraph {
-            nodes,
-            edges_forward,
-            derived_state,
-            edges_tagged: serializable.edges.tagged,
-            edges_dynamic: serializable.edges.dynamic,
-            node_metrics: serializable.node_metadata.metrics,
-            node_labels: serializable.node_metadata.labels,
-            node_properties: serializable.node_metadata.properties,
-            node_flags,
-            state: ArrayGraphState {
-                traversal_config: serializable.traversal_config.clone(),
-                indexed_messages: Default::default(),
-                tiers,
-            },
-            graph_settings: serializable.graph_settings,
-            entry_points: serializable.entry_points,
-            properties: serializable.properties,
         }
     }
 }

@@ -102,7 +102,8 @@ pub fn this_will_run_automatically() -> Result<(), WasmJSError> {
     tracing_wasm::set_as_global_default();
     console_log::init_with_level(log::Level::Trace).expect("Could't initialize logger");
     GlobalState::init();
-    GlobalGraphState::init();
+    let task = ll::Task::create_new("unigraph_wasm");
+    GlobalGraphState::init(&task);
     let event_loop = EventLoop::<UserEvent>::with_user_event().build().unwrap();
     GlobalState::set_event_loop_proxy(event_loop.create_proxy());
     wasm_bindgen_futures::spawn_local(run(event_loop));
@@ -135,13 +136,16 @@ pub fn set_graphs(explorer_component_input_graphs_json: String) -> Result<(), Wa
         }
     };
 
+    // WASM entry point — no parent task, so this is a legitimate root.
+    let task = ll::Task::create_new("set_graphs");
+
     match left {
         Some(left) => {
-            let twin_graph = TwinGraph::from_two(left, right)?;
+            let twin_graph = TwinGraph::from_two(left, right, &task)?;
             GlobalGraphState::graph_state().replace_graph(twin_graph)?;
         }
         None => {
-            let array_graph: ArrayGraph = right.into();
+            let array_graph = right.into_array_graph(&task)?;
             let twin_graph = TwinGraph::from_one(array_graph.append_super_root(false)?)?;
             GlobalGraphState::graph_state().replace_graph(twin_graph)?;
         }
@@ -198,12 +202,13 @@ pub fn node_name_to_idx_log(name: &str) -> Result<Option<u32>, WasmJSError> {
 
 #[wasm_bindgen]
 pub fn search_node_name_fuzzy(pattern: &str, limit: usize) -> Result<Vec<String>, WasmJSError> {
+    let task = ll::Task::create_new("");
     Ok(global_graph_state()
         .graph_state
         .get()
         .twin_graph
         .node_names
-        .search_name_fuzzy(pattern, limit)?
+        .search_name_fuzzy(pattern, limit, &task)?
         .into_iter()
         .map(|(name, _node_idx)| name.to_string())
         .collect())

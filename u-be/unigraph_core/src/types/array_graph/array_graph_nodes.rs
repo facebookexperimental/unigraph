@@ -147,8 +147,9 @@ impl ArrayGraphNodes {
         &'a self,
         pattern: &str,
         limit: usize,
+        task: &ll::Task,
     ) -> Result<Vec<(&'a str, NodeIDX)>> {
-        self.search.search(self, pattern, limit)
+        self.search.search(self, pattern, limit, task)
     }
 
     pub fn append_node_name(&mut self, name: &str) -> Result<NodeIDX> {
