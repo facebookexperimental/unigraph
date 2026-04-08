@@ -26,7 +26,7 @@ impl FstSets {
     /// is also sorted — exactly what fst::Set::from_iter requires.
     pub fn build(nodes: &ArrayGraphNodes) -> Result<Self> {
         let num_chunks = num_chunks();
-        let total = nodes.combined_nodes_len();
+        let total = nodes.len();
         let chunk_size = total.div_ceil(num_chunks);
 
         let sets = (0..num_chunks)

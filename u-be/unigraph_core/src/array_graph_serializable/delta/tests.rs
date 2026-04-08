@@ -36,36 +36,47 @@ fn format_graph(g: &ArrayGraphSerializable) -> String {
     let mut out = String::new();
 
     // Nodes
-    let names: Vec<&str> = g.node_names_ordered.combined_node_names_iter().collect();
+    let names: Vec<&str> = g.node_names_ordered.node_names_iter().collect();
     out.push_str(&format!("Nodes: {}\n", names.join(", ")));
 
-    let n = g.node_names_ordered.combined_nodes_len();
+    let n = g.node_names_ordered.len();
 
-    // Directed edges
+    // Directed edges (edges without metadata entries)
     let mut has_directed = false;
     for i in 0..n {
-        let start = g.edges.directed_offsets[i];
-        let end = g.edges.directed_offsets[i + 1];
-        if start < end {
+        let node_idx = crate::NodeIDX::from(i);
+        let range = g.edges.edge_range(node_idx);
+        let directed_targets: Vec<&str> = range
+            .filter(|&edge_idx| {
+                g.edges
+                    .edge_metadata_map
+                    .get(&crate::types::EdgeIDX::from(edge_idx))
+                    .is_none()
+            })
+            .map(|edge_idx| g.node_names_ordered.idx_to_name(g.edges.edges[edge_idx]))
+            .collect();
+        if !directed_targets.is_empty() {
             if !has_directed {
                 out.push_str("Directed edges:\n");
                 has_directed = true;
             }
             let from = g.node_names_ordered.idx_to_name(crate::NodeIDX::from(i));
-            let targets: Vec<&str> = g.edges.directed[start..end]
-                .iter()
-                .map(|&idx| g.node_names_ordered.idx_to_name(idx))
-                .collect();
-            out.push_str(&format!("  {} -> {}\n", from, targets.join(", ")));
+            out.push_str(&format!("  {} -> {}\n", from, directed_targets.join(", ")));
         }
     }
 
     // Tagged edges
-    if !g.edges.tagged.is_empty() {
-        out.push_str("Tagged edges:\n");
-        for (src_idx, tag_map) in &g.edges.tagged {
-            let from = g.node_names_ordered.idx_to_name(*src_idx);
-            for (tag, targets) in tag_map {
+    let mut has_tagged = false;
+    for i in 0..n {
+        let node_idx = crate::NodeIDX::from(i);
+        let tagged = g.edges.tagged_edges_for_node(node_idx);
+        if !tagged.is_empty() {
+            if !has_tagged {
+                out.push_str("Tagged edges:\n");
+                has_tagged = true;
+            }
+            let from = g.node_names_ordered.idx_to_name(node_idx);
+            for (tag, targets) in &tagged {
                 let target_names: Vec<&str> = targets
                     .iter()
                     .map(|&idx| g.node_names_ordered.idx_to_name(idx))
@@ -81,13 +92,19 @@ fn format_graph(g: &ArrayGraphSerializable) -> String {
     }
 
     // Dynamic edges
-    if !g.edges.dynamic.is_empty() {
-        out.push_str("Dynamic edges:\n");
-        for (src_idx, type_map) in &g.edges.dynamic {
-            let from = g.node_names_ordered.idx_to_name(*src_idx);
-            for (type_key, edge_map) in type_map {
-                for (edge_name, edge) in edge_map {
-                    for (branch, targets) in &edge.branches {
+    let mut has_dynamic = false;
+    for i in 0..n {
+        let node_idx = crate::NodeIDX::from(i);
+        let dynamic = g.edges.dynamic_edges_for_node(node_idx);
+        if !dynamic.is_empty() {
+            if !has_dynamic {
+                out.push_str("Dynamic edges:\n");
+                has_dynamic = true;
+            }
+            let from = g.node_names_ordered.idx_to_name(node_idx);
+            for (type_key, edge_map) in &dynamic {
+                for (edge_name, edge_view) in edge_map {
+                    for (branch, targets) in &edge_view.branches {
                         let target_names: Vec<&str> = targets
                             .iter()
                             .map(|&idx| g.node_names_ordered.idx_to_name(idx))
@@ -992,7 +1009,7 @@ fn test_large_batch() -> Result<()> {
     let result = apply_deltas(base, &deltas)?;
 
     // Verify node count: root + 100 added
-    let node_count = result.node_names_ordered.combined_nodes_len();
+    let node_count = result.node_names_ordered.len();
     assert_eq!(node_count, 101);
 
     // Verify root has 100 directed edges
@@ -1000,9 +1017,8 @@ fn test_large_batch() -> Result<()> {
         .node_names_ordered
         .name_to_idx_log("root")
         .context("root node not found")?;
-    let root_edge_start = result.edges.directed_offsets[root_idx];
-    let root_edge_end = result.edges.directed_offsets[root_idx + 1];
-    assert_eq!(root_edge_end - root_edge_start, 100);
+    let root_edge_count = result.edges.edge_range(root_idx).count();
+    assert_eq!(root_edge_count, 100);
 
     Ok(())
 }
@@ -1499,8 +1515,8 @@ fn test_delta_json_snapshot_cleared_fields() -> Result<()> {
 /// Two configs that share some structure but differ in many ways:
 /// - force_nodes: unchanged entries, changed entries, added entries, removed entries
 /// - force_edges: nested BTreeMap<K, BTreeMap<K, V>> with recursive deltas
-/// - force_tagged: cleared from Some to None
-/// - force_dynamic: leaf Deltable — full replacement for changed entries
+/// - force_edges: cleared from Some to None
+/// - force_edges: leaf Deltable — full replacement for changed entries
 /// - label_predicates: BTreeMap with per-key diffing
 /// - tiered_traversal: leaf — full replacement
 /// - messages: added, removed, changed

@@ -35,15 +35,12 @@ use unigraph_serialization::to_base_64;
 use unigraph_serialization::to_zstd;
 use xxhash_rust::xxh3::xxh3_64;
 
-use crate::ArrayGraphDynamicEdge;
 use crate::ArrayGraphNodes;
 use crate::ArrayGraphSerializable;
 use crate::ArrayGraphSerializableEdges;
 use crate::ArrayGraphSerializableNodeMetadata;
 use crate::TraversalConfig;
 use crate::graph_settings::GraphSettings;
-use crate::types::DynamicEdgeName;
-use crate::types::DynamicTypeKey;
 use crate::types::LabelName;
 use crate::types::LabelValue;
 use crate::types::MetricName;
@@ -51,7 +48,6 @@ use crate::types::NodeIDX;
 use crate::types::NodeName;
 use crate::types::PropertyName;
 use crate::types::PropertyValue;
-use crate::types::Tag;
 
 /// Maximum number of independently compressed chunks per field.
 const MAX_CHUNKS_PER_FIELD: usize = 60;
@@ -298,10 +294,10 @@ macro_rules! impl_blob_codec_json {
 }
 
 impl_blob_codec_json!(
-    // tagged edges
-    BTreeMap<NodeIDX, BTreeMap<Tag, BTreeSet<NodeIDX>>>,
-    // dynamic edges
-    BTreeMap<NodeIDX, BTreeMap<DynamicTypeKey, BTreeMap<DynamicEdgeName, ArrayGraphDynamicEdge>>>,
+    // edge metadata (tagged/dynamic info)
+    Vec<crate::EdgeMeta>,
+    // edge metadata map (sparse: edge idx -> metadata idx)
+    BTreeMap<crate::EdgeIDX, crate::EdgeMetaIDX>,
     // metrics
     BTreeMap<MetricName, Vec<f32>>,
     // labels
@@ -505,8 +501,8 @@ impl ManifestStats {
             total_blobs,
             total_size_bytes,
             blob_sizes_bytes,
-            node_count: graph.node_names_ordered.combined_nodes_len() as u32,
-            directed_edge_count: graph.edges.directed.len() as u32,
+            node_count: graph.node_names_ordered.len() as u32,
+            directed_edge_count: graph.edges.edges.len() as u32,
         }
     }
 }
@@ -655,10 +651,10 @@ pub fn pack(
     } = &graph;
 
     let ArrayGraphSerializableEdges {
-        directed,
-        directed_offsets,
-        tagged,
-        dynamic,
+        edges: csr_edges,
+        edge_offsets: csr_offsets,
+        edge_metadata,
+        edge_metadata_map,
     } = &edges;
 
     let ArrayGraphSerializableNodeMetadata {
@@ -691,10 +687,10 @@ pub fn pack(
             s,
             node_names,
             node_names_offsets,
-            directed,
-            directed_offsets,
-            tagged,
-            dynamic,
+            csr_edges,
+            csr_offsets,
+            edge_metadata,
+            edge_metadata_map,
             metrics,
             labels,
             properties,
@@ -720,10 +716,10 @@ pub fn pack(
     let manifest_blobs = ManifestBlobs {
         node_names: take_field!(node_names),
         node_names_offsets: take_field!(node_names_offsets),
-        directed: take_field!(directed),
-        directed_offsets: take_field!(directed_offsets),
-        tagged: take_field!(tagged),
-        dynamic: take_field!(dynamic),
+        directed: take_field!(csr_edges),
+        directed_offsets: take_field!(csr_offsets),
+        tagged: take_field!(edge_metadata),
+        dynamic: take_field!(edge_metadata_map),
         metrics: take_field!(metrics),
         labels: take_field!(labels),
         properties: take_field!(properties),
@@ -897,10 +893,10 @@ pub fn unpack(
         let entry_points = take!(r_entry_points);
 
         let edges = ArrayGraphSerializableEdges {
-            directed,
-            directed_offsets,
-            tagged,
-            dynamic,
+            edges: directed,
+            edge_offsets: directed_offsets,
+            edge_metadata: tagged,
+            edge_metadata_map: dynamic,
         };
 
         let node_metadata = ArrayGraphSerializableNodeMetadata {
@@ -910,10 +906,7 @@ pub fn unpack(
         };
 
         anyhow::Ok(ArrayGraphSerializable {
-            node_names_ordered: Arc::new(ArrayGraphNodes::from_parts(
-                node_names,
-                node_name_offsets,
-            )),
+            node_names_ordered: ArrayGraphNodes::from_parts(node_names, node_name_offsets),
             edges,
             node_metadata,
             graph_settings: graph_settings.clone(),
@@ -1253,14 +1246,19 @@ mod tests {
 {
   "self_reference": "_manifest.json",
   "stats": {
-    "total_blobs": 17,
-    "total_size_bytes": 487,
+    "total_blobs": 20,
+    "total_size_bytes": 682,
     "blob_sizes_bytes": {
-      "directed_4701723338808295729": 35,
-      "directed_offsets_chunk_0_5054735039214514726": 29,
-      "directed_offsets_chunk_1_17584161237355671614": 27,
-      "dynamic_chunk_0_5678110360769255721": 56,
-      "dynamic_chunk_1_8887446987824866365": 17,
+      "csr_edges_chunk_0_13017817825874431918": 36,
+      "csr_edges_chunk_1_2523710346433144811": 26,
+      "csr_offsets_chunk_0_17559266066580165799": 35,
+      "csr_offsets_chunk_1_13805269574729633339": 27,
+      "edge_metadata_chunk_0_16084556951524676445": 48,
+      "edge_metadata_chunk_1_9863927180112377564": 59,
+      "edge_metadata_chunk_2_1965837674461600173": 56,
+      "edge_metadata_chunk_3_17445830827167043826": 59,
+      "edge_metadata_chunk_4_73754102999377250": 38,
+      "edge_metadata_map_6498678976514958291": 46,
       "entry_points_9535545603450022154": 13,
       "labels_chunk_0_15787273898998467666": 59,
       "labels_chunk_1_16684219789371696493": 22,
@@ -1270,12 +1268,10 @@ mod tests {
       "node_names_offsets_chunk_0_8844594067930830932": 32,
       "node_names_offsets_chunk_1_15706661496525575030": 27,
       "properties_4370653166743570923": 11,
-      "tagged_chunk_0_11587565309408646083": 54,
-      "tagged_chunk_1_6155307348235514257": 17,
       "traversal_config_9535545603450022154": 13
     },
     "node_count": 16,
-    "directed_edge_count": 11
+    "directed_edge_count": 18
   },
   "blobs": {
     "node_names": [
@@ -1286,19 +1282,22 @@ mod tests {
       "node_names_offsets_chunk_1_15706661496525575030"
     ],
     "directed": [
-      "directed_4701723338808295729"
+      "csr_edges_chunk_0_13017817825874431918",
+      "csr_edges_chunk_1_2523710346433144811"
     ],
     "directed_offsets": [
-      "directed_offsets_chunk_0_5054735039214514726",
-      "directed_offsets_chunk_1_17584161237355671614"
+      "csr_offsets_chunk_0_17559266066580165799",
+      "csr_offsets_chunk_1_13805269574729633339"
     ],
     "tagged": [
-      "tagged_chunk_0_11587565309408646083",
-      "tagged_chunk_1_6155307348235514257"
+      "edge_metadata_chunk_0_16084556951524676445",
+      "edge_metadata_chunk_1_9863927180112377564",
+      "edge_metadata_chunk_2_1965837674461600173",
+      "edge_metadata_chunk_3_17445830827167043826",
+      "edge_metadata_chunk_4_73754102999377250"
     ],
     "dynamic": [
-      "dynamic_chunk_0_5678110360769255721",
-      "dynamic_chunk_1_8887446987824866365"
+      "edge_metadata_map_6498678976514958291"
     ],
     "metrics": [
       "metrics_chunk_0_5289880619835925526",
@@ -1334,11 +1333,16 @@ mod tests {
             r#"
 [
     "_manifest.json",
-    "directed_4701723338808295729",
-    "directed_offsets_chunk_0_5054735039214514726",
-    "directed_offsets_chunk_1_17584161237355671614",
-    "dynamic_chunk_0_5678110360769255721",
-    "dynamic_chunk_1_8887446987824866365",
+    "csr_edges_chunk_0_13017817825874431918",
+    "csr_edges_chunk_1_2523710346433144811",
+    "csr_offsets_chunk_0_17559266066580165799",
+    "csr_offsets_chunk_1_13805269574729633339",
+    "edge_metadata_chunk_0_16084556951524676445",
+    "edge_metadata_chunk_1_9863927180112377564",
+    "edge_metadata_chunk_2_1965837674461600173",
+    "edge_metadata_chunk_3_17445830827167043826",
+    "edge_metadata_chunk_4_73754102999377250",
+    "edge_metadata_map_6498678976514958291",
     "entry_points_9535545603450022154",
     "labels_chunk_0_15787273898998467666",
     "labels_chunk_1_16684219789371696493",
@@ -1348,8 +1352,6 @@ mod tests {
     "node_names_offsets_chunk_0_8844594067930830932",
     "node_names_offsets_chunk_1_15706661496525575030",
     "properties_4370653166743570923",
-    "tagged_chunk_0_11587565309408646083",
-    "tagged_chunk_1_6155307348235514257",
     "traversal_config_9535545603450022154",
 ]
 "#

@@ -1,17 +1,14 @@
 use std::collections::BTreeMap;
-use std::collections::BTreeSet;
 
 use anyhow::Context;
 use anyhow::Result;
 
-use crate::ArrayGraphDynamicEdge;
 use crate::ArrayGraphNodes;
 use crate::ArrayGraphSerializableEdges;
 use crate::ArrayGraphSerializableNodeMetadata;
 use crate::NodeIDX;
-use crate::types::DynamicEdgeName;
-use crate::types::DynamicTypeKey;
-use crate::types::Tag;
+use crate::types::EdgeIDX;
+use crate::types::EdgeMetaIDX;
 
 /// Utility that takes a vec of sortable values, sorts the original vec in-place and returns
 /// the context of original positions + mapping to the new positions.
@@ -131,67 +128,40 @@ pub fn remap_edges(
     edges: &ArrayGraphSerializableEdges,
     remap_context: &RemapContext,
 ) -> Result<ArrayGraphSerializableEdges> {
-    let (directed, directed_offsets) =
-        remap_directed_edges(&edges.directed, &edges.directed_offsets, remap_context);
+    let mut new_edges = Vec::with_capacity(edges.edges.len());
+    let mut new_offsets = Vec::with_capacity(remap_context.original_positions.len() + 1);
+    new_offsets.push(0);
 
-    Ok(ArrayGraphSerializableEdges {
-        directed,
-        directed_offsets,
-        tagged: remap_tagged_edges(&edges.tagged, remap_context)
-            .context("Failed to remap tagged edges")?,
-        dynamic: remap_dynamic_edges(&edges.dynamic, remap_context)
-            .context("Failed to remap dynamic edges")?,
-    })
-}
-
-pub fn remap_directed_edges(
-    edges: &[NodeIDX],
-    offsets: &[usize],
-    remap_context: &RemapContext,
-) -> (Vec<NodeIDX>, Vec<usize>) {
-    let mut remapped_edges = Vec::with_capacity(edges.len());
-    let mut remapped_offsets = Vec::with_capacity(offsets.len());
-    remapped_offsets.push(0);
+    let new_edge_metadata = edges.edge_metadata.clone();
+    let mut new_edge_metadata_map: BTreeMap<EdgeIDX, EdgeMetaIDX> = BTreeMap::new();
 
     for &original_position in &remap_context.original_positions {
         if let Some(original_position) = original_position {
-            let node_edges = &edges[offsets[original_position]..offsets[original_position + 1]];
-            for &old_points_to in node_edges {
-                if let Some(new_points_to) = remap_context.mappings[old_points_to] {
-                    remapped_edges.push(new_points_to);
-                }
-            }
-        }
-        remapped_offsets.push(remapped_edges.len());
-    }
+            let range = edges.edge_range(original_position);
+            for old_edge_idx in range {
+                let old_target = edges.edges[old_edge_idx];
+                if let Some(new_target) = remap_context.mappings[old_target] {
+                    let new_edge_idx = EdgeIDX::from(new_edges.len());
+                    new_edges.push(new_target);
 
-    (remapped_edges, remapped_offsets)
-}
-
-fn remap_tagged_edges(
-    tagged: &BTreeMap<NodeIDX, BTreeMap<Tag, BTreeSet<NodeIDX>>>,
-    remap_context: &RemapContext,
-) -> Result<BTreeMap<NodeIDX, BTreeMap<Tag, BTreeSet<NodeIDX>>>> {
-    let mut result: BTreeMap<NodeIDX, BTreeMap<String, BTreeSet<NodeIDX>>> = BTreeMap::new();
-
-    for (old_node_idx, edges) in tagged {
-        if let Some(new_node_idx) = remap_context.mappings[*old_node_idx] {
-            for (tag, points_to_set) in edges {
-                for old_points_to in points_to_set {
-                    if let Some(new_points_to) = remap_context.mappings[*old_points_to] {
-                        result
-                            .entry(new_node_idx)
-                            .or_default()
-                            .entry(tag.clone())
-                            .or_default()
-                            .insert(new_points_to);
+                    // Remap metadata reference if this edge has one
+                    if let Some(&meta_idx) =
+                        edges.edge_metadata_map.get(&EdgeIDX::from(old_edge_idx))
+                    {
+                        new_edge_metadata_map.insert(new_edge_idx, meta_idx);
                     }
                 }
             }
         }
+        new_offsets.push(new_edges.len());
     }
 
-    Ok(result)
+    Ok(ArrayGraphSerializableEdges {
+        edges: new_edges,
+        edge_offsets: new_offsets,
+        edge_metadata: new_edge_metadata,
+        edge_metadata_map: new_edge_metadata_map,
+    })
 }
 
 pub fn make_remapped_node_names_ordered(new_node_names: &[String]) -> ArrayGraphNodes {
@@ -204,55 +174,6 @@ pub fn make_remapped_node_names_ordered(new_node_names: &[String]) -> ArrayGraph
     }
 
     ArrayGraphNodes::from_parts(names, offsets)
-}
-
-#[allow(clippy::type_complexity)]
-fn remap_dynamic_edges(
-    dynamic: &BTreeMap<
-        NodeIDX,
-        BTreeMap<DynamicTypeKey, BTreeMap<DynamicEdgeName, ArrayGraphDynamicEdge>>,
-    >,
-    remap_context: &RemapContext,
-) -> Result<
-    BTreeMap<NodeIDX, BTreeMap<DynamicTypeKey, BTreeMap<DynamicEdgeName, ArrayGraphDynamicEdge>>>,
-> {
-    let mut result: BTreeMap<
-        NodeIDX,
-        BTreeMap<DynamicTypeKey, BTreeMap<DynamicEdgeName, ArrayGraphDynamicEdge>>,
-    > = BTreeMap::new();
-
-    for (old_node_idx, type_map) in dynamic {
-        if let Some(new_node_idx) = remap_context.mappings[*old_node_idx] {
-            for (type_key, edge_map) in type_map {
-                for (edge_name, edge) in edge_map {
-                    let new_branches = edge
-                        .branches
-                        .iter()
-                        .map(|(branch, node_idxs)| {
-                            let new_node_idxs: BTreeSet<NodeIDX> = node_idxs
-                                .iter()
-                                .filter_map(|&node_idx| remap_context.mappings[node_idx])
-                                .collect();
-                            (branch.clone(), new_node_idxs)
-                        })
-                        .collect();
-                    result
-                        .entry(new_node_idx)
-                        .or_default()
-                        .entry(type_key.clone())
-                        .or_default()
-                        .insert(
-                            edge_name.clone(),
-                            ArrayGraphDynamicEdge {
-                                metadata: edge.metadata.clone(),
-                                branches: new_branches,
-                            },
-                        );
-                }
-            }
-        }
-    }
-    Ok(result)
 }
 
 pub fn remap_node_metadata(
@@ -311,8 +232,6 @@ pub fn remap_node_metadata(
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
     use anyhow::Result;
     use k9::assert_equal;
     use k9::snapshot;
@@ -375,8 +294,9 @@ J (labels: assert_tags: [a, b]):
         // Make a new set of names prefixed with reverse indexes
         // to test the remapping functionality.
         let mut new_node_names = g
-            .nodes
-            .iter_names()
+            .data
+            .node_names_ordered
+            .node_names_iter()
             .collect::<Vec<&str>>()
             .into_iter()
             .rev()
@@ -395,7 +315,7 @@ J (labels: assert_tags: [a, b]):
         let ctx = sort_and_return_mapping(&mut new_node_names);
 
         let new_sg = ArrayGraphSerializable {
-            node_names_ordered: Arc::new(make_remapped_node_names_ordered(&new_node_names)),
+            node_names_ordered: make_remapped_node_names_ordered(&new_node_names),
             edges: remap_edges(&sg.edges, &ctx)?,
             node_metadata: remap_node_metadata(&sg.node_metadata, &ctx)?,
             graph_settings: None,
@@ -413,8 +333,8 @@ J (labels: assert_tags: [a, b]):
 2_H:
 3_G:
 4_F:
-  - 2_H [D]
   - 3_G [D]
+  - 2_H [D]
   - 1_I [D]
 5_E:
 6_D:

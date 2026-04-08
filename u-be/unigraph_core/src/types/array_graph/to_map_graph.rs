@@ -13,70 +13,85 @@ use crate::types::map_graph::GraphNode;
 pub fn to_map_graph(graph: &ArrayGraph) -> Result<MapGraph> {
     let mut result = MapGraph {
         nodes: Default::default(),
-        traversal_config: graph.state.traversal_config.clone(),
-        graph_settings: graph.graph_settings.clone(),
-        entry_points: graph.entry_points.clone(),
-        properties: graph.properties.clone(),
+        traversal_config: graph.runtime.state.traversal_config.clone(),
+        graph_settings: graph.data.graph_settings.clone(),
+        entry_points: graph.data.entry_points.clone(),
+        properties: graph.data.properties.clone(),
     };
 
     for node_idx in graph.node_idx_iter() {
         let mut directed = BTreeSet::new();
-        for edge in graph.edges_forward.edges(node_idx) {
-            if !edge.is_tagged_or_dynamic() {
-                directed.insert(graph.idx_to_name(edge.points_to).to_string());
+        for (target, flags) in graph.forward_edges(node_idx) {
+            if !flags.intersects(
+                crate::types::array_graph::offset_graph::edge_flags::EdgeFlags::IS_TAGGED
+                    | crate::types::array_graph::offset_graph::edge_flags::EdgeFlags::IS_DYNAMIC,
+            ) {
+                directed.insert(graph.idx_to_name(target).to_string());
             }
         }
 
-        let tagged = graph.edges_tagged.get(&node_idx).cloned().map(|edges| {
-            edges
-                .into_iter()
-                .map(|(tag, points_to_set)| {
-                    (
-                        tag,
-                        points_to_set
-                            .into_iter()
-                            .map(|points_to| graph.idx_to_name(points_to).to_string())
-                            .collect(),
-                    )
-                })
-                .collect()
-        });
+        let tagged_map = graph.data.edges.tagged_edges_for_node(node_idx);
+        let tagged = if tagged_map.is_empty() {
+            None
+        } else {
+            Some(
+                tagged_map
+                    .into_iter()
+                    .map(|(tag, points_to_set)| {
+                        (
+                            tag.to_string(),
+                            points_to_set
+                                .into_iter()
+                                .map(|points_to| graph.idx_to_name(points_to).to_string())
+                                .collect(),
+                        )
+                    })
+                    .collect(),
+            )
+        };
 
-        let dynamic = graph.edges_dynamic.get(&node_idx).map(|type_map| {
-            type_map
-                .iter()
-                .map(|(type_key, edge_map)| {
-                    let inner = edge_map
-                        .iter()
-                        .map(|(edge_name, edge)| {
-                            (
-                                edge_name.clone(),
-                                DynamicEdge {
-                                    branches: edge
-                                        .branches
-                                        .iter()
-                                        .map(|(branch, pts)| {
-                                            (
-                                                branch.clone(),
-                                                pts.iter()
-                                                    .map(|pt| graph.idx_to_name(*pt).to_string())
-                                                    .collect(),
-                                            )
-                                        })
-                                        .collect(),
-                                    metadata: edge.metadata.clone(),
-                                },
-                            )
-                        })
-                        .collect::<BTreeMap<_, _>>();
-                    (type_key.clone(), inner)
-                })
-                .collect::<BTreeMap<_, _>>()
-        });
+        let dynamic_map = graph.data.edges.dynamic_edges_for_node(node_idx);
+        let dynamic = if dynamic_map.is_empty() {
+            None
+        } else {
+            Some(
+                dynamic_map
+                    .into_iter()
+                    .map(|(type_key, edge_map)| {
+                        let inner = edge_map
+                            .into_iter()
+                            .map(|(edge_name, edge_view)| {
+                                (
+                                    edge_name.to_string(),
+                                    DynamicEdge {
+                                        branches: edge_view
+                                            .branches
+                                            .into_iter()
+                                            .map(|(branch, pts)| {
+                                                (
+                                                    branch.to_string(),
+                                                    pts.iter()
+                                                        .map(|pt| {
+                                                            graph.idx_to_name(*pt).to_string()
+                                                        })
+                                                        .collect(),
+                                                )
+                                            })
+                                            .collect(),
+                                        metadata: edge_view.metadata.cloned(),
+                                    },
+                                )
+                            })
+                            .collect::<BTreeMap<_, _>>();
+                        (type_key.to_string(), inner)
+                    })
+                    .collect::<BTreeMap<_, _>>(),
+            )
+        };
 
         // Collect labels for this node from the inverted index
         let mut node_labels: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
-        for (label_name, node_map) in &graph.node_labels {
+        for (label_name, node_map) in &graph.data.node_metadata.labels {
             if let Some(values) = node_map.get(&node_idx) {
                 node_labels.insert(label_name.clone(), values.clone());
             }
@@ -84,7 +99,7 @@ pub fn to_map_graph(graph: &ArrayGraph) -> Result<MapGraph> {
 
         // Collect properties for this node from the inverted index
         let mut node_properties: BTreeMap<String, String> = BTreeMap::new();
-        for (prop_name, node_map) in &graph.node_properties {
+        for (prop_name, node_map) in &graph.data.node_metadata.properties {
             if let Some(value) = node_map.get(&node_idx) {
                 node_properties.insert(prop_name.clone(), value.clone());
             }
@@ -92,7 +107,9 @@ pub fn to_map_graph(graph: &ArrayGraph) -> Result<MapGraph> {
 
         // Filter out zero-valued metrics for lossless roundtrip
         let metrics: BTreeMap<String, f32> = graph
-            .node_metrics
+            .data
+            .node_metadata
+            .metrics
             .iter()
             .filter_map(|(name, values)| {
                 let v = values[node_idx];

@@ -24,33 +24,25 @@ use std::collections::BTreeSet;
 
 use anyhow::Context;
 use anyhow::Result;
-use offset_graph::Edge;
+use offset_graph::EdgeGraphView;
 use offset_graph::OffsetGraph;
+use offset_graph::edge_flags::EdgeFlags;
 
 use super::DynamicBranchName;
 use super::DynamicEdgeName;
 use super::DynamicTypeKey;
-use super::LabelName;
 use super::LabelValue;
-use super::MetricName;
 use super::NodeIDX;
-use super::PropertyName;
-use super::PropertyValue;
-use super::Tag;
 use crate::ArrayGraphDebugUtils;
 use crate::ArrayGraphSerializable;
-use crate::ArrayGraphSerializableEdges;
-use crate::ArrayGraphSerializableNodeMetadata;
 use crate::GraphBuilder;
 use crate::MapGraph;
 use crate::MetricView;
 use crate::TraversalType;
-use crate::graph_settings::GraphSettings;
 use crate::graph_settings::GraphStructure;
 use crate::traversal::TraversalConfig;
 use crate::traversal::apply_to_array_graph::apply_traversal_config_to_array_graph;
 use crate::traversal::reachable_subgraph::get_reachable_subgraph_unconfigured;
-use crate::types::NodeName;
 use crate::types::TierName;
 pub use crate::types::array_graph::array_graph_arrows::edge_to_arrow;
 use crate::types::array_graph::array_graph_arrows::get_arrows;
@@ -64,42 +56,32 @@ use crate::types::array_graph::array_graph_metrics::get_metrics_sums_tiered_for_
 use crate::types::array_graph::array_graph_metrics::get_transitive_metric_value;
 pub use crate::types::array_graph::array_graph_metrics::get_transitive_tiered_metric_values;
 use crate::types::array_graph::array_graph_metrics::parents_len_configured;
-use crate::types::array_graph::array_graph_nodes::ArrayGraphNodesForGraphSide;
-use crate::types::array_graph::array_graph_nodes::NodeIDXsArcIter;
 use crate::types::array_graph::array_graph_state::ArrayGraphState;
 use crate::types::array_graph::array_graph_stats::ArrayGraphStats;
 use crate::types::array_graph::conjoint_cost::ConjointCost;
+use crate::types::array_graph::offset_graph::DFSConfigured;
 use crate::types::array_graph::offset_graph::lengauer_tarjan_dominator_tree::make_dominator_tree;
-use crate::types::array_graph::offset_graph::shortest_path::shortest_path;
+use crate::types::array_graph::offset_graph::reverse_parallel;
 use crate::types::array_graph::tiers::ALL_TIER_FLAGS;
 use crate::types::array_graph::tiers::TIER_FLAGS;
 
 pub struct ArrayGraph {
-    pub nodes: ArrayGraphNodesForGraphSide,
+    /// The persistent graph data — not modified at runtime.
+    pub data: ArrayGraphSerializable,
+
+    /// Runtime-only derived/mutable state.
+    pub runtime: ArrayGraphRuntime,
+}
+
+/// Runtime-only state for an ArrayGraph. Not serialized.
+/// Starts empty and gets populated lazily or by traversal config.
+pub struct ArrayGraphRuntime {
+    /// Per-edge flags: EDGE_TYPE (directed/tagged/dynamic), EXCLUDED, tier bits, message index.
+    /// Parallel to `data.edges.edges`. Populated on init from `data.edges.edge_metadata_map`.
+    pub edge_flags: Vec<EdgeFlags>,
     pub node_flags: Vec<NodeFlags>,
-
-    pub edges_forward: OffsetGraph,
-
     pub derived_state: ArrayGraphDerivedState,
     pub state: ArrayGraphState,
-
-    pub edges_tagged: BTreeMap<NodeIDX, BTreeMap<Tag, BTreeSet<NodeIDX>>>,
-    pub edges_dynamic: BTreeMap<
-        NodeIDX,
-        BTreeMap<DynamicTypeKey, BTreeMap<DynamicEdgeName, ArrayGraphDynamicEdge>>,
-    >,
-
-    pub node_metrics: BTreeMap<MetricName, Vec<f32>>,
-    pub node_labels: BTreeMap<LabelName, BTreeMap<NodeIDX, BTreeSet<LabelValue>>>,
-    pub node_properties: BTreeMap<PropertyName, BTreeMap<NodeIDX, PropertyValue>>,
-
-    pub graph_settings: Option<GraphSettings>,
-
-    /// If present, these graph will use these entrypoints instead
-    /// of automatically determining them.
-    pub entry_points: Option<BTreeSet<NodeName>>,
-
-    pub properties: BTreeMap<PropertyName, PropertyValue>,
 }
 
 bitflags::bitflags! {
@@ -176,39 +158,9 @@ impl ArrayGraph {
         self.into()
     }
 
-    /// Creates a serializable snapshot by cloning fields.
-    /// `Arc<ArrayGraphNodes>` is cheap (refcount bump); the rest is value data.
+    /// Creates a serializable snapshot by cloning the data.
     pub fn to_serializable(&self) -> ArrayGraphSerializable {
-        let mut directed_edges = vec![];
-        let mut directed_edge_offsets = vec![0];
-
-        for node_idx in self.edges_forward.node_idx_iter() {
-            for edge in self.edges_forward.edges(node_idx) {
-                if !edge.is_tagged_or_dynamic() {
-                    directed_edges.push(edge.points_to);
-                }
-            }
-            directed_edge_offsets.push(directed_edges.len());
-        }
-
-        ArrayGraphSerializable {
-            node_names_ordered: self.nodes.node_names.clone(),
-            edges: ArrayGraphSerializableEdges {
-                directed: directed_edges,
-                directed_offsets: directed_edge_offsets,
-                tagged: self.edges_tagged.clone(),
-                dynamic: self.edges_dynamic.clone(),
-            },
-            node_metadata: ArrayGraphSerializableNodeMetadata {
-                metrics: self.node_metrics.clone(),
-                labels: self.node_labels.clone(),
-                properties: self.node_properties.clone(),
-            },
-            graph_settings: self.graph_settings.clone(),
-            traversal_config: self.state.traversal_config.clone(),
-            entry_points: self.entry_points.clone(),
-            properties: self.properties.clone(),
-        }
+        self.data.clone()
     }
 
     pub fn append_super_root(self, force: bool) -> Result<ArrayGraph> {
@@ -220,48 +172,96 @@ impl ArrayGraph {
     }
 
     pub fn nodes_len(&self) -> usize {
-        self.nodes.nodes_len
+        self.data.node_names_ordered.len()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.nodes.nodes_len == 0
+        self.data.node_names_ordered.len() == 0
     }
 
-    pub fn children(&self, node_idx: NodeIDX) -> &[Edge] {
-        self.edges_forward.edges(node_idx)
+    pub fn children(&self, node_idx: NodeIDX) -> impl Iterator<Item = (NodeIDX, EdgeFlags)> + '_ {
+        self.forward_edges(node_idx)
+    }
+
+    /// Iterate forward edges for a node as (target, flags).
+    pub fn forward_edges(
+        &self,
+        node_idx: NodeIDX,
+    ) -> impl Iterator<Item = (NodeIDX, EdgeFlags)> + '_ {
+        let start = self.data.edges.edge_offsets[node_idx];
+        let end = self.data.edges.edge_offsets[node_idx + 1];
+        self.data.edges.edges[start..end]
+            .iter()
+            .zip(&self.runtime.edge_flags[start..end])
+            .map(|(&target, &flags)| (target, flags))
+    }
+
+    /// Build an EdgeGraphView for a given graph direction.
+    pub fn edge_view(&self, graph_structure: GraphStructure) -> EdgeGraphView<'_> {
+        match graph_structure {
+            GraphStructure::Forward => self.forward_edge_view(),
+            GraphStructure::Reverse => self.edges_reverse().view(&self.data.edges.edge_metadata),
+            GraphStructure::Dominator => self.edges_dom().view(&self.data.edges.edge_metadata),
+        }
+    }
+
+    /// Build an EdgeGraphView for the forward graph.
+    pub fn forward_edge_view(&self) -> EdgeGraphView<'_> {
+        EdgeGraphView {
+            targets: &self.data.edges.edges,
+            flags: &self.runtime.edge_flags,
+            edge_offsets: &self.data.edges.edge_offsets,
+            edge_metadata_map: &self.data.edges.edge_metadata_map,
+            metadata_table: &self.data.edges.edge_metadata,
+        }
     }
 
     pub fn edges_reverse(&self) -> &OffsetGraph {
-        self.derived_state
-            .edges_reverse
-            .get_or_init(|| self.edges_forward.reverse_parallel())
+        self.runtime.derived_state.edges_reverse.get_or_init(|| {
+            reverse_parallel(
+                &self.data.edges.edges,
+                &self.runtime.edge_flags,
+                &self.data.edges.edge_offsets,
+                &self.data.edges.edge_metadata_map,
+            )
+        })
     }
 
     pub fn edges_dom(&self) -> &OffsetGraph {
-        self.derived_state
-            .edges_dom
-            .get_or_init(|| make_dominator_tree(&self.edges_forward, &self.determine_entrypoints()))
+        self.runtime.derived_state.edges_dom.get_or_init(|| {
+            make_dominator_tree(
+                &self.data.edges.edges,
+                &self.runtime.edge_flags,
+                &self.data.edges.edge_offsets,
+                &self.determine_entrypoints(),
+            )
+        })
     }
 
-    pub fn children_dominator(&self, node_idx: NodeIDX) -> &[Edge] {
+    pub fn children_dominator(
+        &self,
+        node_idx: NodeIDX,
+    ) -> impl Iterator<Item = (NodeIDX, EdgeFlags)> + '_ {
         self.edges_dom().edges(node_idx)
     }
 
     pub fn sccs(&self) -> &Vec<Vec<NodeIDX>> {
-        self.derived_state
+        self.runtime
+            .derived_state
             .sccs
             .get_or_init(|| tarjan_strongly_connected_components::SCCBuilder::new(self).build())
     }
 
     pub fn conjoint_cost(&self) -> &ConjointCost {
-        self.derived_state
+        self.runtime
+            .derived_state
             .conjoint_cost
             .get_or_init(|| ConjointCost::build(self).expect("Failed to build conjoint cost"))
     }
 
     #[inline(always)]
-    pub fn node_idx_iter(&self) -> NodeIDXsArcIter {
-        self.nodes.node_idx_iter()
+    pub fn node_idx_iter(&self) -> std::iter::Map<std::ops::Range<usize>, fn(usize) -> NodeIDX> {
+        (0..self.data.node_names_ordered.len()).map(NodeIDX::from)
     }
 
     pub fn node_idx_iter_reachable(&self) -> impl Iterator<Item = NodeIDX> {
@@ -272,14 +272,16 @@ impl ArrayGraph {
     #[inline(always)]
     pub fn idx_to_name<I>(&self, node_idx: I) -> &str
     where
-        I: Into<NodeIDX> + Copy,
+        I: Into<usize> + Copy,
     {
-        self.nodes.idx_to_name(node_idx.into())
+        self.data.node_names_ordered.idx_to_name(node_idx)
     }
 
     /// Collect all labels for a specific node from the inverted labels index.
     pub fn labels_for_node(&self, node_idx: NodeIDX) -> BTreeMap<&str, &BTreeSet<LabelValue>> {
-        self.node_labels
+        self.data
+            .node_metadata
+            .labels
             .iter()
             .filter_map(|(label_name, node_map)| {
                 node_map
@@ -291,17 +293,12 @@ impl ArrayGraph {
 
     #[inline(always)]
     pub fn is_node_unreachable(&self, node_idx: NodeIDX) -> bool {
-        self.node_flags[node_idx].is_node_unreachable() || !self.node_exists(node_idx)
-    }
-
-    #[inline(always)]
-    pub fn node_exists(&self, node_idx: NodeIDX) -> bool {
-        self.nodes.node_exists(node_idx)
+        self.runtime.node_flags[node_idx].is_node_unreachable()
     }
 
     pub fn idxs_to_names(&self, idxs: &[NodeIDX]) -> Vec<&str> {
         idxs.iter()
-            .map(|idx| self.nodes.idx_to_name(*idx))
+            .map(|idx| self.data.node_names_ordered.idx_to_name(*idx))
             .collect()
     }
 
@@ -357,15 +354,21 @@ impl ArrayGraph {
     }
 
     pub fn transitive_count_configured(&self, node_idx: NodeIDX) -> usize {
-        if self.is_node_unreachable(node_idx) || !self.node_exists(node_idx) {
+        if self.is_node_unreachable(node_idx) {
             0
         } else {
-            self.edges_forward.dfs_configured(&[node_idx]).count()
+            DFSConfigured::new(
+                &self.data.edges.edges,
+                &self.runtime.edge_flags,
+                &self.data.edges.edge_offsets,
+                &[node_idx],
+            )
+            .count()
         }
     }
 
     pub fn transitive_count_configured_dominated(&self, node_idx: NodeIDX) -> usize {
-        if self.is_node_unreachable(node_idx) || !self.node_exists(node_idx) {
+        if self.is_node_unreachable(node_idx) {
             0
         } else {
             self.edges_dom().dfs_configured(&[node_idx]).count()
@@ -392,17 +395,19 @@ impl ArrayGraph {
     }
 
     pub fn node_tier_idx(&self, node_idx: NodeIDX) -> Option<usize> {
-        self.node_flags[node_idx].tier_idx()
+        self.runtime.node_flags[node_idx].tier_idx()
     }
 
     pub fn try_node_tier_idx(&self, node_idx: NodeIDX) -> Result<usize> {
-        self.node_flags[node_idx].tier_idx().with_context(|| {
-            format!(
-                "Node does not have a tier assigned. Node name: `{}`, node_idx: `{}`",
-                self.idx_to_name(node_idx),
-                node_idx
-            )
-        })
+        self.runtime.node_flags[node_idx]
+            .tier_idx()
+            .with_context(|| {
+                format!(
+                    "Node does not have a tier assigned. Node name: `{}`, node_idx: `{}`",
+                    self.idx_to_name(node_idx),
+                    node_idx
+                )
+            })
     }
 
     pub fn get_arrows(
@@ -440,8 +445,8 @@ impl ArrayGraph {
         limit: usize,
         task: &ll::Task,
     ) -> Result<Vec<(&'a str, NodeIDX)>> {
-        self.nodes
-            .node_names
+        self.data
+            .node_names_ordered
             .search_name_fuzzy(pattern, limit, task)
     }
 
@@ -456,12 +461,8 @@ impl ArrayGraph {
         graph_structure: GraphStructure,
         traversal_type: TraversalType,
     ) -> Option<Vec<NodeIDX>> {
-        let offset_graph = match graph_structure {
-            GraphStructure::Forward => &self.edges_forward,
-            GraphStructure::Reverse => self.edges_reverse(),
-            GraphStructure::Dominator => self.edges_dom(),
-        };
-        shortest_path(offset_graph, from, to, traversal_type)
+        self.edge_view(graph_structure)
+            .shortest_path(from, to, traversal_type)
     }
 }
 
@@ -533,8 +534,8 @@ mod tests {
         let test_graph = make_test_graph()?;
         let array_graph = test_graph.to_array_graph(&ll::Task::create_new("test"))?;
 
-        assert_equal!(array_graph.edges_forward.node_count(), 6);
-        assert_equal!(array_graph.edges_forward.edges_len(), 13);
+        assert_equal!(array_graph.data.edges.node_count(), 6);
+        assert_equal!(array_graph.data.edges.edges_len(), 13);
 
         assert_equal!(array_graph.edges_reverse().node_count(), 6);
         assert_equal!(array_graph.edges_reverse().edges_len(), 13);
@@ -542,16 +543,21 @@ mod tests {
         let children_names = |node_idx: u32| {
             array_graph
                 .children(NodeIDX(node_idx))
-                .iter()
-                .map(|edge| array_graph.idx_to_name(edge.points_to))
+                .map(|(target, _flags)| array_graph.idx_to_name(target))
                 .collect::<Vec<_>>()
         };
 
-        assert_equal!(array_graph.nodes.node_names.node_names, "ABCDEF");
+        assert_equal!(array_graph.data.node_names_ordered.node_names, "ABCDEF");
         assert_equal!(children_names(0), vec!["B", "C"]);
         assert_equal!(children_names(5), vec!["D", "E"]);
 
-        let find_name = |name: &str| array_graph.nodes.name_to_idx_log(name).map(|idx| idx.0);
+        let find_name = |name: &str| {
+            array_graph
+                .data
+                .node_names_ordered
+                .name_to_idx_log(name)
+                .map(|idx| idx.0)
+        };
 
         assert_equal!(find_name("A"), Some(0));
         assert_equal!(find_name("B"), Some(1));
@@ -570,14 +576,14 @@ mod tests {
         let array_graph = test_graph.to_array_graph(&ll::Task::create_new("test"))?;
 
         let visited = array_graph
-            .edges_forward
+            .forward_edge_view()
             .dfs_configured(&[NodeIDX(0)])
             .collect::<BTreeSet<_>>();
         let expected = [0u32, 1, 2, 3, 4, 5].iter().map(NodeIDX::from).collect();
         assert_equal!(visited, expected);
 
         let visited = array_graph
-            .edges_forward
+            .forward_edge_view()
             .dfs_configured(&[NodeIDX(4)])
             .collect::<BTreeSet<_>>();
         let expected = [3u32, 4, 5].iter().map(NodeIDX::from).collect();

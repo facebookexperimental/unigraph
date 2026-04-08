@@ -188,16 +188,24 @@ impl TraversalConfig {
         let mut force_nodes = BTreeMap::new();
 
         for (name, decision) in self.force_nodes.iter().flatten() {
-            if let Some(idx) = array_graph.nodes.name_to_idx_log(name) {
+            if let Some(idx) = array_graph.data.node_names_ordered.name_to_idx_log(name) {
                 force_nodes.insert(idx, decision.clone());
             }
         }
         let mut force_edges = BTreeMap::new();
         for (from_node_name, decisions) in self.force_edges.iter().flatten() {
-            if let Some(from_idx) = array_graph.nodes.name_to_idx_log(from_node_name) {
+            if let Some(from_idx) = array_graph
+                .data
+                .node_names_ordered
+                .name_to_idx_log(from_node_name)
+            {
                 let inner_map = force_edges.entry(from_idx).or_insert(BTreeMap::new());
                 for (to_node_name, decision) in decisions {
-                    if let Some(to_idx) = array_graph.nodes.name_to_idx_log(to_node_name) {
+                    if let Some(to_idx) = array_graph
+                        .data
+                        .node_names_ordered
+                        .name_to_idx_log(to_node_name)
+                    {
                         inner_map.insert(to_idx, decision.clone());
                     }
                 }

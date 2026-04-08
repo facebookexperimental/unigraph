@@ -368,7 +368,7 @@ impl GraphGet {
             }
         };
 
-        let node_count = serializable.node_names_ordered.combined_nodes_len();
+        let node_count = serializable.node_names_ordered.len();
         let array_graph = serializable.into_array_graph(task)?;
 
         eprintln!("{} nodes", node_count);

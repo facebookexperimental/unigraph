@@ -1,6 +1,6 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-use crate::GraphSide;
+use super::GraphSide;
 
 bitflags::bitflags! {
     /// Value that represents the things that changed about a node

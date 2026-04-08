@@ -2,7 +2,6 @@
 
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
-use std::sync::Arc;
 
 use anyhow::Result;
 use unigraph_delta::Deltable;
@@ -16,9 +15,12 @@ use crate::ArrayGraphSerializable;
 use crate::ArrayGraphSerializableEdges;
 use crate::ArrayGraphSerializableNodeMetadata;
 use crate::NodeIDX;
+use crate::array_graph_serializable::EdgeMeta;
 use crate::remap_utils::RemapContext;
 use crate::types::DynamicEdgeName;
 use crate::types::DynamicTypeKey;
+use crate::types::EdgeIDX;
+use crate::types::EdgeMetaIDX;
 use crate::types::LabelName;
 use crate::types::LabelValue;
 use crate::types::PropertyName;
@@ -118,15 +120,11 @@ pub fn apply_deltas(
     let remapped_edges = r_edges.into_inner().unwrap().unwrap()?;
     let remapped_metadata = r_metadata.into_inner().unwrap().unwrap()?;
 
-    // Phase 3: Convert CSR to mutable adjacency lists ONCE
-    let node_count = final_nodes.combined_nodes_len();
-    let mut directed_adj = csr_to_adj_lists(
-        &remapped_edges.directed,
-        &remapped_edges.directed_offsets,
-        node_count,
-    );
-    let mut tagged = remapped_edges.tagged;
-    let mut dynamic = remapped_edges.dynamic;
+    // Phase 3: Extract mutable adjacency lists from the unified CSR
+    let node_count = final_nodes.len();
+    let mut directed_adj = extract_directed_adj(&remapped_edges, node_count);
+    let mut tagged = extract_tagged(&remapped_edges);
+    let mut dynamic = extract_dynamic(&remapped_edges);
     let mut metrics = remapped_metadata.metrics;
     let mut labels = remapped_metadata.labels;
     let mut properties = remapped_metadata.properties;
@@ -168,17 +166,12 @@ pub fn apply_deltas(
         }
     }
 
-    // Phase 6: Rebuild CSR + assemble result ONCE
-    let (directed, directed_offsets) = adj_lists_to_csr(&directed_adj, node_count);
+    // Phase 6: Rebuild unified CSR + assemble result ONCE
+    let edges = rebuild_unified_csr(&directed_adj, &tagged, &dynamic, node_count);
 
     Ok(ArrayGraphSerializable {
-        node_names_ordered: Arc::new(final_nodes),
-        edges: ArrayGraphSerializableEdges {
-            directed,
-            directed_offsets,
-            tagged,
-            dynamic,
-        },
+        node_names_ordered: final_nodes,
+        edges,
         node_metadata: ArrayGraphSerializableNodeMetadata {
             metrics,
             labels,
@@ -330,13 +323,13 @@ fn build_final_nodes(
     added: &BTreeSet<String>,
     removed: &BTreeSet<String>,
 ) -> ArrayGraphNodes {
-    let base_count = base.combined_nodes_len();
+    let base_count = base.len();
     let estimated_count = base_count + added.len();
     let mut node_names = String::new();
     let mut offsets = Vec::with_capacity(estimated_count + 1);
     offsets.push(0);
 
-    let mut base_iter = base.combined_node_names_iter().peekable();
+    let mut base_iter = base.node_names_iter().peekable();
     let mut added_iter = added.iter().peekable();
 
     loop {
@@ -641,8 +634,17 @@ fn apply_graph_node_delta(
                     .map(|type_map| dynamic_edges_idx_to_name(type_map, final_nodes))
                     .unwrap_or_default();
 
+                // Ensure outer AND inner map keys exist for nested changed/removed entries.
+                // Edges whose targets were dropped by remap may be missing from the
+                // extracted map, but the delta still references them.
                 for k in map_delta.changed.keys().chain(map_delta.removed.iter()) {
                     serialized.entry(k.clone()).or_default();
+                }
+                for (type_key, inner_delta) in &map_delta.changed {
+                    let inner_map = serialized.entry(type_key.clone()).or_default();
+                    for k in inner_delta.changed.keys().chain(inner_delta.removed.iter()) {
+                        inner_map.entry(k.clone()).or_default();
+                    }
                 }
 
                 serialized.apply_delta(map_delta.clone())?;
@@ -883,14 +885,14 @@ fn write_properties_for_node(
 /// Build a remap context by merge-walking two sorted node lists.
 /// O(N) instead of O(N log N) — avoids binary search per node.
 fn build_remap_context(base_nodes: &ArrayGraphNodes, new_nodes: &ArrayGraphNodes) -> RemapContext {
-    let base_count = base_nodes.combined_nodes_len();
-    let new_count = new_nodes.combined_nodes_len();
+    let base_count = base_nodes.len();
+    let new_count = new_nodes.len();
     let mut mappings: Vec<Option<NodeIDX>> = vec![None; base_count];
     let mut original_positions: Vec<Option<NodeIDX>> = vec![None; new_count];
 
-    let mut new_iter = new_nodes.combined_node_idx_iter().peekable();
+    let mut new_iter = new_nodes.node_idx_iter().peekable();
 
-    for old_idx in base_nodes.combined_node_idx_iter() {
+    for old_idx in base_nodes.node_idx_iter() {
         let base_name = base_nodes.idx_to_name(old_idx);
 
         // Advance new_iter until we find a name >= base_name
@@ -922,34 +924,160 @@ fn build_remap_context(base_nodes: &ArrayGraphNodes, new_nodes: &ArrayGraphNodes
     }
 }
 
-fn csr_to_adj_lists(
-    directed: &[NodeIDX],
-    offsets: &[usize],
+/// Extract directed edge adjacency lists from the unified CSR.
+fn extract_directed_adj(
+    edges: &ArrayGraphSerializableEdges,
     node_count: usize,
 ) -> Vec<BTreeSet<NodeIDX>> {
     let mut adj: Vec<BTreeSet<NodeIDX>> = vec![BTreeSet::new(); node_count];
     for i in 0..node_count {
-        let start = offsets[i];
-        let end = offsets[i + 1];
-        for &target in &directed[start..end] {
-            adj[i].insert(target);
+        let node_idx = NodeIDX::from(i);
+        let range = edges.edge_range(node_idx);
+        for edge_idx in range {
+            if edges
+                .edge_metadata_map
+                .get(&EdgeIDX::from(edge_idx))
+                .is_none()
+            {
+                // No metadata = directed edge
+                adj[i].insert(edges.edges[edge_idx]);
+            }
         }
     }
     adj
 }
 
-fn adj_lists_to_csr(adj: &[BTreeSet<NodeIDX>], node_count: usize) -> (Vec<NodeIDX>, Vec<usize>) {
-    let total_edges: usize = adj.iter().map(|s| s.len()).sum();
-    let mut directed = Vec::with_capacity(total_edges);
-    let mut offsets = Vec::with_capacity(node_count + 1);
-    offsets.push(0);
-    for adj_set in adj.iter().take(node_count) {
-        for &target in adj_set {
-            directed.push(target);
+/// Extract tagged edges from the unified CSR into the old map format.
+fn extract_tagged(
+    edges: &ArrayGraphSerializableEdges,
+) -> BTreeMap<NodeIDX, BTreeMap<Tag, BTreeSet<NodeIDX>>> {
+    let mut result: BTreeMap<NodeIDX, BTreeMap<Tag, BTreeSet<NodeIDX>>> = BTreeMap::new();
+    let node_count = edges.node_count();
+    for i in 0..node_count {
+        let node_idx = NodeIDX::from(i);
+        let tagged = edges.tagged_edges_for_node(node_idx);
+        if !tagged.is_empty() {
+            let owned: BTreeMap<Tag, BTreeSet<NodeIDX>> = tagged
+                .into_iter()
+                .map(|(tag, targets)| (tag.to_string(), targets))
+                .collect();
+            result.insert(node_idx, owned);
         }
-        offsets.push(directed.len());
     }
-    (directed, offsets)
+    result
+}
+
+/// Extract dynamic edges from the unified CSR into the old map format.
+fn extract_dynamic(
+    edges: &ArrayGraphSerializableEdges,
+) -> BTreeMap<NodeIDX, BTreeMap<DynamicTypeKey, BTreeMap<DynamicEdgeName, ArrayGraphDynamicEdge>>> {
+    let mut result: BTreeMap<
+        NodeIDX,
+        BTreeMap<DynamicTypeKey, BTreeMap<DynamicEdgeName, ArrayGraphDynamicEdge>>,
+    > = BTreeMap::new();
+    let node_count = edges.node_count();
+    for i in 0..node_count {
+        let node_idx = NodeIDX::from(i);
+        let dynamic = edges.dynamic_edges_for_node(node_idx);
+        if !dynamic.is_empty() {
+            let owned: BTreeMap<DynamicTypeKey, BTreeMap<DynamicEdgeName, ArrayGraphDynamicEdge>> =
+                dynamic
+                    .into_iter()
+                    .map(|(type_key, edge_map)| {
+                        let inner: BTreeMap<DynamicEdgeName, ArrayGraphDynamicEdge> = edge_map
+                            .into_iter()
+                            .map(|(edge_name, view)| {
+                                let branches: BTreeMap<String, BTreeSet<NodeIDX>> = view
+                                    .branches
+                                    .into_iter()
+                                    .map(|(b, targets)| (b.to_string(), targets))
+                                    .collect();
+                                (
+                                    edge_name.to_string(),
+                                    ArrayGraphDynamicEdge {
+                                        branches,
+                                        metadata: view.metadata.cloned(),
+                                    },
+                                )
+                            })
+                            .collect();
+                        (type_key.to_string(), inner)
+                    })
+                    .collect();
+            result.insert(node_idx, owned);
+        }
+    }
+    result
+}
+
+/// Rebuild a unified CSR from separate directed/tagged/dynamic edge structures.
+fn rebuild_unified_csr(
+    directed_adj: &[BTreeSet<NodeIDX>],
+    tagged: &BTreeMap<NodeIDX, BTreeMap<Tag, BTreeSet<NodeIDX>>>,
+    dynamic: &BTreeMap<
+        NodeIDX,
+        BTreeMap<DynamicTypeKey, BTreeMap<DynamicEdgeName, ArrayGraphDynamicEdge>>,
+    >,
+    node_count: usize,
+) -> ArrayGraphSerializableEdges {
+    let mut edges = Vec::new();
+    let mut edge_offsets = Vec::with_capacity(node_count + 1);
+    edge_offsets.push(0);
+    let mut edge_metadata: Vec<EdgeMeta> = Vec::new();
+    let mut edge_metadata_map: BTreeMap<EdgeIDX, EdgeMetaIDX> = BTreeMap::new();
+
+    for i in 0..node_count {
+        let node_idx = NodeIDX::from(i);
+
+        // Directed edges first
+        for &target in &directed_adj[i] {
+            edges.push(target);
+        }
+
+        // Tagged edges (sorted by tag + target)
+        if let Some(tag_map) = tagged.get(&node_idx) {
+            for (tag, targets) in tag_map {
+                let meta_idx = EdgeMetaIDX::from(edge_metadata.len());
+                edge_metadata.push(EdgeMeta::Tagged { tag: tag.clone() });
+                for &target in targets {
+                    let edge_idx = EdgeIDX::from(edges.len());
+                    edge_metadata_map.insert(edge_idx, meta_idx);
+                    edges.push(target);
+                }
+            }
+        }
+
+        // Dynamic edges (sorted by type_key + edge_name + branch + target)
+        if let Some(type_map) = dynamic.get(&node_idx) {
+            for (type_key, edge_map) in type_map {
+                for (edge_name, dyn_edge) in edge_map {
+                    for (branch, targets) in &dyn_edge.branches {
+                        let meta_idx = EdgeMetaIDX::from(edge_metadata.len());
+                        edge_metadata.push(EdgeMeta::Dynamic {
+                            type_key: type_key.clone(),
+                            edge_name: edge_name.clone(),
+                            branch: branch.clone(),
+                            metadata: dyn_edge.metadata.clone(),
+                        });
+                        for &target in targets {
+                            let edge_idx = EdgeIDX::from(edges.len());
+                            edge_metadata_map.insert(edge_idx, meta_idx);
+                            edges.push(target);
+                        }
+                    }
+                }
+            }
+        }
+
+        edge_offsets.push(edges.len());
+    }
+
+    ArrayGraphSerializableEdges {
+        edges,
+        edge_offsets,
+        edge_metadata,
+        edge_metadata_map,
+    }
 }
 
 // ---------------------------------------------------------------------------

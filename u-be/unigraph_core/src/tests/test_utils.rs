@@ -7,7 +7,6 @@ use crate::ArrayGraph;
 use crate::TwinArrow;
 use crate::types::NodeIDX;
 use crate::types::array_graph::Arrow;
-use crate::types::array_graph::offset_graph::Edge;
 use crate::types::array_graph::offset_graph::edge_flags::EdgeType;
 
 pub fn idx_to_names<I: IntoIterator<Item = NodeIDX>>(graph: &ArrayGraph, idxs: I) -> Vec<String> {
@@ -17,35 +16,26 @@ pub fn idx_to_names<I: IntoIterator<Item = NodeIDX>>(graph: &ArrayGraph, idxs: I
 }
 
 pub fn name_to_idx(graph: &ArrayGraph, name: &str) -> NodeIDX {
-    graph.nodes.name_to_idx_log(name).unwrap()
+    graph.data.node_names_ordered.name_to_idx_log(name).unwrap()
 }
 
 pub fn print_all_node_names(graph: &ArrayGraph) -> String {
     graph
-        .nodes
-        .iter_names()
-        .map(|name| name.to_string())
+        .data
+        .node_names_ordered
+        .node_names_iter()
+        .map(|name: &str| name.to_string())
         .collect::<Vec<String>>()
         .join(" ")
 }
 
 pub fn print_forward_edges(array_graph: &ArrayGraph) -> String {
-    print_edges(array_graph, |graph, node_idx| {
-        graph.edges_forward.edges(node_idx)
-    })
-}
-
-pub fn print_edges<FN>(array_graph: &ArrayGraph, edges_fn: FN) -> String
-where
-    FN: Fn(&ArrayGraph, NodeIDX) -> &[Edge],
-{
     let mut result = String::new();
-    for node_idx in array_graph.edges_forward.node_idx_iter() {
-        let edges = edges_fn(array_graph, node_idx);
+    for node_idx in array_graph.node_idx_iter() {
         let from_name = array_graph.idx_to_name(node_idx);
-        for edge in edges {
-            let to_name = array_graph.idx_to_name(edge.points_to);
-            let edge_type = match edge.flags.edge_type() {
+        for (target, flags) in array_graph.forward_edges(node_idx) {
+            let to_name = array_graph.idx_to_name(target);
+            let edge_type = match flags.edge_type() {
                 EdgeType::Tagged => "[T]",
                 EdgeType::Dynamic => "[D]",
                 EdgeType::Directed => "",
@@ -60,7 +50,7 @@ where
 
 pub fn print_arrows(array_graph: &ArrayGraph) -> String {
     let mut result = String::new();
-    for node_idx in array_graph.edges_forward.node_idx_iter() {
+    for node_idx in array_graph.node_idx_iter() {
         let arrows = array_graph.get_arrows_forward(node_idx).unwrap();
         for arrow in arrows {
             result.push_str(&print_arrow(array_graph, &arrow));

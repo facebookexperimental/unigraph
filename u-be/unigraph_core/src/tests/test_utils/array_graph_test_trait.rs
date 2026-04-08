@@ -11,14 +11,15 @@ impl ArrayGraphTestTrait for crate::ArrayGraph {
         let mut result = String::new();
         for node_idx in self.node_idx_iter() {
             let node_name = self.idx_to_name(node_idx);
-            let unreachable_str = if self.node_flags[node_idx].contains(NodeFlags::UNREACHABLE) {
-                " [UNREACHABLE]"
-            } else {
-                ""
-            };
+            let unreachable_str =
+                if self.runtime.node_flags[node_idx].contains(NodeFlags::UNREACHABLE) {
+                    " [UNREACHABLE]"
+                } else {
+                    ""
+                };
             result.push_str(&format!("{node_name}{unreachable_str}\n"));
             if let Some(tier_idx) = self.node_tier_idx(node_idx) {
-                let tier_name = &self.state.tiers[tier_idx].0;
+                let tier_name = &self.runtime.state.tiers[tier_idx].0;
                 result.push_str(&format!("  Tier: {tier_name}\n"));
             }
         }

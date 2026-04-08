@@ -6,13 +6,13 @@ use anyhow::Context;
 use anyhow::Result;
 
 use crate::ArrayGraph;
-use crate::GraphSide;
 use crate::NodeIDX;
 use crate::TwinGraph;
 use crate::types::array_graph::array_graph_metrics::CountChangedNodesCountsForDelta;
 use crate::types::array_graph::array_graph_metrics::CountChangedNodesMetricsForDelta;
 use crate::types::array_graph::array_graph_metrics::ShouldCount;
 use crate::types::array_graph::get_transitive_tiered_metric_values;
+use crate::types::twin_graph::GraphSide;
 
 /// Transitive delta value is a difference between transitive sizes of a node
 /// EXCLUDING the nodes that didn't change in the graph.
@@ -58,32 +58,52 @@ use crate::types::array_graph::get_transitive_tiered_metric_values;
 /// This way the delta for the node D will be:
 /// Delta with exclusion: 1 (0 on the left, 1 on the right, which is its self size)
 pub fn get_transitive_count_delta(
+    tg: &TwinGraph,
     l: &ArrayGraph,
     r: &ArrayGraph,
-    node_idx: NodeIDX,
+    merged_idx: NodeIDX,
 ) -> Result<i32> {
-    if l.is_node_unreachable(node_idx) && r.is_node_unreachable(node_idx) {
+    let l_idx = tg.to_local(GraphSide::Left, merged_idx);
+    let r_idx = tg.to_local(GraphSide::Right, merged_idx);
+
+    let l_unreachable = l_idx.is_none_or(|idx| l.is_node_unreachable(idx));
+    let r_unreachable = r_idx.is_none_or(|idx| r.is_node_unreachable(idx));
+
+    if l_unreachable && r_unreachable {
         return Ok(0);
     }
 
-    let should_count = CountChangedNodesCountsForDelta { l, r };
+    let remap = &tg.remap;
 
-    let count_l = if l.node_exists(node_idx) {
-        l.edges_forward
-            .dfs_configured(&[node_idx])
-            .filter(|node_idx| should_count.should_count(*node_idx))
-            .count()
-    } else {
-        0
+    let should_count_l = CountChangedNodesCountsForDelta {
+        l,
+        r,
+        dfs_side: GraphSide::Left,
+        remap,
+    };
+    let should_count_r = CountChangedNodesCountsForDelta {
+        l,
+        r,
+        dfs_side: GraphSide::Right,
+        remap,
     };
 
-    let count_r = if r.node_exists(node_idx) {
-        r.edges_forward
-            .dfs_configured(&[node_idx])
-            .filter(|node_idx| should_count.should_count(*node_idx))
-            .count()
-    } else {
-        0
+    let count_l = match l_idx {
+        Some(idx) if !l.is_node_unreachable(idx) => l
+            .forward_edge_view()
+            .dfs_configured(&[idx])
+            .filter(|node_idx| should_count_l.should_count(*node_idx))
+            .count(),
+        _ => 0,
+    };
+
+    let count_r = match r_idx {
+        Some(idx) if !r.is_node_unreachable(idx) => r
+            .forward_edge_view()
+            .dfs_configured(&[idx])
+            .filter(|node_idx| should_count_r.should_count(*node_idx))
+            .count(),
+        _ => 0,
     };
 
     Ok(count_r as i32 - count_l as i32)
@@ -91,29 +111,48 @@ pub fn get_transitive_count_delta(
 
 pub fn get_transitive_tiered_delta(
     tg: &TwinGraph,
-    node_idx: NodeIDX,
+    merged_idx: NodeIDX,
     metric_name: &str,
 ) -> Result<BTreeMap<String, f32>> {
     {
-        if tg.l.is_none() {
-            return Ok(BTreeMap::new());
-        }
-
-        let l = tg.graph(GraphSide::Left)?;
+        let l = tg.graph(GraphSide::Left);
         let r = &tg.r;
-        let should_count = CountChangedNodesMetricsForDelta {
+        let remap = &tg.remap;
+
+        let l_idx = tg.to_local(GraphSide::Left, merged_idx);
+        let r_idx = tg.to_local(GraphSide::Right, merged_idx);
+
+        let should_count_l = CountChangedNodesMetricsForDelta {
             l,
             r,
             node_diff: &tg.node_diff,
+            dfs_side: GraphSide::Left,
+            remap,
         };
-        let result_l =
-            get_transitive_tiered_metric_values(l, node_idx, metric_name, false, should_count)?;
-        let result_r =
-            get_transitive_tiered_metric_values(r, node_idx, metric_name, false, should_count)?;
+        let should_count_r = CountChangedNodesMetricsForDelta {
+            l,
+            r,
+            node_diff: &tg.node_diff,
+            dfs_side: GraphSide::Right,
+            remap,
+        };
+
+        let result_l = match l_idx {
+            Some(idx) => {
+                get_transitive_tiered_metric_values(l, idx, metric_name, false, should_count_l)?
+            }
+            None => BTreeMap::new(),
+        };
+        let result_r = match r_idx {
+            Some(idx) => {
+                get_transitive_tiered_metric_values(r, idx, metric_name, false, should_count_r)?
+            }
+            None => BTreeMap::new(),
+        };
 
         // comparing two graphs with different tiers is probably tricky.
         // for now we'll just take tiers from the right graph.
-        let tiers = &r.state.tiers;
+        let tiers = &r.runtime.state.tiers;
 
         anyhow::Ok(
             tiers
@@ -141,11 +180,16 @@ mod tests {
     #[test]
     fn test_get_transitive_count_delta() -> Result<()> {
         let tg = make_twin_graph()?;
-        let t_idx = tg.node_names.name_to_idx_log("T").unwrap();
+        let t_r_idx = tg.r.data.node_names_ordered.name_to_idx_log("T").unwrap();
+        let t_merged = tg.to_merged(GraphSide::Right, t_r_idx);
 
-        let t_left = tg.l.as_ref().unwrap().transitive_count_configured(t_idx);
-        let t_right = tg.r.transitive_count_configured(t_idx);
-        let t_delta = tg.get_transitive_count_delta(t_idx)?;
+        let t_left_local = tg.to_local(GraphSide::Left, t_merged);
+        let t_left = match t_left_local {
+            Some(idx) => tg.l.transitive_count_configured(idx),
+            None => 0,
+        };
+        let t_right = tg.r.transitive_count_configured(t_r_idx);
+        let t_delta = tg.get_transitive_count_delta(t_merged)?;
 
         assert_equal!(t_left, 0);
         assert_equal!(t_right, 8);
@@ -156,14 +200,16 @@ mod tests {
     #[test]
     fn test_get_transitive_tiered_delta() -> Result<()> {
         let tg = make_twin_graph_with_tier_config()?;
-        let l = tg.graph(GraphSide::Left)?;
-        let r = tg.graph(GraphSide::Right)?;
+        let l = tg.graph(GraphSide::Left);
+        let r = tg.graph(GraphSide::Right);
         let m = "size";
 
-        let a_idx = tg.node_names.name_to_idx_log("A").unwrap();
-        let value_l = l.get_transitive_tiered_metric_values(a_idx, m, false)?;
-        let value_r = r.get_transitive_tiered_metric_values(a_idx, m, false)?;
-        let delta = tg.get_transitive_tiered_delta(a_idx, m)?;
+        let a_r_idx = r.data.node_names_ordered.name_to_idx_log("A").unwrap();
+        let a_merged = tg.to_merged(GraphSide::Right, a_r_idx);
+        let a_l_idx = tg.to_local(GraphSide::Left, a_merged).unwrap();
+        let value_l = l.get_transitive_tiered_metric_values(a_l_idx, m, false)?;
+        let value_r = r.get_transitive_tiered_metric_values(a_r_idx, m, false)?;
+        let delta = tg.get_transitive_tiered_delta(a_merged, m)?;
 
         snapshot!(
             ("Left:", value_l, "Right:", value_r, "Delta:", delta),
@@ -194,10 +240,15 @@ mod tests {
 "#
         );
 
-        let t_idx = tg.node_names.name_to_idx_log("T").unwrap();
-        let value_l = l.get_transitive_tiered_metric_values(t_idx, m, false)?;
-        let value_r = r.get_transitive_tiered_metric_values(t_idx, m, false)?;
-        let delta = tg.get_transitive_tiered_delta(t_idx, m)?;
+        let t_r_idx = r.data.node_names_ordered.name_to_idx_log("T").unwrap();
+        let t_merged = tg.to_merged(GraphSide::Right, t_r_idx);
+        let t_l_idx = tg.to_local(GraphSide::Left, t_merged);
+        let value_l = match t_l_idx {
+            Some(idx) => l.get_transitive_tiered_metric_values(idx, m, false)?,
+            None => BTreeMap::new(),
+        };
+        let value_r = r.get_transitive_tiered_metric_values(t_r_idx, m, false)?;
+        let delta = tg.get_transitive_tiered_delta(t_merged, m)?;
 
         snapshot!(
             ("Left:", value_l, "Right:", value_r, "Delta:", delta),

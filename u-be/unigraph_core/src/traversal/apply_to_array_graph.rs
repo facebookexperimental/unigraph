@@ -7,6 +7,7 @@ use anyhow::Result;
 
 use crate::ArrayGraph;
 use crate::Decision;
+use crate::EdgeMeta;
 use crate::NodeIDX;
 use crate::NodeLabelPredicate;
 use crate::TraversalConfig;
@@ -17,6 +18,7 @@ use crate::traversal::messages::BuiltInMessages;
 use crate::traversal::messages::IndexedMessages;
 use crate::traversal::tiered_traversal::TieredTraversalConfig;
 use crate::types::DynamicTypeKey;
+use crate::types::EdgeIDX;
 use crate::types::LabelName;
 use crate::types::LabelValue;
 use crate::types::Tag;
@@ -25,7 +27,6 @@ use crate::types::array_graph::NodeFlags;
 use crate::types::array_graph::array_graph_derived_state::ArrayGraphDerivedState;
 use crate::types::array_graph::array_graph_state::ArrayGraphState;
 use crate::types::array_graph::offset_graph::Edge;
-use crate::types::array_graph::offset_graph::NonDirectedEdgeMetadata;
 
 /// This function will take an `ArrayGraph` and a `TraversalConfig`, and apply the traversal configuration to the graph.
 /// which will include figuring out which edges/nodes to follow, which edges/nodes to exclude, assign tiers if
@@ -53,29 +54,58 @@ pub fn apply_traversal_config_to_array_graph(
     } = &indexed_config;
 
     let exclude_tags = exclude_tags_for_tier_above_the_max(tiered_traversal);
-    let labels = &ag.node_labels;
+    let labels = &ag.data.node_metadata.labels;
 
-    for (parent_idx, edge, md) in ag.edges_forward.iter_edges_mut() {
-        // we need to start fresh and make sure all edges that were previously excluded
-        // are reset.
-        edge.flags.include();
+    let node_count = ag.data.edges.edge_offsets.len() - 1;
+    for node in 0..node_count {
+        let parent_idx = NodeIDX::from(node);
+        let start = ag.data.edges.edge_offsets[node];
+        let end = ag.data.edges.edge_offsets[node + 1];
+        for edge_i in start..end {
+            let target = ag.data.edges.edges[edge_i];
+            let edge_flags_ref = &mut ag.runtime.edge_flags[edge_i];
 
-        match_dynamic_edges(force_dynamic, parent_idx, edge, md, &m)?;
-        match_tagged(force_tagged, &exclude_tags, edge, md, &tag_to_tier, &m)?;
-        let labels_for_node = collect_labels_for_node(labels, edge.points_to);
-        if !labels_for_node.is_empty() {
-            match_label_predicates(label_predicates, edge, &labels_for_node, &m)?;
+            // we need to start fresh and make sure all edges that were previously excluded
+            // are reset.
+            edge_flags_ref.include();
+
+            // Look up metadata for this edge
+            let meta = ag
+                .data
+                .edges
+                .edge_metadata_map
+                .get(&EdgeIDX::from(edge_i))
+                .map(|&meta_idx| &ag.data.edges.edge_metadata[usize::from(meta_idx)]);
+
+            let mut edge = Edge::new_with_flags(target, *edge_flags_ref);
+
+            match_dynamic_edges(force_dynamic, parent_idx, &mut edge, meta, &m)?;
+            match_tagged(
+                force_tagged,
+                &exclude_tags,
+                &mut edge,
+                meta,
+                &tag_to_tier,
+                &m,
+            )?;
+            let labels_for_node = collect_labels_for_node(labels, edge.points_to);
+            if !labels_for_node.is_empty() {
+                match_label_predicates(label_predicates, &mut edge, &labels_for_node, &m)?;
+            }
+            match_force_edges(force_edges, parent_idx, &mut edge, &m)?;
+            match_force_nodes(force_nodes, &mut edge, &m)?;
+
+            // Write back the modified flags
+            ag.runtime.edge_flags[edge_i] = edge.flags;
         }
-        match_force_edges(force_edges, parent_idx, edge, &m)?;
-        match_force_nodes(force_nodes, edge, &m)?;
     }
 
     apply_tiers(ag, &indexed_config, &entry_points)?;
 
     apply_node_reachability(ag, entry_points);
 
-    ag.derived_state = ArrayGraphDerivedState::new();
-    ag.state = ArrayGraphState {
+    ag.runtime.derived_state = ArrayGraphDerivedState::new();
+    ag.runtime.state = ArrayGraphState {
         tiers: traversal_config.get_tiers(),
         traversal_config: Some(traversal_config),
         indexed_messages: m,
@@ -114,14 +144,25 @@ fn exclude_tags_for_tier_above_the_max(
 }
 
 fn apply_node_reachability(ag: &mut ArrayGraph, entry_points: Vec<NodeIDX>) {
+    use crate::types::array_graph::offset_graph::DFSConfigured;
+
     for node_idx in ag.node_idx_iter() {
         // first mark all nodes as unreachable
-        ag.node_flags[node_idx].insert(NodeFlags::UNREACHABLE);
+        ag.runtime.node_flags[node_idx].insert(NodeFlags::UNREACHABLE);
     }
 
-    for node_idx in ag.edges_forward.dfs_configured(&entry_points) {
-        // whatever is reachable from a configured DFS we can mark as reachable
-        ag.node_flags[node_idx].remove(NodeFlags::UNREACHABLE);
+    // Use DFSConfigured directly with separate borrows to avoid borrow conflict
+    // (DFS borrows edge_flags, we mutate node_flags — they're separate fields)
+    let reachable: Vec<NodeIDX> = DFSConfigured::new(
+        &ag.data.edges.edges,
+        &ag.runtime.edge_flags,
+        &ag.data.edges.edge_offsets,
+        &entry_points,
+    )
+    .collect();
+
+    for node_idx in reachable {
+        ag.runtime.node_flags[node_idx].remove(NodeFlags::UNREACHABLE);
     }
 }
 
@@ -233,14 +274,15 @@ fn match_dynamic_edges(
     force_dynamic: &BTreeMap<DynamicTypeKey, DynamicTypeConfig>,
     _parent_idx: crate::NodeIDX,
     edge: &mut Edge,
-    metadata: &mut NonDirectedEdgeMetadata,
+    metadata: Option<&EdgeMeta>,
     indexed_messages: &IndexedMessages,
 ) -> Result<()> {
-    if let NonDirectedEdgeMetadata::Dynamic {
+    if let Some(EdgeMeta::Dynamic {
         type_key,
         edge_name,
         branch,
-    } = metadata
+        ..
+    }) = metadata
     {
         if let Some(type_config) = force_dynamic.get(type_key) {
             // Check edge-specific override first
@@ -315,12 +357,12 @@ fn match_tagged(
     force_tagged: &BTreeMap<Tag, Decision>,
     exclude_tags: &Option<BTreeSet<Tag>>,
     edge: &mut Edge,
-    metadata: &mut NonDirectedEdgeMetadata,
+    metadata: Option<&EdgeMeta>,
     tag_to_tier: &Option<BTreeMap<Tag, usize>>,
     indexed_messages: &IndexedMessages,
 ) -> Result<()> {
     #[allow(clippy::collapsible_if)]
-    if let NonDirectedEdgeMetadata::Tagged { tag } = metadata {
+    if let Some(EdgeMeta::Tagged { tag }) = metadata {
         if let Some(exclude_tags) = exclude_tags {
             if exclude_tags.contains(tag) {
                 edge.flags.exclude_with_message(

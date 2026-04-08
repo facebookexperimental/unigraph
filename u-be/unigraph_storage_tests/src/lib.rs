@@ -7,7 +7,6 @@
 
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
-use std::sync::Arc;
 
 use unigraph_core::ArrayGraphNodes;
 use unigraph_core::ArrayGraphSerializable;
@@ -106,16 +105,44 @@ impl TestGraphTimeline {
             }
         }
 
+        // Build unified CSR from directed edges + tagged edges
+        let mut csr_edges = Vec::new();
+        let mut csr_offsets = Vec::with_capacity(node_count + 1);
+        csr_offsets.push(0);
+        let mut edge_metadata: Vec<unigraph_core::EdgeMeta> = Vec::new();
+        let mut edge_metadata_map: BTreeMap<unigraph_core::EdgeIDX, unigraph_core::EdgeMetaIDX> =
+            BTreeMap::new();
+
+        for i in 0..node_count {
+            let node_idx = NodeIDX::from(i);
+            // Directed edges
+            let start = directed_offsets[i];
+            let end = directed_offsets[i + 1];
+            csr_edges.extend_from_slice(&directed[start..end]);
+
+            // Tagged edges
+            if let Some(tag_map) = tagged.get(&node_idx) {
+                for (tag, targets) in tag_map {
+                    let meta_idx = unigraph_core::EdgeMetaIDX::from(edge_metadata.len());
+                    edge_metadata.push(unigraph_core::EdgeMeta::Tagged { tag: tag.clone() });
+                    for &target in targets {
+                        let edge_idx = unigraph_core::EdgeIDX::from(csr_edges.len());
+                        csr_edges.push(target);
+                        edge_metadata_map.insert(edge_idx, meta_idx);
+                    }
+                }
+            }
+
+            csr_offsets.push(csr_edges.len());
+        }
+
         ArrayGraphSerializable {
-            node_names_ordered: Arc::new(ArrayGraphNodes::from_parts(
-                node_names_str,
-                node_name_offsets,
-            )),
+            node_names_ordered: ArrayGraphNodes::from_parts(node_names_str, node_name_offsets),
             edges: ArrayGraphSerializableEdges {
-                directed,
-                directed_offsets,
-                tagged,
-                dynamic: BTreeMap::new(),
+                edges: csr_edges,
+                edge_offsets: csr_offsets,
+                edge_metadata,
+                edge_metadata_map,
             },
             node_metadata: ArrayGraphSerializableNodeMetadata {
                 metrics,

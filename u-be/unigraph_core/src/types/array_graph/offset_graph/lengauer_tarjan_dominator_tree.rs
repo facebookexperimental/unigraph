@@ -1,12 +1,13 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 use std::cmp::min;
+use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
 use crate::NodeIDX;
-use crate::types::array_graph::offset_graph::Edge;
-use crate::types::array_graph::offset_graph::EdgeFlags;
+use crate::types::array_graph::offset_graph::DFSConfigured;
 use crate::types::array_graph::offset_graph::OffsetGraph;
+use crate::types::array_graph::offset_graph::edge_flags::EdgeFlags;
 
 type TravIDX = usize;
 
@@ -14,13 +15,19 @@ type TravIDX = usize;
 const EMPTY_VALUE: TravIDX = usize::MAX;
 
 /// https://en.wikipedia.org/wiki/Dominator_(graph_theory)
-pub fn make_dominator_tree(offset_graph: &OffsetGraph, roots: &[NodeIDX]) -> OffsetGraph {
+pub fn make_dominator_tree(
+    targets: &[NodeIDX],
+    flags: &[EdgeFlags],
+    edge_offsets: &[usize],
+    roots: &[NodeIDX],
+) -> OffsetGraph {
+    let node_count = edge_offsets.len() - 1;
     let mut current_trav_idx: TravIDX = 0;
 
     let mut dfs_stack: Vec<(NodeIDX, Option<usize>)> =
         roots.iter().map(|root| (*root, None)).collect::<Vec<_>>();
 
-    let reachable_node_ct = offset_graph.dfs_configured(roots).count();
+    let reachable_node_ct = DFSConfigured::new(targets, flags, edge_offsets, roots).count();
 
     // reverse graph (traversal order indexes)
     let mut reverse_graph: Vec<Vec<TravIDX>> = vec![vec![]; reachable_node_ct];
@@ -33,7 +40,7 @@ pub fn make_dominator_tree(offset_graph: &OffsetGraph, roots: &[NodeIDX]) -> Off
     let mut bucket: Vec<Vec<TravIDX>> = vec![vec![]; reachable_node_ct];
     // map of nodes to their semi-dominators. initially maps each node to itself
     let mut semi_dom: Vec<TravIDX> = (0..reachable_node_ct).collect();
-    // Map to immediate dominator of i'th node
+    // Map to immediate dominator of i’th node
     let mut dom: Vec<TravIDX> = (0..reachable_node_ct).collect();
     // parent of i’th node in the forest maintained during step 2 of the algorithm.
     let mut dsu: Vec<Option<TravIDX>> = vec![None; reachable_node_ct];
@@ -41,7 +48,7 @@ pub fn make_dominator_tree(offset_graph: &OffsetGraph, roots: &[NodeIDX]) -> Off
     // on path from i to the root of the (dsu) tree in which node i lies. Initially, label[i]=i
     let mut label: Vec<TravIDX> = (0..reachable_node_ct).collect();
     //  mapping of i’th node to its new index, equal to the arrival time of node in dfs tree
-    let mut node_idx_to_traversal_idx: Vec<TravIDX> = vec![EMPTY_VALUE; offset_graph.node_count()];
+    let mut node_idx_to_traversal_idx: Vec<TravIDX> = vec![EMPTY_VALUE; node_count];
     let mut traversal_idx_to_node_idx: Vec<NodeIDX> = vec![];
     // parent of node i in DFS tree. NOT NodeIDX, this is a TravIDX -> TravIDX map
     let mut dfs_trav_idx_parents: Vec<TravIDX> = (0..reachable_node_ct).collect();
@@ -60,8 +67,14 @@ pub fn make_dominator_tree(offset_graph: &OffsetGraph, roots: &[NodeIDX]) -> Off
                 dfs_trav_idx_parents[trav_idx] = parent_trav_idx;
             }
 
-            for child in offset_graph.edges_configured(node_idx) {
-                dfs_stack.push((child.points_to, Some(trav_idx)));
+            let start = edge_offsets[node_idx];
+            let end = edge_offsets[node_idx + 1];
+            for i in start..end {
+                let target = targets[i];
+                let flag = flags[i];
+                if !flag.contains(EdgeFlags::EXCLUDED) {
+                    dfs_stack.push((target, Some(trav_idx)));
+                }
             }
         }
 
@@ -107,35 +120,32 @@ pub fn make_dominator_tree(offset_graph: &OffsetGraph, roots: &[NodeIDX]) -> Off
         }
     }
 
-    let mut dom_offset_graph = OffsetGraph {
-        edges: Vec::new(),
-        edge_offsets: vec![0],
-        non_directed_edges_metadata: Vec::new(),
-    };
+    let mut dom_targets = Vec::new();
+    let mut dom_flags = Vec::new();
+    let mut dom_edge_offsets = vec![0];
 
-    for node_idx in offset_graph.node_idx_iter() {
+    for node in 0..node_count {
+        let node_idx = NodeIDX::from(node);
         let trav_idx = node_idx_to_traversal_idx[node_idx];
-        // If TRAV_IDX is missing that woudl mean that the node was not reachable
+        // If TRAV_IDX is missing that would mean that the node was not reachable
         // and is not a part of resulting DOM tree
         if trav_idx != EMPTY_VALUE {
             for &dom_child_trav_idx in &dom_tree[trav_idx] {
                 let dom_child_node_idx = traversal_idx_to_node_idx[dom_child_trav_idx];
-                dom_offset_graph.edges.push(Edge {
-                    points_to: dom_child_node_idx,
-                    flags: EdgeFlags::empty(),
-                })
+                dom_targets.push(dom_child_node_idx);
+                dom_flags.push(EdgeFlags::empty());
             }
         }
 
-        dom_offset_graph
-            .edge_offsets
-            .push(dom_offset_graph.edges.len());
-        dom_offset_graph
-            .non_directed_edges_metadata
-            .push(super::NonDirectedEdgeMetadata::Directed);
+        dom_edge_offsets.push(dom_targets.len());
     }
 
-    dom_offset_graph
+    OffsetGraph {
+        targets: dom_targets,
+        flags: dom_flags,
+        edge_offsets: dom_edge_offsets,
+        edge_metadata_map: BTreeMap::new(),
+    }
 }
 
 fn dsu_find(

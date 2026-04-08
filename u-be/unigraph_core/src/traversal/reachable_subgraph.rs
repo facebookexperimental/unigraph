@@ -19,7 +19,7 @@ pub(crate) fn get_reachable_subgraph_unconfigured(
         .map(|&idx| graph.idx_to_name(idx).to_string())
         .collect::<BTreeSet<_>>();
 
-    for node_idx in graph.edges_forward.dfs_unconfigured(roots) {
+    for node_idx in graph.forward_edge_view().dfs_unconfigured(roots) {
         reachable[node_idx] = true;
         total_reachable += 1;
     }

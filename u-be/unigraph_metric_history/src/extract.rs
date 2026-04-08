@@ -25,7 +25,7 @@ pub fn extract_node_metrics(
     graph: &ArrayGraphSerializable,
 ) -> BTreeMap<String, NodeMetricSnapshot> {
     let nodes = &graph.node_names_ordered;
-    let node_count = nodes.combined_nodes_len();
+    let node_count = nodes.len();
     let mut result = BTreeMap::new();
 
     for idx_raw in 0..node_count {

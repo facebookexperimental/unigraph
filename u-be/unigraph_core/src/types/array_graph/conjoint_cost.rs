@@ -11,6 +11,7 @@ use crate::NodeIDX;
 use crate::types::MetricName;
 use crate::types::TierIDX;
 use crate::types::TierName;
+use crate::types::array_graph::offset_graph::EdgeGraphView;
 use crate::types::array_graph::offset_graph::OffsetGraph;
 
 const MISSING: usize = usize::MAX;
@@ -54,15 +55,20 @@ impl<'a> ConjointCostBuilder<'a> {
 
         let scc_conj_counts = vec![0.0; sccs.len()];
         let scc_conj_metrics: BTreeMap<MetricName, Vec<f32>> = ag
-            .node_metrics
+            .data
+            .node_metadata
+            .metrics
             .keys()
             .map(|metric_name| (metric_name.clone(), vec![0.0; sccs.len()]))
             .collect();
         let scc_conj_tiered_metrics: BTreeMap<MetricName, Vec<Vec<f32>>> = ag
-            .node_metrics
+            .data
+            .node_metadata
+            .metrics
             .keys()
             .map(|metric_name| {
                 let tiered: Vec<Vec<f32>> = ag
+                    .runtime
                     .state
                     .tiers
                     .iter()
@@ -95,8 +101,10 @@ impl<'a> ConjointCostBuilder<'a> {
         // meaning that when we process an SCC, all of its children have already been processed
         // and their values have been calculated.
         for (scc_idx, scc) in self.scc.iter().enumerate() {
-            let scc_children = self.get_scc_edges(scc, &self.ag.edges_forward);
-            let scc_parents = self.get_scc_edges(scc, self.ag.edges_reverse());
+            let forward_view = self.ag.forward_edge_view();
+            let scc_children = self.get_scc_edges_from_view(scc, &forward_view);
+            let reverse = self.ag.edges_reverse();
+            let scc_parents = self.get_scc_edges_from_offset(scc, reverse);
 
             let uniq_parents_count = scc_parents.len();
 
@@ -113,22 +121,45 @@ impl<'a> ConjointCostBuilder<'a> {
 
     /// Build the edges (parents or children) between SCCs based on the edges
     /// the individual nodes in the SCC have
-    fn get_scc_edges(&self, scc: &[NodeIDX], offset_graph: &OffsetGraph) -> BTreeSet<SCCIDX> {
-        // this is a set because we need to deduplicate the edges.
-        // Since we're working on multiple nodes within the same SCC,
-        // it's possible that multiple nodes point to the same parent or child.
+    fn get_scc_edges_from_view(
+        &self,
+        scc: &[NodeIDX],
+        view: &EdgeGraphView<'_>,
+    ) -> BTreeSet<SCCIDX> {
+        let mut scc_node_idx_edges: BTreeSet<NodeIDX> = BTreeSet::new();
+
+        for &node_idx in scc {
+            scc_node_idx_edges.extend(
+                view.edges_configured(node_idx)
+                    .map(|(target, _flags)| target),
+            );
+        }
+
+        let mut scc_scc_idx_edges: BTreeSet<SCCIDX> = BTreeSet::new();
+        for parent_node_idx in scc_node_idx_edges {
+            let parent_scc_idx = self.node_idx_to_scc_idx[parent_node_idx];
+            if parent_scc_idx != MISSING {
+                scc_scc_idx_edges.insert(parent_scc_idx);
+            }
+        }
+        scc_scc_idx_edges
+    }
+
+    fn get_scc_edges_from_offset(
+        &self,
+        scc: &[NodeIDX],
+        offset_graph: &OffsetGraph,
+    ) -> BTreeSet<SCCIDX> {
         let mut scc_node_idx_edges: BTreeSet<NodeIDX> = BTreeSet::new();
 
         for &node_idx in scc {
             scc_node_idx_edges.extend(
                 offset_graph
                     .edges_configured(node_idx)
-                    .map(|edge| edge.points_to),
+                    .map(|(target, _flags)| target),
             );
         }
 
-        // now we need to map these edges to their SCC indexes, because that's what
-        // the algorithm works with.
         let mut scc_scc_idx_edges: BTreeSet<SCCIDX> = BTreeSet::new();
         for parent_node_idx in scc_node_idx_edges {
             let parent_scc_idx = self.node_idx_to_scc_idx[parent_node_idx];
@@ -144,13 +175,13 @@ impl<'a> ConjointCostBuilder<'a> {
         self.scc_conj_counts[scc_idx] = count;
 
         for &node_idx in scc {
-            for (metric_name, metrics) in &self.ag.node_metrics {
+            for (metric_name, metrics) in &self.ag.data.node_metadata.metrics {
                 let current_v = self.get_scc_value_for_metric(metric_name, scc_idx)?;
                 let node_v = metrics[node_idx];
 
                 self.set_scc_value_for_metric(metric_name, scc_idx, current_v + node_v)?;
 
-                if !self.ag.state.tiers.is_empty() {
+                if !self.ag.runtime.state.tiers.is_empty() {
                     let tier_idx = self.ag.try_node_tier_idx(node_idx)?;
                     let current_v_tiered =
                         self.get_scc_value_for_tiered_metric(metric_name, tier_idx, scc_idx)?;
@@ -171,12 +202,12 @@ impl<'a> ConjointCostBuilder<'a> {
         let child_count = self.scc_conj_counts[child_scc_idx];
         self.scc_conj_counts[scc_idx] += child_count;
 
-        for metric_name in self.ag.node_metrics.keys() {
+        for metric_name in self.ag.data.node_metadata.metrics.keys() {
             let current_v = self.get_scc_value_for_metric(metric_name, scc_idx)?;
             let child_v = self.get_scc_value_for_metric(metric_name, child_scc_idx)?;
             self.set_scc_value_for_metric(metric_name, scc_idx, current_v + child_v)?;
 
-            for (_tier_name, tier_idx) in &self.ag.state.tiers {
+            for (_tier_name, tier_idx) in &self.ag.runtime.state.tiers {
                 let current_v =
                     self.get_scc_value_for_tiered_metric(metric_name, *tier_idx, scc_idx)?;
                 let child_v =
@@ -258,11 +289,11 @@ impl<'a> ConjointCostBuilder<'a> {
 
         self.scc_conj_counts[scc_idx] /= count;
 
-        for metric_name in self.ag.node_metrics.keys() {
+        for metric_name in self.ag.data.node_metadata.metrics.keys() {
             let v = self.get_scc_value_for_metric(metric_name, scc_idx)?;
             self.set_scc_value_for_metric(metric_name, scc_idx, v / count)?;
 
-            for (_tier_name, tier_idx) in &self.ag.state.tiers {
+            for (_tier_name, tier_idx) in &self.ag.runtime.state.tiers {
                 let v = self.get_scc_value_for_tiered_metric(metric_name, *tier_idx, scc_idx)?;
                 self.set_scc_value_for_tiered_metric(metric_name, *tier_idx, scc_idx, v / count)?;
             }
@@ -282,7 +313,7 @@ impl<'a> ConjointCostBuilder<'a> {
             result.count[node_idx] = self.scc_conj_counts[scc_idx];
         }
 
-        for metric_name in self.ag.node_metrics.keys() {
+        for metric_name in self.ag.data.node_metadata.metrics.keys() {
             let mut for_metric = vec![0.0; self.ag.nodes_len()];
             let mut for_tiered_metric = BTreeMap::new();
 
@@ -292,7 +323,7 @@ impl<'a> ConjointCostBuilder<'a> {
                 for_metric[node_idx] = conj_value;
             }
 
-            for (tier_name, tier_idx) in &self.ag.state.tiers {
+            for (tier_name, tier_idx) in &self.ag.runtime.state.tiers {
                 let mut for_tier = vec![0.0; self.ag.nodes_len()];
 
                 for node_idx in self.ag.node_idx_iter_reachable() {
@@ -313,7 +344,7 @@ impl<'a> ConjointCostBuilder<'a> {
         }
 
         // make tiered metrics cumulative
-        for metric_name in self.ag.node_metrics.keys() {
+        for metric_name in self.ag.data.node_metadata.metrics.keys() {
             if result.tiered_metric.is_empty() {
                 break;
             }
@@ -323,13 +354,13 @@ impl<'a> ConjointCostBuilder<'a> {
                 .get_mut(metric_name)
                 .context("missing tiered for metric")?;
 
-            for (tier_name, tier_idx) in &self.ag.state.tiers {
+            for (tier_name, tier_idx) in &self.ag.runtime.state.tiers {
                 if *tier_idx == 0 {
                     continue;
                 }
 
                 let prev_tier_metrics = tiered_for_metric
-                    .get(&self.ag.state.tiers[tier_idx - 1].0)
+                    .get(&self.ag.runtime.state.tiers[tier_idx - 1].0)
                     .context("[conj cost] Missing tiered metric")?;
 
                 let cml_metric_for_current_tier = tiered_for_metric

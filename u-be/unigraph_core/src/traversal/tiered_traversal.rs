@@ -10,7 +10,7 @@ use crate::types::Tag;
 use crate::types::TierIDX;
 use crate::types::TierName;
 use crate::types::array_graph::NodeFlags;
-use crate::types::array_graph::offset_graph::OffsetGraph;
+use crate::types::array_graph::offset_graph::edge_flags::EdgeFlags;
 use crate::types::array_graph::tiers::tier_idx_to_flags;
 
 /// Configuration for tiered traversal, which allows traversing the graph in tiers.
@@ -87,18 +87,27 @@ impl AscendingTiersConfig {
     ) -> Result<()> {
         for node_idx in (0..array_graph.nodes_len()).map(NodeIDX::from) {
             // reset any tiers that we had assigned before
-            array_graph.node_flags[node_idx].remove(NodeFlags::ALL_TIERS);
+            array_graph.runtime.node_flags[node_idx].remove(NodeFlags::ALL_TIERS);
         }
 
-        for next in array_graph
-            .edges_forward
-            .dfs_tiered_configured(&self.tiers, entry_points)?
-        {
-            let (node_idx, tier_idx) = next?;
+        // Collect tier assignments first to avoid borrow conflict
+        // (DFS borrows edge_flags immutably, we need to mutate node_flags)
+        let tier_assignments: Vec<(NodeIDX, usize)> = {
+            let iter = TieredTraversalIter::new(
+                &array_graph.data.edges.edges,
+                &array_graph.runtime.edge_flags,
+                &array_graph.data.edges.edge_offsets,
+                &self.tiers,
+                entry_points,
+            );
+            iter.collect::<Result<Vec<_>>>()?
+        };
+
+        for (node_idx, tier_idx) in tier_assignments {
             let tier_flags = tier_idx_to_flags(tier_idx)?;
             let node_tier_flags = NodeFlags::from_bits(tier_flags)
                 .with_context(|| format!("Invalid tier flags: {tier_flags:#b}"))?;
-            array_graph.node_flags[node_idx].insert(node_tier_flags);
+            array_graph.runtime.node_flags[node_idx].insert(node_tier_flags);
         }
 
         Ok(())
@@ -106,7 +115,9 @@ impl AscendingTiersConfig {
 }
 
 pub struct TieredTraversalIter<'a> {
-    offset_graph: &'a OffsetGraph,
+    targets: &'a [NodeIDX],
+    flags: &'a [EdgeFlags],
+    edge_offsets: &'a [usize],
     current_tier: usize,
     visited: HashSet<NodeIDX>,
     stacks: [Vec<NodeIDX>; 4],
@@ -115,14 +126,18 @@ pub struct TieredTraversalIter<'a> {
 
 impl<'a> TieredTraversalIter<'a> {
     pub fn new(
-        offset_graph: &'a OffsetGraph,
+        targets: &'a [NodeIDX],
+        flags: &'a [EdgeFlags],
+        edge_offsets: &'a [usize],
         tiers: &[AscendingTier],
         entry_points: &[NodeIDX],
     ) -> Self {
         let stacks = [entry_points.to_vec(), Vec::new(), Vec::new(), Vec::new()];
 
         TieredTraversalIter {
-            offset_graph,
+            targets,
+            flags,
+            edge_offsets,
             current_tier: 0,
             visited: HashSet::new(),
             stacks,
@@ -147,18 +162,26 @@ impl<'a> TieredTraversalIter<'a> {
             }
             self.visited.insert(node_idx);
 
-            for edge in self.offset_graph.edges_configured(node_idx) {
-                if self.visited.contains(&edge.points_to) {
+            let start = self.edge_offsets[node_idx];
+            let end = self.edge_offsets[node_idx + 1];
+            for i in start..end {
+                let target = self.targets[i];
+                let edge_flags = self.flags[i];
+
+                if edge_flags.contains(EdgeFlags::EXCLUDED) {
                     continue;
                 }
-                let transition_to_tier_idx = edge
-                    .flags
+
+                if self.visited.contains(&target) {
+                    continue;
+                }
+                let transition_to_tier_idx = edge_flags
                     .transitions_to_tier_idx()
                     .unwrap_or(self.current_tier);
 
                 // we can only transition up, not down
                 let child_tier = std::cmp::max(transition_to_tier_idx, self.current_tier);
-                self.stacks[child_tier].push(edge.points_to);
+                self.stacks[child_tier].push(target);
             }
 
             return Ok(Some((node_idx, self.current_tier)));

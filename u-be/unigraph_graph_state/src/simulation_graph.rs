@@ -85,7 +85,7 @@ impl SimulationGraph {
         let mut mappings = vec![];
         let mut lfsr = Lfsr32::new(84848484);
 
-        for node_idx in array_graph.nodes.node_names.combined_node_idx_iter() {
+        for node_idx in array_graph.node_idx_iter() {
             if array_graph.is_node_unreachable(node_idx) {
                 mappings.push(None);
             } else {
@@ -109,7 +109,7 @@ impl SimulationGraph {
             }
         }
 
-        for (from_idx, edge, _metadata) in array_graph.edges_forward.iter_edges() {
+        for (from_idx, edge, _metadata) in array_graph.forward_edge_view().iter_edges() {
             if edge.is_excluded() {
                 continue;
             }
@@ -141,7 +141,7 @@ impl SimulationGraph {
 
         if let Some(selected_metrics) = selected_metric
             .as_ref()
-            .and_then(|m| array_graph.node_metrics.get(m))
+            .and_then(|m| array_graph.data.node_metadata.metrics.get(m))
         {
             graph.recalculate_adjusted_sizes(selected_metrics)?;
         }

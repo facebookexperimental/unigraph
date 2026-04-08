@@ -80,13 +80,15 @@ fn build_about(ag: &Arc<ArrayGraph>, handle: &str) -> Result<AboutGraphOutput> {
 }
 
 fn extract_description(ag: &ArrayGraph) -> Option<String> {
-    ag.graph_settings
+    ag.data
+        .graph_settings
         .as_ref()
         .and_then(|gs| gs.description.clone())
 }
 
 fn collect_metric_view_infos(ag: &ArrayGraph) -> Vec<AboutGraphMetricViewInfo> {
     let metric_settings = ag
+        .data
         .graph_settings
         .as_ref()
         .and_then(|gs| gs.ui_settings.as_ref())

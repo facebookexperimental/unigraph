@@ -3,23 +3,32 @@ use anyhow::Result;
 use crate::ArrayGraph;
 use crate::NodeIDX;
 use crate::types::array_graph::NodeFlags;
-use crate::types::array_graph::offset_graph::Edge;
+use crate::types::array_graph::offset_graph::edge_flags::EdgeFlags;
 use crate::types::array_graph::offset_graph::edge_flags::EdgeType;
 
 pub struct ArrayGraphDebugUtils<'a>(pub &'a ArrayGraph);
 
 impl<'a> ArrayGraphDebugUtils<'a> {
     pub fn to_forward_edges_string(&self) -> Result<String> {
-        self.to_edges_string(|graph, node_idx| graph.edges_forward.edges(node_idx))
+        self.to_edges_string(|graph, node_idx| {
+            Box::new(graph.forward_edges(node_idx))
+                as Box<dyn Iterator<Item = (NodeIDX, EdgeFlags)> + '_>
+        })
     }
 
     pub fn to_dom_edges_string(&self) -> Result<String> {
-        self.to_edges_string(|graph, node_idx| graph.children_dominator(node_idx))
+        self.to_edges_string(|graph, node_idx| {
+            Box::new(graph.children_dominator(node_idx))
+                as Box<dyn Iterator<Item = (NodeIDX, EdgeFlags)> + '_>
+        })
     }
 
     pub fn to_edges_string<FN>(&self, edges_fn: FN) -> Result<String>
     where
-        FN: Fn(&ArrayGraph, NodeIDX) -> &[Edge],
+        FN: for<'b> Fn(
+            &'b ArrayGraph,
+            NodeIDX,
+        ) -> Box<dyn Iterator<Item = (NodeIDX, EdgeFlags)> + 'b>,
     {
         let mut result = String::new();
 
@@ -38,17 +47,18 @@ impl<'a> ArrayGraphDebugUtils<'a> {
                 labels_str = format!(" (labels: {labels_str})");
             }
 
-            let unreachable_str = if self.0.node_flags[node_idx].contains(NodeFlags::UNREACHABLE) {
-                " [UNREACHABLE]"
-            } else {
-                ""
-            };
+            let unreachable_str =
+                if self.0.runtime.node_flags[node_idx].contains(NodeFlags::UNREACHABLE) {
+                    " [UNREACHABLE]"
+                } else {
+                    ""
+                };
 
             result.push_str(&format!("{node_name}{unreachable_str}{labels_str}:\n"));
 
-            for edge in edges_fn(self.0, node_idx) {
-                let points_to = self.0.idx_to_name(edge.points_to);
-                let edge_type = match edge.flags.edge_type() {
+            for (target, flags) in edges_fn(self.0, node_idx) {
+                let points_to = self.0.idx_to_name(target);
+                let edge_type = match flags.edge_type() {
                     EdgeType::Dynamic => " [D]",
                     EdgeType::Tagged => " [T]",
                     EdgeType::Directed => "",

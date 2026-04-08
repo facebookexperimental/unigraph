@@ -165,12 +165,12 @@ impl Scene {
         }
 
         ArrayGraphSerializable {
-            node_names_ordered: Arc::new(ArrayGraphNodes::from_parts(buf, offsets)),
+            node_names_ordered: ArrayGraphNodes::from_parts(buf, offsets),
             edges: ArrayGraphSerializableEdges {
-                directed: vec![],
-                directed_offsets: vec![0; n + 1],
-                tagged: BTreeMap::new(),
-                dynamic: BTreeMap::new(),
+                edges: vec![],
+                edge_offsets: vec![0; n + 1],
+                edge_metadata: Vec::new(),
+                edge_metadata_map: BTreeMap::new(),
             },
             node_metadata: ArrayGraphSerializableNodeMetadata {
                 metrics: all_metrics,

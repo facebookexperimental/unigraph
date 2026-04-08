@@ -1,19 +1,12 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-use std::cmp::Ordering;
 use std::collections::HashMap;
-use std::sync::Arc;
-use std::sync::OnceLock;
 
 use anyhow::Result;
-use anyhow::bail;
 
-use crate::remap_utils::RemapContext;
 use crate::types::NodeIDX;
 use crate::types::NodeName;
 use crate::types::array_graph::array_graph_name_search::NameSearch;
-use crate::types::twin_graph;
-use crate::types::twin_graph::NodeDiff;
 
 /// Ordered list of all node names in a graph.
 /// Stored as a massive single string with offsets recorded for how
@@ -35,45 +28,6 @@ pub struct ArrayGraphNodes {
     search: NameSearch,
 }
 
-/// This struct represents the nodes for a specific side of the graph.
-/// Each graph (left and right) will have a separate instance of this struct
-/// but both of them will have a reference to the same shared graph nodes and
-/// the existence checks
-#[readonly::make]
-pub struct ArrayGraphNodesForGraphSide {
-    pub node_names: Arc<ArrayGraphNodes>,
-
-    /// Shared information about nodes and how they changed between the two graphs.
-    /// We would need this for existence checks to determine if a node exists
-    /// in this specific graph.
-    #[readonly]
-    pub node_diff: Arc<Vec<twin_graph::NodeDiff>>,
-
-    // Precomputed. only nodes that exist in the side of the graph.
-    #[readonly]
-    pub nodes_len: usize,
-
-    existing_node_idxes: OnceLock<Arc<Vec<NodeIDX>>>,
-    side: GraphSide,
-}
-
-/// Enum that represents one of the sides of the twin graph, either left graph or right graph.
-#[derive(Clone, Copy, Debug)]
-pub enum GraphSide {
-    Left = 0b0001,
-    Right = 0b0010,
-}
-
-impl GraphSide {
-    pub fn from_u32(value: u32) -> Result<Self> {
-        match value {
-            0b0001 => Ok(GraphSide::Left),
-            0b0010 => Ok(GraphSide::Right),
-            _ => bail!("Invalid GraphSide value: {}", value),
-        }
-    }
-}
-
 impl ArrayGraphNodes {
     pub fn from_parts(node_names: String, offsets: Vec<usize>) -> Self {
         Self {
@@ -87,11 +41,7 @@ impl ArrayGraphNodes {
         (&self.node_names, &self.offsets)
     }
 
-    pub fn merge(&self, other: &Self) -> (Self, RemapContext, RemapContext) {
-        merge(self, other)
-    }
-
-    pub fn combined_nodes_len(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.offsets.len() - 1
     }
 
@@ -106,17 +56,12 @@ impl ArrayGraphNodes {
         &self.node_names[start..end]
     }
 
-    /// Iterator over all node idxs for both graphs, they might or might not exist in one of
-    /// the graphs.
-    pub fn combined_node_idx_iter(
-        &self,
-    ) -> std::iter::Map<std::ops::Range<usize>, fn(usize) -> NodeIDX> {
-        (0..self.combined_nodes_len()).map(NodeIDX::from)
+    pub fn node_idx_iter(&self) -> std::iter::Map<std::ops::Range<usize>, fn(usize) -> NodeIDX> {
+        (0..self.len()).map(NodeIDX::from)
     }
 
-    pub fn combined_node_names_iter(&self) -> impl Iterator<Item = &str> {
-        self.combined_node_idx_iter()
-            .map(|idx| self.idx_to_name(idx))
+    pub fn node_names_iter(&self) -> impl Iterator<Item = &str> {
+        self.node_idx_iter().map(|idx| self.idx_to_name(idx))
     }
 
     /// Given a name of the node name return its IDX if exists.
@@ -128,7 +73,7 @@ impl ArrayGraphNodes {
     /// graph with 1M+ nodes.
     pub fn name_to_idx_log(&self, name: &str) -> Option<NodeIDX> {
         let mut low = 0;
-        let mut high = self.combined_nodes_len();
+        let mut high = self.len();
         while low < high {
             let mid = (low + high) / 2;
             let mid_name = self.idx_to_name(NodeIDX::from(mid));
@@ -153,11 +98,10 @@ impl ArrayGraphNodes {
     }
 
     pub fn append_node_name(&mut self, name: &str) -> Result<NodeIDX> {
-        let names_count = self.combined_nodes_len();
+        let names_count = self.len();
 
         if names_count > 0 {
-            // ensure the new name is > than the last name
-            let last_name = self.idx_to_name(NodeIDX::from(self.combined_nodes_len() - 1));
+            let last_name = self.idx_to_name(NodeIDX::from(self.len() - 1));
             if last_name >= name {
                 return Err(anyhow::anyhow!(
                     "Node names must be ordered incrementally.
@@ -172,85 +116,6 @@ Last name must be `<` the new name, which was not the case.
         self.node_names.push_str(name);
         self.offsets.push(self.node_names.len());
         Ok(NodeIDX::from(idx))
-    }
-}
-
-impl ArrayGraphNodesForGraphSide {
-    pub fn new_left_only(nodes: Arc<ArrayGraphNodes>) -> Self {
-        let node_diff = vec![NodeDiff::empty(); nodes.combined_nodes_len()];
-        let nodes_len = nodes.combined_nodes_len(); // all nodes exist in the left side
-        Self {
-            node_names: nodes,
-            node_diff: Arc::new(node_diff),
-            side: GraphSide::Left,
-            nodes_len,
-            existing_node_idxes: OnceLock::new(),
-        }
-    }
-
-    pub fn new_with_changes(
-        node_names: Arc<ArrayGraphNodes>,
-        node_diff: Arc<Vec<NodeDiff>>,
-        side: GraphSide,
-    ) -> Self {
-        let nodes_len = node_names
-            .combined_node_idx_iter()
-            .filter(|&idx| !node_diff[idx].does_not_exist_in(side))
-            .count();
-
-        Self {
-            node_names,
-            node_diff,
-            side,
-            nodes_len,
-            existing_node_idxes: OnceLock::new(),
-        }
-    }
-
-    pub fn node_exists(&self, node_idx: NodeIDX) -> bool {
-        !self.node_diff[node_idx].does_not_exist_in(self.side)
-    }
-
-    fn existing_node_idxes(&self) -> Arc<Vec<NodeIDX>> {
-        self.existing_node_idxes
-            .get_or_init(|| {
-                Arc::new(
-                    self.node_names
-                        .combined_node_idx_iter()
-                        .filter(|&idx| !self.node_diff[idx].does_not_exist_in(self.side))
-                        .collect::<Vec<_>>(),
-                )
-            })
-            .clone()
-    }
-
-    #[inline]
-    pub fn idx_to_name<I>(&self, node_idx: I) -> &str
-    where
-        I: Into<NodeIDX> + Copy,
-    {
-        self.node_names.idx_to_name(node_idx.into())
-    }
-
-    pub fn iter_names(&self) -> NodeNamesOrderedNamesIter<'_> {
-        NodeNamesOrderedNamesIter {
-            node_names: &self.node_names,
-            node_diff: &self.node_diff,
-            side: self.side,
-            idx: 0,
-        }
-    }
-
-    pub fn node_idx_iter(&self) -> NodeIDXsArcIter {
-        NodeIDXsArcIter {
-            existing_node_idxes: self.existing_node_idxes(),
-            current_idx: 0,
-        }
-    }
-
-    #[inline(always)]
-    pub fn name_to_idx_log(&self, name: &str) -> Option<NodeIDX> {
-        self.node_names.name_to_idx_log(name)
     }
 }
 
@@ -278,139 +143,6 @@ impl NodeNamesOrderedBuilder {
             },
             map,
         )
-    }
-}
-
-pub struct NodeNamesOrderedNamesIter<'a> {
-    node_names: &'a ArrayGraphNodes,
-    node_diff: &'a [NodeDiff],
-    side: GraphSide,
-    idx: usize,
-}
-
-impl<'a> Iterator for NodeNamesOrderedNamesIter<'a> {
-    type Item = &'a str;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.idx >= self.node_names.combined_nodes_len() {
-            return None;
-        }
-        let node_diff = self.node_diff[self.idx];
-        if node_diff.does_not_exist_in(self.side) {
-            self.idx += 1;
-            return self.next(); // skip nodes that do not exist in the current side
-        }
-        let name = self.node_names.idx_to_name(NodeIDX::from(self.idx));
-        self.idx += 1;
-        Some(name)
-    }
-}
-
-pub struct NodeIDXsArcIter {
-    existing_node_idxes: Arc<Vec<NodeIDX>>,
-    current_idx: usize,
-}
-
-impl Iterator for NodeIDXsArcIter {
-    type Item = NodeIDX;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.current_idx >= self.existing_node_idxes.len() {
-            None
-        } else {
-            let node_idx = self.existing_node_idxes[self.current_idx];
-            self.current_idx += 1;
-            Some(node_idx)
-        }
-    }
-}
-
-/// Merges two `ArrayGraphNodes` instances into one, ensuring that the node names are ordered
-/// and unique. If there are duplicate names, we only keep one.
-fn merge(
-    a: &ArrayGraphNodes,
-    b: &ArrayGraphNodes,
-) -> (ArrayGraphNodes, RemapContext, RemapContext) {
-    let mut ctx_a = RemapContext::default();
-    let mut ctx_b = RemapContext::default();
-
-    let mut names = String::with_capacity(a.node_names.len().max(b.node_names.len()));
-    let mut offsets = Vec::with_capacity(a.offsets.len().max(b.offsets.len()));
-    offsets.push(0);
-
-    let mut a_iter = a.combined_node_idx_iter();
-    let mut b_iter = b.combined_node_idx_iter();
-
-    let mut next_a = a_iter.next();
-    let mut next_b = b_iter.next();
-    let mut current_idx = NodeIDX::from(0u32);
-
-    loop {
-        match (next_a, next_b) {
-            (Some(a_idx), Some(b_idx)) => {
-                let a_str = a.idx_to_name(a_idx);
-                let b_str = b.idx_to_name(b_idx);
-
-                match a_str.cmp(b_str) {
-                    Ordering::Equal => {
-                        names.push_str(a_str);
-                        offsets.push(names.len());
-                        next_a = a_iter.next();
-                        next_b = b_iter.next();
-                        ctx_a.original_positions.push(Some(a_idx));
-                        ctx_b.original_positions.push(Some(b_idx));
-                        ctx_a.mappings.push(Some(current_idx));
-                        ctx_b.mappings.push(Some(current_idx));
-                    }
-                    Ordering::Less => {
-                        names.push_str(a_str);
-                        offsets.push(names.len());
-                        next_a = a_iter.next();
-                        ctx_a.original_positions.push(Some(a_idx));
-                        ctx_b.original_positions.push(None);
-                        ctx_a.mappings.push(Some(current_idx));
-                    }
-                    Ordering::Greater => {
-                        names.push_str(b_str);
-                        offsets.push(names.len());
-                        next_b = b_iter.next();
-                        ctx_b.original_positions.push(Some(b_idx));
-                        ctx_a.original_positions.push(None);
-                        ctx_b.mappings.push(Some(current_idx));
-                    }
-                }
-            }
-            (Some(a_idx), None) => {
-                let a_str = a.idx_to_name(a_idx);
-                names.push_str(a_str);
-                offsets.push(names.len());
-                next_a = a_iter.next();
-                ctx_a.original_positions.push(Some(a_idx));
-                ctx_b.original_positions.push(None);
-                ctx_a.mappings.push(Some(current_idx));
-            }
-            (None, Some(b_idx)) => {
-                let b_str = b.idx_to_name(b_idx);
-                names.push_str(b_str);
-                offsets.push(names.len());
-                next_b = b_iter.next();
-                ctx_b.original_positions.push(Some(b_idx));
-                ctx_a.original_positions.push(None);
-                ctx_b.mappings.push(Some(current_idx));
-            }
-            (None, None) => {
-                return (
-                    ArrayGraphNodes {
-                        node_names: names,
-                        offsets,
-                        search: NameSearch::new(),
-                    },
-                    ctx_a,
-                    ctx_b,
-                );
-            }
-        }
-        current_idx.0 += 1;
     }
 }
 
@@ -446,169 +178,6 @@ The last node name in the list is 'woof'.
 Last name must be `<` the new name, which was not the case.
 
 "#
-        );
-        Ok(())
-    }
-
-    fn merge_two(a: &[&str], b: &[&str]) -> String {
-        let mut names_a = String::new();
-        let mut offsets_a = vec![0];
-        for name in a.iter() {
-            names_a.push_str(name);
-            offsets_a.push(names_a.len());
-        }
-
-        let mut names_b = String::new();
-        let mut offsets_b = vec![0];
-        for name in b.iter() {
-            names_b.push_str(name);
-            offsets_b.push(names_b.len());
-        }
-
-        let a = ArrayGraphNodes {
-            node_names: names_a,
-            offsets: offsets_a,
-            search: NameSearch::new(),
-        };
-        let b = ArrayGraphNodes {
-            node_names: names_b,
-            offsets: offsets_b,
-            search: NameSearch::new(),
-        };
-        let (merged, ctx_a, ctx_b) = merge(&a, &b);
-        let names = merged
-            .combined_node_names_iter()
-            .collect::<Vec<_>>()
-            .join(", ");
-
-        let mut result = String::new();
-        result.push_str(&names);
-        result.push_str(&format!("\n\nctx a:\n{}\n", ctx_a.debug()));
-        result.push_str(&format!("ctx b:\n{}", ctx_b.debug()));
-        result
-    }
-
-    #[test]
-    fn test_merge() -> Result<()> {
-        snapshot!(
-            merge_two(&["a", "b"], &["c", "d"]),
-            "
-a, b, c, d
-
-ctx a:
-org: 0, 1, _, _
-map: 0, 1
-
-ctx b:
-org: _, _, 0, 1
-map: 2, 3
-
-"
-        );
-        snapshot!(
-            merge_two(&["a", "b"], &["b", "c"]),
-            "
-a, b, c
-
-ctx a:
-org: 0, 1, _
-map: 0, 1
-
-ctx b:
-org: _, 0, 1
-map: 1, 2
-
-"
-        );
-        snapshot!(
-            merge_two(&["a", "b"], &[]),
-            "
-a, b
-
-ctx a:
-org: 0, 1
-map: 0, 1
-
-ctx b:
-org: _, _
-map:
-
-"
-        );
-        snapshot!(
-            merge_two(&[], &["b", "c"]),
-            "
-b, c
-
-ctx a:
-org: _, _
-map:
-
-ctx b:
-org: 0, 1
-map: 0, 1
-
-"
-        );
-        snapshot!(
-            merge_two(&["c", "d"], &["a", "f"]),
-            "
-a, c, d, f
-
-ctx a:
-org: _, 0, 1, _
-map: 1, 2
-
-ctx b:
-org: 0, _, _, 1
-map: 0, 3
-
-"
-        );
-        snapshot!(
-            merge_two(&["a"], &["a"]),
-            "
-a
-
-ctx a:
-org: 0
-map: 0
-
-ctx b:
-org: 0
-map: 0
-
-"
-        );
-        snapshot!(
-            merge_two(&[], &[]),
-            "
-
-
-ctx a:
-org:
-map:
-
-ctx b:
-org:
-map:
-
-"
-        );
-        snapshot!(
-            merge_two(&["a", "c", "e"], &["b", "d"]),
-            "
-a, b, c, d, e
-
-ctx a:
-org: 0, _, 1, _, 2
-map: 0, 2, 4
-
-ctx b:
-org: _, 0, _, 1, _
-map: 1, 3
-
-"
         );
         Ok(())
     }

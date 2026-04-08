@@ -7,6 +7,8 @@ use crate::NodeIDX;
 use crate::TieredTraversalConfig;
 use crate::types::MetricName;
 use crate::types::TierName;
+use crate::types::array_graph::offset_graph::DFSConfigured;
+use crate::types::array_graph::offset_graph::edge_flags::EdgeFlags;
 use crate::types::twin_graph::NodeDiff;
 
 /// This struct is used to compute transitive deltas in delta view.
@@ -64,6 +66,10 @@ pub trait ShouldCount {
 pub struct CountChangedNodesCountsForDelta<'a> {
     pub l: &'a ArrayGraph,
     pub r: &'a ArrayGraph,
+    /// Which side's DFS is calling should_count.
+    pub dfs_side: crate::types::twin_graph::GraphSide,
+    /// Remap tables for translating between sides.
+    pub remap: &'a crate::TwinRemap,
 }
 
 pub struct CountAllNodes;
@@ -77,19 +83,33 @@ impl ShouldCount for CountAllNodes {
 
 impl<'a> ShouldCount for CountChangedNodesCountsForDelta<'a> {
     fn should_count(&self, node_idx: NodeIDX) -> bool {
-        match (
-            self.l.is_node_unreachable(node_idx),
-            self.r.is_node_unreachable(node_idx),
-        ) {
-            // was unreachable and is unreachable. not interesting to us. this
-            // technically shouldn't even happen
-            (true, true) => false,
-            // was reachable and is reachable. not interesting to us
-            (false, false) => false,
+        use crate::types::twin_graph::GraphSide;
 
-            // if reachability changed, we do want to count it
-            (true, false) => true,
-            (false, true) => true,
+        let (l_unreachable, r_unreachable) = match self.dfs_side {
+            GraphSide::Left => {
+                let l_unreach = self.l.is_node_unreachable(node_idx);
+                let merged = self.remap.l_to_twin[usize::from(node_idx)];
+                let r_idx = self.remap.twin_to_r[merged];
+                let r_unreach = r_idx
+                    .map(|idx| self.r.is_node_unreachable(idx))
+                    .unwrap_or(true);
+                (l_unreach, r_unreach)
+            }
+            GraphSide::Right => {
+                let r_unreach = self.r.is_node_unreachable(node_idx);
+                let merged = self.remap.r_to_twin[usize::from(node_idx)];
+                let l_idx = self.remap.twin_to_l[merged];
+                let l_unreach = l_idx
+                    .map(|idx| self.l.is_node_unreachable(idx))
+                    .unwrap_or(true);
+                (l_unreach, r_unreach)
+            }
+        };
+
+        match (l_unreachable, r_unreachable) {
+            (true, true) => false,
+            (false, false) => false,
+            _ => true,
         }
     }
 }
@@ -99,29 +119,48 @@ pub struct CountChangedNodesMetricsForDelta<'a> {
     pub l: &'a ArrayGraph,
     pub r: &'a ArrayGraph,
     pub node_diff: &'a [NodeDiff],
+    pub dfs_side: crate::types::twin_graph::GraphSide,
+    pub remap: &'a crate::TwinRemap,
 }
 
 impl<'a> ShouldCount for CountChangedNodesMetricsForDelta<'a> {
     fn should_count(&self, node_idx: NodeIDX) -> bool {
-        let metric_changed = self.node_diff[node_idx].has_changed_metrics();
+        use crate::types::twin_graph::GraphSide;
+
+        // Translate to merged IDX for node_diff lookup
+        let merged = match self.dfs_side {
+            GraphSide::Left => self.remap.l_to_twin[usize::from(node_idx)],
+            GraphSide::Right => self.remap.r_to_twin[usize::from(node_idx)],
+        };
+
+        let metric_changed = self.node_diff[merged].has_changed_metrics();
         if metric_changed {
-            // we always want to count nodes that had their metrics changed
             return true;
         }
 
-        match (
-            self.l.is_node_unreachable(node_idx),
-            self.r.is_node_unreachable(node_idx),
-        ) {
-            // was unreachable and is unreachable. not interesting to us. this
-            // technically shouldn't even happen
-            (true, true) => false,
-            // was reachable and is reachable. not interesting to us
-            (false, false) => false,
+        let (l_unreachable, r_unreachable) = match self.dfs_side {
+            GraphSide::Left => {
+                let l_unreach = self.l.is_node_unreachable(node_idx);
+                let r_idx = self.remap.twin_to_r[merged];
+                let r_unreach = r_idx
+                    .map(|idx| self.r.is_node_unreachable(idx))
+                    .unwrap_or(true);
+                (l_unreach, r_unreach)
+            }
+            GraphSide::Right => {
+                let r_unreach = self.r.is_node_unreachable(node_idx);
+                let l_idx = self.remap.twin_to_l[merged];
+                let l_unreach = l_idx
+                    .map(|idx| self.l.is_node_unreachable(idx))
+                    .unwrap_or(true);
+                (l_unreach, r_unreach)
+            }
+        };
 
-            // if reachability changed, we do want to count it
-            (true, false) => true,
-            (false, true) => true,
+        match (l_unreachable, r_unreachable) {
+            (true, true) => false,
+            (false, false) => false,
+            _ => true,
         }
     }
 }
@@ -140,24 +179,30 @@ pub fn get_transitive_tiered_metric_values(
     }
 
     let tier_config = ag
+        .runtime
         .state
         .traversal_config
         .as_ref()
         .and_then(|config| config.tiered_traversal.as_ref());
 
-    let metrics = ag.node_metrics.get(metric_name);
+    let metrics = ag.data.node_metadata.metrics.get(metric_name);
 
     match (metrics, tier_config) {
         (Some(metrics), Some(TieredTraversalConfig::AscendingTiers(ascending_tiers))) => {
             let mut tiered_metrics = [0.0; 8];
 
-            let edges = if dominated {
-                ag.edges_dom()
+            let dfs_iter: Box<dyn Iterator<Item = NodeIDX>> = if dominated {
+                Box::new(ag.edges_dom().dfs_configured(&[node_idx]))
             } else {
-                &ag.edges_forward
+                Box::new(DFSConfigured::new(
+                    &ag.data.edges.edges,
+                    &ag.runtime.edge_flags,
+                    &ag.data.edges.edge_offsets,
+                    &[node_idx],
+                ))
             };
 
-            for node_idx in edges.dfs_configured(&[node_idx]) {
+            for node_idx in dfs_iter {
                 if should_count.should_count(node_idx) {
                     let value = metrics[node_idx];
                     let tier_idx = ag.try_node_tier_idx(node_idx)?;
@@ -193,12 +238,12 @@ pub fn parents_len_configured(ag: &ArrayGraph, node_idx: NodeIDX) -> usize {
     }
 
     let mut count = 0;
-    for edge in ag.edges_reverse().edges(node_idx) {
-        if edge.flags.is_excluded() {
+    for (target, flags) in ag.edges_reverse().edges(node_idx) {
+        if flags.contains(EdgeFlags::EXCLUDED) {
             continue;
         }
 
-        if ag.node_flags[edge.points_to].is_node_unreachable() {
+        if ag.runtime.node_flags[target].is_node_unreachable() {
             continue;
         }
         count += 1;
@@ -217,15 +262,20 @@ pub fn get_transitive_metric_value(
         return Ok(0.0);
     }
 
-    let edges = if dominated {
-        ag.edges_dom()
+    let dfs_iter: Box<dyn Iterator<Item = NodeIDX>> = if dominated {
+        Box::new(ag.edges_dom().dfs_configured(&[node_idx]))
     } else {
-        &ag.edges_forward
+        Box::new(DFSConfigured::new(
+            &ag.data.edges.edges,
+            &ag.runtime.edge_flags,
+            &ag.data.edges.edge_offsets,
+            &[node_idx],
+        ))
     };
 
     let mut total = 0.0;
-    if let Some(metrics) = ag.node_metrics.get(metric_name) {
-        for node_idx in edges.dfs_configured(&[node_idx]) {
+    if let Some(metrics) = ag.data.node_metadata.metrics.get(metric_name) {
+        for node_idx in dfs_iter {
             let value = metrics[node_idx];
             total += value
         }
@@ -241,7 +291,7 @@ pub fn get_metrics_sums_for_nodes(
 ) -> Result<BTreeMap<String, f32>> {
     let mut result = BTreeMap::new();
 
-    for (metric_name, metrics) in &ag.node_metrics {
+    for (metric_name, metrics) in &ag.data.node_metadata.metrics {
         let mut total = 0.0;
 
         for node_idx in node_idxs {
@@ -270,13 +320,14 @@ pub fn get_metrics_sums_tiered_for_nodes(
     let mut result: BTreeMap<MetricName, BTreeMap<TierName, f32>> = BTreeMap::new();
 
     let tier_config = ag
+        .runtime
         .state
         .traversal_config
         .as_ref()
         .and_then(|config| config.tiered_traversal.as_ref());
 
     if let Some(TieredTraversalConfig::AscendingTiers(ascending_tiers)) = tier_config {
-        for (metric_name, metrics) in &ag.node_metrics {
+        for (metric_name, metrics) in &ag.data.node_metadata.metrics {
             let mut tiered_metrics = [0.0; 4];
 
             for node_idx in node_idxs {
@@ -324,12 +375,23 @@ pub fn get_combined_metrics_for_entry_points(
     let edge_override = if let Some((from, to)) = force_edge_include {
         // if we have a forced edge, we need to include it in the graph
         // and make sure it's not excluded.
-        ag.edges_forward.override_edge_force_include(from, to)
+        // Find the edge in the forward CSR and clear its EXCLUDED flag.
+        let start = ag.data.edges.edge_offsets[from];
+        let end = ag.data.edges.edge_offsets[from + 1];
+        let edge_idx = (start..end).find(|&idx| ag.data.edges.edges[idx] == to);
+        if let Some(idx) = edge_idx {
+            let original_flags = ag.runtime.edge_flags[idx];
+            ag.runtime.edge_flags[idx].remove(EdgeFlags::EXCLUDED);
+            Some((idx, original_flags))
+        } else {
+            None
+        }
     } else {
         None
     };
 
     let tier_config = ag
+        .runtime
         .state
         .traversal_config
         .as_ref()
@@ -337,8 +399,19 @@ pub fn get_combined_metrics_for_entry_points(
 
     // get the indexed vec for metrics so we don't acess maps with a string key
     // on every iteration.
-    let metric_names = ag.node_metrics.keys().cloned().collect::<Vec<_>>();
-    let metric_values = ag.node_metrics.values().collect::<Vec<&Vec<f32>>>();
+    let metric_names = ag
+        .data
+        .node_metadata
+        .metrics
+        .keys()
+        .cloned()
+        .collect::<Vec<_>>();
+    let metric_values = ag
+        .data
+        .node_metadata
+        .metrics
+        .values()
+        .collect::<Vec<&Vec<f32>>>();
 
     let mut tiered_result_vec: Vec<[f32; 4]> = metric_names
         .iter()
@@ -357,10 +430,14 @@ pub fn get_combined_metrics_for_entry_points(
     // Single traversal loop — tiered DFS when tiers are configured,
     // plain DFS otherwise. Both produce (node_idx, Option<tier_idx>).
     if let Some(ascending_tiers) = ascending_tiers {
-        for next in ag
-            .edges_forward
-            .dfs_tiered_configured(&ascending_tiers.tiers, &entry_points)?
-        {
+        let iter = crate::traversal::tiered_traversal::TieredTraversalIter::new(
+            &ag.data.edges.edges,
+            &ag.runtime.edge_flags,
+            &ag.data.edges.edge_offsets,
+            &ascending_tiers.tiers,
+            &entry_points,
+        );
+        for next in iter {
             let (node_idx, tier_idx) = next?;
             node_count += 1;
 
@@ -373,7 +450,12 @@ pub fn get_combined_metrics_for_entry_points(
             }
         }
     } else {
-        for node_idx in ag.edges_forward.dfs_configured(&entry_points) {
+        for node_idx in DFSConfigured::new(
+            &ag.data.edges.edges,
+            &ag.runtime.edge_flags,
+            &ag.data.edges.edge_offsets,
+            &entry_points,
+        ) {
             node_count += 1;
 
             for (metric_idx, _) in metric_names.iter().enumerate() {
@@ -405,9 +487,9 @@ pub fn get_combined_metrics_for_entry_points(
         }
     }
 
-    if let Some(edge_override) = edge_override {
+    if let Some((idx, original_flags)) = edge_override {
         // restore the edge override
-        ag.edges_forward.restore_edge_override(edge_override);
+        ag.runtime.edge_flags[idx] = original_flags;
     }
 
     Ok(CombinedMetricsForNodes {

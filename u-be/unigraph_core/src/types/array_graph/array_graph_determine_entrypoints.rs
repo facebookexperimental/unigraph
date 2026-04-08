@@ -6,10 +6,10 @@ use crate::NodeIDX;
 // If we don't have entrypoints explicitly defined,
 // we can assume that any node with no parents is an entrypoint
 pub fn determine_entrypoints(array_graph: &ArrayGraph) -> Vec<NodeIDX> {
-    let mut entrypoints = if let Some(graph_entry_points) = &array_graph.entry_points {
+    let mut entrypoints = if let Some(graph_entry_points) = &array_graph.data.entry_points {
         graph_entry_points
             .iter()
-            .filter_map(|name| array_graph.nodes.name_to_idx_log(name))
+            .filter_map(|name| array_graph.data.node_names_ordered.name_to_idx_log(name))
             .collect()
     } else {
         Vec::new()
@@ -25,7 +25,7 @@ pub fn determine_entrypoints(array_graph: &ArrayGraph) -> Vec<NodeIDX> {
     // NOTE: this will not work when graph has big cycles. We would need
     // to find those we'd need to work on SCCs and find parentless SCCs instead.
     for node_idx in array_graph.node_idx_iter() {
-        if array_graph.edges_reverse().edges(node_idx).is_empty() {
+        if array_graph.edges_reverse().edges(node_idx).next().is_none() {
             entrypoints.push(node_idx);
         }
     }
@@ -59,7 +59,7 @@ mod tests {
 "#
         );
 
-        ag.entry_points = Some(vec!["K".to_string()].into_iter().collect());
+        ag.data.entry_points = Some(vec!["K".to_string()].into_iter().collect());
         let entrypoints = determine_entrypoints(&ag);
         snapshot!(
             idx_to_names(&ag, entrypoints),
@@ -70,7 +70,7 @@ mod tests {
 "#
         );
 
-        ag.entry_points = Some(BTreeSet::new());
+        ag.data.entry_points = Some(BTreeSet::new());
         let entrypoints = determine_entrypoints(&ag);
         snapshot!(
             idx_to_names(&ag, entrypoints),

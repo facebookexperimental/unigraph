@@ -209,11 +209,12 @@ fn explore_node(ag: Arc<ArrayGraph>, input: &ExploreGraphInput) -> Result<Explor
 }
 
 fn collect_metric_names(ag: &ArrayGraph) -> Vec<String> {
-    ag.node_metrics.keys().cloned().collect()
+    ag.data.node_metadata.metrics.keys().cloned().collect()
 }
 
 fn collect_tier_names(ag: &ArrayGraph) -> Vec<String> {
-    ag.state
+    ag.runtime
+        .state
         .traversal_config
         .as_ref()
         .and_then(|tc| tc.tiered_traversal.as_ref())
@@ -275,7 +276,8 @@ fn resolve_arrows(
         }
         ExploreGraphTarget::Node { name } => {
             let node_idx = ag
-                .nodes
+                .data
+                .node_names_ordered
                 .name_to_idx_log(name)
                 .with_context(|| format!("node '{name}' not found in graph"))?;
             let mut arrows: Vec<ArrowData> = ag
@@ -368,7 +370,9 @@ fn compute_metric(
 ) -> Result<f32> {
     match metric {
         MetricView::Metric { name } => Ok(ag
-            .node_metrics
+            .data
+            .node_metadata
+            .metrics
             .get(name.as_str())
             .map_or(0.0, |v| v[node_idx])),
         MetricView::Transitive { name } => ag.get_transitive_metric_value(node_idx, name, false),

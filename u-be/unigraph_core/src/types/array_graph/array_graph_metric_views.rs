@@ -14,7 +14,7 @@ fn all_metric_views(ag: &ArrayGraph) -> Vec<MetricView> {
     let tier_names = collect_tier_names(ag);
     let mut views = Vec::new();
 
-    for metric_name in ag.node_metrics.keys() {
+    for metric_name in ag.data.node_metadata.metrics.keys() {
         push_base_views(&mut views, metric_name);
         push_tiered_views(&mut views, metric_name, &tier_names);
     }
@@ -38,7 +38,8 @@ pub fn enabled_metric_views(ag: &ArrayGraph) -> Vec<MetricView> {
 // ── Helpers ──────────────────────────────────────────────────
 
 fn collect_tier_names(ag: &ArrayGraph) -> Vec<&str> {
-    ag.state
+    ag.runtime
+        .state
         .tiers
         .iter()
         .map(|(name, _)| name.as_str())
@@ -82,7 +83,8 @@ fn push_structural_counts(views: &mut Vec<MetricView>) {
 }
 
 fn metric_settings(ag: &ArrayGraph) -> Option<&BTreeMap<String, MetricViewSettings>> {
-    ag.graph_settings
+    ag.data
+        .graph_settings
         .as_ref()
         .and_then(|gs| gs.ui_settings.as_ref())
         .and_then(|ui| ui.columns.as_ref())

@@ -1,16 +1,13 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 use std::collections::BTreeSet;
-use std::sync::Arc;
 
 use anyhow::Result;
 
-use crate::ArrayGraphNodes;
 use crate::ArrayGraphSerializable;
 use crate::NodeIDX;
 use crate::TwinGraph;
-use crate::remap_utils::RemapContext;
-use crate::types::array_graph::array_graph_nodes::ArrayGraphNodesForGraphSide;
+use crate::TwinRemap;
 use crate::types::twin_graph::NodeDiff;
 use crate::types::twin_graph::changed_nodes_graph::ChangedNodesGraph;
 
@@ -25,190 +22,248 @@ pub fn merge_into_twin(
     let entrypoints_left = ag_l.determine_entrypoints();
     let entrypoints_right = ag_r.determine_entrypoints();
 
-    // there can be a case where both graphs have only a single root node
-    // and don't need to add a super root, but this root node is different
-    // between the two graphs. In this case we need to add a super root
-    // to make sure that the root node is the same between the two graphs.
+    // If both graphs have different root nodes (or multiple roots), add a super root
+    // to each to ensure a single consistent entrypoint.
     if (entrypoints_left != entrypoints_right) || (entrypoints_left.len() > 1) {
         ag_l = ag_l.append_super_root(true)?;
         ag_r = ag_r.append_super_root(true)?;
     }
 
-    let left = ag_l.into_serializable();
-    let right = ag_r.into_serializable();
+    // Build remap tables by merge-walking the two sorted name lists.
+    // No strings are copied — just index arithmetic.
+    let remap = TwinRemap::build(&ag_l.data.node_names_ordered, &ag_r.data.node_names_ordered);
 
-    let (node_names, ctx_l, ctx_r) = left.node_names_ordered.merge(&right.node_names_ordered);
+    // Compute per-merged-node diff.
+    let node_diff = compute_node_diff(&remap, &ag_l, &ag_r);
 
-    let node_names = Arc::new(node_names);
-
-    let remapped_left = remap_with_nodes(left, &ctx_l, Arc::clone(&node_names))?;
-    let remapped_right = remap_with_nodes(right, &ctx_r, Arc::clone(&node_names))?;
-
-    let mut node_diff = vec![NodeDiff::empty(); node_names.combined_nodes_len()];
-
-    let flat_metrics = graph_flat_metric_pairs(&remapped_left, &remapped_right);
-
-    for node_idx in node_names.combined_node_idx_iter() {
-        match (
-            ctx_l.original_positions[node_idx],
-            ctx_r.original_positions[node_idx],
-        ) {
-            (Some(_), Some(_)) => {
-                if has_directed_edge_changes(&remapped_left, &remapped_right, node_idx)
-                    || has_tagged_edges_changes(&remapped_left, &remapped_right, node_idx)
-                    || has_dynamic_edge_changes(&remapped_left, &remapped_right, node_idx)
-                {
-                    node_diff[node_idx].insert(NodeDiff::EDGES_CHANGED);
-                }
-
-                if let Some(flat_metrics) = &flat_metrics {
-                    if has_node_metrics_changed(flat_metrics.clone(), node_idx) {
-                        node_diff[node_idx].insert(NodeDiff::METRICS_CHANGED);
-                    }
-                } else {
-                    // If we don't have a valid flat metrics comparison, we assume
-                    // that all nodes' metrics changed.
-                    node_diff[node_idx].insert(NodeDiff::METRICS_CHANGED);
-                }
-            }
-            (Some(_), None) => node_diff[node_idx].mark_not_in_right(),
-            (None, Some(_)) => node_diff[node_idx].mark_not_in_left(),
-            (None, None) => {
-                node_diff[node_idx].mark_not_in_left();
-                node_diff[node_idx].mark_not_in_right();
-            }
-        }
-    }
-
-    let node_diff = Arc::new(node_diff);
-
-    let shared_node_names_l = ArrayGraphNodesForGraphSide::new_with_changes(
-        Arc::clone(&node_names),
-        Arc::clone(&node_diff),
-        crate::GraphSide::Left,
-    );
-    let shared_node_names_r = ArrayGraphNodesForGraphSide::new_with_changes(
-        Arc::clone(&node_names),
-        Arc::clone(&node_diff),
-        crate::GraphSide::Right,
-    );
-
-    let mut left = remapped_left.into_array_graph(task)?;
-    left.nodes = shared_node_names_l;
-    let mut right = remapped_right.into_array_graph(task)?;
-    right.nodes = shared_node_names_r;
-
-    let metric_names = left
-        .node_metrics
+    let metric_names = ag_l
+        .data
+        .node_metadata
+        .metrics
         .keys()
-        .chain(right.node_metrics.keys())
+        .chain(ag_r.data.node_metadata.metrics.keys())
         .cloned()
         .collect::<BTreeSet<_>>()
         .into_iter()
         .collect();
 
     Ok(TwinGraph {
-        node_names,
-        node_diff: Arc::clone(&node_diff),
+        remap,
+        node_diff,
         metric_names,
-        l: Some(left),
-        r: right,
-        changed_nodes: Some(ChangedNodesGraph::new()),
+        l: ag_l,
+        r: ag_r,
+        changed_nodes: ChangedNodesGraph::new(),
     })
 }
 
+fn compute_node_diff(
+    remap: &TwinRemap,
+    ag_l: &crate::ArrayGraph,
+    ag_r: &crate::ArrayGraph,
+) -> Vec<NodeDiff> {
+    let flat_metrics = build_flat_metric_pairs(ag_l, ag_r);
+    let mut node_diff = vec![NodeDiff::empty(); remap.merged_len];
+
+    for merged_idx in 0..remap.merged_len {
+        let merged_node = NodeIDX::from(merged_idx);
+        match (remap.twin_to_l[merged_node], remap.twin_to_r[merged_node]) {
+            (Some(l_idx), Some(r_idx)) => {
+                if has_directed_edge_changes(ag_l, l_idx, ag_r, r_idx, remap)
+                    || has_tagged_edges_changes(ag_l, l_idx, ag_r, r_idx, remap)
+                    || has_dynamic_edge_changes(ag_l, l_idx, ag_r, r_idx, remap)
+                {
+                    node_diff[merged_idx].insert(NodeDiff::EDGES_CHANGED);
+                }
+
+                if let Some(flat_metrics) = &flat_metrics {
+                    if has_node_metrics_changed(flat_metrics, l_idx, r_idx) {
+                        node_diff[merged_idx].insert(NodeDiff::METRICS_CHANGED);
+                    }
+                } else {
+                    node_diff[merged_idx].insert(NodeDiff::METRICS_CHANGED);
+                }
+            }
+            (Some(_), None) => node_diff[merged_idx].mark_not_in_right(),
+            (None, Some(_)) => node_diff[merged_idx].mark_not_in_left(),
+            (None, None) => {
+                node_diff[merged_idx].mark_not_in_left();
+                node_diff[merged_idx].mark_not_in_right();
+            }
+        }
+    }
+
+    node_diff
+}
+
+/// Compare directed edges by translating targets to merged IDX and sorting.
 fn has_directed_edge_changes(
-    left: &ArrayGraphSerializable,
-    right: &ArrayGraphSerializable,
-    node_idx: NodeIDX,
+    l: &crate::ArrayGraph,
+    l_idx: NodeIDX,
+    r: &crate::ArrayGraph,
+    r_idx: NodeIDX,
+    remap: &TwinRemap,
 ) -> bool {
-    let mut left_edges = left.edges.directed
-        [left.edges.directed_offsets[node_idx]..left.edges.directed_offsets[node_idx + 1]]
-        .to_vec();
-    let mut right_edges = right.edges.directed
-        [right.edges.directed_offsets[node_idx]..right.edges.directed_offsets[node_idx + 1]]
-        .to_vec();
-
-    // NOTE: this is a potential performance optimization.
-    // We sort here to make sure that we don't produce false positives
-    // due to different ordering of edges in the two graphs.
-    // This does involve allocating new vecs and sorting them, which is pretty
-    // heavy. ESPECIALLY when we do it on all edges, which is usually millions.
-    //
-    // if this becomes a bottleneck we can consider adding a constraint that
-    // array graphs MUST have their directed edges always sorted, which will
-    // make this comparison O(n) instead of O(n log n) and remove any extra
-    // heap allocations.
-    left_edges.sort_unstable();
-    right_edges.sort_unstable();
-
-    left_edges != right_edges
+    let l_targets = directed_targets_as_merged(l, l_idx, &remap.l_to_twin);
+    let r_targets = directed_targets_as_merged(r, r_idx, &remap.r_to_twin);
+    l_targets != r_targets
 }
 
+/// Get directed (non-tagged, non-dynamic) edge targets for a node, translated to merged IDX.
+fn directed_targets_as_merged(
+    ag: &crate::ArrayGraph,
+    node_idx: NodeIDX,
+    to_twin: &[NodeIDX],
+) -> Vec<NodeIDX> {
+    let mut targets: Vec<NodeIDX> = ag
+        .forward_edges(node_idx)
+        .filter(|(_target, flags)| {
+            !flags.intersects(
+                crate::types::array_graph::offset_graph::edge_flags::EdgeFlags::IS_TAGGED
+                    | crate::types::array_graph::offset_graph::edge_flags::EdgeFlags::IS_DYNAMIC,
+            )
+        })
+        .map(|(target, _flags)| to_twin[usize::from(target)])
+        .collect();
+    targets.sort_unstable();
+    targets
+}
+
+/// Compare tagged edges by translating target IDXes to merged and comparing by tag + targets.
 fn has_tagged_edges_changes(
-    left: &ArrayGraphSerializable,
-    right: &ArrayGraphSerializable,
-    node_idx: NodeIDX,
+    l: &crate::ArrayGraph,
+    l_idx: NodeIDX,
+    r: &crate::ArrayGraph,
+    r_idx: NodeIDX,
+    remap: &TwinRemap,
 ) -> bool {
-    let left_edges = &left.edges.tagged.get(&node_idx);
-    let right_edges = &right.edges.tagged.get(&node_idx);
-    left_edges != right_edges
-}
+    let l_tagged = l.data.edges.tagged_edges_for_node(l_idx);
+    let r_tagged = r.data.edges.tagged_edges_for_node(r_idx);
 
-fn has_dynamic_edge_changes(
-    left: &ArrayGraphSerializable,
-    right: &ArrayGraphSerializable,
-    node_idx: NodeIDX,
-) -> bool {
-    left.edges.dynamic.get(&node_idx) != right.edges.dynamic.get(&node_idx)
-}
-
-/// Construct a list of pairs of metric arrays for graphs but only if
-/// the set of metric names is identical between the two graphs.
-/// If the set of metric names is different we return None, which means every
-/// single node's metrics will be considered changed.
-fn graph_flat_metric_pairs<'a>(
-    left: &'a ArrayGraphSerializable,
-    right: &'a ArrayGraphSerializable,
-) -> Option<Vec<(&'a Vec<f32>, &'a Vec<f32>)>> {
-    let left_metrics = &left.node_metadata.metrics.keys().collect::<BTreeSet<_>>();
-    let right_metrics = &right.node_metadata.metrics.keys().collect::<BTreeSet<_>>();
-    if left_metrics != right_metrics {
-        return None;
+    if l_tagged.is_empty() && r_tagged.is_empty() {
+        return false;
     }
-
-    let mut pairs = Vec::new();
-    for key in left_metrics {
-        let left_values = left.node_metadata.metrics.get(*key)?;
-        let right_values = right.node_metadata.metrics.get(*key)?;
-        pairs.push((left_values, right_values));
+    if l_tagged.len() != r_tagged.len() {
+        return true;
     }
-    Some(pairs)
-}
-
-fn has_node_metrics_changed(flat_metrics: Vec<(&Vec<f32>, &Vec<f32>)>, node_idx: NodeIDX) -> bool {
-    for (l_values, r_values) in flat_metrics {
-        if l_values[node_idx] != r_values[node_idx] {
-            return true;
+    // Compare tag-by-tag: same tags must have same targets (in merged IDX)
+    for (tag, l_targets) in &l_tagged {
+        match r_tagged.get(*tag) {
+            None => return true,
+            Some(r_targets) => {
+                if l_targets.len() != r_targets.len() {
+                    return true;
+                }
+                let l_merged: BTreeSet<NodeIDX> = l_targets
+                    .iter()
+                    .map(|&idx| remap.l_to_twin[usize::from(idx)])
+                    .collect();
+                let r_merged: BTreeSet<NodeIDX> = r_targets
+                    .iter()
+                    .map(|&idx| remap.r_to_twin[usize::from(idx)])
+                    .collect();
+                if l_merged != r_merged {
+                    return true;
+                }
+            }
         }
     }
     false
 }
 
-fn remap_with_nodes(
-    graph: ArrayGraphSerializable,
-    ctx: &RemapContext,
-    shared_node_names: Arc<ArrayGraphNodes>,
-) -> Result<ArrayGraphSerializable> {
-    Ok(ArrayGraphSerializable {
-        node_names_ordered: shared_node_names,
-        edges: graph.edges.remap(ctx)?,
-        node_metadata: graph.node_metadata.remap(ctx)?,
-        graph_settings: graph.graph_settings,
-        traversal_config: graph.traversal_config,
-        entry_points: graph.entry_points,
-        properties: graph.properties,
-    })
+/// Compare dynamic edges by translating target IDXes to merged.
+fn has_dynamic_edge_changes(
+    l: &crate::ArrayGraph,
+    l_idx: NodeIDX,
+    r: &crate::ArrayGraph,
+    r_idx: NodeIDX,
+    remap: &TwinRemap,
+) -> bool {
+    let l_dyn = l.data.edges.dynamic_edges_for_node(l_idx);
+    let r_dyn = r.data.edges.dynamic_edges_for_node(r_idx);
+
+    if l_dyn.is_empty() && r_dyn.is_empty() {
+        return false;
+    }
+    if l_dyn.len() != r_dyn.len() {
+        return true;
+    }
+    for (type_key, l_edge_map) in &l_dyn {
+        match r_dyn.get(*type_key) {
+            None => return true,
+            Some(r_edge_map) => {
+                if l_edge_map.len() != r_edge_map.len() {
+                    return true;
+                }
+                for (edge_name, l_de) in l_edge_map {
+                    match r_edge_map.get(*edge_name) {
+                        None => return true,
+                        Some(r_de) => {
+                            if l_de.metadata != r_de.metadata {
+                                return true;
+                            }
+                            if l_de.branches.len() != r_de.branches.len() {
+                                return true;
+                            }
+                            for (branch, l_targets) in &l_de.branches {
+                                match r_de.branches.get(*branch) {
+                                    None => return true,
+                                    Some(r_targets) => {
+                                        let l_m: BTreeSet<NodeIDX> = l_targets
+                                            .iter()
+                                            .map(|&idx| remap.l_to_twin[usize::from(idx)])
+                                            .collect();
+                                        let r_m: BTreeSet<NodeIDX> = r_targets
+                                            .iter()
+                                            .map(|&idx| remap.r_to_twin[usize::from(idx)])
+                                            .collect();
+                                        if l_m != r_m {
+                                            return true;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    false
+}
+
+/// Build paired metric arrays for fast comparison.
+/// Returns None if the metric names differ between the two graphs.
+fn build_flat_metric_pairs<'a>(
+    l: &'a crate::ArrayGraph,
+    r: &'a crate::ArrayGraph,
+) -> Option<Vec<(&'a Vec<f32>, &'a Vec<f32>)>> {
+    let l_keys: BTreeSet<_> = l.data.node_metadata.metrics.keys().collect();
+    let r_keys: BTreeSet<_> = r.data.node_metadata.metrics.keys().collect();
+    if l_keys != r_keys {
+        return None;
+    }
+
+    let mut pairs = Vec::new();
+    for key in &l_keys {
+        let l_values = l.data.node_metadata.metrics.get(*key)?;
+        let r_values = r.data.node_metadata.metrics.get(*key)?;
+        pairs.push((l_values, r_values));
+    }
+    Some(pairs)
+}
+
+fn has_node_metrics_changed(
+    flat_metrics: &[(&Vec<f32>, &Vec<f32>)],
+    l_idx: NodeIDX,
+    r_idx: NodeIDX,
+) -> bool {
+    for (l_values, r_values) in flat_metrics {
+        if l_values[l_idx] != r_values[r_idx] {
+            return true;
+        }
+    }
+    false
 }
 
 #[cfg(test)]
@@ -224,9 +279,9 @@ mod tests {
 
         let mut result = Vec::new();
 
-        for node_idx in tg.node_names.combined_node_idx_iter() {
-            let name = tg.node_names.idx_to_name(node_idx);
-            let diff = &tg.node_diff[node_idx];
+        for merged_idx in tg.merged_node_idx_iter() {
+            let name = tg.merged_idx_to_name(merged_idx);
+            let diff = &tg.node_diff[merged_idx];
             result.push(format!("{}: {}", name, diff.debug()).trim().to_string());
         }
 

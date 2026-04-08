@@ -49,8 +49,17 @@ impl<'a> SCCBuilder<'a> {
         self.stack.push(node_idx);
         self.node_on_stack[node_idx] = true;
 
-        for edge in self.array_graph.edges_forward.edges_configured(node_idx) {
-            let points_to_node_idx = edge.points_to;
+        // Iterate forward edges (configured) by accessing CSR data + runtime flags
+        let start = self.array_graph.data.edges.edge_offsets[node_idx];
+        let end = self.array_graph.data.edges.edge_offsets[node_idx + 1];
+        for i in start..end {
+            let flags = self.array_graph.runtime.edge_flags[i];
+            if flags
+                .contains(crate::types::array_graph::offset_graph::edge_flags::EdgeFlags::EXCLUDED)
+            {
+                continue;
+            }
+            let points_to_node_idx = self.array_graph.data.edges.edges[i];
             if self.node_idx_to_scc_idx[points_to_node_idx] == MISSING {
                 self.strong_connect(points_to_node_idx);
 

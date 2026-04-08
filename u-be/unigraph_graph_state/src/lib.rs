@@ -12,6 +12,7 @@ use std::sync::RwLockWriteGuard;
 
 use unigraph_core::ArrayGraph;
 
+use crate::graph_state::GraphMode;
 use crate::graph_state::GraphState;
 use crate::graph_state::SharedGraphState;
 use crate::types::SharedSimulationParams;
@@ -45,12 +46,11 @@ impl GlobalGraphState {
 
     pub fn init(task: &ll::Task) {
         let empty_graph = ArrayGraph::empty(task).unwrap();
-        let twin_graph = unigraph_core::TwinGraph::from_one(empty_graph).unwrap();
 
         GLOBAL_GRAPH_STATE
             .set(GlobalGraphState {
                 simulation_params: SharedSimulationParams::new(SimulationParams::default()),
-                graph_state: SharedGraphState::new(twin_graph).unwrap(),
+                graph_state: SharedGraphState::new(GraphMode::Single(empty_graph)).unwrap(),
             })
             .map_err(|_| "Global state already initialized")
             .unwrap();

@@ -127,3 +127,41 @@ impl From<NodeIDX> for usize {
         val.0 as usize
     }
 }
+
+/// Index of an edge in a CSR's edges vec (global position in the flat targets array).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(serde::Deserialize, serde::Serialize)]
+#[serde(transparent)]
+#[repr(transparent)]
+pub struct EdgeIDX(pub u32);
+
+impl From<usize> for EdgeIDX {
+    fn from(idx: usize) -> Self {
+        EdgeIDX(idx as u32)
+    }
+}
+
+impl From<EdgeIDX> for usize {
+    fn from(val: EdgeIDX) -> Self {
+        val.0 as usize
+    }
+}
+
+/// Index into a flat `Vec<EdgeMeta>` table.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(serde::Deserialize, serde::Serialize)]
+#[serde(transparent)]
+#[repr(transparent)]
+pub struct EdgeMetaIDX(pub u32);
+
+impl From<usize> for EdgeMetaIDX {
+    fn from(idx: usize) -> Self {
+        EdgeMetaIDX(idx as u32)
+    }
+}
+
+impl From<EdgeMetaIDX> for usize {
+    fn from(val: EdgeMetaIDX) -> Self {
+        val.0 as usize
+    }
+}

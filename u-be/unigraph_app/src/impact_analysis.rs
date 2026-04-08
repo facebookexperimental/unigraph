@@ -118,7 +118,7 @@ impl ImpactAnalysis {
 fn compute_baseline(ag: &ArrayGraph, task: &ll::Task) -> Result<CombinedMetricsForNodes> {
     let ags = ag.to_serializable();
     let mut baseline_ag: ArrayGraph = ags.into_array_graph(task)?;
-    if let Some(tc) = ag.state.traversal_config.clone() {
+    if let Some(tc) = ag.runtime.state.traversal_config.clone() {
         baseline_ag.apply_traversal_config(tc)?;
     }
     baseline_ag.get_combined_metrics_for_entry_points(None)
@@ -134,7 +134,11 @@ fn collect_candidates(ag: &ArrayGraph, max_parents: Option<usize>) -> Vec<NodeID
 }
 
 fn extract_base_traversal_config(ag: &ArrayGraph) -> TraversalConfig {
-    ag.state.traversal_config.clone().unwrap_or_default()
+    ag.runtime
+        .state
+        .traversal_config
+        .clone()
+        .unwrap_or_default()
 }
 
 const PROGRESS_EVERY_N: usize = 50;
@@ -429,6 +433,7 @@ fn compute_leverage(
 fn patch_graph(ag: &mut ArrayGraph, impact_metrics: Vec<(ImpactMetric, Vec<f32>)>) {
     // Snapshot existing metric settings before mutating
     let existing_settings = ag
+        .data
         .graph_settings
         .as_ref()
         .and_then(|gs| gs.ui_settings.as_ref())
@@ -438,6 +443,7 @@ fn patch_graph(ag: &mut ArrayGraph, impact_metrics: Vec<(ImpactMetric, Vec<f32>)
         .unwrap_or_default();
 
     let settings = ag
+        .data
         .graph_settings
         .get_or_insert_with(Default::default)
         .ui_settings
@@ -464,7 +470,7 @@ fn patch_graph(ag: &mut ArrayGraph, impact_metrics: Vec<(ImpactMetric, Vec<f32>)
             },
         );
 
-        ag.node_metrics.insert(key, values);
+        ag.data.node_metadata.metrics.insert(key, values);
     }
 }
 
@@ -518,7 +524,9 @@ mod tests {
 
     fn format_impact_table(ag: &ArrayGraph) -> String {
         let mut metric_names: Vec<&String> = ag
-            .node_metrics
+            .data
+            .node_metadata
+            .metrics
             .keys()
             .filter(|k| k.starts_with("impact_"))
             .collect();
@@ -537,7 +545,7 @@ mod tests {
             let name = ag.idx_to_name(node_idx);
             out.push_str(&format!("{:<6}", name));
             for metric_name in &metric_names {
-                let v = ag.node_metrics[*metric_name][node_idx];
+                let v = ag.data.node_metadata.metrics[*metric_name][node_idx];
                 if v == 0.0 {
                     out.push_str(&format!("  {:>20}", "-"));
                 } else {
@@ -605,6 +613,7 @@ D                          1                     1                    40        
         let ag = run(make_graph(CHAIN_GRAPH)?, None)?;
 
         let settings = ag
+            .data
             .graph_settings
             .as_ref()
             .unwrap()
@@ -619,7 +628,13 @@ D                          1                     1                    40        
             .unwrap();
 
         // All impact metrics should have settings with descriptions
-        for key in ag.node_metrics.keys().filter(|k| k.starts_with("impact_")) {
+        for key in ag
+            .data
+            .node_metadata
+            .metrics
+            .keys()
+            .filter(|k| k.starts_with("impact_"))
+        {
             let s = settings.get(key).unwrap_or_else(|| {
                 panic!("missing metric settings for {key}");
             });

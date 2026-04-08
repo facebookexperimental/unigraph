@@ -4,8 +4,8 @@ use std::collections::BTreeMap;
 
 use anyhow::Result;
 
+use crate::EdgeMeta;
 use crate::NodeIDX;
-use crate::types::array_graph::offset_graph::NonDirectedEdgeMetadata;
 use crate::types::array_graph::{self};
 
 pub type MessageID = String;
@@ -44,7 +44,7 @@ impl Message {
         &self,
         ag: &array_graph::ArrayGraph,
         points_from: NodeIDX,
-        edge_metadata: &NonDirectedEdgeMetadata,
+        edge_metadata: Option<&EdgeMeta>,
     ) -> Result<String> {
         let mut result = self.0.clone();
 
@@ -59,17 +59,18 @@ impl Message {
         }
 
         match edge_metadata {
-            NonDirectedEdgeMetadata::Directed => {}
-            NonDirectedEdgeMetadata::Tagged { tag } => {
+            None => {}
+            Some(EdgeMeta::Tagged { tag }) => {
                 if result.contains(MESSAGE_TEMPLATE_EDGE_TAG) {
                     result = result.replace(MESSAGE_TEMPLATE_EDGE_TAG, tag);
                 }
             }
-            NonDirectedEdgeMetadata::Dynamic {
+            Some(EdgeMeta::Dynamic {
                 type_key,
                 edge_name,
                 branch,
-            } => {
+                ..
+            }) => {
                 if result.contains(MESSAGE_TEMPLATE_EDGE_BRANCH) {
                     result = result.replace(MESSAGE_TEMPLATE_EDGE_BRANCH, branch);
                 }

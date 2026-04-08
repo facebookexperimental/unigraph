@@ -43,19 +43,22 @@ fn test_edge_flags() -> Result<()> {
     let g = make_test_array_graph_1()?;
 
     let get_flags = |node_name: &str| {
-        g.edges_forward
-            .edges(g.nodes.name_to_idx_log(node_name).unwrap())
-            .iter()
-            .map(|e| {
-                format!(
-                    "{} -> {}: {}",
-                    node_name,
-                    g.idx_to_name(e.points_to),
-                    e.flags.to_binary_string()
-                )
-            })
-            .collect::<Vec<_>>()
-            .join("\n")
+        g.forward_edges(
+            g.data
+                .node_names_ordered
+                .name_to_idx_log(node_name)
+                .unwrap(),
+        )
+        .map(|(target, flags)| {
+            format!(
+                "{} -> {}: {}",
+                node_name,
+                g.idx_to_name(target),
+                flags.to_binary_string()
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
     };
 
     let result = g
@@ -158,10 +161,10 @@ fn test_edges_iter() -> Result<()> {
     let mut g = make_test_array_graph_1()?;
     let g2 = make_test_array_graph_1()?;
 
-    let snap = |g: &mut ArrayGraph| {
+    let snap = |g: &ArrayGraph| {
         let mut result = String::new();
 
-        for (parent_idx, edge, metadata) in g.edges_forward.iter_edges_mut() {
+        for (parent_idx, edge, metadata) in g.forward_edge_view().iter_edges() {
             result.push_str(&format!(
                 "{} -> {}: {} ({:?})\n",
                 g2.idx_to_name(parent_idx),
@@ -198,17 +201,17 @@ F -> I
     );
 
     snapshot!(
-        snap(&mut g),
+        snap(&g),
         r#"
-A -> B: 0000_0000_0000_0000 (Directed)
-A -> D: 0000_0000_0000_0000 (Directed)
-B -> C: 0000_0000_0000_0001 (Tagged { tag: "BL" })
-B -> J: 0000_0000_0000_0001 (Tagged { tag: "RD" })
-D -> F: 0000_0000_0000_0000 (Directed)
-D -> E: 0000_0000_0000_0001 (Tagged { tag: "RDFD" })
-F -> G: 0000_0000_0000_0010 (Dynamic { type_key: "ddd", edge_name: "ddd_1", branch: "b1" })
-F -> H: 0000_0000_0000_0010 (Dynamic { type_key: "ddd", edge_name: "ddd_1", branch: "b1" })
-F -> I: 0000_0000_0000_0010 (Dynamic { type_key: "ddd", edge_name: "ddd_1", branch: "b2" })
+A -> B: 0000_0000_0000_0000 (None)
+A -> D: 0000_0000_0000_0000 (None)
+B -> C: 0000_0000_0000_0001 (Some(Tagged { tag: "BL" }))
+B -> J: 0000_0000_0000_0001 (Some(Tagged { tag: "RD" }))
+D -> F: 0000_0000_0000_0000 (None)
+D -> E: 0000_0000_0000_0001 (Some(Tagged { tag: "RDFD" }))
+F -> G: 0000_0000_0000_0010 (Some(Dynamic { type_key: "ddd", edge_name: "ddd_1", branch: "b1", metadata: None }))
+F -> H: 0000_0000_0000_0010 (Some(Dynamic { type_key: "ddd", edge_name: "ddd_1", branch: "b1", metadata: None }))
+F -> I: 0000_0000_0000_0010 (Some(Dynamic { type_key: "ddd", edge_name: "ddd_1", branch: "b2", metadata: None }))
 "#
     );
 
@@ -220,17 +223,17 @@ F -> I: 0000_0000_0000_0010 (Dynamic { type_key: "ddd", edge_name: "ddd_1", bran
     })?;
 
     snapshot!(
-        snap(&mut g),
+        snap(&g),
         r#"
-A -> B: 0000_0000_0000_0000 (Directed)
-A -> D: 0000_0000_0000_0000 (Directed)
-B -> C: 0000_0000_0000_0001 (Tagged { tag: "BL" })
-B -> J: 0000_0000_0000_0001 (Tagged { tag: "RD" })
-D -> F: 0000_0000_0000_0000 (Directed)
-D -> E: 0000_0000_0000_0001 (Tagged { tag: "RDFD" })
-F -> G: 0000_0000_0000_0010 (Dynamic { type_key: "ddd", edge_name: "ddd_1", branch: "b1" })
-F -> H: 0000_0000_0000_0010 (Dynamic { type_key: "ddd", edge_name: "ddd_1", branch: "b1" })
-F -> I: 0000_1100_0000_0110 (Dynamic { type_key: "ddd", edge_name: "ddd_1", branch: "b2" })
+A -> B: 0000_0000_0000_0000 (None)
+A -> D: 0000_0000_0000_0000 (None)
+B -> C: 0000_0000_0000_0001 (Some(Tagged { tag: "BL" }))
+B -> J: 0000_0000_0000_0001 (Some(Tagged { tag: "RD" }))
+D -> F: 0000_0000_0000_0000 (None)
+D -> E: 0000_0000_0000_0001 (Some(Tagged { tag: "RDFD" }))
+F -> G: 0000_0000_0000_0010 (Some(Dynamic { type_key: "ddd", edge_name: "ddd_1", branch: "b1", metadata: None }))
+F -> H: 0000_0000_0000_0010 (Some(Dynamic { type_key: "ddd", edge_name: "ddd_1", branch: "b1", metadata: None }))
+F -> I: 0000_1100_0000_0110 (Some(Dynamic { type_key: "ddd", edge_name: "ddd_1", branch: "b2", metadata: None }))
 "#
     );
 
@@ -242,17 +245,17 @@ F -> I: 0000_1100_0000_0110 (Dynamic { type_key: "ddd", edge_name: "ddd_1", bran
     })?;
 
     snapshot!(
-        snap(&mut g),
+        snap(&g),
         r#"
-A -> B: 0000_0000_0000_0000 (Directed)
-A -> D: 0000_0000_0000_0000 (Directed)
-B -> C: 0000_1000_0000_0101 (Tagged { tag: "BL" })
-B -> J: 0000_0000_0000_0001 (Tagged { tag: "RD" })
-D -> F: 0000_0000_0000_0000 (Directed)
-D -> E: 0000_0000_0000_0001 (Tagged { tag: "RDFD" })
-F -> G: 0000_0000_0000_0010 (Dynamic { type_key: "ddd", edge_name: "ddd_1", branch: "b1" })
-F -> H: 0000_0000_0000_0010 (Dynamic { type_key: "ddd", edge_name: "ddd_1", branch: "b1" })
-F -> I: 0000_1100_0000_0010 (Dynamic { type_key: "ddd", edge_name: "ddd_1", branch: "b2" })
+A -> B: 0000_0000_0000_0000 (None)
+A -> D: 0000_0000_0000_0000 (None)
+B -> C: 0000_1000_0000_0101 (Some(Tagged { tag: "BL" }))
+B -> J: 0000_0000_0000_0001 (Some(Tagged { tag: "RD" }))
+D -> F: 0000_0000_0000_0000 (None)
+D -> E: 0000_0000_0000_0001 (Some(Tagged { tag: "RDFD" }))
+F -> G: 0000_0000_0000_0010 (Some(Dynamic { type_key: "ddd", edge_name: "ddd_1", branch: "b1", metadata: None }))
+F -> H: 0000_0000_0000_0010 (Some(Dynamic { type_key: "ddd", edge_name: "ddd_1", branch: "b1", metadata: None }))
+F -> I: 0000_1100_0000_0010 (Some(Dynamic { type_key: "ddd", edge_name: "ddd_1", branch: "b2", metadata: None }))
 "#
     );
     Ok(())
@@ -281,7 +284,10 @@ fn test_dfs_with_traversal_config() -> Result<()> {
 
 fn dfs_configured(g: &ArrayGraph) -> String {
     let mut visited = BTreeSet::new();
-    for node in g.edges_forward.dfs_configured(&g.determine_entrypoints()) {
+    for node in g
+        .forward_edge_view()
+        .dfs_configured(&g.determine_entrypoints())
+    {
         visited.insert(node);
     }
     idx_to_names(g, visited).join(" ")
@@ -289,7 +295,10 @@ fn dfs_configured(g: &ArrayGraph) -> String {
 
 fn dfs_unconfigured(g: &ArrayGraph) -> String {
     let mut visited = BTreeSet::new();
-    for node in g.edges_forward.dfs_unconfigured(&g.determine_entrypoints()) {
+    for node in g
+        .forward_edge_view()
+        .dfs_unconfigured(&g.determine_entrypoints())
+    {
         visited.insert(node);
     }
     idx_to_names(g, visited).join(" ")
@@ -449,7 +458,7 @@ fn test_tiered_traversal() -> Result<()> {
     let mut result = String::new();
     for node_idx in g.node_idx_iter() {
         let node_name = g.idx_to_name(node_idx);
-        let tier_flags = g.node_flags[node_idx].intersection(NodeFlags::ALL_TIERS);
+        let tier_flags = g.runtime.node_flags[node_idx].intersection(NodeFlags::ALL_TIERS);
         let tier_idx = match tier_flags {
             NodeFlags::TIER_IDX_0 => 0,
             NodeFlags::TIER_IDX_1 => 1,
@@ -571,7 +580,7 @@ F -> I [D]
 #[test]
 fn test_edges_len() -> Result<()> {
     let mut g = make_test_array_graph_2()?;
-    let node_k = g.nodes.name_to_idx_log("K").unwrap();
+    let node_k = g.data.node_names_ordered.name_to_idx_log("K").unwrap();
 
     assert_equal!(g.parents_len_configured(node_k), 2);
 
@@ -600,7 +609,7 @@ fn test_edges_len() -> Result<()> {
 #[test]
 fn test_reacable_subgraph_unconfigured() -> Result<()> {
     let g = make_test_array_graph_1()?;
-    let d = g.nodes.name_to_idx_log("D").unwrap();
+    let d = g.data.node_names_ordered.name_to_idx_log("D").unwrap();
     let sg = g.get_reachable_subgraph_unconfigured(&[d])?;
     let reachable = sg.into_array_graph(&ll::Task::create_new(""))?;
     snapshot!(

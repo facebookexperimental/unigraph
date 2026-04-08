@@ -3,11 +3,13 @@ use std::collections::VecDeque;
 use std::collections::hash_map::Entry;
 
 use crate::NodeIDX;
-use crate::types::array_graph::offset_graph::OffsetGraph;
 use crate::types::array_graph::offset_graph::TraversalType;
+use crate::types::array_graph::offset_graph::edge_flags::EdgeFlags;
 
 pub(crate) fn shortest_path(
-    offset_graph: &OffsetGraph,
+    targets: &[NodeIDX],
+    flags: &[EdgeFlags],
+    edge_offsets: &[usize],
     from: &[NodeIDX],
     to: NodeIDX,
     traversal_type: TraversalType,
@@ -40,21 +42,22 @@ pub(crate) fn shortest_path(
         }
 
         // iterate over the edges of the current node
-        for edge in offset_graph.edges(current) {
+        let start = edge_offsets[current];
+        let end = edge_offsets[current + 1];
+        for i in start..end {
+            let target = targets[i];
+            let flag = flags[i];
+
             match traversal_type {
                 TraversalType::Configured => {
-                    // this is a bit annoying that we have to reach directly into
-                    // excluded instead of using `edges_configured`, but it's a very
-                    // hot loop and messing with dynamic objects will have some
-                    // overhead
-                    if edge.is_excluded() {
+                    if flag.contains(EdgeFlags::EXCLUDED) {
                         continue;
                     }
                 }
                 TraversalType::Unconfigured => {}
             }
 
-            let child = edge.points_to;
+            let child = target;
 
             // if we have not seen this child before, add it to the queue
             if let Entry::Vacant(e) = parents.entry(child) {
@@ -105,7 +108,7 @@ mod tests {
         let ag = make_test_array_graph_2()?;
 
         let p = ag
-            .edges_forward
+            .forward_edge_view()
             .shortest_path(
                 &[name_to_idx(&ag, "A")],
                 name_to_idx(&ag, "K"),
@@ -117,7 +120,7 @@ mod tests {
 
         // FROM A NODE TO ITSELF
         let p = ag
-            .edges_forward
+            .forward_edge_view()
             .shortest_path(
                 &[name_to_idx(&ag, "A")],
                 name_to_idx(&ag, "A"),
@@ -128,7 +131,7 @@ mod tests {
 
         // FROM A NODE TO ITSELF IN A CYCLE
         let p = ag
-            .edges_forward
+            .forward_edge_view()
             .shortest_path(
                 &[
                     name_to_idx(&ag, "M"),
@@ -143,7 +146,7 @@ mod tests {
 
         // CYCLE HITS FIRST
         let p = ag
-            .edges_forward
+            .forward_edge_view()
             .shortest_path(
                 &[name_to_idx(&ag, "M")],
                 name_to_idx(&ag, "I"),
@@ -153,7 +156,7 @@ mod tests {
         assert_equal!(idx_to_names(&ag, p), vec!["M", "O", "F", "I"]);
 
         let p = ag
-            .edges_forward
+            .forward_edge_view()
             .shortest_path(
                 &[name_to_idx(&ag, "A"), name_to_idx(&ag, "L")],
                 name_to_idx(&ag, "H"),

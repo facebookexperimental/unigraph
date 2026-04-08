@@ -11,7 +11,6 @@
 mod tests {
     use std::collections::BTreeMap;
     use std::collections::BTreeSet;
-    use std::sync::Arc;
 
     use anyhow::Result;
     use unigraph_delta::Deltable;
@@ -19,7 +18,6 @@ mod tests {
     use crate::ArrayGraphDynamicEdge;
     use crate::ArrayGraphNodes;
     use crate::ArrayGraphSerializable;
-    use crate::ArrayGraphSerializableEdges;
     use crate::ArrayGraphSerializableNodeMetadata;
     use crate::NodeIDX;
     use crate::TraversalConfig;
@@ -213,17 +211,12 @@ mod tests {
             None
         };
 
+        // Build CSR using the same pipeline as production (MapGraph → AGS)
+        // First build the directed CSR + old tagged/dynamic, then convert to unified CSR
+        let edges = build_unified_csr(&directed, &directed_offsets, &tagged, &dynamic, node_count);
         ArrayGraphSerializable {
-            node_names_ordered: Arc::new(ArrayGraphNodes::from_parts(
-                node_names_str,
-                node_name_offsets,
-            )),
-            edges: ArrayGraphSerializableEdges {
-                directed,
-                directed_offsets,
-                tagged,
-                dynamic,
-            },
+            node_names_ordered: ArrayGraphNodes::from_parts(node_names_str, node_name_offsets),
+            edges,
             node_metadata: ArrayGraphSerializableNodeMetadata {
                 metrics,
                 labels,
@@ -535,18 +528,99 @@ mod tests {
         k9::snapshot!(
             hashes.join("\n"),
             "
-pair_00: 4ae858de85e38a28
-pair_01: bf7829b9c166754a
-pair_02: f8089574919984e4
-pair_03: 0e0156e6a0db2671
-pair_04: 072c5794981a208c
-pair_05: fc87c61336805b32
-pair_06: f135a477dcbcf458
-pair_07: 142d6ba1244cb6b5
-pair_08: fc514a83ea82b9ad
-pair_09: 3db1013295c78fce
+pair_00: 41c61b7d86012725
+pair_01: 9c229d465a595694
+pair_02: 02c7db2854a102fc
+pair_03: 8acc05ff083d6578
+pair_04: 1d449b7e40ad8e9b
+pair_05: 92245372e4878666
+pair_06: 9c012d55a738aa83
+pair_07: 540e7ca607fc602b
+pair_08: ffad51a1d237856e
+pair_09: 8f5806421a6b0867
 "
         );
         Ok(())
+    }
+
+    /// Build a unified CSR from separate directed/tagged/dynamic edge structures.
+    fn build_unified_csr(
+        directed: &[crate::NodeIDX],
+        directed_offsets: &[usize],
+        tagged: &std::collections::BTreeMap<
+            crate::NodeIDX,
+            std::collections::BTreeMap<String, std::collections::BTreeSet<crate::NodeIDX>>,
+        >,
+        dynamic: &std::collections::BTreeMap<
+            crate::NodeIDX,
+            std::collections::BTreeMap<
+                String,
+                std::collections::BTreeMap<String, crate::ArrayGraphDynamicEdge>,
+            >,
+        >,
+        node_count: usize,
+    ) -> crate::ArrayGraphSerializableEdges {
+        use std::collections::BTreeMap;
+
+        use crate::ArrayGraphSerializableEdges;
+        use crate::EdgeIDX;
+        use crate::EdgeMeta;
+        use crate::EdgeMetaIDX;
+        use crate::NodeIDX;
+
+        let mut edges = Vec::new();
+        let mut edge_offsets = Vec::with_capacity(node_count + 1);
+        edge_offsets.push(0);
+        let mut edge_metadata: Vec<EdgeMeta> = Vec::new();
+        let mut edge_metadata_map: BTreeMap<EdgeIDX, EdgeMetaIDX> = BTreeMap::new();
+
+        for i in 0..node_count {
+            let node_idx = NodeIDX::from(i);
+            let start = directed_offsets[i];
+            let end = directed_offsets[i + 1];
+            edges.extend_from_slice(&directed[start..end]);
+
+            if let Some(tag_map) = tagged.get(&node_idx) {
+                for (tag, targets) in tag_map {
+                    let meta_idx = EdgeMetaIDX::from(edge_metadata.len());
+                    edge_metadata.push(EdgeMeta::Tagged { tag: tag.clone() });
+                    for &target in targets {
+                        let edge_idx = EdgeIDX::from(edges.len());
+                        edges.push(target);
+                        edge_metadata_map.insert(edge_idx, meta_idx);
+                    }
+                }
+            }
+
+            if let Some(type_map) = dynamic.get(&node_idx) {
+                for (type_key, edge_map) in type_map {
+                    for (edge_name, dyn_edge) in edge_map {
+                        for (branch, targets) in &dyn_edge.branches {
+                            let meta_idx = EdgeMetaIDX::from(edge_metadata.len());
+                            edge_metadata.push(EdgeMeta::Dynamic {
+                                type_key: type_key.clone(),
+                                edge_name: edge_name.clone(),
+                                branch: branch.clone(),
+                                metadata: dyn_edge.metadata.clone(),
+                            });
+                            for &target in targets {
+                                let edge_idx = EdgeIDX::from(edges.len());
+                                edges.push(target);
+                                edge_metadata_map.insert(edge_idx, meta_idx);
+                            }
+                        }
+                    }
+                }
+            }
+
+            edge_offsets.push(edges.len());
+        }
+
+        ArrayGraphSerializableEdges {
+            edges,
+            edge_offsets,
+            edge_metadata,
+            edge_metadata_map,
+        }
     }
 }

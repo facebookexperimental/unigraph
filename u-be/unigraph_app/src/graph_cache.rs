@@ -270,7 +270,7 @@ fn apply_traversal(ag: &mut ArrayGraph, gqc: &GraphQueryConfig) -> Result<()> {
     let tvc = gqc
         .traversal_config
         .as_ref()
-        .or(ag.state.traversal_config.as_ref());
+        .or(ag.runtime.state.traversal_config.as_ref());
     if let Some(tvc) = tvc {
         ag.apply_traversal_config(tvc.clone())?;
     }

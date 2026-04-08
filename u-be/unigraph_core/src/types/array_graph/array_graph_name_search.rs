@@ -40,7 +40,7 @@ impl NameSearch {
         limit: usize,
         task: &ll::Task,
     ) -> Result<Vec<(&'a str, NodeIDX)>> {
-        if nodes.combined_nodes_len() >= FST_SEARCH_THRESHOLD {
+        if nodes.len() >= FST_SEARCH_THRESHOLD {
             let fst_sets = self
                 .fst_sets
                 .get_or_try_init(|| task.spawn_sync("fst_build", |_| FstSets::build(nodes)))?;
@@ -87,7 +87,7 @@ fn collect_top_k_matches(
     limit: usize,
 ) -> BinaryHeap<(i32, NodeIDX)> {
     nodes
-        .combined_node_idx_iter()
+        .node_idx_iter()
         .par_bridge()
         .fold(
             || BinaryHeap::with_capacity(limit + 1),

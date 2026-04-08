@@ -3,7 +3,6 @@
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashSet;
-use std::sync::Arc;
 
 use anyhow::Context;
 use anyhow::Result;
@@ -15,13 +14,14 @@ use super::LabelValue;
 use super::NodeIDX;
 use super::PropertyName;
 use super::PropertyValue;
-use super::Tag;
 use super::array_graph::ArrayGraph;
-use super::array_graph::ArrayGraphDynamicEdge;
 use super::array_graph::array_graph_nodes::NodeNamesOrderedBuilder;
 use crate::ArrayGraphSerializable;
+use crate::EdgeMeta;
 use crate::TraversalConfig;
 use crate::graph_settings::GraphSettings;
+use crate::types::EdgeIDX;
+use crate::types::EdgeMetaIDX;
 
 type NodeName = String;
 
@@ -142,60 +142,20 @@ impl MapGraph {
         let (node_names_ordered, name_to_idx_map) =
             NodeNamesOrderedBuilder::from_names(all_node_names_set);
 
-        let mut directed_edges = vec![];
-        let mut directed_offsets = vec![0];
+        // Unified CSR: directed first, then tagged (sorted by tag+target),
+        // then dynamic (sorted by type_key+edge_name+branch+target).
+        let mut edges: Vec<NodeIDX> = vec![];
+        let mut edge_offsets: Vec<usize> = vec![0];
+        let mut edge_metadata: Vec<EdgeMeta> = vec![];
+        let mut edge_metadata_map: BTreeMap<EdgeIDX, EdgeMetaIDX> = BTreeMap::new();
 
-        let mut all_tagged_edges: BTreeMap<NodeIDX, BTreeMap<Tag, BTreeSet<NodeIDX>>> =
-            BTreeMap::new();
-        let mut all_dynamic_edges: BTreeMap<
-            NodeIDX,
-            BTreeMap<DynamicTypeKey, BTreeMap<DynamicEdgeName, ArrayGraphDynamicEdge>>,
-        > = BTreeMap::new();
-
-        for node_name in node_names_ordered.combined_node_names_iter() {
+        for node_name in node_names_ordered.node_names_iter() {
             let node_idx = *name_to_idx_map
                 .get(node_name)
                 .with_context(|| format!("Node name not found: {node_name}"))?;
 
-            // The node might not be there if there was an edge to a node that was not in the graph.
             if let Some(node) = self.nodes.get(node_name) {
-                for (tag, edges) in node.edges_tagged.iter().flatten() {
-                    all_tagged_edges.entry(node_idx).or_default().insert(
-                        tag.clone(),
-                        edges
-                            .iter()
-                            .filter_map(|edge| name_to_idx_map.get(edge))
-                            .copied()
-                            .collect::<BTreeSet<_>>(),
-                    );
-                }
-
-                for (type_key, edge_map) in node.edges_dynamic.iter().flatten() {
-                    for (edge_name, dynamic) in edge_map {
-                        let mut result = ArrayGraphDynamicEdge {
-                            metadata: dynamic.metadata.clone(),
-                            branches: BTreeMap::new(),
-                        };
-
-                        for (branch_name, edges) in dynamic.branches.iter() {
-                            result.branches.insert(
-                                branch_name.clone(),
-                                edges
-                                    .iter()
-                                    .filter_map(|edge| name_to_idx_map.get(edge))
-                                    .copied()
-                                    .collect(),
-                            );
-                        }
-                        all_dynamic_edges
-                            .entry(node_idx)
-                            .or_default()
-                            .entry(type_key.clone())
-                            .or_default()
-                            .insert(edge_name.clone(), result);
-                    }
-                }
-
+                // 1. Directed edges
                 for directed_edge in node.edges_directed.iter().flatten() {
                     let points_to = name_to_idx_map.get(directed_edge).copied().with_context(
                         || {
@@ -204,9 +164,45 @@ impl MapGraph {
                             )
                         },
                     )?;
-                    directed_edges.push(points_to);
+                    edges.push(points_to);
                 }
-                directed_offsets.push(directed_edges.len());
+
+                // 2. Tagged edges (sorted by tag name, then target)
+                for (tag, tag_edges) in node.edges_tagged.iter().flatten() {
+                    let meta_idx = EdgeMetaIDX::from(edge_metadata.len());
+                    edge_metadata.push(EdgeMeta::Tagged { tag: tag.clone() });
+                    for target_name in tag_edges {
+                        if let Some(&target_idx) = name_to_idx_map.get(target_name) {
+                            let edge_idx = EdgeIDX::from(edges.len());
+                            edges.push(target_idx);
+                            edge_metadata_map.insert(edge_idx, meta_idx);
+                        }
+                    }
+                }
+
+                // 3. Dynamic edges (sorted by type_key, then edge_name)
+                for (type_key, edge_map) in node.edges_dynamic.iter().flatten() {
+                    for (edge_name, dynamic) in edge_map {
+                        for (branch_name, branch_edges) in &dynamic.branches {
+                            let meta_idx = EdgeMetaIDX::from(edge_metadata.len());
+                            edge_metadata.push(EdgeMeta::Dynamic {
+                                type_key: type_key.clone(),
+                                edge_name: edge_name.clone(),
+                                branch: branch_name.clone(),
+                                metadata: dynamic.metadata.clone(),
+                            });
+                            for target_name in branch_edges {
+                                if let Some(&target_idx) = name_to_idx_map.get(target_name) {
+                                    let edge_idx = EdgeIDX::from(edges.len());
+                                    edges.push(target_idx);
+                                    edge_metadata_map.insert(edge_idx, meta_idx);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                edge_offsets.push(edges.len());
 
                 for (metric_name, metric_values) in metrics.iter_mut() {
                     if let Some(metric_value) =
@@ -234,7 +230,7 @@ impl MapGraph {
                     }
                 }
             } else {
-                directed_offsets.push(directed_edges.len());
+                edge_offsets.push(edges.len());
                 for (_metric_name, metric_values) in metrics.iter_mut() {
                     metric_values.push(0.0);
                 }
@@ -242,12 +238,12 @@ impl MapGraph {
         }
 
         Ok(ArrayGraphSerializable {
-            node_names_ordered: Arc::new(node_names_ordered),
+            node_names_ordered,
             edges: crate::ArrayGraphSerializableEdges {
-                directed: directed_edges,
-                directed_offsets,
-                tagged: all_tagged_edges,
-                dynamic: all_dynamic_edges,
+                edges,
+                edge_offsets,
+                edge_metadata,
+                edge_metadata_map,
             },
             node_metadata: crate::ArrayGraphSerializableNodeMetadata {
                 metrics,

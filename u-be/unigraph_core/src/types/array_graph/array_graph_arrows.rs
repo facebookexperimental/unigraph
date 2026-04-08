@@ -4,21 +4,21 @@ use anyhow::Context;
 use anyhow::Result;
 
 use crate::ArrayGraph;
+use crate::EdgeMeta;
 use crate::NodeIDX;
 use crate::graph_settings::GraphStructure;
 use crate::types::array_graph::Arrow;
 use crate::types::array_graph::DynamicEdgeInfo;
 use crate::types::array_graph::offset_graph::Edge;
-use crate::types::array_graph::offset_graph::NonDirectedEdgeMetadata;
 
 fn render_message(
     ag: &ArrayGraph,
     edge: Edge,
-    edge_metadata: &NonDirectedEdgeMetadata,
+    edge_metadata: Option<&EdgeMeta>,
     points_from: NodeIDX,
 ) -> Result<Option<String>> {
     if let Some(message_idx) = edge.flags.get_message_idx() {
-        if let Some(msg) = ag.state.indexed_messages.get_by_idx(message_idx) {
+        if let Some(msg) = ag.runtime.state.indexed_messages.get_by_idx(message_idx) {
             return Ok(Some(msg.render(ag, points_from, edge_metadata)?));
         } else {
             return Ok(Some(format!(
@@ -35,14 +35,9 @@ pub fn get_arrows(
     node_idx: NodeIDX,
     graph_structure: GraphStructure,
 ) -> Result<Vec<Arrow>> {
-    let offset_graph = match graph_structure {
-        GraphStructure::Forward => &ag.edges_forward,
-        GraphStructure::Reverse => ag.edges_reverse(),
-        GraphStructure::Dominator => ag.edges_dom(),
-    };
+    let view = ag.edge_view(graph_structure);
 
-    offset_graph
-        .edges_with_metadata(node_idx)
+    view.edges_with_metadata(node_idx)
         .map(|(edge, metadata)| edge_to_arrow(ag, node_idx, edge, metadata))
         .collect::<Result<Vec<Arrow>>>()
         .with_context(|| {
@@ -56,7 +51,7 @@ pub fn edge_to_arrow(
     ag: &ArrayGraph,
     points_from: NodeIDX,
     edge: Edge,
-    metadata: &NonDirectedEdgeMetadata,
+    metadata: Option<&EdgeMeta>,
 ) -> Result<Arrow> {
     let excluded = edge.flags.is_excluded();
     if !edge.flags.is_tagged_or_dynamic() {
@@ -71,10 +66,10 @@ pub fn edge_to_arrow(
         })
     } else {
         match metadata {
-            NonDirectedEdgeMetadata::Directed => {
-                anyhow::bail!("Directed edge should not have metadata")
+            None => {
+                anyhow::bail!("Tagged/dynamic edge should have metadata")
             }
-            NonDirectedEdgeMetadata::Tagged { tag } => Ok(Arrow {
+            Some(EdgeMeta::Tagged { tag }) => Ok(Arrow {
                 tag: Some(tag.clone()),
                 dynamic: None,
                 points_from,
@@ -83,11 +78,12 @@ pub fn edge_to_arrow(
                 message: render_message(ag, edge, metadata, points_from)?,
                 skipped: 0,
             }),
-            NonDirectedEdgeMetadata::Dynamic {
+            Some(EdgeMeta::Dynamic {
                 type_key,
                 edge_name,
                 branch,
-            } => Ok(Arrow {
+                ..
+            }) => Ok(Arrow {
                 tag: None,
                 dynamic: Some(DynamicEdgeInfo {
                     type_key: type_key.clone(),

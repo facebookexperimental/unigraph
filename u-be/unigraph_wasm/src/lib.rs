@@ -8,7 +8,6 @@ use std::vec;
 use anyhow::Context;
 use anyhow::Result;
 use log::trace;
-use unigraph_core::ArrayGraph;
 use unigraph_core::ArrayGraphSerializable;
 use unigraph_core::ArrayGraphSerializablePackage;
 use unigraph_core::ArrayGraphSerializablePackageBase64;
@@ -16,6 +15,7 @@ use unigraph_core::GraphQueryConfig;
 use unigraph_core::MapGraph;
 use unigraph_core::TraversalConfig;
 use unigraph_core::TraversalType;
+use unigraph_core::TwinArrow;
 use unigraph_core::TwinGraph;
 use unigraph_core::graph_settings::GraphStructure;
 use unigraph_core::types::NodeIDX;
@@ -24,6 +24,7 @@ use unigraph_core::ui_types::ExplorerComponentInputGraphs;
 use unigraph_delta::Deltable;
 use unigraph_graph_state::GlobalGraphState;
 use unigraph_graph_state::global_graph_state;
+use unigraph_graph_state::graph_state::GraphMode;
 use unigraph_graph_state::types::SimulationParams;
 use unigraph_serialization::SerializationFormat;
 use unigraph_wgpu::GlobalState;
@@ -142,12 +143,12 @@ pub fn set_graphs(explorer_component_input_graphs_json: String) -> Result<(), Wa
     match left {
         Some(left) => {
             let twin_graph = TwinGraph::from_two(left, right, &task)?;
-            GlobalGraphState::graph_state().replace_graph(twin_graph)?;
+            GlobalGraphState::graph_state().replace_graph(GraphMode::Twin(twin_graph))?;
         }
         None => {
             let array_graph = right.into_array_graph(&task)?;
-            let twin_graph = TwinGraph::from_one(array_graph.append_super_root(false)?)?;
-            GlobalGraphState::graph_state().replace_graph(twin_graph)?;
+            let array_graph = array_graph.append_super_root(false)?;
+            GlobalGraphState::graph_state().replace_graph(GraphMode::Single(array_graph))?;
         }
     }
 
@@ -180,47 +181,48 @@ pub fn get_selected_node_idxs() -> Result<Vec<u32>, WasmJSError> {
 
 #[wasm_bindgen]
 pub fn node_idx_to_name(idx: usize) -> Result<String, WasmJSError> {
-    Ok(global_graph_state()
-        .graph_state
-        .get()
-        .twin_graph
-        .node_names
-        .idx_to_name(NodeIDX::from(idx))
-        .to_string())
+    let gs = global_graph_state().graph_state.get();
+    Ok(gs.mode.idx_to_name(NodeIDX::from(idx)).to_string())
 }
 
 #[wasm_bindgen]
 pub fn node_name_to_idx_log(name: &str) -> Result<Option<u32>, WasmJSError> {
-    Ok(global_graph_state()
-        .graph_state
-        .get()
-        .twin_graph
-        .node_names
-        .name_to_idx_log(name)
-        .map(|idx| idx.0))
+    let gs = global_graph_state().graph_state.get();
+    // Search in R (always present). In twin mode, translate to merged IDX.
+    let r = gs.mode.r();
+    let local_idx = r.data.node_names_ordered.name_to_idx_log(name);
+    Ok(local_idx.map(|idx| gs.mode.to_ui(0b0010, idx).unwrap_or(idx).0))
 }
 
 #[wasm_bindgen]
 pub fn search_node_name_fuzzy(pattern: &str, limit: usize) -> Result<Vec<String>, WasmJSError> {
     let task = ll::Task::create_new("");
-    Ok(global_graph_state()
-        .graph_state
-        .get()
-        .twin_graph
-        .node_names
-        .search_name_fuzzy(pattern, limit, &task)?
-        .into_iter()
-        .map(|(name, _node_idx)| name.to_string())
-        .collect())
+    let gs = global_graph_state().graph_state.get();
+    match &gs.mode {
+        GraphMode::Single(ag) => Ok(ag
+            .data
+            .node_names_ordered
+            .search_name_fuzzy(pattern, limit, &task)?
+            .into_iter()
+            .map(|(name, _): (&str, _)| name.to_string())
+            .collect()),
+        GraphMode::Twin(tg) => Ok(tg
+            .search_name_fuzzy(pattern, limit, &task)?
+            .into_iter()
+            .map(|(name, _): (&str, _)| name.to_string())
+            .collect()),
+    }
 }
 
 #[wasm_bindgen]
 pub fn get_metric_names(side: u32) -> Result<Vec<String>, WasmJSError> {
-    Ok(GlobalGraphState::graph_state()
-        .get()
-        .twin_graph
-        .graph_u32(side)?
-        .node_metrics
+    let gs = GlobalGraphState::graph_state().get();
+    Ok(gs
+        .mode
+        .graph(side)?
+        .data
+        .node_metadata
+        .metrics
         .keys()
         .cloned()
         .collect())
@@ -232,16 +234,13 @@ pub fn get_node_metrics(
     metric_name: &str,
     side: u32,
 ) -> Result<Vec<f32>, WasmJSError> {
-    let graph_state = GlobalGraphState::graph_state().get();
+    let gs = GlobalGraphState::graph_state().get();
+    let ag = gs.mode.graph(side)?;
     let mut result = Vec::with_capacity(node_idxs.len());
-    if let Some(metrics) = graph_state
-        .twin_graph
-        .graph_u32(side)?
-        .node_metrics
-        .get(metric_name)
-    {
+    if let Some(metrics) = ag.data.node_metadata.metrics.get(metric_name) {
         for node_idx in node_idxs {
-            result.push(metrics[NodeIDX(node_idx)]);
+            let local = gs.mode.to_local(side, NodeIDX(node_idx))?;
+            result.push(local.map_or(0.0, |idx| metrics[idx]));
         }
         Ok(result)
     } else {
@@ -256,14 +255,16 @@ pub fn get_transitive_metrics(
     dominated: bool,
     side: u32,
 ) -> Result<Vec<f32>, WasmJSError> {
-    let graph_state = GlobalGraphState::graph_state().get();
+    let gs = GlobalGraphState::graph_state().get();
+    let ag = gs.mode.graph(side)?;
     let mut result = Vec::with_capacity(node_idxs.len());
     for node_idx in node_idxs {
-        let transitive_value = graph_state
-            .twin_graph
-            .graph_u32(side)?
-            .get_transitive_metric_value(NodeIDX(node_idx), metric_name, dominated)?;
-        result.push(transitive_value);
+        let local = gs.mode.to_local(side, NodeIDX(node_idx))?;
+        let value = match local {
+            Some(idx) => ag.get_transitive_metric_value(idx, metric_name, dominated)?,
+            None => 0.0,
+        };
+        result.push(value);
     }
     Ok(result)
 }
@@ -275,15 +276,18 @@ pub fn get_transitive_tiered_metrics(
     dominated: bool,
     side: u32,
 ) -> Result<String, WasmJSError> {
-    let graph_state = GlobalGraphState::graph_state().get();
+    let gs = GlobalGraphState::graph_state().get();
+    let ag = gs.mode.graph(side)?;
     let mut result = Vec::with_capacity(node_idxs.len());
     for node_idx in node_idxs {
-        let transitive_value = graph_state
-            .twin_graph
-            .graph_u32(side)?
-            .get_transitive_tiered_metric_values(NodeIDX(node_idx), metric_name, dominated)
-            .context("get transitive tiered metrics")?;
-        result.push(transitive_value);
+        let local = gs.mode.to_local(side, NodeIDX(node_idx))?;
+        let value = match local {
+            Some(idx) => ag
+                .get_transitive_tiered_metric_values(idx, metric_name, dominated)
+                .context("get transitive tiered metrics")?,
+            None => std::collections::BTreeMap::new(),
+        };
+        result.push(value);
     }
     Ok(serde_json::to_string(&result).context("Failed to serialize transitive tiered metrics")?)
 }
@@ -293,14 +297,20 @@ pub fn get_transitive_tiered_metrics_delta(
     node_idxs: Vec<u32>,
     metric_name: &str,
 ) -> Result<String, WasmJSError> {
-    let graph_state = GlobalGraphState::graph_state().get();
+    let gs = GlobalGraphState::graph_state().get();
     let mut result = Vec::with_capacity(node_idxs.len());
-    let tg = &graph_state.twin_graph;
-    for node_idx in node_idxs {
-        let transitive_value = tg
-            .get_transitive_tiered_delta(NodeIDX::from(node_idx), metric_name)
-            .context("get transitive tiered metrics")?;
-        result.push(transitive_value);
+    match &gs.mode {
+        GraphMode::Single(_) => {
+            result.resize(node_idxs.len(), std::collections::BTreeMap::new());
+        }
+        GraphMode::Twin(tg) => {
+            for node_idx in node_idxs {
+                result.push(
+                    tg.get_transitive_tiered_delta(NodeIDX::from(node_idx), metric_name)
+                        .context("get transitive tiered metrics")?,
+                );
+            }
+        }
     }
     Ok(serde_json::to_string(&result)
         .context("Failed to serialize transitive tiered delta metrics")?)
@@ -311,17 +321,14 @@ pub fn get_combined_metrics_for_nodes(
     node_idxs: Vec<u32>,
     side: u32,
 ) -> Result<String, WasmJSError> {
-    let graph_state = GlobalGraphState::graph_state().get();
-    let result = graph_state
-        .twin_graph
-        .graph_u32(side)?
-        .get_combined_metrics_for_nodes(
-            &node_idxs
-                .iter()
-                .map(|&idx| NodeIDX(idx))
-                .collect::<Vec<_>>(),
-        )?;
-    Ok(serde_json::to_string(&result).context("Failed to serialize transitive tiered metrics")?)
+    let gs = GlobalGraphState::graph_state().get();
+    let ag = gs.mode.graph(side)?;
+    let local_idxs: Vec<NodeIDX> = node_idxs
+        .iter()
+        .filter_map(|&idx| gs.mode.to_local(side, NodeIDX(idx)).ok().flatten())
+        .collect();
+    let result = ag.get_combined_metrics_for_nodes(&local_idxs)?;
+    Ok(serde_json::to_string(&result).context("Failed to serialize combined metrics")?)
 }
 
 #[wasm_bindgen]
@@ -331,7 +338,22 @@ pub fn get_combined_metrics_for_entrypoints_with_force_include(
     side: u32,
 ) -> Result<String, WasmJSError> {
     let force_edge_include = match (force_edge_include_from, force_edge_include_to) {
-        (Some(from), Some(to)) => Some((NodeIDX(from), NodeIDX(to))),
+        (Some(from), Some(to)) => {
+            let mut gs = GlobalGraphState::graph_state().get_mut();
+            let local_from = gs
+                .mode
+                .to_local(side, NodeIDX(from))?
+                .context("force_edge_include_from node not found on this side")?;
+            let local_to = gs
+                .mode
+                .to_local(side, NodeIDX(to))?
+                .context("force_edge_include_to node not found on this side")?;
+            let result = gs
+                .mode
+                .graph_mut(side)?
+                .get_combined_metrics_for_entry_points(Some((local_from, local_to)))?;
+            return Ok(serde_json::to_string(&result).context("Failed to serialize")?);
+        }
         (None, None) => None,
         _ => {
             return Err(anyhow::anyhow!(
@@ -341,27 +363,28 @@ pub fn get_combined_metrics_for_entrypoints_with_force_include(
         }
     };
 
-    let mut graph_state = GlobalGraphState::graph_state().get_mut();
-    let result = graph_state
-        .twin_graph
-        .graph_u32_mut(side)?
+    let mut gs = GlobalGraphState::graph_state().get_mut();
+    let result = gs
+        .mode
+        .graph_mut(side)?
         .get_combined_metrics_for_entry_points(force_edge_include)?;
-    Ok(serde_json::to_string(&result).context("Failed to serialize transitive tiered metrics")?)
+    Ok(serde_json::to_string(&result).context("Failed to serialize combined metrics")?)
 }
 
 #[wasm_bindgen]
 pub fn get_conjoint_cost(side: u32) -> Result<String, WasmJSError> {
-    let graph_state = GlobalGraphState::graph_state().get();
-    let conjoint_cost = graph_state.twin_graph.graph_u32(side)?.conjoint_cost();
+    let gs = GlobalGraphState::graph_state().get();
+    let conjoint_cost = gs.mode.graph(side)?.conjoint_cost();
     Ok(serde_json::to_string(&conjoint_cost).context("Failed to serialize conjoint cost")?)
 }
 
 #[wasm_bindgen]
 pub fn get_available_tiers(side: u32) -> Result<Vec<String>, WasmJSError> {
-    let graph_state = GlobalGraphState::graph_state().get();
-    Ok(graph_state
-        .twin_graph
-        .graph_u32(side)?
+    let gs = GlobalGraphState::graph_state().get();
+    Ok(gs
+        .mode
+        .graph(side)?
+        .runtime
         .state
         .tiers
         .iter()
@@ -369,25 +392,35 @@ pub fn get_available_tiers(side: u32) -> Result<Vec<String>, WasmJSError> {
         .collect())
 }
 
-// TODO: we will need to build combined arrows and dedup
 #[wasm_bindgen]
 pub fn get_arrow_pairs(
     node_idx: usize,
     graph_structure: u8,
     changed_nodes_only: bool,
 ) -> Result<String, WasmJSError> {
-    let graph_state = GlobalGraphState::graph_state().get();
+    let gs = GlobalGraphState::graph_state().get();
     let graph_structure = GraphStructure::from_u8(graph_structure)?;
     let node_idx = NodeIDX::from(node_idx);
-    let arrow_pairs =
-        graph_state
-            .twin_graph
-            .get_twin_arrows(node_idx, graph_structure, changed_nodes_only)?;
-
+    let arrow_pairs = match &gs.mode {
+        GraphMode::Single(ag) => {
+            let arrows = ag.get_arrows(node_idx, graph_structure)?;
+            // Wrap single-graph arrows as TwinArrows with r only
+            arrows
+                .into_iter()
+                .map(|a| unigraph_core::TwinArrow {
+                    points_to: a.points_to,
+                    points_from: a.points_from,
+                    node_diff: unigraph_core::NodeDiff::empty(),
+                    l: None,
+                    r: Some(a),
+                })
+                .collect()
+        }
+        GraphMode::Twin(tg) => tg.get_twin_arrows(node_idx, graph_structure, changed_nodes_only)?,
+    };
     Ok(serde_json::to_string(&arrow_pairs).context("Failed to serialize arrows")?)
 }
 
-// TODO: we need to check both sides and pick the shortest
 #[wasm_bindgen]
 pub fn get_shortest_path(
     from: &[u32],
@@ -396,86 +429,68 @@ pub fn get_shortest_path(
     traversal_type: u8,
     changed_nodes_only: bool,
 ) -> Result<Option<Vec<u32>>, WasmJSError> {
-    let graph_state = GlobalGraphState::graph_state().get();
-    let tg = &graph_state.twin_graph;
+    let gs = GlobalGraphState::graph_state().get();
     let graph_structure = GraphStructure::from_u8(graph_structure)?;
-    let from = from
-        .iter()
-        .map(|&idx| NodeIDX::from(idx))
-        .collect::<Vec<NodeIDX>>();
+    let traversal_type = TraversalType::from_u8(traversal_type)?;
+    let from: Vec<NodeIDX> = from.iter().map(|&idx| NodeIDX::from(idx)).collect();
     let to = NodeIDX::from(to);
 
-    let traversal_type = TraversalType::from_u8(traversal_type)?;
+    let path = match &gs.mode {
+        GraphMode::Single(ag) => ag.shortest_path(&from, to, graph_structure, traversal_type),
+        GraphMode::Twin(tg) => tg.shortest_path(
+            &from,
+            to,
+            graph_structure,
+            traversal_type,
+            changed_nodes_only,
+        )?,
+    };
 
-    if let Some(shortest_path) = tg.shortest_path(
-        &from,
-        to,
-        graph_structure,
-        traversal_type,
-        changed_nodes_only,
-    )? {
-        if !shortest_path.is_empty() {
-            return Ok(Some(
-                shortest_path
-                    .into_iter()
-                    .map(|idx| idx.0)
-                    .collect::<Vec<u32>>(),
-            ));
-        }
+    match path {
+        Some(p) if !p.is_empty() => Ok(Some(p.into_iter().map(|idx| idx.0).collect())),
+        _ => Ok(None),
     }
-
-    Ok(None)
 }
 
 #[wasm_bindgen]
 pub fn get_reverse_edges_len(node_idxs: Vec<u32>, side: u32) -> Result<Vec<usize>, WasmJSError> {
-    let graph_state = GlobalGraphState::graph_state().get();
-
-    let result = node_idxs
+    let gs = GlobalGraphState::graph_state().get();
+    let ag = gs.mode.graph(side)?;
+    node_idxs
         .into_iter()
         .map(|node_idx| {
-            Ok(graph_state
-                .twin_graph
-                .graph_u32(side)?
-                .parents_len_configured(node_idx.into()))
+            let local = gs.mode.to_local(side, NodeIDX(node_idx))?;
+            Ok(local.map_or(0, |idx| ag.parents_len_configured(idx)))
         })
-        .collect::<Result<Vec<usize>>>()?;
-
-    Ok(result)
+        .collect::<Result<Vec<usize>>>()
+        .map_err(Into::into)
 }
 
 #[wasm_bindgen]
 pub fn get_transitive_count(node_idxs: Vec<u32>, side: u32) -> Result<Vec<usize>, WasmJSError> {
-    let graph_state = GlobalGraphState::graph_state().get();
-
-    let result = node_idxs
+    let gs = GlobalGraphState::graph_state().get();
+    let ag = gs.mode.graph(side)?;
+    node_idxs
         .into_iter()
         .map(|node_idx| {
-            Ok(graph_state
-                .twin_graph
-                .graph_u32(side)?
-                .transitive_count_configured(node_idx.into()))
+            let local = gs.mode.to_local(side, NodeIDX(node_idx))?;
+            Ok(local.map_or(0, |idx| ag.transitive_count_configured(idx)))
         })
-        .collect::<Result<Vec<usize>>>()?;
-
-    Ok(result)
+        .collect::<Result<Vec<usize>>>()
+        .map_err(Into::into)
 }
 
 #[wasm_bindgen]
 pub fn get_transitive_count_delta(node_idxs: Vec<u32>) -> Result<Vec<i32>, WasmJSError> {
-    let graph_state = GlobalGraphState::graph_state().get();
-
-    let result = node_idxs
-        .into_iter()
-        .map(|node_idx| {
-            Ok(graph_state
-                .twin_graph
-                .get_transitive_count_delta(NodeIDX::from(node_idx))
-                .unwrap_or_default())
-        })
-        .collect::<Result<Vec<i32>>>()?;
-
-    Ok(result)
+    let gs = GlobalGraphState::graph_state().get();
+    match &gs.mode {
+        GraphMode::Single(_) => Ok(vec![0; node_idxs.len()]),
+        GraphMode::Twin(tg) => node_idxs
+            .into_iter()
+            .map(|node_idx| tg.get_transitive_count_delta(NodeIDX::from(node_idx)))
+            .collect::<Result<Vec<i32>>>()
+            .map_err(Into::into),
+    }
 }
 
 #[wasm_bindgen]
@@ -483,40 +498,42 @@ pub fn get_transitive_count_dominated(
     node_idxs: Vec<u32>,
     side: u32,
 ) -> Result<Vec<usize>, WasmJSError> {
-    let graph_state = GlobalGraphState::graph_state().get();
-
-    let result = node_idxs
+    let gs = GlobalGraphState::graph_state().get();
+    let ag = gs.mode.graph(side)?;
+    node_idxs
         .into_iter()
         .map(|node_idx| {
-            Ok(graph_state
-                .twin_graph
-                .graph_u32(side)?
-                .transitive_count_configured_dominated(node_idx.into()))
+            let local = gs.mode.to_local(side, NodeIDX(node_idx))?;
+            Ok(local.map_or(0, |idx| ag.transitive_count_configured_dominated(idx)))
         })
-        .collect::<Result<Vec<usize>>>()?;
-
-    Ok(result)
+        .collect::<Result<Vec<usize>>>()
+        .map_err(Into::into)
 }
 
 #[wasm_bindgen]
 pub fn get_node_flags(side: u32) -> Result<Vec<u32>, WasmJSError> {
-    let graph_state = GlobalGraphState::graph_state().get();
-    let flags = graph_state
-        .twin_graph
-        .graph_u32(side)?
-        .node_flags
-        .iter()
-        .map(|f| f.bits())
-        .collect();
+    let gs = GlobalGraphState::graph_state().get();
+    let ag = gs.mode.graph(side)?;
+    let node_count = gs.mode.node_count();
+    let mut flags = Vec::with_capacity(node_count);
+    for idx in 0..node_count {
+        let local = gs.mode.to_local(side, NodeIDX::from(idx))?;
+        let f = match local {
+            Some(local_idx) => ag.runtime.node_flags[local_idx].bits(),
+            None => 1, // UNREACHABLE
+        };
+        flags.push(f);
+    }
     Ok(flags)
 }
 
 #[wasm_bindgen]
 pub fn get_graph_traversal_config(side: u32) -> Result<String, WasmJSError> {
-    let traversal_config = GlobalGraphState::graph_state()
-        .get()
-        .twin_graph
-        .graph_u32(side)?
+    let gs = GlobalGraphState::graph_state().get();
+    let traversal_config = gs
+        .mode
+        .graph(side)?
+        .runtime
         .state
         .traversal_config
         .clone()
@@ -526,10 +543,11 @@ pub fn get_graph_traversal_config(side: u32) -> Result<String, WasmJSError> {
 
 #[wasm_bindgen]
 pub fn get_graph_settings(side: u32) -> Result<String, WasmJSError> {
-    let graph_settings = GlobalGraphState::graph_state()
-        .get()
-        .twin_graph
-        .graph_u32(side)?
+    let gs = GlobalGraphState::graph_state().get();
+    let graph_settings = gs
+        .mode
+        .graph(side)?
+        .data
         .graph_settings
         .clone()
         .unwrap_or_default();
@@ -541,8 +559,8 @@ pub fn apply_traversal_config(traversal_config_json: String, side: u32) -> Resul
     let traversal_config: TraversalConfig =
         serde_json::from_str(&traversal_config_json).context("Failed to parse traversal config")?;
     GlobalGraphState::graph_state_mut()
-        .twin_graph
-        .graph_u32_mut(side)?
+        .mode
+        .graph_mut(side)?
         .apply_traversal_config(traversal_config)
         .context("Failed to apply traversal config")?;
     GlobalGraphState::graph_state_mut().sync_node_attributes()?;
@@ -550,34 +568,27 @@ pub fn apply_traversal_config(traversal_config_json: String, side: u32) -> Resul
     Ok(())
 }
 
-// TODO: is this used?
 #[wasm_bindgen]
 pub fn get_graph_node_count(side: u32) -> Result<usize, WasmJSError> {
-    Ok(GlobalGraphState::graph_state()
-        .get()
-        .twin_graph
-        .graph_u32(side)?
-        .nodes_len())
+    Ok(GlobalGraphState::graph_state().get().mode.node_count())
 }
 
-// TODO: also need to combine with both graphs.
 #[wasm_bindgen]
 pub fn determine_entrypoints(side: u32) -> Result<Vec<u32>, WasmJSError> {
-    let node_idxs = GlobalGraphState::graph_state()
-        .get()
-        .twin_graph
-        .graph_u32(side)?
-        .determine_entrypoints();
-    Ok(node_idxs.iter().map(|idx| idx.0).collect())
+    let gs = GlobalGraphState::graph_state().get();
+    let ag = gs.mode.graph(side)?;
+    let local_idxs = ag.determine_entrypoints();
+    local_idxs
+        .iter()
+        .map(|&idx| Ok(gs.mode.to_ui(side, idx)?.0))
+        .collect::<Result<Vec<u32>>>()
+        .map_err(Into::into)
 }
 
 #[wasm_bindgen]
 pub fn get_array_graph_stats(side: u32) -> Result<String, WasmJSError> {
-    let stats = &GlobalGraphState::graph_state()
-        .get()
-        .twin_graph
-        .graph_u32(side)?
-        .stats();
+    let gs = GlobalGraphState::graph_state().get();
+    let stats = gs.mode.graph(side)?.stats();
     Ok(serde_json::to_string(&stats).context("Failed to serialize graph stats")?)
 }
 
