@@ -82,7 +82,7 @@ pub trait UnigraphGraphConnection: Send {
     /// Store a frame with data (Full, Delta, or Error).
     ///
     /// - `key`: timeline + timestamp + graph ID
-    /// - `frame_type`: the type of frame (should not be `Empty` — use [`store_frame_empty`] for that)
+    /// - `frame_type`: the type of frame (should not be `Empty` — use [`store_frames_empty`] for that)
     /// - `base`: for Delta frames, the base graph this delta derives from; `None` otherwise
     /// - `manifest_json`: JSON-serialized manifest
     /// - `inline_blobs`: optional ZSTD-compressed blob map (when blobs are small enough to inline)
@@ -99,8 +99,8 @@ pub trait UnigraphGraphConnection: Send {
         task: &ll::Task,
     ) -> Result<()>;
 
-    /// Store an empty frame (placeholder with no data).
-    async fn store_frame_empty(&mut self, key: &GraphTimeKey, task: &ll::Task) -> Result<()>;
+    /// Store empty frames (placeholders with no data) in a batch.
+    async fn store_frames_empty(&mut self, keys: &[GraphTimeKey], task: &ll::Task) -> Result<()>;
 
     /// Select frames matching a structured query.
     ///

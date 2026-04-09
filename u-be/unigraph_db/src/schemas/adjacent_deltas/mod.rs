@@ -944,14 +944,15 @@ async fn insert_empty_frames_chunked(
     task.progress(0, total);
 
     for (i, chunk) in frames.chunks(EMPTY_FRAME_CHUNK_SIZE).enumerate() {
-        for frame in chunk {
-            let key = GraphTimeKey {
+        let keys: Vec<GraphTimeKey> = chunk
+            .iter()
+            .map(|frame| GraphTimeKey {
                 timeline_id: timeline_id.clone(),
                 timestamp: frame.timestamp,
                 graph_id: frame.graph_id,
-            };
-            conn.store_frame_empty(&key, task).await?;
-        }
+            })
+            .collect();
+        conn.store_frames_empty(&keys, task).await?;
         let done = ((i + 1) * EMPTY_FRAME_CHUNK_SIZE).min(frames.len()) as i64;
         task.progress(done, total);
     }

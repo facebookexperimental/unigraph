@@ -186,21 +186,33 @@ impl UnigraphGraphConnection for SqliteConnection {
         Ok(())
     }
 
-    async fn store_frame_empty(&mut self, key: &GraphTimeKey, _task: &ll::Task) -> Result<()> {
-        let now = Timestamp::now().to_unix_timestamp();
-        let timestamp = key.timestamp.to_unix_timestamp();
+    async fn store_frames_empty(&mut self, keys: &[GraphTimeKey], _task: &ll::Task) -> Result<()> {
+        if keys.is_empty() {
+            return Ok(());
+        }
 
+        let now = Timestamp::now().to_unix_timestamp();
         let conn = self.lock();
         let sql = format!(
             "INSERT INTO {} (timeline_id, timestamp, graph_id, frame_type, manifest_json, inline_blobs, base_key_json, created_at)
              VALUES (?1, ?2, ?3, ?4, NULL, NULL, NULL, ?5)",
             TABLE_GRAPHS
         );
-        conn.execute(
-            &sql,
-            rusqlite::params![key.timeline_id.0, timestamp, key.graph_id.0, "Empty", now,],
-        )
-        .context("Failed to insert empty frame")?;
+        let mut stmt = conn
+            .prepare(&sql)
+            .context("Failed to prepare store_frames_empty")?;
+
+        for key in keys {
+            let timestamp = key.timestamp.to_unix_timestamp();
+            stmt.execute(rusqlite::params![
+                key.timeline_id.0,
+                timestamp,
+                key.graph_id.0,
+                "Empty",
+                now,
+            ])
+            .context("Failed to insert empty frame")?;
+        }
 
         Ok(())
     }
