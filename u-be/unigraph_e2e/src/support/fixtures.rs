@@ -27,7 +27,7 @@ pub async fn ingest_explore_graph(t: &TestApp) -> Result<String> {
 }
 
 /// Ingest a MapGraph JSON string into the test app under the given timeline ID.
-async fn ingest_map_graph_json(t: &TestApp, timeline_id: &str, json: &str) -> Result<()> {
+pub async fn ingest_map_graph_json(t: &TestApp, timeline_id: &str, json: &str) -> Result<()> {
     let map_graph = MapGraph::from_json(json)?;
     let ag_ser = map_graph.to_array_graph_serializable()?;
     let tid = TimelineID(timeline_id.to_string());

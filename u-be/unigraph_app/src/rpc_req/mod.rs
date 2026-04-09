@@ -2,6 +2,8 @@
 
 mod about_graph;
 mod explore_graph;
+mod find_ancestors;
+mod find_path;
 mod get_configs;
 mod graph_query;
 mod list_timelines;
@@ -17,6 +19,11 @@ pub use explore_graph::ExploreGraphInput;
 pub use explore_graph::ExploreGraphOutput;
 pub use explore_graph::ExploreGraphTarget;
 pub use explore_graph::MetricView;
+pub use find_ancestors::FindAncestorsInput;
+pub use find_ancestors::FindAncestorsOutput;
+pub use find_path::FindPathInput;
+pub use find_path::FindPathOutput;
+pub use find_path::PathHop;
 pub use get_configs::GetConfigsInput;
 pub use get_configs::GetConfigsOutput;
 pub use graph_query::GraphQueryInput;

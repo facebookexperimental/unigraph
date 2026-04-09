@@ -5,34 +5,25 @@
  */
 
 
-import type { ArrayGraphDynamicEdge } from './ArrayGraphDynamicEdge.ts';
 import type { NodeIDX } from './NodeIDX.ts';
 
 /**
  * Serializable edge data for an array graph.
  * 
- * Directed edges are stored in a CSR (Compressed Sparse Row) layout:
- * `directed` is a flat list of target node indices and `directed_offsets`
- * provides per-source-node boundaries into that list.
+ * ALL edges (directed, tagged, dynamic) are stored in a single CSR layout.
+ * Tagged/dynamic edges have entries in `edge_metadata` + `edge_metadata_map`
+ * that describe their type and properties. Directed edges have no metadata entry.
  * 
- * Tagged and dynamic edges use map-based representations since they carry
- * additional metadata (tags, branch labels, properties).
- * 
- * Note: when serialized, only "pure" directed edges are included in the CSR
- * arrays — tagged and dynamic edges are excluded to avoid duplication, since
- * they are stored separately. On deserialization the full offset graph is
- * reconstructed by merging all three edge types back together.
+ * This design enables zero-cost conversion to ArrayGraph — just move the data
+ * and allocate runtime flags.
  */
 export interface ArrayGraphSerializableEdges {
-  /** Flat list of directed-edge target node indices. */
-  directed: NodeIDX[];
   /**
-   * CSR offsets into `directed` — `directed[directed_offsets[i]..directed_offsets[i+1]]`
-   * gives the targets for source node `i`.
+   * CSR targets for ALL edges (directed + tagged + dynamic).
+   * Within each node's range: directed edges first, then tagged (sorted by tag + target),
+   * then dynamic (sorted by type_key + edge_name + branch + target).
    */
-  directed_offsets: number[];
-  /** Tagged edges: source node → tag → set of target nodes. */
-  tagged: { [key: NodeIDX]: { [key: string]: NodeIDX[] } };
-  /** Dynamic edges with runtime-defined branches and metadata. */
-  dynamic: { [key: NodeIDX]: { [key: string]: { [key: string]: ArrayGraphDynamicEdge } } };
+  edges: NodeIDX[];
+  /** CSR offsets: `edges[edge_offsets[i]..edge_offsets[i+1]]` gives targets for source node `i`. */
+  edge_offsets: number[];
 }

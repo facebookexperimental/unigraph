@@ -7,6 +7,8 @@
 
 import type { AboutGraphOutput } from './AboutGraphOutput.ts';
 import type { ExploreGraphOutput } from './ExploreGraphOutput.ts';
+import type { FindAncestorsOutput } from './FindAncestorsOutput.ts';
+import type { FindPathOutput } from './FindPathOutput.ts';
 import type { GetConfigsOutput } from './GetConfigsOutput.ts';
 import type { GraphQueryOutput } from './GraphQueryOutput.ts';
 import type { ListTimelinesOutput } from './ListTimelinesOutput.ts';
@@ -22,8 +24,10 @@ export type UnigraphResponse =
   { "ListTimelines": ListTimelinesOutput } |
   { "SelectFrames": SelectFramesOutput } |
   { "ExploreGraph": ExploreGraphOutput } |
+  { "FindAncestors": FindAncestorsOutput } |
+  { "FindPath": FindPathOutput } |
   { "SearchNodes": SearchNodesOutput } |
   { "AboutGraph": AboutGraphOutput } |
   { "Error": RpcError };
 
-export type UnigraphResponseVariants = "PutConfigs" | "GetConfigs" | "GraphQuery" | "ListTimelines" | "SelectFrames" | "ExploreGraph" | "SearchNodes" | "AboutGraph" | "Error";
+export type UnigraphResponseVariants = "PutConfigs" | "GetConfigs" | "GraphQuery" | "ListTimelines" | "SelectFrames" | "ExploreGraph" | "FindAncestors" | "FindPath" | "SearchNodes" | "AboutGraph" | "Error";

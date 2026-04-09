@@ -13,7 +13,7 @@ import type { NodeIDX } from './NodeIDX.ts';
  * or two optional arrows if we're comparing two graphs.
  * There should not be a situation where we have both arrows null.
  * 
- * if we have two arrows they must BOTH point TO and FROM the same node
+ * `points_to` and `points_from` are in the merged (TwinGraph) namespace.
  */
 export interface TwinArrow {
   points_to: NodeIDX;

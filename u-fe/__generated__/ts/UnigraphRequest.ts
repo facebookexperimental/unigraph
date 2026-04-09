@@ -7,6 +7,8 @@
 
 import type { AboutGraphInput } from './AboutGraphInput.ts';
 import type { ExploreGraphInput } from './ExploreGraphInput.ts';
+import type { FindAncestorsInput } from './FindAncestorsInput.ts';
+import type { FindPathInput } from './FindPathInput.ts';
 import type { GetConfigsInput } from './GetConfigsInput.ts';
 import type { GraphQueryInput } from './GraphQueryInput.ts';
 import type { ListTimelinesInput } from './ListTimelinesInput.ts';
@@ -21,7 +23,9 @@ export type UnigraphRequest =
   { "ListTimelines": ListTimelinesInput } |
   { "SelectFrames": SelectFramesInput } |
   { "ExploreGraph": ExploreGraphInput } |
+  { "FindAncestors": FindAncestorsInput } |
+  { "FindPath": FindPathInput } |
   { "SearchNodes": SearchNodesInput } |
   { "AboutGraph": AboutGraphInput };
 
-export type UnigraphRequestVariants = "PutConfigs" | "GetConfigs" | "GraphQuery" | "ListTimelines" | "SelectFrames" | "ExploreGraph" | "SearchNodes" | "AboutGraph";
+export type UnigraphRequestVariants = "PutConfigs" | "GetConfigs" | "GraphQuery" | "ListTimelines" | "SelectFrames" | "ExploreGraph" | "FindAncestors" | "FindPath" | "SearchNodes" | "AboutGraph";
