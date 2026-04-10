@@ -499,7 +499,7 @@ mod tests {
             let delta = derive_delta(&base, &target)?;
 
             let package = pack_delta(&delta, &ArrayGraphSerializablePackageConfig::default())?;
-            let unpacked = unpack_delta(&package)?;
+            let unpacked = unpack_delta(&package, &ll::Task::create_new("test"))?;
 
             // Apply both and compare
             let from_original = apply_delta(random_graph(6000 + i * 2), &delta)?;

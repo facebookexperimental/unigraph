@@ -356,10 +356,11 @@ impl UnigraphStorage {
             .resolve_blobs(&manifest.delta_blob, data.inline_blobs.as_deref(), task)
             .await?;
 
+        let task = task.clone();
         // CPU-heavy: decompress + deserialize → off the tokio thread
         tokio::task::spawn_blocking(move || {
             let package = DeltaPackage { manifest, blobs };
-            unpack_delta(&package).context("Failed to unpack delta")
+            unpack_delta(&package, &task)
         })
         .await
         .context("spawn_blocking panicked")?
@@ -370,7 +371,7 @@ impl UnigraphStorage {
     /// Blob IDs already contain the full storage key (including the
     /// `timeline_id/graph_id/` prefix), so they are used directly as
     /// external blob keys.
-    #[ll::task]
+    #[ll::task(tags(l3))]
     pub(crate) async fn resolve_blobs(
         &self,
         blob_ids: &[BlobID],

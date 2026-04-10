@@ -986,7 +986,7 @@ pub fn from_blobs_json<T: serde::de::DeserializeOwned + Default + Send>(
             return Ok(T::default());
         }
 
-        let decompressed: Vec<Vec<u8>> = task.spawn_sync("decompress", |_| {
+        let decompressed: Vec<Vec<u8>> = task.spawn_sync("decompress #l3", |_| {
             blob_ids
                 .par_iter()
                 .map(|blob_id| {
@@ -998,7 +998,7 @@ pub fn from_blobs_json<T: serde::de::DeserializeOwned + Default + Send>(
                 .collect::<Result<Vec<_>>>()
         })?;
 
-        task.spawn_sync("deserialize", |_| {
+        task.spawn_sync("deserialize #l3", |_| {
             let total_len: usize = decompressed.iter().map(|d| d.len()).sum();
             let mut json = Vec::with_capacity(total_len);
             for chunk in &decompressed {

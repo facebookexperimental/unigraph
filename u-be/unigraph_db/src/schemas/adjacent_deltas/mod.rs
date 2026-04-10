@@ -109,7 +109,7 @@ use anyhow::Result;
 pub use cas_store::store_range;
 pub use load_range::load_range;
 use unigraph_core::ArrayGraphSerializable;
-use unigraph_core::apply_delta;
+use unigraph_core::apply_deltas;
 use unigraph_core::derive_delta;
 use unigraph_core::pack_delta;
 use unigraph_storage_core::Frame;
@@ -248,6 +248,7 @@ async fn find_nearest_full_frame(
     Ok(row.frame)
 }
 
+#[ll::task(tags(l2))]
 /// Load the contiguous range of frames from `full_graph_id` to the target,
 /// inclusive on both ends, with data.
 ///
@@ -271,13 +272,14 @@ async fn load_frame_range(
                 expires_before: None,
                 ..Default::default()
             },
-            task,
+            &task,
         )
         .await?;
 
     FrameRange::from_rows(rows, key.graph_id)
 }
 
+#[ll::task(tags(l2))]
 /// Reconstruct a graph from a validated frame range.
 ///
 /// Finds the last Full frame in the range, reconstructs it, then applies
@@ -303,7 +305,7 @@ async fn reconstruct_from_range(
         )
     })?;
 
-    let base_graph = storage.reconstruct_full_graph(data, task).await?;
+    let base_graph = storage.reconstruct_full_graph(data, &task).await?;
 
     // If there are no deltas after the Full frame, we're done.
     let delta_rows = &entries[last_full_idx + 1..];
@@ -318,23 +320,21 @@ async fn reconstruct_from_range(
             let data = row.data.as_ref().with_context(|| {
                 format!("delta frame graph_id={} has no data", row.frame.graph_id.0)
             })?;
-            let delta = storage.reconstruct_delta(data, task).await?;
-            Ok::<_, anyhow::Error>((row.frame.graph_id, delta))
+            let delta = storage.reconstruct_delta(data, &task).await?;
+            Ok::<_, anyhow::Error>(delta)
         })
         .collect();
-    let prefetched = futures::future::try_join_all(delta_futs).await?;
+    let deltas = futures::future::try_join_all(delta_futs).await?;
 
-    // Apply deltas sequentially on a blocking thread (CPU-heavy).
-    let current = tokio::task::spawn_blocking(move || {
-        let mut current = base_graph;
-        for (graph_id, delta) in &prefetched {
-            current = apply_delta(current, delta)
-                .with_context(|| format!("failed to apply delta at graph_id={}", graph_id.0))?;
-        }
-        Ok::<_, anyhow::Error>(current)
-    })
-    .await
-    .context("spawn_blocking panicked")??;
+    // Apply all deltas at once on a blocking thread (CPU-heavy).
+    let current = task
+        .spawn("apply_deltas", |_| async move {
+            tokio::task::spawn_blocking(move || {
+                apply_deltas(base_graph, &deltas).context("failed to apply deltas")
+            })
+            .await?
+        })
+        .await?;
 
     Ok(current)
 }

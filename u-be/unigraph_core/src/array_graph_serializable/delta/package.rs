@@ -178,8 +178,8 @@ pub fn pack_delta(
 }
 
 /// Unpack a [`DeltaPackage`] back into a [`GraphDelta`].
-pub fn unpack_delta(package: &DeltaPackage) -> Result<GraphDelta> {
-    let task = ll::Task::create_new("");
+#[ll::task(sync, tags(l3))]
+pub fn unpack_delta(package: &DeltaPackage, task: &ll::Task) -> Result<GraphDelta> {
     from_blobs_json(&package.manifest.delta_blob, &package.blobs, &task)
         .context("Failed to unpack delta")
         .with_context(|| {
@@ -202,11 +202,12 @@ mod tests {
         // Create a slightly different graph by re-serializing
         // For a meaningful delta, we'll just use the same graph (empty delta)
         let target = make_test_array_graph_2()?.into_serializable();
+        let task = ll::Task::create_new("test");
 
         let delta = derive_delta(&base, &target)?;
 
         let package = pack_delta(&delta, &ArrayGraphSerializablePackageConfig::default())?;
-        let roundtripped = unpack_delta(&package)?;
+        let roundtripped = unpack_delta(&package, &task)?;
 
         let original_json = serde_json::to_string_pretty(&delta)?;
         let roundtripped_json = serde_json::to_string_pretty(&roundtripped)?;
