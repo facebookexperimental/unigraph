@@ -111,10 +111,9 @@ impl MapGraphDelta {
 
 impl MapGraph {
     pub fn to_array_graph(&self, task: &ll::Task) -> Result<ArrayGraph> {
-        Ok(self
-            .to_array_graph_serializable()
+        self.to_array_graph_serializable()
             .context("Failed to convert MapGraph to ArrayGraph")?
-            .into_array_graph(task)?)
+            .into_array_graph(task)
     }
 
     pub fn to_array_graph_serializable(&self) -> Result<ArrayGraphSerializable> {
