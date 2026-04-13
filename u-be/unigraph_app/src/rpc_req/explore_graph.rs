@@ -188,6 +188,7 @@ fn explore_node(ag: Arc<ArrayGraph>, input: &ExploreGraphInput) -> Result<Explor
         Some(render_ascii(
             &input.target,
             input.graph_structure,
+            node.as_ref(),
             &arrows,
             total_arrows_count,
             offset,
@@ -471,16 +472,24 @@ fn sort_arrow(order: SortOrder) -> &'static str {
 fn render_ascii(
     target: &ExploreGraphTarget,
     graph_structure: GraphStructure,
+    node: Option<&ExploreGraphArrow>,
     arrows: &[ExploreGraphArrow],
     total_count: usize,
     offset: usize,
     sort_by_key: Option<&str>,
     sort_order: SortOrder,
 ) -> String {
-    let metric_cols = collect_metric_columns(arrows);
-    let has_tags = has_any_tags(arrows);
-    let has_dynamic = has_any_dynamic(arrows);
-    let widths = compute_column_widths(&metric_cols, has_tags, has_dynamic, arrows, sort_by_key);
+    let all_arrows = node.into_iter().chain(arrows.iter()).collect::<Vec<_>>();
+    let metric_cols = collect_metric_columns_from(&all_arrows);
+    let has_tags = all_arrows.iter().any(|a| a.tag.is_some());
+    let has_dynamic = all_arrows.iter().any(|a| a.dynamic.is_some());
+    let widths = compute_column_widths(
+        &metric_cols,
+        has_tags,
+        has_dynamic,
+        &all_arrows,
+        sort_by_key,
+    );
 
     let mut out = String::with_capacity(256);
     write_summary(&mut out, target, graph_structure);
@@ -494,6 +503,18 @@ fn render_ascii(
         sort_order,
     );
     write_separator(&mut out, '=', &widths);
+
+    if let Some(parent) = node {
+        write_row(
+            &mut out,
+            parent,
+            &metric_cols,
+            has_tags,
+            has_dynamic,
+            &widths,
+        );
+        write_separator(&mut out, '-', &widths);
+    }
 
     for arrow in arrows {
         write_row(
@@ -531,7 +552,7 @@ fn write_summary(out: &mut String, target: &ExploreGraphTarget, graph_structure:
     }
 }
 
-fn collect_metric_columns(arrows: &[ExploreGraphArrow]) -> Vec<String> {
+fn collect_metric_columns_from(arrows: &[&ExploreGraphArrow]) -> Vec<String> {
     let mut cols = BTreeMap::<String, ()>::new();
     for a in arrows {
         for k in a.metrics.keys() {
@@ -539,14 +560,6 @@ fn collect_metric_columns(arrows: &[ExploreGraphArrow]) -> Vec<String> {
         }
     }
     cols.into_keys().collect()
-}
-
-fn has_any_tags(arrows: &[ExploreGraphArrow]) -> bool {
-    arrows.iter().any(|a| a.tag.is_some())
-}
-
-fn has_any_dynamic(arrows: &[ExploreGraphArrow]) -> bool {
-    arrows.iter().any(|a| a.dynamic.is_some())
 }
 
 fn format_dynamic(d: &DynamicEdgeInfo) -> String {
@@ -558,7 +571,7 @@ fn compute_column_widths(
     metric_cols: &[String],
     has_tags: bool,
     has_dynamic: bool,
-    arrows: &[ExploreGraphArrow],
+    arrows: &[&ExploreGraphArrow],
     sort_by_key: Option<&str>,
 ) -> Vec<usize> {
     let num_cols = 1 + metric_cols.len() + usize::from(has_tags) + usize::from(has_dynamic);
