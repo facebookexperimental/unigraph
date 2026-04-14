@@ -5,9 +5,11 @@
  */
 
 
+import type { GraphHandle } from './GraphHandle.ts';
+
 export interface FindPathInput {
   /** Graph handle — timeline ID, graph key, or GQC key. */
-  handle: string;
+  handle: GraphHandle;
   /** Starting node name. */
   from: string;
   /** Target node name. */

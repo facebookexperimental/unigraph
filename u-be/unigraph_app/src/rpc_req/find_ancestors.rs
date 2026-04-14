@@ -23,7 +23,7 @@ use crate::Unigraph;
 #[derive(Debug, Clone, Serialize, Deserialize, TypeGen)]
 pub struct FindAncestorsInput {
     /// Graph handle — timeline ID, graph key, or GQC key.
-    pub handle: String,
+    pub handle: GraphHandle,
     /// The node to find ancestors of.
     pub node_name: String,
 
@@ -67,9 +67,8 @@ impl RpcExec<Unigraph> for FindAncestorsInput {
 
     async fn exec(self, ctx: &Unigraph, task: &ll::Task) -> Result<FindAncestorsOutput> {
         validate_has_predicates(&self)?;
-        let handle: GraphHandle = self.handle.parse()?;
         let ttl = Duration::from_secs(DEFAULT_TTL_SECS);
-        let ag = handle.resolve(ctx, task, ttl).await?;
+        let ag = self.handle.resolve(ctx, task, ttl).await?;
         let input = self;
         task.spawn("find_ancestors", |task| async move {
             tokio::task::spawn_blocking(move || find_ancestors(ag, &input, &task))

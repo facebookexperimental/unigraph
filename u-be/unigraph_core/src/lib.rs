@@ -6,6 +6,7 @@
 mod array_graph_serializable;
 pub mod config_key;
 pub mod config_query;
+pub mod explore_key;
 pub mod identifiers;
 pub mod map_graph_builder;
 pub mod metric_view;
@@ -48,6 +49,9 @@ pub use crate::config_key::ConfigRow;
 pub use crate::config_key::GraphQueryConfigKey;
 pub use crate::config_key::TraversalConfigKey;
 pub use crate::config_query::GraphQueryConfig;
+pub use crate::explore_key::ExploreCacheKey;
+pub use crate::explore_key::ExploreKey;
+pub use crate::explore_key::TraversalOverride;
 pub use crate::identifiers::GraphID;
 pub use crate::identifiers::GraphKey;
 pub use crate::identifiers::GraphTimeKey;

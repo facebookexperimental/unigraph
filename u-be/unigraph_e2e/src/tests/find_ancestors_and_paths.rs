@@ -11,6 +11,7 @@ use anyhow::Result;
 use k9::snapshot;
 use unigraph_app::FindAncestorsInput;
 use unigraph_app::FindPathInput;
+use unigraph_app::GraphHandle;
 use unigraph_app::call_rpc;
 
 use crate::support::app::init_app;
@@ -21,7 +22,7 @@ use crate::support::fixtures::ingest_explore_graph;
 #[tokio::test]
 async fn find_ancestors_by_parentless() -> Result<()> {
     let t = init_app();
-    let handle = ingest_explore_graph(&t).await?;
+    let handle: GraphHandle = ingest_explore_graph(&t).await?.parse()?;
 
     let out = call_rpc!(
         t,
@@ -53,7 +54,7 @@ Found 1 ancestors of "utils" matching {parentless}:
 #[tokio::test]
 async fn find_ancestors_no_match() -> Result<()> {
     let t = init_app();
-    let handle = ingest_explore_graph(&t).await?;
+    let handle: GraphHandle = ingest_explore_graph(&t).await?.parse()?;
 
     let out = call_rpc!(
         t,
@@ -80,7 +81,7 @@ async fn find_ancestors_no_match() -> Result<()> {
 #[tokio::test]
 async fn find_ancestors_by_properties() -> Result<()> {
     let t = init_app();
-    let handle = ingest_with_properties(&t).await?;
+    let handle: GraphHandle = ingest_with_properties(&t).await?.parse()?;
 
     let out = call_rpc!(
         t,
@@ -112,7 +113,7 @@ Found 2 ancestors of "leaf" matching {type=budget}:
 #[tokio::test]
 async fn find_ancestors_parentless_and_properties() -> Result<()> {
     let t = init_app();
-    let handle = ingest_with_properties(&t).await?;
+    let handle: GraphHandle = ingest_with_properties(&t).await?.parse()?;
 
     // budget_a is parentless (entrypoint), budget_b is not
     let out = call_rpc!(
@@ -144,7 +145,7 @@ Found 1 ancestors of "leaf" matching {type=budget, parentless}:
 #[tokio::test]
 async fn find_ancestors_pagination() -> Result<()> {
     let t = init_app();
-    let handle = ingest_with_properties(&t).await?;
+    let handle: GraphHandle = ingest_with_properties(&t).await?.parse()?;
 
     let out = call_rpc!(
         t,
@@ -180,7 +181,7 @@ Found 2 ancestors of "leaf" matching {type=budget}:
 #[tokio::test]
 async fn find_path_simple() -> Result<()> {
     let t = init_app();
-    let handle = ingest_explore_graph(&t).await?;
+    let handle: GraphHandle = ingest_explore_graph(&t).await?.parse()?;
 
     let out = call_rpc!(
         t,
@@ -210,7 +211,7 @@ utils
 #[tokio::test]
 async fn find_path_with_tagged_edge() -> Result<()> {
     let t = init_app();
-    let handle = ingest_explore_graph(&t).await?;
+    let handle: GraphHandle = ingest_explore_graph(&t).await?.parse()?;
 
     let out = call_rpc!(
         t,
@@ -240,7 +241,7 @@ dialogs
 #[tokio::test]
 async fn find_path_with_dynamic_edge() -> Result<()> {
     let t = init_app();
-    let handle = ingest_explore_graph(&t).await?;
+    let handle: GraphHandle = ingest_explore_graph(&t).await?.parse()?;
 
     let out = call_rpc!(
         t,
@@ -270,7 +271,7 @@ button_ios
 #[tokio::test]
 async fn find_path_no_path() -> Result<()> {
     let t = init_app();
-    let handle = ingest_explore_graph(&t).await?;
+    let handle: GraphHandle = ingest_explore_graph(&t).await?.parse()?;
 
     let out = call_rpc!(
         t,
@@ -292,7 +293,7 @@ async fn find_path_no_path() -> Result<()> {
 #[tokio::test]
 async fn find_path_multi_hop() -> Result<()> {
     let t = init_app();
-    let handle = ingest_explore_graph(&t).await?;
+    let handle: GraphHandle = ingest_explore_graph(&t).await?.parse()?;
 
     let out = call_rpc!(
         t,
@@ -324,7 +325,7 @@ button_ios
 #[tokio::test]
 async fn find_path_through_tagged_and_dynamic() -> Result<()> {
     let t = init_app();
-    let handle = ingest_with_properties(&t).await?;
+    let handle: GraphHandle = ingest_with_properties(&t).await?.parse()?;
 
     // route_a -[tag: lazy]-> hub -[platform:widget/ios]-> ios_impl -> leaf
     let out = call_rpc!(
@@ -356,7 +357,7 @@ ios_impl
 #[tokio::test]
 async fn find_path_with_cycle_does_not_hang() -> Result<()> {
     let t = init_app();
-    let handle = ingest_with_properties(&t).await?;
+    let handle: GraphHandle = ingest_with_properties(&t).await?.parse()?;
 
     // cycle_a -> cycle_b -> cycle_a (cycle), but cycle_a -> leaf exists
     let out = call_rpc!(
@@ -389,7 +390,7 @@ leaf
 #[tokio::test]
 async fn ancestors_then_paths() -> Result<()> {
     let t = init_app();
-    let handle = ingest_with_properties(&t).await?;
+    let handle: GraphHandle = ingest_with_properties(&t).await?.parse()?;
 
     // Step 1: Find all budget ancestors of "leaf"
     let ancestors = call_rpc!(
@@ -446,7 +447,7 @@ leaf
 #[tokio::test]
 async fn parentless_ancestors_then_paths() -> Result<()> {
     let t = init_app();
-    let handle = ingest_with_properties(&t).await?;
+    let handle: GraphHandle = ingest_with_properties(&t).await?.parse()?;
 
     // Step 1: Find parentless ancestors of "leaf"
     let ancestors = call_rpc!(

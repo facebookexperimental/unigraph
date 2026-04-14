@@ -1,13 +1,13 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::fmt::Write;
 use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Context;
 use anyhow::Result;
-use anyhow::bail;
 use serde::Deserialize;
 use serde::Serialize;
 use typegen::TypeGen;
@@ -16,12 +16,14 @@ use unigraph_core::DynamicEdgeInfo;
 /// Re-export MetricView for use in ExploreGraphInput.
 pub use unigraph_core::MetricView;
 use unigraph_core::NodeIDX;
-use unigraph_core::config_key::GraphQueryConfigKey;
+use unigraph_core::explore_key::ExploreKey;
+use unigraph_core::explore_key::TraversalOverride;
 use unigraph_core::graph_settings::GraphStructure;
 use unigraph_core::graph_settings::SortOrder;
 use unigraph_rpc::RpcExec;
 
 use crate::Unigraph;
+use crate::graph_handle::GraphHandle;
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -44,12 +46,19 @@ impl Default for ExploreGraphTarget {
 
 #[derive(Debug, Clone, Serialize, Deserialize, TypeGen)]
 pub struct ExploreGraphInput {
-    /// Inline graph query config. Either this or `graph_query_config_key` must be set.
+    /// Graph handle: timeline ID (`"my_timeline"`), graph key
+    /// (`"my_timeline~123"`), or GQC key (`"gqc_abc123"`).
+    pub handle: GraphHandle,
+
+    /// Optional roots override. When set, overrides the handle's roots
+    /// (GQC roots or graph entry points).
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub graph_query_config: Option<unigraph_core::config_query::GraphQueryConfig>,
-    /// Key referencing a stored graph query config. Resolved server-side.
+    pub roots: Option<BTreeSet<String>>,
+
+    /// Optional traversal config override. When set, overrides the handle's
+    /// traversal config (GQC traversal or graph.traversal_config).
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub graph_query_config_key: Option<GraphQueryConfigKey>,
+    pub traversal: Option<TraversalOverride>,
 
     /// What to explore: entry points, a specific node, or all nodes.
     #[serde(default)]
@@ -133,23 +142,18 @@ impl RpcExec<Unigraph> for ExploreGraphInput {
     type Output = ExploreGraphOutput;
 
     async fn exec(self, ctx: &Unigraph, task: &ll::Task) -> Result<ExploreGraphOutput> {
-        let gqc_key = resolve_gqc_key(&self)?;
-        let ttl = Duration::from_secs(5 * 60);
-        let ag = ctx.graph_cache.get_by_gqc_key(&gqc_key, task, ttl).await?;
+        let explore_key = ExploreKey {
+            handle: self.handle.to_string(),
+            roots: self.roots.clone(),
+            traversal: self.traversal.clone(),
+        };
+        let ttl = Duration::from_mins(5);
+        let ag = ctx
+            .graph_cache
+            .get_explored(&explore_key, task, ttl)
+            .await?;
         let input = self;
         tokio::task::spawn_blocking(move || explore_node(ag, &input)).await?
-    }
-}
-
-// ── GQC key resolution ──────────────────────────────────────────
-
-fn resolve_gqc_key(input: &ExploreGraphInput) -> Result<GraphQueryConfigKey> {
-    match &input.graph_query_config_key {
-        Some(key) => Ok(key.clone()),
-        None => bail!(
-            "graph_query_config_key is required for ExploreGraph \
-             (store the config via PutConfigs first)"
-        ),
     }
 }
 

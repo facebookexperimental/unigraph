@@ -5,6 +5,7 @@ use k9::snapshot;
 use unigraph_app::AboutGraphInput;
 use unigraph_app::ExploreGraphInput;
 use unigraph_app::ExploreGraphTarget;
+use unigraph_app::GraphHandle;
 use unigraph_app::MetricView;
 use unigraph_app::PutConfigsInput;
 use unigraph_app::call_rpc;
@@ -544,7 +545,7 @@ async fn about_graph_by_timeline() -> Result<()> {
     let out = call_rpc!(
         t,
         AboutGraph(AboutGraphInput {
-            handle: handle.clone(),
+            handle: handle.parse()?,
         })
     );
 
@@ -627,7 +628,7 @@ async fn about_graph_by_gqc_key() -> Result<()> {
     let out = call_rpc!(
         t,
         AboutGraph(AboutGraphInput {
-            handle: gqc_key.to_string(),
+            handle: GraphHandle::GqcKey(gqc_key.clone()),
         })
     );
 
@@ -672,7 +673,7 @@ async fn store_gqc(t: &TestApp, handle: &str) -> Result<GraphQueryConfigKey> {
 // ── Input builder ───────────────────────────────────────────────
 
 struct Explore {
-    gqc_key: GraphQueryConfigKey,
+    handle: GraphHandle,
     target: ExploreGraphTarget,
     metrics: Option<Vec<MetricView>>,
     sort_by: Option<MetricView>,
@@ -685,7 +686,7 @@ struct Explore {
 impl Explore {
     fn new(gqc_key: GraphQueryConfigKey) -> Self {
         Self {
-            gqc_key,
+            handle: GraphHandle::GqcKey(gqc_key),
             target: ExploreGraphTarget::EntryPoints {},
             metrics: None,
             sort_by: None,
@@ -748,8 +749,9 @@ impl Explore {
 
     fn build(self) -> ExploreGraphInput {
         ExploreGraphInput {
-            graph_query_config: None,
-            graph_query_config_key: Some(self.gqc_key),
+            handle: self.handle,
+            roots: None,
+            traversal: None,
             target: self.target,
             graph_structure: self.graph_structure,
             metrics: self.metrics,

@@ -21,7 +21,7 @@ use crate::Unigraph;
 pub struct AboutGraphInput {
     /// Graph handle: a timeline_id ("cargo"), graph_key ("cargo~356"),
     /// or gqc_key ("gqc_abc123").
-    pub handle: String,
+    pub handle: GraphHandle,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TypeGen)]
@@ -55,10 +55,9 @@ impl RpcExec<Unigraph> for AboutGraphInput {
     type Output = AboutGraphOutput;
 
     async fn exec(self, ctx: &Unigraph, task: &ll::Task) -> Result<AboutGraphOutput> {
-        let handle: GraphHandle = self.handle.parse()?;
         let ttl = Duration::from_secs(5 * 60);
-        let ag = handle.resolve(ctx, task, ttl).await?;
-        let handle_str = self.handle;
+        let ag = self.handle.resolve(ctx, task, ttl).await?;
+        let handle_str = self.handle.to_string();
         tokio::task::spawn_blocking(move || build_about(&ag, &handle_str)).await?
     }
 }

@@ -5,9 +5,11 @@
  */
 
 
+import type { GraphHandle } from './GraphHandle.ts';
+
 export interface FindAncestorsInput {
   /** Graph handle — timeline ID, graph key, or GQC key. */
-  handle: string;
+  handle: GraphHandle;
   /** The node to find ancestors of. */
   node_name: string;
   /** Property predicates — all must match (AND). e.g. `{"type": "budget"}`. */

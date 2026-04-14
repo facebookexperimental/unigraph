@@ -25,7 +25,7 @@ use crate::Unigraph;
 #[derive(Debug, Clone, Serialize, Deserialize, TypeGen)]
 pub struct FindPathInput {
     /// Graph handle — timeline ID, graph key, or GQC key.
-    pub handle: String,
+    pub handle: GraphHandle,
     /// Starting node name.
     pub from: String,
     /// Target node name.
@@ -68,9 +68,8 @@ impl RpcExec<Unigraph> for FindPathInput {
     type Output = FindPathOutput;
 
     async fn exec(self, ctx: &Unigraph, task: &ll::Task) -> Result<FindPathOutput> {
-        let handle: GraphHandle = self.handle.parse()?;
         let ttl = Duration::from_secs(DEFAULT_TTL_SECS);
-        let ag = handle.resolve(ctx, task, ttl).await?;
+        let ag = self.handle.resolve(ctx, task, ttl).await?;
         let input = self;
         task.spawn("find_path", |task| async move {
             tokio::task::spawn_blocking(move || find_path(ag, &input))

@@ -6,17 +6,28 @@
 
 
 import type { ExploreGraphTarget } from './ExploreGraphTarget.ts';
-import type { GraphQueryConfig } from './GraphQueryConfig.ts';
-import type { GraphQueryConfigKey } from './GraphQueryConfigKey.ts';
+import type { GraphHandle } from './GraphHandle.ts';
 import type { GraphStructure } from './GraphStructure.ts';
 import type { MetricView } from './MetricView.ts';
 import type { SortOrder } from './SortOrder.ts';
+import type { TraversalOverride } from './TraversalOverride.ts';
 
 export interface ExploreGraphInput {
-  /** Inline graph query config. Either this or `graph_query_config_key` must be set. */
-  graph_query_config?: GraphQueryConfig | undefined;
-  /** Key referencing a stored graph query config. Resolved server-side. */
-  graph_query_config_key?: GraphQueryConfigKey | undefined;
+  /**
+   * Graph handle: timeline ID (`"my_timeline"`), graph key
+   * (`"my_timeline~123"`), or GQC key (`"gqc_abc123"`).
+   */
+  handle: GraphHandle;
+  /**
+   * Optional roots override. When set, overrides the handle's roots
+   * (GQC roots or graph entry points).
+   */
+  roots?: string[] | undefined;
+  /**
+   * Optional traversal config override. When set, overrides the handle's
+   * traversal config (GQC traversal or graph.traversal_config).
+   */
+  traversal?: TraversalOverride | undefined;
   /** What to explore: entry points, a specific node, or all nodes. */
   target: ExploreGraphTarget;
   /** Which edge structure to follow. */
