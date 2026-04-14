@@ -253,6 +253,15 @@ def serve(ctx: typer.Context) -> None:
 
 
 @app.command(
+    "unigraph_turbopack",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
+def unigraph_turbopack(ctx: typer.Context) -> None:
+    """Convert Turbopack analyze data to Unigraph JSON. All args are forwarded."""
+    run(["cargo", "run", "-p", "unigraph_turbopack_cli", "--", *ctx.args])
+
+
+@app.command(
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True}
 )
 def cli(
