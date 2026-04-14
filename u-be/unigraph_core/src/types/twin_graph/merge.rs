@@ -65,7 +65,7 @@ fn compute_node_diff(
     let flat_metrics = build_flat_metric_pairs(ag_l, ag_r);
     let mut node_diff = vec![NodeDiff::empty(); remap.merged_len];
 
-    for merged_idx in 0..remap.merged_len {
+    for (merged_idx, diff) in node_diff.iter_mut().enumerate().take(remap.merged_len) {
         let merged_node = NodeIDX::from(merged_idx);
         match (remap.twin_to_l[merged_node], remap.twin_to_r[merged_node]) {
             (Some(l_idx), Some(r_idx)) => {
@@ -73,22 +73,22 @@ fn compute_node_diff(
                     || has_tagged_edges_changes(ag_l, l_idx, ag_r, r_idx, remap)
                     || has_dynamic_edge_changes(ag_l, l_idx, ag_r, r_idx, remap)
                 {
-                    node_diff[merged_idx].insert(NodeDiff::EDGES_CHANGED);
+                    diff.insert(NodeDiff::EDGES_CHANGED);
                 }
 
                 if let Some(flat_metrics) = &flat_metrics {
                     if has_node_metrics_changed(flat_metrics, l_idx, r_idx) {
-                        node_diff[merged_idx].insert(NodeDiff::METRICS_CHANGED);
+                        diff.insert(NodeDiff::METRICS_CHANGED);
                     }
                 } else {
-                    node_diff[merged_idx].insert(NodeDiff::METRICS_CHANGED);
+                    diff.insert(NodeDiff::METRICS_CHANGED);
                 }
             }
-            (Some(_), None) => node_diff[merged_idx].mark_not_in_right(),
-            (None, Some(_)) => node_diff[merged_idx].mark_not_in_left(),
+            (Some(_), None) => diff.mark_not_in_right(),
+            (None, Some(_)) => diff.mark_not_in_left(),
             (None, None) => {
-                node_diff[merged_idx].mark_not_in_left();
-                node_diff[merged_idx].mark_not_in_right();
+                diff.mark_not_in_left();
+                diff.mark_not_in_right();
             }
         }
     }

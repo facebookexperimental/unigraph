@@ -930,17 +930,16 @@ fn extract_directed_adj(
     node_count: usize,
 ) -> Vec<BTreeSet<NodeIDX>> {
     let mut adj: Vec<BTreeSet<NodeIDX>> = vec![BTreeSet::new(); node_count];
-    for i in 0..node_count {
+    for (i, adj_set) in adj.iter_mut().enumerate().take(node_count) {
         let node_idx = NodeIDX::from(i);
         let range = edges.edge_range(node_idx);
         for edge_idx in range {
-            if edges
+            if !edges
                 .edge_metadata_map
-                .get(&EdgeIDX::from(edge_idx))
-                .is_none()
+                .contains_key(&EdgeIDX::from(edge_idx))
             {
                 // No metadata = directed edge
-                adj[i].insert(edges.edges[edge_idx]);
+                adj_set.insert(edges.edges[edge_idx]);
             }
         }
     }
@@ -1026,11 +1025,11 @@ fn rebuild_unified_csr(
     let mut edge_metadata: Vec<EdgeMeta> = Vec::new();
     let mut edge_metadata_map: BTreeMap<EdgeIDX, EdgeMetaIDX> = BTreeMap::new();
 
-    for i in 0..node_count {
+    for (i, adj_entry) in directed_adj.iter().enumerate().take(node_count) {
         let node_idx = NodeIDX::from(i);
 
         // Directed edges first
-        for &target in &directed_adj[i] {
+        for &target in adj_entry {
             edges.push(target);
         }
 
