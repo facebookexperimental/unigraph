@@ -6,6 +6,9 @@ import { defineConfig } from "vite";
 
 export default defineConfig({
   plugins: [tailwindcss(), reactRouter()],
+  test: {
+    exclude: ["e2e/**", "node_modules/**"],
+  },
   server: {
     strictPort: true,
     hmr: {

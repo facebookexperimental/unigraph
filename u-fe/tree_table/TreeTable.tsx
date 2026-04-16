@@ -194,10 +194,13 @@ export function TreeTable(props: {
         return null;
       }
       const selected = ctx.selectedRowIDX === rowIDX;
+      let testId: string | undefined;
       const cell = (() => {
         const t = column.t;
         switch (t) {
           case "tree": {
+            const nodeName = column.c.getNodeName(row.twinArrow.points_to);
+            testId = `node-row-${nodeName}`;
             return (
               <TreeCell
                 row={row}
@@ -216,7 +219,7 @@ export function TreeTable(props: {
                   props.treeTableGraph.getTwinArrows(row.twinArrow.points_to)
                     .length > 0
                 }
-                nodeName={column.c.getNodeName(row.twinArrow.points_to)}
+                nodeName={nodeName}
               />
             );
           }
@@ -238,6 +241,7 @@ export function TreeTable(props: {
             "border-b box-border-gray-200 flex items-center cursor-pointer",
             selected && "bg-gray-200",
           )}
+          data-testid={testId}
           onMouseDown={(_e) => {
             ctx.setSelectedRowIDX(rowIDX);
           }}

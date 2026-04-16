@@ -391,6 +391,15 @@ def _run_rust_tests(
     run(args, env=env)
 
 
+@test_app.command(
+    "e2e",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
+def test_e2e(ctx: typer.Context) -> None:
+    """Run end-to-end browser tests with Playwright."""
+    run([str(BIN / "playwright"), "test", *ctx.args])
+
+
 @test_app.command("all")
 def test_all(
     update: Annotated[
@@ -407,6 +416,7 @@ def ci() -> None:
     """Run all checks and tests (for CI)."""
     check_all()
     test_all()
+    run([str(BIN / "playwright"), "test"])
 
 
 if __name__ == "__main__":

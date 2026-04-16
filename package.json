@@ -8,6 +8,7 @@
   "author": "",
   "license": "ISC",
   "devDependencies": {
+    "@playwright/test": "^1.52.0",
     "@react-router/dev": "^7.13.1",
     "@tailwindcss/cli": "4.1.4",
     "@tailwindcss/vite": "^4.2.1",

@@ -1,0 +1,102 @@
+{
+  "nodes": {
+    "app": {
+      "metrics": { "size": 500, "lines": 1200 },
+      "edges_directed": ["ui", "core", "utils"]
+    },
+    "ui": {
+      "metrics": { "size": 200, "lines": 800 },
+      "edges_directed": ["components", "styles"],
+      "edges_tagged": { "lazy": ["dialogs"] }
+    },
+    "core": {
+      "metrics": { "size": 300, "lines": 600 },
+      "edges_directed": ["db", "auth"],
+      "edges_tagged": { "lazy": ["analytics"] }
+    },
+    "utils": {
+      "metrics": { "size": 50, "lines": 100 },
+      "edges_directed": []
+    },
+    "components": {
+      "metrics": { "size": 150, "lines": 400 },
+      "edges_directed": ["utils"],
+      "edges_dynamic": {
+        "platform": {
+          "button": {
+            "branches": {
+              "ios": ["button_ios"],
+              "android": ["button_android"]
+            }
+          }
+        }
+      }
+    },
+    "styles": {
+      "metrics": { "size": 80, "lines": 200 }
+    },
+    "dialogs": {
+      "metrics": { "size": 120, "lines": 350 },
+      "edges_directed": ["components"]
+    },
+    "db": {
+      "metrics": { "size": 250, "lines": 500 },
+      "edges_directed": ["utils"]
+    },
+    "auth": {
+      "metrics": { "size": 180, "lines": 420 },
+      "edges_directed": ["db", "utils"]
+    },
+    "analytics": {
+      "metrics": { "size": 90, "lines": 250 },
+      "edges_directed": ["utils"]
+    },
+    "button_ios": {
+      "metrics": { "size": 30, "lines": 80 }
+    },
+    "button_android": {
+      "metrics": { "size": 35, "lines": 90 }
+    }
+  },
+  "traversal_config": {
+    "tiered_traversal": {
+      "AscendingTiers": {
+        "tiers": [
+          { "name": "eager", "tags_that_transition_to_this_tier": [] },
+          { "name": "lazy", "tags_that_transition_to_this_tier": ["lazy"] }
+        ],
+        "max_tier": null
+      }
+    }
+  },
+  "entry_points": ["app"],
+  "graph_settings": {
+    "ui_settings": {
+      "columns": {
+        "metric_settings": {
+          "size": {
+            "visibility": { "Unavailable": { "reason": "use tiered instead" } }
+          },
+          "lines#eager": {
+            "visibility": { "Hidden": {} }
+          },
+          "lines#eager~dominated": {
+            "visibility": { "Hidden": {} }
+          },
+          "lines#eager~conjoint": {
+            "visibility": { "Hidden": {} }
+          },
+          "lines#lazy": {
+            "visibility": { "Hidden": {} }
+          },
+          "lines#lazy~dominated": {
+            "visibility": { "Hidden": {} }
+          },
+          "lines#lazy~conjoint": {
+            "visibility": { "Hidden": {} }
+          }
+        }
+      }
+    }
+  }
+}
