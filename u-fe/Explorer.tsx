@@ -1,6 +1,14 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-import { useCallback, useMemo, useRef, type ReactNode } from "react";
+import {
+  Suspense,
+  use,
+  useCallback,
+  useMemo,
+  useRef,
+  type ReactNode,
+} from "react";
+import { GraphLoadingAnimation } from "./components/GraphLoadingAnimation";
 import { Info, SlidersHorizontal, Waypoints } from "lucide-react";
 import {
   apply_gqc_delta,
@@ -10,8 +18,10 @@ import {
 } from "../.build/wasm/unigraph_wasm";
 import type { ArrayGraphUISettingsTreeTableEntryPoints } from "./__generated__/ts/ArrayGraphUISettingsTreeTableEntryPoints";
 import type { GraphQueryConfig } from "./__generated__/ts/GraphQueryConfig";
+import type { GraphQueryOutput } from "./__generated__/ts/GraphQueryOutput";
 import type { GraphSettings } from "./__generated__/ts/GraphSettings";
 import type { TraversalConfig } from "./__generated__/ts/TraversalConfig";
+import { useRpc, type UnigraphRpc } from "./api/rpc";
 
 // ---------------------------------------------------------------------------
 // Exported types — these end up in the bundled .d.ts for external consumers.
@@ -72,8 +82,13 @@ export interface PanelTabPlugin {
   render: () => ReactNode;
 }
 
+export type ExplorerGraphSource =
+  | { type: "local" }
+  | { type: "handle"; handleL: string; handleR?: string };
+
 export interface ExplorerProps {
-  graphs: ExplorerComponentInputGraphs;
+  graphs?: ExplorerComponentInputGraphs;
+  source?: ExplorerGraphSource;
   config: ExplorerConfig;
   home_href?: string | undefined;
   panels?: PanelTabPlugin[];
@@ -118,6 +133,57 @@ import GraphTreeTable from "./tree_table/GraphTreeTable";
 import type { NodeIDX } from "./types";
 
 export function Explorer(props: ExplorerProps) {
+  if (props.source != null) {
+    return (
+      <Suspense fallback={<GraphLoadingAnimation />}>
+        <ExplorerFetcher {...props} source={props.source} />
+      </Suspense>
+    );
+  }
+  return <ExplorerImpl {...props} graphs={props.graphs!} />;
+}
+
+// ---------------------------------------------------------------------------
+// Fetcher — suspends while loading graph data from a source
+// ---------------------------------------------------------------------------
+
+function ExplorerFetcher(
+  props: ExplorerProps & { source: ExplorerGraphSource },
+) {
+  const rpc = useRpc();
+  const result = use(getOrFetchGraphSource(rpc, props.source));
+
+  const baseGqcLJson = useMemo(
+    () =>
+      result.baseGqcL != null ? JSON.stringify(result.baseGqcL) : undefined,
+    [result.baseGqcL],
+  );
+  const baseGqcRJson = useMemo(
+    () =>
+      result.baseGqcR != null ? JSON.stringify(result.baseGqcR) : undefined,
+    [result.baseGqcR],
+  );
+
+  return (
+    <ExplorerImpl
+      {...props}
+      graphs={result.graphs}
+      config={{
+        ...props.config,
+        base_gqc_l: baseGqcLJson,
+        base_gqc_r: baseGqcRJson,
+      }}
+    />
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Implementation — renders the explorer UI given resolved graphs
+// ---------------------------------------------------------------------------
+
+function ExplorerImpl(
+  props: ExplorerProps & { graphs: ExplorerComponentInputGraphs },
+) {
   const {
     graphs: rawGraphs,
     config,
@@ -432,4 +498,112 @@ function getGraphData(
   if ("ArrayGraphSerializedPackageBase64" in g)
     return g.ArrayGraphSerializedPackageBase64.data;
   return undefined;
+}
+
+// ---------------------------------------------------------------------------
+// Source-based data fetching (used by ExplorerFetcher)
+// ---------------------------------------------------------------------------
+
+interface FetchResult {
+  graphs: ExplorerComponentInputGraphs;
+  baseGqcL: GraphQueryConfig | null;
+  baseGqcR: GraphQueryConfig | null;
+}
+
+// Promise cache keyed by source — survives across re-renders and suspension
+// retries so that `use()` always sees the same promise for the same source.
+const fetchPromiseCache = new Map<string, Promise<FetchResult>>();
+
+function getOrFetchGraphSource(
+  rpc: UnigraphRpc,
+  source: ExplorerGraphSource,
+): Promise<FetchResult> {
+  const key = JSON.stringify(source);
+  let promise = fetchPromiseCache.get(key);
+  if (promise != null) {
+    return promise;
+  }
+  promise = fetchGraphSource(rpc, source).catch((e) => {
+    // Evict failed promises so a retry can re-fetch
+    fetchPromiseCache.delete(key);
+    throw e;
+  });
+  fetchPromiseCache.set(key, promise);
+  return promise;
+}
+
+async function fetchGraphSource(
+  rpc: UnigraphRpc,
+  source: ExplorerGraphSource,
+): Promise<FetchResult> {
+  if (source.type === "local") {
+    return fetchLocalGraphs();
+  }
+  return fetchHandleGraphs(rpc, source.handleL, source.handleR);
+}
+
+interface LocalGraphsApiResponse {
+  left?: ExplorerComponentInputGraph;
+  right: ExplorerComponentInputGraph;
+}
+
+async function fetchLocalGraphs(): Promise<FetchResult> {
+  const r = await fetch("/api/local_graphs");
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const data: LocalGraphsApiResponse = await r.json();
+  return {
+    graphs: { right: data.right, left: data.left },
+    baseGqcL: null,
+    baseGqcR: null,
+  };
+}
+
+function graphQueryOutputToInputGraph(
+  output: GraphQueryOutput,
+): ExplorerComponentInputGraph {
+  return {
+    ArrayGraphSerializedPackageBase64: {
+      data: JSON.stringify(output.package),
+      format: "Json",
+    },
+  };
+}
+
+async function fetchHandleGraph(
+  rpc: UnigraphRpc,
+  handle: string,
+): Promise<GraphQueryOutput> {
+  if (handle.startsWith("gqc_")) {
+    return rpc.call("GraphQuery", { graph_query_config_key: handle });
+  }
+  return rpc.call("GraphQuery", {
+    graph_query_config: { roots: [], handle },
+  });
+}
+
+async function fetchHandleGraphs(
+  rpc: UnigraphRpc,
+  handleL: string,
+  handleR: string | undefined,
+): Promise<FetchResult> {
+  const leftPromise = fetchHandleGraph(rpc, handleL);
+  const rightPromise =
+    handleR != null ? fetchHandleGraph(rpc, handleR) : Promise.resolve(null);
+
+  const [leftResult, rightResult] = await Promise.all([
+    leftPromise,
+    rightPromise,
+  ]);
+
+  return {
+    graphs: {
+      right: graphQueryOutputToInputGraph(leftResult),
+      left:
+        rightResult != null
+          ? graphQueryOutputToInputGraph(rightResult)
+          : undefined,
+    },
+    baseGqcL: leftResult.graph_query_config,
+    baseGqcR: rightResult?.graph_query_config ?? null,
+  };
 }
