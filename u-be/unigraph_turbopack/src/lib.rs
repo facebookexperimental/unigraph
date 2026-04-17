@@ -72,6 +72,7 @@ use anyhow::Result;
 use unigraph_core::MapGraph;
 
 /// Controls how the Turbopack data is mapped to Unigraph nodes.
+#[derive(Default)]
 pub struct Options {
     /// When true, keep tree-shaking fragments as separate nodes.
     /// Each fragment gets a `fragment` label (e.g. `"exports"`, `"module evaluation"`).
@@ -87,15 +88,6 @@ pub struct Options {
     /// This makes dominator/transitive metrics answer "what JS ships to the
     /// browser?" — RSC and SSR nodes remain as zero-size structural connectors.
     pub all_layer_sizes: bool,
-}
-
-impl Default for Options {
-    fn default() -> Self {
-        Self {
-            fragments: false,
-            all_layer_sizes: false,
-        }
-    }
 }
 
 /// Read Turbopack analyze data from `data_dir` and produce a Unigraph `MapGraph`.
