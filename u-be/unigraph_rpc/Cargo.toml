@@ -17,4 +17,4 @@ typegen = { path = "../typegen" }
 k9 = { version = "0.12.0", features = ["custom_comparison_formatters", "regex"] }
 paste = "1.0.14"
 serde_json = { version = "1.0.140", features = ["alloc", "float_roundtrip", "raw_value", "unbounded_depth"] }
-tokio = { version = "1.50.0", features = ["full", "test-util", "tracing"] }
+tokio = { version = "1.52.1", features = ["full", "test-util", "tracing"] }
