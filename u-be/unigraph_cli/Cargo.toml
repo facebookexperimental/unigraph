@@ -15,7 +15,7 @@ dirs = "6.0"
 ll = "10.0.0"
 ll_stdio = "10.0.0"
 serde_json = { version = "1.0.140", features = ["alloc", "float_roundtrip", "raw_value", "unbounded_depth"] }
-tokio = { version = "1.50.0", features = ["full", "test-util", "tracing"] }
+tokio = { version = "1.52.1", features = ["full", "test-util", "tracing"] }
 tracing-subscriber = { version = "0.3.23", features = ["chrono", "env-filter", "json", "local-time", "parking_lot", "registry"] }
 unigraph_app = { path = "../unigraph_app" }
 unigraph_core = { path = "../unigraph_core" }
