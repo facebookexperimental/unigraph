@@ -48,10 +48,9 @@ fn format_graph(g: &ArrayGraphSerializable) -> String {
         let range = g.edges.edge_range(node_idx);
         let directed_targets: Vec<&str> = range
             .filter(|&edge_idx| {
-                g.edges
+                !g.edges
                     .edge_metadata_map
-                    .get(&crate::types::EdgeIDX::from(edge_idx))
-                    .is_none()
+                    .contains_key(&crate::types::EdgeIDX::from(edge_idx))
             })
             .map(|edge_idx| g.node_names_ordered.idx_to_name(g.edges.edges[edge_idx]))
             .collect();

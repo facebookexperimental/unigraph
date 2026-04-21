@@ -173,10 +173,9 @@ fn collect_graph_node_from_csr(
     let directed: Vec<String> = range
         .clone()
         .filter(|&edge_idx| {
-            edges
+            !edges
                 .edge_metadata_map
-                .get(&EdgeIDX::from(edge_idx))
-                .is_none()
+                .contains_key(&EdgeIDX::from(edge_idx))
         })
         .map(|edge_idx| nodes.idx_to_name(edges.edges[edge_idx]).to_string())
         .collect();
@@ -334,10 +333,9 @@ fn diff_directed_edges_csr(
         edges
             .edge_range(node_idx)
             .filter(|&edge_idx| {
-                edges
+                !edges
                     .edge_metadata_map
-                    .get(&crate::EdgeIDX::from(edge_idx))
-                    .is_none()
+                    .contains_key(&crate::EdgeIDX::from(edge_idx))
             })
             .map(|edge_idx| edges.edges[edge_idx])
             .collect()
