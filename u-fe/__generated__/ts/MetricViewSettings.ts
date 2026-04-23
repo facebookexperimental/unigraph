@@ -10,7 +10,7 @@ import type { MetricViewVisibility } from './MetricViewVisibility.ts';
 
 /**
  * Per-view settings in the flat metric view map.
- *
+ * 
  * Keys are `MetricView.to_string()` values (e.g. `"size"`, `"size~transitive"`,
  * `"node-count~dominated"`).
  */

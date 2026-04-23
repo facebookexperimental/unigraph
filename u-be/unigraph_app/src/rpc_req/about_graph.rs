@@ -1,5 +1,6 @@
 // (c) Meta Platforms, Inc. and affiliates. Confidential and proprietary.
 
+use std::collections::BTreeMap;
 use std::fmt::Write;
 use std::sync::Arc;
 use std::time::Duration;
@@ -9,6 +10,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use typegen::TypeGen;
 use unigraph_core::ArrayGraph;
+use unigraph_core::GraphSettings;
 use unigraph_core::MetricView;
 use unigraph_rpc::RpcExec;
 
@@ -35,6 +37,14 @@ pub struct AboutGraphOutput {
 
     /// All available metric views with optional descriptions.
     pub metric_views: Vec<AboutGraphMetricViewInfo>,
+
+    /// Graph-level settings (description, UI config), if present.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub graph_settings: Option<GraphSettings>,
+
+    /// Graph-level key-value properties.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub properties: BTreeMap<String, String>,
 
     /// Human-readable markdown summary of the graph.
     /// Optimized for LLM consumption — use this field to understand the graph
@@ -68,12 +78,16 @@ fn build_about(ag: &Arc<ArrayGraph>, handle: &str) -> Result<AboutGraphOutput> {
     let stats = ag.stats();
     let description = extract_description(ag);
     let metric_views = collect_metric_view_infos(ag);
+    let graph_settings = ag.data.graph_settings.clone();
+    let properties = ag.data.properties.clone();
     let text = render_markdown(handle, description.as_deref(), &stats, &metric_views);
 
     Ok(AboutGraphOutput {
         description,
         stats,
         metric_views,
+        graph_settings,
+        properties,
         text,
     })
 }

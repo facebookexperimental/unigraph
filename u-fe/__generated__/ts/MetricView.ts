@@ -7,17 +7,17 @@
 
 /**
  * A user-facing metric specification.
- *
+ * 
  * Describes which metric to compute for a node. Not the raw data itself,
  * but the *view* — plain value, transitive sum, dominated sum, tiered, or
  * a structural count like parent count or transitive node count.
- *
+ * 
  * ## String format
- *
+ * 
  * `MetricView` implements `Display` and `FromStr`. The `~` separator
  * separates the metric name from the view variant, while `#` introduces
  * a tier name:
- *
+ * 
  * ```text
  * size                  → Metric { name: "size" }
  * size~transitive       → Transitive { name: "size" }
