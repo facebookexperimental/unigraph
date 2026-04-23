@@ -21,6 +21,7 @@ import type { GraphQueryConfig } from "./__generated__/ts/GraphQueryConfig";
 import type { GraphQueryOutput } from "./__generated__/ts/GraphQueryOutput";
 import type { GraphSettings } from "./__generated__/ts/GraphSettings";
 import type { TraversalConfig } from "./__generated__/ts/TraversalConfig";
+import type { TraversalOverride } from "./__generated__/ts/TraversalOverride";
 import { useRpc, type UnigraphRpc } from "./api/rpc";
 
 // ---------------------------------------------------------------------------
@@ -82,22 +83,23 @@ export interface PanelTabPlugin {
   render: () => ReactNode;
 }
 
+export interface ExplorerGraphHandle {
+  handle: string;
+  roots?: string[];
+  traversal?: TraversalOverride;
+}
+
 export type ExplorerGraphSource =
   | { type: "local" }
-  | { type: "handle"; handleL: string; handleR?: string };
+  | { type: "handle"; right: ExplorerGraphHandle; left?: ExplorerGraphHandle };
 
-interface ExplorerPropsBase {
+export interface ExplorerProps {
+  source: ExplorerGraphSource;
   config: ExplorerConfig;
   home_href?: string | undefined;
   panels?: PanelTabPlugin[];
   hidden_panels?: BuiltinSidebarPanel[];
 }
-
-export type ExplorerProps = ExplorerPropsBase &
-  (
-    | { source: ExplorerGraphSource; graphs?: never }
-    | { graphs: ExplorerComponentInputGraphs; source?: never }
-  );
 
 interface ResolvedPanel {
   id: string;
@@ -137,23 +139,18 @@ import GraphTreeTable from "./tree_table/GraphTreeTable";
 import type { NodeIDX } from "./types";
 
 export function Explorer(props: ExplorerProps) {
-  if ("source" in props && props.source != null) {
-    return (
-      <Suspense fallback={<GraphLoadingAnimation />}>
-        <ExplorerFetcher {...props} source={props.source} />
-      </Suspense>
-    );
-  }
-  return <ExplorerImpl {...props} graphs={props.graphs!} />;
+  return (
+    <Suspense fallback={<GraphLoadingAnimation />}>
+      <ExplorerFetcher {...props} />
+    </Suspense>
+  );
 }
 
 // ---------------------------------------------------------------------------
 // Fetcher — suspends while loading graph data from a source
 // ---------------------------------------------------------------------------
 
-function ExplorerFetcher(
-  props: ExplorerPropsBase & { source: ExplorerGraphSource },
-) {
+function ExplorerFetcher(props: ExplorerProps) {
   const rpc = useRpc();
   const result = use(getOrFetchGraphSource(rpc, props.source));
 
@@ -185,9 +182,13 @@ function ExplorerFetcher(
 // Implementation — renders the explorer UI given resolved graphs
 // ---------------------------------------------------------------------------
 
-function ExplorerImpl(
-  props: ExplorerPropsBase & { graphs: ExplorerComponentInputGraphs },
-) {
+function ExplorerImpl(props: {
+  graphs: ExplorerComponentInputGraphs;
+  config: ExplorerConfig;
+  home_href?: string | undefined;
+  panels?: PanelTabPlugin[];
+  hidden_panels?: BuiltinSidebarPanel[];
+}) {
   const {
     graphs: rawGraphs,
     config,
@@ -528,7 +529,6 @@ function getOrFetchGraphSource(
     return promise;
   }
   promise = fetchGraphSource(rpc, source).catch((e) => {
-    // Evict failed promises so a retry can re-fetch
     fetchPromiseCache.delete(key);
     throw e;
   });
@@ -543,7 +543,7 @@ async function fetchGraphSource(
   if (source.type === "local") {
     return fetchLocalGraphs();
   }
-  return fetchHandleGraphs(rpc, source.handleL, source.handleR);
+  return fetchHandleGraphs(rpc, source.right, source.left);
 }
 
 interface LocalGraphsApiResponse {
@@ -573,41 +573,54 @@ function graphQueryOutputToInputGraph(
   };
 }
 
+function resolveTraversalConfig(
+  traversal: TraversalOverride | undefined,
+): TraversalConfig | undefined {
+  if (traversal == null) return undefined;
+  if ("Inline" in traversal) return traversal.Inline;
+  if ("Key" in traversal) return undefined;
+  return undefined;
+}
+
 async function fetchHandleGraph(
   rpc: UnigraphRpc,
-  handle: string,
+  gh: ExplorerGraphHandle,
 ): Promise<GraphQueryOutput> {
-  if (handle.startsWith("gqc_")) {
-    return rpc.call("GraphQuery", { graph_query_config_key: handle });
+  if (gh.handle.startsWith("gqc_")) {
+    return rpc.call("GraphQuery", { graph_query_config_key: gh.handle });
   }
   return rpc.call("GraphQuery", {
-    graph_query_config: { roots: [], handle },
+    graph_query_config: {
+      roots: gh.roots ?? [],
+      handle: gh.handle,
+      traversal_config: resolveTraversalConfig(gh.traversal),
+    },
   });
 }
 
 async function fetchHandleGraphs(
   rpc: UnigraphRpc,
-  handleL: string,
-  handleR: string | undefined,
+  right: ExplorerGraphHandle,
+  left: ExplorerGraphHandle | undefined,
 ): Promise<FetchResult> {
-  const leftPromise = fetchHandleGraph(rpc, handleL);
-  const rightPromise =
-    handleR != null ? fetchHandleGraph(rpc, handleR) : Promise.resolve(null);
+  const rightPromise = fetchHandleGraph(rpc, right);
+  const leftPromise =
+    left != null ? fetchHandleGraph(rpc, left) : Promise.resolve(null);
 
-  const [leftResult, rightResult] = await Promise.all([
-    leftPromise,
+  const [rightResult, leftResult] = await Promise.all([
     rightPromise,
+    leftPromise,
   ]);
 
   return {
     graphs: {
-      right: graphQueryOutputToInputGraph(leftResult),
+      right: graphQueryOutputToInputGraph(rightResult),
       left:
-        rightResult != null
-          ? graphQueryOutputToInputGraph(rightResult)
+        leftResult != null
+          ? graphQueryOutputToInputGraph(leftResult)
           : undefined,
     },
-    baseGqcL: leftResult.graph_query_config,
-    baseGqcR: rightResult?.graph_query_config ?? null,
+    baseGqcL: leftResult?.graph_query_config ?? null,
+    baseGqcR: rightResult.graph_query_config,
   };
 }

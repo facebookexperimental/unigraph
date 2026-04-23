@@ -95,10 +95,9 @@ struct Serve {
     #[arg(short, long)]
     file_path: Option<PathBuf>,
 
-    /// Path to the second graph file that will be used
-    /// to compare (delta view) with the main graph
-    #[arg(short, long)]
-    right: Option<PathBuf>,
+    /// Path to the comparison ("before") graph file for delta view
+    #[arg(short = 'l', long)]
+    left: Option<PathBuf>,
 
     /// Serve pre-built static files instead of proxying to Vite dev server
     #[arg(long)]
@@ -113,7 +112,7 @@ impl Serve {
             ServeMode::Dev
         };
         let sqlite_path = Some(sqlite_path.to_path_buf());
-        unigraph_web_service::start(&self.file_path, &self.right, &sqlite_path, mode, task)
+        unigraph_web_service::start(&self.file_path, &self.left, &sqlite_path, mode, task)
             .await
             .unwrap();
     }

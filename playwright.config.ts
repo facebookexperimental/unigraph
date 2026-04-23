@@ -17,7 +17,7 @@ export default defineConfig({
 	],
 	webServer: {
 		command:
-			"npx react-router build && cargo run -p unigraph_cli -- serve --release -f e2e/fixtures/explore_graph.json",
+			"python3 tasks/task.py build wasm && npx react-router build && cargo run -p unigraph_cli -- serve --release -f e2e/fixtures/explore_graph.json",
 		port: 3000,
 		reuseExistingServer: true,
 		timeout: 120_000,

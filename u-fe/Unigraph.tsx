@@ -19,7 +19,7 @@
  *   await initWasm(); // call once at app startup
  *
  *   <RpcProvider transport={createFetchTransport("/my/api/rpc")}>
- *     <Explorer graphs={{ left: myGraph }} />
+ *     <Explorer source={{ type: "handle", right: { handle: "my_timeline" } }} />
  *   </RpcProvider>
  */
 

@@ -10,13 +10,17 @@ const QUERY_PARAM_GQC_DELTA_R = "gqc_deltaR";
 const QUERY_PARAM_GRAPH_SETTINGS = "graph_settings";
 
 export default function ExplorerRoute() {
-  const { handleL, handleR } = useParams();
-  const isLocal = handleL == null;
+  const { handleR, handleL } = useParams();
+  const isLocal = handleR == null;
   const [searchParams, setSearchParams] = useSearchParams();
 
   const source: ExplorerGraphSource = isLocal
     ? { type: "local" }
-    : { type: "handle", handleL, handleR };
+    : {
+        type: "handle",
+        right: { handle: handleR },
+        left: handleL != null ? { handle: handleL } : undefined,
+      };
 
   const gqcDeltaL = searchParams.get(QUERY_PARAM_GQC_DELTA_L) ?? undefined;
   const gqcDeltaR = searchParams.get(QUERY_PARAM_GQC_DELTA_R) ?? undefined;

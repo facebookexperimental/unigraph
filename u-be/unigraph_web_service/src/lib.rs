@@ -51,33 +51,30 @@ pub enum ServeMode {
 
 #[derive(Clone)]
 struct AppState {
-    left_graph: Arc<String>,
-    right_graph: Arc<Option<String>>,
+    right_graph: Arc<String>,
+    left_graph: Arc<Option<String>>,
     db: Option<Unigraph>,
 }
 
 pub async fn start(
-    graphite_graph_json_file_path_left: &Option<PathBuf>,
-    graphite_graph_json_file_path_right: &Option<PathBuf>,
+    graph_file_path: &Option<PathBuf>,
+    comparison_file_path: &Option<PathBuf>,
     sqlite_path: &Option<PathBuf>,
     mode: ServeMode,
     task: &ll::Task,
 ) -> Result<()> {
-    let (left_graph, right_graph) = match (
-        &graphite_graph_json_file_path_left,
-        &graphite_graph_json_file_path_right,
-    ) {
-        (Some(l), Some(r)) => (
-            into_array_graph_json(l, task)?,
-            Some(into_array_graph_json(r, task)?),
+    let (right_graph, left_graph) = match (graph_file_path, comparison_file_path) {
+        (Some(r), Some(l)) => (
+            into_array_graph_json(r, task)?,
+            Some(into_array_graph_json(l, task)?),
         ),
-        (Some(l), None) => (into_array_graph_json(l, task)?, None),
+        (Some(r), None) => (into_array_graph_json(r, task)?, None),
         (None, None) => (
             to_serialized_str_json(&unigraph_core::make_test_graph()?, task)?,
             None,
         ),
         (None, Some(_)) => {
-            bail!("Left graph must be present if right graph is passed");
+            bail!("Primary graph must be present if comparison graph is passed");
         }
     };
 
@@ -91,8 +88,8 @@ pub async fn start(
     };
 
     let state = AppState {
-        left_graph: Arc::new(left_graph),
         right_graph: Arc::new(right_graph),
+        left_graph: Arc::new(left_graph),
         db,
     };
 
@@ -181,9 +178,9 @@ async fn favicon_png() -> Response {
 // --- File-based graph endpoint ---
 
 async fn api_local_graphs(State(state): State<AppState>) -> impl IntoResponse {
-    let mut body = format!(r#"{{"right":{}"#, *state.left_graph);
-    if let Some(ref right) = *state.right_graph {
-        body.push_str(&format!(r#","left":{right}"#));
+    let mut body = format!(r#"{{"right":{}"#, *state.right_graph);
+    if let Some(ref left) = *state.left_graph {
+        body.push_str(&format!(r#","left":{left}"#));
     }
     body.push('}');
     ([(http::header::CONTENT_TYPE, "application/json")], body)
