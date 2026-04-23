@@ -70,7 +70,7 @@ pub struct MetricViewSettings {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub visibility: Option<MetricViewVisibility>,
 
-    /// Display format. Derived views (transitive, dominated, tiered, conjoint)
+    /// Display format. Derived views (transitive, dominated, tiered)
     /// inherit the format from their base metric key (e.g., `"size"`) if not set here.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub format: Option<MetricFormat>,
@@ -388,10 +388,6 @@ pub struct ColumnSettings {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub show_tiered_metrics: Option<bool>,
 
-    /// Global setting for showing conjoint values for tiered metrics
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub show_conjoint_tiered_metrics: Option<bool>,
-
     /// Global setting for showing dominated metric values.
     /// Defaults to showing because individual values default
     /// to only showing when in Dominator mode.
@@ -399,8 +395,7 @@ pub struct ColumnSettings {
     pub hide_dominated_tiered_metrics: Option<bool>,
 
     /// Global setting for showing columns related to
-    /// node counts, like transitive counts, parents counts,
-    /// or conjoint cost for node counts.
+    /// node counts, like transitive counts or parents counts.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub show_counts: Option<bool>,
 

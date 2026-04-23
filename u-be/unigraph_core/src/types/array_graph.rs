@@ -11,7 +11,6 @@ mod array_graph_name_search;
 pub(crate) mod array_graph_nodes;
 pub mod array_graph_state;
 pub mod array_graph_stats;
-mod conjoint_cost;
 pub mod graph_settings;
 pub(crate) mod offset_graph;
 pub mod remap_utils;
@@ -58,7 +57,6 @@ pub use crate::types::array_graph::array_graph_metrics::get_transitive_tiered_me
 use crate::types::array_graph::array_graph_metrics::parents_len_configured;
 use crate::types::array_graph::array_graph_state::ArrayGraphState;
 use crate::types::array_graph::array_graph_stats::ArrayGraphStats;
-use crate::types::array_graph::conjoint_cost::ConjointCost;
 use crate::types::array_graph::offset_graph::DFSConfigured;
 use crate::types::array_graph::offset_graph::lengauer_tarjan_dominator_tree::make_dominator_tree;
 use crate::types::array_graph::offset_graph::reverse_parallel;
@@ -250,13 +248,6 @@ impl ArrayGraph {
             .derived_state
             .sccs
             .get_or_init(|| tarjan_strongly_connected_components::SCCBuilder::new(self).build())
-    }
-
-    pub fn conjoint_cost(&self) -> &ConjointCost {
-        self.runtime
-            .derived_state
-            .conjoint_cost
-            .get_or_init(|| ConjointCost::build(self).expect("Failed to build conjoint cost"))
     }
 
     #[inline(always)]

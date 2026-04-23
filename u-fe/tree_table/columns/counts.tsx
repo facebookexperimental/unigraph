@@ -4,7 +4,6 @@ import type { NodeIDX } from "../../__generated__/ts/NodeIDX";
 import type { SortOrder } from "../../__generated__/ts/SortOrder";
 import { ARROW_POINTS_FROM_NON_EXISTENT } from "../../ArrowUtils";
 import UHoverCard from "../../components/UHoverCard";
-import ConjointCostDocs from "../../inline_docs/ConjointCost";
 import NativeGraph, {
   GRAPH_SIDE,
   type GraphSide,
@@ -518,87 +517,6 @@ export class ParentsCountColumn implements Column {
       },
       sortable: this.sortable(),
       isHidden: false,
-    };
-    return [columnID, definition];
-  }
-}
-
-export class ConjointCountColumn implements Column {
-  ctx: ColumnsCtx;
-  nativeGraph: NativeGraph;
-  side: GraphSide | null;
-
-  constructor(ctx: ColumnsCtx, nativeGraph: NativeGraph, side?: GraphSide) {
-    this.ctx = ctx;
-    this.nativeGraph = nativeGraph;
-    this.side = side ?? null;
-  }
-
-  isEnabled() {
-    return (
-      isViewVisible(this.ctx.viewVisibility(MV.countConjoint)) &&
-      this.ctx.showCounts
-    );
-  }
-
-  getID(): string {
-    if (this.side == null) {
-      return "C(count)";
-    }
-    return `C(count)${this.side === GRAPH_SIDE.L ? "L" : "R"}`;
-  }
-
-  sortable() {
-    const key =
-      this.side === GRAPH_SIDE.L ? MV.left(MV.countConjoint) : MV.countConjoint;
-    const sortable: TSortable = {
-      order: null,
-      onSortChange: (order: SortOrder | null) =>
-        this.ctx.onSortChange(order, {
-          MetricView: { key },
-        }),
-    };
-
-    const sort = this.ctx.sort();
-    if (
-      sort != null &&
-      "MetricView" in sort.column &&
-      sort.column.MetricView.key === key
-    ) {
-      sortable.order = sort.order;
-    }
-
-    return sortable;
-  }
-
-  definition(): [string, NumericValueColumnDefinition] {
-    const columnID = this.getID();
-    const definition: NumericValueColumnDefinition = {
-      t: "numeric_value_column",
-      label: columnID,
-      renderer: (row: Readonly<Row>) => {
-        if (this.nativeGraph.isNodeReachable(row.twinArrow.points_to)) {
-          return (
-            <MetricCell
-              value={
-                this.nativeGraph.getConjointCost().count[
-                  row.twinArrow.points_to
-                ] ?? 0
-              }
-              format={NO_PRECISION_FORMAT}
-            />
-          );
-        } else {
-          return <MissingMetric />;
-        }
-      },
-      getNumericValues: (idxs: NodeIDX[]) => {
-        const count = this.nativeGraph.getConjointCost().count;
-        return new Float32Array(idxs.map((idx) => count[idx] ?? 0));
-      },
-      sortable: this.sortable(),
-      isHidden: false,
-      hovercardContent: <ConjointCostDocs />,
     };
     return [columnID, definition];
   }

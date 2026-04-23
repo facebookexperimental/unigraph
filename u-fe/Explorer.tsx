@@ -86,14 +86,18 @@ export type ExplorerGraphSource =
   | { type: "local" }
   | { type: "handle"; handleL: string; handleR?: string };
 
-export interface ExplorerProps {
-  graphs?: ExplorerComponentInputGraphs;
-  source?: ExplorerGraphSource;
+interface ExplorerPropsBase {
   config: ExplorerConfig;
   home_href?: string | undefined;
   panels?: PanelTabPlugin[];
   hidden_panels?: BuiltinSidebarPanel[];
 }
+
+export type ExplorerProps = ExplorerPropsBase &
+  (
+    | { source: ExplorerGraphSource; graphs?: never }
+    | { graphs: ExplorerComponentInputGraphs; source?: never }
+  );
 
 interface ResolvedPanel {
   id: string;
@@ -133,7 +137,7 @@ import GraphTreeTable from "./tree_table/GraphTreeTable";
 import type { NodeIDX } from "./types";
 
 export function Explorer(props: ExplorerProps) {
-  if (props.source != null) {
+  if ("source" in props && props.source != null) {
     return (
       <Suspense fallback={<GraphLoadingAnimation />}>
         <ExplorerFetcher {...props} source={props.source} />
@@ -148,7 +152,7 @@ export function Explorer(props: ExplorerProps) {
 // ---------------------------------------------------------------------------
 
 function ExplorerFetcher(
-  props: ExplorerProps & { source: ExplorerGraphSource },
+  props: ExplorerPropsBase & { source: ExplorerGraphSource },
 ) {
   const rpc = useRpc();
   const result = use(getOrFetchGraphSource(rpc, props.source));
@@ -182,7 +186,7 @@ function ExplorerFetcher(
 // ---------------------------------------------------------------------------
 
 function ExplorerImpl(
-  props: ExplorerProps & { graphs: ExplorerComponentInputGraphs },
+  props: ExplorerPropsBase & { graphs: ExplorerComponentInputGraphs },
 ) {
   const {
     graphs: rawGraphs,

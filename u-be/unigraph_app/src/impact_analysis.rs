@@ -13,11 +13,6 @@
 //! connected to the main graph by just 2-3 edges, with a huge subgraph
 //! behind them that could be removed if those few edges were cut.
 //!
-//! Conjoint cost tries to approximate this by dividing transitive size by
-//! parent count, but it's too smooth — a node with 2 parents gets half
-//! credit regardless of whether removing it would disconnect 5 nodes or
-//! 5000. We need exact numbers.
-//!
 //! # Approach
 //!
 //! For each node in the graph, we simulate what happens if we remove it:

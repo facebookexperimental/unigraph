@@ -7,3 +7,4 @@ build/
 .react-router/
 /test-results/
 /playwright-report/
+package-lock.json

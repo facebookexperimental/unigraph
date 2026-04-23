@@ -61,7 +61,7 @@ be no other node already on the list that doesn't start from the same character"
         .values_mut()
         .for_each(|m| m.push(0.0));
 
-    // Invalidate derived state (reverse, dominator, SCCs, conjoint cost)
+    // Invalidate derived state (reverse, dominator, SCCs)
     ag.runtime.derived_state = ArrayGraphDerivedState::new();
 
     ag.data.entry_points = Some(BTreeSet::from([super_root_name]));

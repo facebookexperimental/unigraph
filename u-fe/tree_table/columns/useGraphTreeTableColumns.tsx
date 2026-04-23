@@ -25,7 +25,6 @@ import type {
 } from "../columns";
 import type { Row } from "../TreeTableRows";
 import {
-  ConjointCountColumn,
   DominatedCountColumn,
   ParentsCountColumn,
   TransitiveCountColumn,
@@ -33,7 +32,6 @@ import {
   TransitiveCountRightInDeltaViewColumn,
 } from "./counts";
 import {
-  ConjointTieredMetricColumn,
   DominatedMetricColumn,
   MetricColumn,
   MetricDeltaViewColumn,
@@ -154,7 +152,6 @@ export class ColumnsCtx {
   tvc: TraversalConfig;
   showMetrics: boolean;
   showTieredMetrics: boolean;
-  showConjointTieredMetrics: boolean;
   hideDominatedTieredMetrics: boolean;
   showCounts: boolean;
   graphStructure: GraphStructure;
@@ -172,8 +169,6 @@ export class ColumnsCtx {
       graphSettings.ui_settings?.columns?.hide_metrics !== true;
     this.showTieredMetrics =
       graphSettings.ui_settings?.columns?.show_tiered_metrics === true;
-    this.showConjointTieredMetrics =
-      graphSettings.ui_settings?.columns?.show_conjoint_tiered_metrics === true;
     this.hideDominatedTieredMetrics =
       graphSettings.ui_settings?.columns?.hide_dominated_tiered_metrics ===
       true;
@@ -241,7 +236,6 @@ class SingleGraphColumnsBuilder {
       new NodeTierColumn(this.ctx, this.twinGraph),
       new TransitiveCountColumn(ctx, g),
       new DominatedCountColumn(ctx, g),
-      new ConjointCountColumn(ctx, g),
       new ParentsCountColumn(ctx, g),
     ];
 
@@ -253,7 +247,6 @@ class SingleGraphColumnsBuilder {
       for (const tier of g.stats().tier_names) {
         columns.push(new TransitiveTieredMetricColumn(ctx, g, metric, tier));
         columns.push(new TieredDominatedMetricColumn(ctx, g, metric, tier));
-        columns.push(new ConjointTieredMetricColumn(ctx, g, metric, tier));
       }
     }
 

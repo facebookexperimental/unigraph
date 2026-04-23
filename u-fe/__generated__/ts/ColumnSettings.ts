@@ -26,8 +26,6 @@ export interface ColumnSettings {
    * It is hidden by default, but can be enabled
    */
   show_tiered_metrics?: boolean | undefined;
-  /** Global setting for showing conjoint values for tiered metrics */
-  show_conjoint_tiered_metrics?: boolean | undefined;
   /**
    * Global setting for showing dominated metric values.
    * Defaults to showing because individual values default
@@ -36,8 +34,7 @@ export interface ColumnSettings {
   hide_dominated_tiered_metrics?: boolean | undefined;
   /**
    * Global setting for showing columns related to
-   * node counts, like transitive counts, parents counts,
-   * or conjoint cost for node counts.
+   * node counts, like transitive counts or parents counts.
    */
   show_counts?: boolean | undefined;
   /** Show a column that displays the tier each node */

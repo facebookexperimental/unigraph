@@ -16,12 +16,9 @@ export const MV = {
   tiered: (name: string, tier: string) => `${name}${SEP}${tier}`,
   tieredDominated: (name: string, tier: string) =>
     `${name}${SEP}dominated${SEP}${tier}`,
-  conjointTiered: (name: string, tier: string) =>
-    `${name}${SEP}conjoint${SEP}${tier}`,
   parentsCount: "parents-count",
   countTransitive: `node-count${SEP}transitive`,
   countDominated: `node-count${SEP}dominated`,
-  countConjoint: `node-count${SEP}conjoint`,
 
   left: (key: string) => `${key}${SIDE_SEP}left`,
   delta: (key: string) => `${key}${SIDE_SEP}delta`,

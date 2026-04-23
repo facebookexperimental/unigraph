@@ -15,7 +15,6 @@ use unigraph_core::GraphQueryConfig;
 use unigraph_core::MapGraph;
 use unigraph_core::TraversalConfig;
 use unigraph_core::TraversalType;
-use unigraph_core::TwinArrow;
 use unigraph_core::TwinGraph;
 use unigraph_core::graph_settings::GraphStructure;
 use unigraph_core::types::NodeIDX;
@@ -369,13 +368,6 @@ pub fn get_combined_metrics_for_entrypoints_with_force_include(
         .graph_mut(side)?
         .get_combined_metrics_for_entry_points(force_edge_include)?;
     Ok(serde_json::to_string(&result).context("Failed to serialize combined metrics")?)
-}
-
-#[wasm_bindgen]
-pub fn get_conjoint_cost(side: u32) -> Result<String, WasmJSError> {
-    let gs = GlobalGraphState::graph_state().get();
-    let conjoint_cost = gs.mode.graph(side)?.conjoint_cost();
-    Ok(serde_json::to_string(&conjoint_cost).context("Failed to serialize conjoint cost")?)
 }
 
 #[wasm_bindgen]

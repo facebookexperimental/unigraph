@@ -3,7 +3,6 @@
 use std::sync::OnceLock;
 
 use crate::NodeIDX;
-use crate::types::array_graph::conjoint_cost::ConjointCost;
 use crate::types::array_graph::offset_graph::OffsetGraph;
 
 /// State of the graphs that is derived from other state and likely
@@ -17,7 +16,6 @@ pub struct ArrayGraphDerivedState {
     pub edges_dom: OnceLock<OffsetGraph>,
 
     pub sccs: OnceLock<Vec<Vec<NodeIDX>>>,
-    pub conjoint_cost: OnceLock<ConjointCost>,
 }
 
 impl ArrayGraphDerivedState {
@@ -26,7 +24,6 @@ impl ArrayGraphDerivedState {
             edges_reverse: OnceLock::new(),
             edges_dom: OnceLock::new(),
             sccs: OnceLock::new(),
-            conjoint_cost: OnceLock::new(),
         }
     }
 }

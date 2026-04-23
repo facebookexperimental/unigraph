@@ -11,7 +11,6 @@ const NODE_COUNT: &str = "node-count";
 const PARENTS_COUNT: &str = "parents-count";
 const TRANSITIVE: &str = "transitive";
 const DOMINATED: &str = "dominated";
-const CONJOINT: &str = "conjoint";
 
 /// A user-facing metric specification.
 ///
@@ -31,10 +30,8 @@ const CONJOINT: &str = "conjoint";
 /// size~dominated        → Dominated { name: "size" }
 /// size#T1               → Tiered { name: "size", tier_name: "T1" }
 /// size#T1~dominated     → TieredDominated { name: "size", tier_name: "T1" }
-/// size#T1~conjoint      → ConjointTiered { name: "size", tier_name: "T1" }
 /// node-count~transitive → CountTransitive
 /// node-count~dominated  → CountDominated
-/// node-count~conjoint   → CountConjoint
 /// parents-count         → ParentsCount
 /// ```
 #[derive(
@@ -57,16 +54,12 @@ pub enum MetricView {
     Tiered { name: String, tier_name: String },
     /// Tiered dominated metric (dominated sum at a specific tier).
     TieredDominated { name: String, tier_name: String },
-    /// Conjoint tiered metric (transitive cost / parent count at a specific tier).
-    ConjointTiered { name: String, tier_name: String },
     /// Number of configured parents (incoming edges).
     ParentsCount {},
     /// Transitive dependency count (forward DFS).
     CountTransitive {},
     /// Dominated dependency count (dominator tree DFS).
     CountDominated {},
-    /// Conjoint dependency count (transitive count / parent count).
-    CountConjoint {},
 }
 
 impl MetricView {
@@ -78,12 +71,10 @@ impl MetricView {
             | MetricView::Transitive { name }
             | MetricView::Dominated { name }
             | MetricView::Tiered { name, .. }
-            | MetricView::TieredDominated { name, .. }
-            | MetricView::ConjointTiered { name, .. } => Some(name),
+            | MetricView::TieredDominated { name, .. } => Some(name),
             MetricView::ParentsCount {}
             | MetricView::CountTransitive {}
-            | MetricView::CountDominated {}
-            | MetricView::CountConjoint {} => None,
+            | MetricView::CountDominated {} => None,
         }
     }
 }
@@ -100,13 +91,9 @@ impl fmt::Display for MetricView {
             MetricView::TieredDominated { name, tier_name } => {
                 write!(f, "{name}{TIER_SEPARATOR}{tier_name}{SEPARATOR}{DOMINATED}")
             }
-            MetricView::ConjointTiered { name, tier_name } => {
-                write!(f, "{name}{TIER_SEPARATOR}{tier_name}{SEPARATOR}{CONJOINT}")
-            }
             MetricView::ParentsCount {} => write!(f, "{PARENTS_COUNT}"),
             MetricView::CountTransitive {} => write!(f, "{NODE_COUNT}{SEPARATOR}{TRANSITIVE}"),
             MetricView::CountDominated {} => write!(f, "{NODE_COUNT}{SEPARATOR}{DOMINATED}"),
-            MetricView::CountConjoint {} => write!(f, "{NODE_COUNT}{SEPARATOR}{CONJOINT}"),
         }
     }
 }
@@ -135,12 +122,8 @@ fn parse_tiered(name: &str, tier_part: &str) -> anyhow::Result<MetricView> {
             name,
             tier_name: tier_name.to_string(),
         }),
-        Some((tier_name, CONJOINT)) => Ok(MetricView::ConjointTiered {
-            name,
-            tier_name: tier_name.to_string(),
-        }),
         Some((_, modifier)) => {
-            bail!("unknown tiered modifier: '{modifier}' (expected 'dominated' or 'conjoint')")
+            bail!("unknown tiered modifier: '{modifier}' (expected 'dominated')")
         }
     }
 }
@@ -152,11 +135,8 @@ fn parse_non_tiered(s: &str) -> anyhow::Result<MetricView> {
         [PARENTS_COUNT] => Ok(MetricView::ParentsCount {}),
         [NODE_COUNT, TRANSITIVE] => Ok(MetricView::CountTransitive {}),
         [NODE_COUNT, DOMINATED] => Ok(MetricView::CountDominated {}),
-        [NODE_COUNT, CONJOINT] => Ok(MetricView::CountConjoint {}),
         [NODE_COUNT, other] => {
-            bail!(
-                "unknown node-count variant: '{other}' (expected 'transitive', 'dominated', or 'conjoint')"
-            )
+            bail!("unknown node-count variant: '{other}' (expected 'transitive' or 'dominated')")
         }
         [name] => Ok(MetricView::Metric {
             name: name.to_string(),
@@ -196,19 +176,14 @@ mod tests {
                 name: "size".into(),
                 tier_name: "T1".into(),
             },
-            MetricView::ConjointTiered {
-                name: "size".into(),
-                tier_name: "T1".into(),
-            },
             MetricView::ParentsCount {},
             MetricView::CountTransitive {},
             MetricView::CountDominated {},
-            MetricView::CountConjoint {},
         ]
     }
 
     fn format_overview(views: &[MetricView]) -> String {
-        let mut out = format!("{:<26} {:<14}\n", "display", "metric_name");
+        let mut out = format!("{:<26} {}\n", "display", "metric_name");
         for view in views {
             let display = view.to_string();
             let parsed: MetricView = display.parse().unwrap_or_else(|e| {
@@ -217,7 +192,7 @@ mod tests {
             assert_eq!(&parsed, view, "roundtrip mismatch for '{display}'");
 
             out.push_str(&format!(
-                "{:<26} {:<14}\n",
+                "{:<26} {}\n",
                 display,
                 view.metric_name().unwrap_or("-"),
             ));
@@ -230,17 +205,15 @@ mod tests {
         snapshot!(
             format_overview(&all_variants()),
             "
-display                    metric_name   
-size                       size          
-size~transitive            size          
-size~dominated             size          
-size#T1                    size          
-size#T1~dominated          size          
-size#T1~conjoint           size          
-parents-count              -             
-node-count~transitive      -             
-node-count~dominated       -             
-node-count~conjoint        -             
+display                    metric_name
+size                       size
+size~transitive            size
+size~dominated             size
+size#T1                    size
+size#T1~dominated          size
+parents-count              -
+node-count~transitive      -
+node-count~dominated       -
 
 "
         );

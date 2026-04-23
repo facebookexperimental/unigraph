@@ -8,7 +8,6 @@ import {
   get_array_graph_stats,
   get_combined_metrics_for_entrypoints_with_force_include,
   get_combined_metrics_for_nodes,
-  get_conjoint_cost,
   get_graph_node_count,
   get_graph_settings,
   get_graph_traversal_config,
@@ -26,7 +25,6 @@ import {
 } from "../../.build/wasm/unigraph_wasm";
 import type { ArrayGraphStats } from "../__generated__/ts/ArrayGraphStats";
 import type { CombinedMetricsForNodes } from "../__generated__/ts/CombinedMetricsForNodes";
-import type { ConjointCost } from "../__generated__/ts/ConjointCost";
 import type { ExplorerComponentInputGraphs } from "../Explorer";
 import type { GraphSettings } from "../__generated__/ts/GraphSettings";
 import type { TraversalConfig } from "../__generated__/ts/TraversalConfig";
@@ -83,7 +81,6 @@ export default class NativeGraph {
   private parentsCountCache: SingleMetricsCache;
   private transitiveCountCache: SingleMetricsCache;
   private transitiveCountDominatedCache: SingleMetricsCache;
-  private conjointCostCache: ConjointCost | null = null;
 
   private entrypointsCache: NodeIDXVecSet | null = null;
 
@@ -348,14 +345,6 @@ export default class NativeGraph {
     fromMap.set(forceInclude.to, result);
     cache.for_overrides.set(forceInclude.from, fromMap);
     return result;
-  }
-
-  getConjointCost(): ConjointCost {
-    if (this.conjointCostCache == null) {
-      const json = get_conjoint_cost(this.side);
-      this.conjointCostCache = JSON.parse(json) as ConjointCost;
-    }
-    return this.conjointCostCache;
   }
 
   private getOrInitNodeFlagsCache(): Uint32Array {

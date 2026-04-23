@@ -17,7 +17,6 @@ export interface MetricSettings {
   /** Column that displays transitive value for the metric. */
   column_show_transitive?: IndividualOptionEnabled | undefined;
   column_show_tiered?: { [key: string]: IndividualOptionEnabled } | undefined;
-  show_conjoint_tiered?: { [key: string]: IndividualOptionEnabled } | undefined;
   show_dominated?: IndividualDominatedOptionEnabled | undefined;
   show_dominated_tiered?: { [key: string]: IndividualDominatedOptionEnabled } | undefined;
 }

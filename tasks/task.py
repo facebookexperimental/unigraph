@@ -119,6 +119,55 @@ WASM_OUT_DIR = OUT_DIR / "wasm"
 WASM_TARGET_DIR = Path("/tmp/unigraph-target")
 
 
+def get_lockfile_version(package: str) -> str | None:
+    """Read a package version from Cargo.lock."""
+    lock = ROOT / "Cargo.lock"
+    if not lock.exists():
+        return None
+    name_line = f'name = "{package}"'
+    lines = lock.read_text().splitlines()
+    for i, line in enumerate(lines):
+        if line.strip() == name_line:
+            next_line = lines[i + 1]
+            if next_line.strip().startswith("version"):
+                return next_line.split('"')[1]
+    return None
+
+
+def ensure_wasm_bindgen_cli() -> None:
+    """Install wasm-bindgen-cli if missing or version-mismatched."""
+    required = get_lockfile_version("wasm-bindgen")
+    if required is None:
+        return
+
+    try:
+        result = subprocess.run(
+            ["wasm-bindgen", "--version"],
+            capture_output=True,
+            text=True,
+        )
+        installed = result.stdout.strip().removeprefix("wasm-bindgen ")
+        if installed == required:
+            return
+        print(
+            f"\033[33mwasm-bindgen-cli {installed} doesn't match "
+            f"Cargo.lock ({required}), reinstalling…\033[0m"
+        )
+    except FileNotFoundError:
+        print(f"\033[33mwasm-bindgen-cli not found, installing {required}…\033[0m")
+
+    run(
+        [
+            "cargo",
+            "install",
+            "wasm-bindgen-cli",
+            "--version",
+            required,
+            "--force",
+        ]
+    )
+
+
 @build_app.command("clean")
 def build_clean() -> None:
     """Remove all build artifacts under .build/."""
@@ -135,6 +184,7 @@ def build_wasm(
 ) -> None:
     """Build the WASM package."""
     WASM_OUT_DIR.mkdir(parents=True, exist_ok=True)
+    ensure_wasm_bindgen_cli()
 
     run(
         [

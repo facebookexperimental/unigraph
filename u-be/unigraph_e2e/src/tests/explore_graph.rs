@@ -32,9 +32,9 @@ async fn entry_points() -> Result<()> {
         "
 Entry points
 
-node_name | lines | lines~dominated | lines~transitive | node-count~conjoint | node-count~dominated | node-count~transitive | parents-count | size#eager | size#eager~conjoint | size#eager~dominated | size#lazy | size#lazy~conjoint | size#lazy~dominated | size~dominated | size~transitive
-==========+=======+=================+==================+=====================+======================+=======================+===============+============+=====================+======================+===========+====================+=====================+================+================
-app       |  1200 |            4990 |             4990 |                  12 |                   12 |                    12 |             0 |       1775 |                1775 |                 1775 |      1985 |               1985 |                1985 |           1985 |            1985
+node_name | lines | lines~dominated | lines~transitive | node-count~dominated | node-count~transitive | parents-count | size#eager | size#eager~dominated | size#lazy | size#lazy~dominated | size~dominated | size~transitive
+==========+=======+=================+==================+======================+=======================+===============+============+======================+===========+=====================+================+================
+app       |  1200 |            4990 |             4990 |                   12 |                    12 |             0 |       1775 |                 1775 |      1985 |                1985 |           1985 |            1985
 
 "
     );
@@ -64,13 +64,13 @@ async fn metrics_none_returns_all() -> Result<()> {
 Edges: forward
 Edges of: app
 
-node_name | lines | lines~dominated | lines~transitive | node-count~conjoint | node-count~dominated | node-count~transitive | parents-count | size#eager | size#eager~conjoint | size#eager~dominated | size#lazy | size#lazy~conjoint | size#lazy~dominated | size~dominated | size~transitive ▼
-==========+=======+=================+==================+=====================+======================+=======================+===============+============+=====================+======================+===========+====================+=====================+================+==================
-app       |  1200 |            4990 |             4990 |                  12 |                   12 |                    12 |             0 |       1775 |                1775 |                 1775 |      1985 |               1985 |                1985 |           1985 |              1985
-----------+-------+-----------------+------------------+---------------------+----------------------+-----------------------+---------------+------------+---------------------+----------------------+-----------+--------------------+---------------------+----------------+------------------
-core      |   600 |            1770 |             1870 |                   5 |                    4 |                     5 |             1 |        780 |                 780 |                  730 |       870 |                870 |                 820 |            820 |               870
-ui        |   800 |            1920 |             2020 |                   7 |                    6 |                     7 |             1 |        545 |                 545 |                  495 |       665 |                665 |                 615 |            615 |               665
-utils     |   100 |             100 |              100 |                0.20 |                    1 |                     1 |             5 |         50 |                  10 |                   50 |        50 |                 10 |                  50 |             50 |                50
+node_name | lines | lines~dominated | lines~transitive | node-count~dominated | node-count~transitive | parents-count | size#eager | size#eager~dominated | size#lazy | size#lazy~dominated | size~dominated | size~transitive ▼
+==========+=======+=================+==================+======================+=======================+===============+============+======================+===========+=====================+================+==================
+app       |  1200 |            4990 |             4990 |                   12 |                    12 |             0 |       1775 |                 1775 |      1985 |                1985 |           1985 |              1985
+----------+-------+-----------------+------------------+----------------------+-----------------------+---------------+------------+----------------------+-----------+---------------------+----------------+------------------
+core      |   600 |            1770 |             1870 |                    4 |                     5 |             1 |        780 |                  730 |       870 |                 820 |            820 |               870
+ui        |   800 |            1920 |             2020 |                    6 |                     7 |             1 |        545 |                  495 |       665 |                 615 |            615 |               665
+utils     |   100 |             100 |              100 |                    1 |                     1 |             5 |         50 |                   50 |        50 |                  50 |             50 |                50
 
 "
     );
@@ -569,14 +569,11 @@ size~transitive
 size~dominated
 size#eager
 size#eager~dominated
-size#eager~conjoint
 size#lazy
 size#lazy~dominated
-size#lazy~conjoint
 parents-count
 node-count~transitive
 node-count~dominated
-node-count~conjoint
 "
     );
 
@@ -599,14 +596,11 @@ node-count~conjoint
 - `size~dominated`
 - `size#eager`
 - `size#eager~dominated`
-- `size#eager~conjoint`
 - `size#lazy`
 - `size#lazy~dominated`
-- `size#lazy~conjoint`
 - `parents-count`
 - `node-count~transitive`
 - `node-count~dominated`
-- `node-count~conjoint`
 
 ## Tiers
 

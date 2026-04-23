@@ -5,7 +5,6 @@ import {
   ArrowUpNarrowWide,
   ArrowUpToLine,
   ChartNoAxesCombined,
-  CircleDollarSign,
   FileDiff,
   Layers,
   List,
@@ -19,7 +18,6 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import type { MetricViewSettings } from "./__generated__/ts/MetricViewSettings";
 import Metric from "./components/Metric";
-import UHoverCard from "./components/UHoverCard";
 import USplitToggleButton from "./components/USplitToggleButton";
 import UToggleButton from "./components/UToggleButton";
 import UTooltip from "./components/UTooltip";
@@ -38,7 +36,6 @@ import {
   useToggleFlatListView,
   useToggleReverseView,
 } from "./GraphStructureHooks";
-import ConjointCostDocs from "./inline_docs/ConjointCost";
 import formatMetric from "./lib/formatMetric";
 import formatNumber from "./lib/formatNumber";
 import NodeSearch from "./NodeSearch";
@@ -289,9 +286,6 @@ function CountsHovercardContent() {
   const dominatedVis =
     graphSettings.ui_settings?.columns?.metric_settings?.[MV.countDominated]
       ?.visibility;
-  const conjointVis =
-    graphSettings.ui_settings?.columns?.metric_settings?.[MV.countConjoint]
-      ?.visibility;
 
   return (
     <div className="flex flex-col gap-2">
@@ -352,24 +346,6 @@ function CountsHovercardContent() {
             >
               <TreePalm />
             </UToggleButton>
-
-            <UHoverCard content={<ConjointCostDocs />}>
-              <UToggleButton
-                size="sm"
-                selected={isViewVisible(conjointVis)}
-                onSelectedChange={(selected) => {
-                  setGraphSettings(
-                    setViewVisibility(
-                      graphSettings,
-                      MV.countConjoint,
-                      selected ? ENABLED : HIDDEN,
-                    ),
-                  );
-                }}
-              >
-                <CircleDollarSign />
-              </UToggleButton>
-            </UHoverCard>
           </>
         )}
       </div>
@@ -451,15 +427,10 @@ function MaxTierSelector() {
             for (let idx = 0; idx < allTiers.length; idx++) {
               const tn = allTiers[idx] as string;
               const vis = idx > tierIDX ? HIDDEN : ENABLED;
-              // Set visibility for tiered + conjoint-tiered views
+              // Set visibility for tiered views
               newGraphSettings = setViewVisibility(
                 newGraphSettings,
                 MV.tiered(metricName, tn),
-                vis,
-              );
-              newGraphSettings = setViewVisibility(
-                newGraphSettings,
-                MV.conjointTiered(metricName, tn),
                 vis,
               );
             }
@@ -525,14 +496,6 @@ function MetricCard({ metricName }: { metricName: string }) {
     />
   ));
 
-  const conjointTiered = allTiers.map((tierName) => (
-    <ToggleConjointForTierForMetric
-      key={`conjoint-${metricName}-${tierName}`}
-      tierName={tierName}
-      metricName={metricName}
-    />
-  ));
-
   return (
     <div className="w-full flex flex-col gap-2">
       <SeparatorHorizontal />
@@ -560,10 +523,6 @@ function MetricCard({ metricName }: { metricName: string }) {
             <div className="flex gap-2 flex-wrap">
               <DominatedTieredToggle />
               {dominatedTiered}
-            </div>
-            <div className="flex gap-2 flex-wrap">
-              <ConjointTieredToggle />
-              {conjointTiered}
             </div>
           </>
         )}
@@ -618,51 +577,6 @@ function ToggleTierForMetric({
   );
 }
 
-function ToggleConjointForTierForMetric({
-  tierName,
-  metricName,
-}: {
-  tierName: string;
-  metricName: string;
-}) {
-  const [graphSettings, setGraphSettings] = useGraphSettings();
-  const viewKey = MV.conjointTiered(metricName, tierName);
-  const vis =
-    graphSettings?.ui_settings?.columns?.metric_settings?.[viewKey]?.visibility;
-
-  return (
-    <UToggleButton
-      key={`conjoint-tiered-${metricName}-${tierName}`}
-      size="sm"
-      tooltip={`Conjoint cost of transitive values of '${metricName}' metric for ${tierName} tier`}
-      selected={isViewVisible(vis)}
-      onSelectedChange={(selected) => {
-        setGraphSettings({
-          ...graphSettings,
-          ui_settings: {
-            ...graphSettings.ui_settings,
-            columns: {
-              ...graphSettings.ui_settings?.columns,
-              hide_metrics: false,
-              show_conjoint_tiered_metrics: true,
-              metric_settings: {
-                ...graphSettings?.ui_settings?.columns?.metric_settings,
-                [viewKey]: {
-                  ...graphSettings?.ui_settings?.columns?.metric_settings?.[
-                    viewKey
-                  ],
-                  visibility: selected ? ENABLED : HIDDEN,
-                },
-              },
-            },
-          },
-        });
-      }}
-    >
-      {tierName}
-    </UToggleButton>
-  );
-}
 function DominatedForTierForMetric({
   tierName,
   metricName,
@@ -899,36 +813,6 @@ function EnableDominatedMetricToggle({ metricName }: { metricName: string }) {
       }}
     >
       <TreePalm />
-    </UToggleButton>
-  );
-}
-
-function ConjointTieredToggle() {
-  const [graphSettings, setGraphSettings] = useGraphSettings();
-
-  return (
-    <UToggleButton
-      size="sm"
-      tooltip={`Show conjoint tiered metric columns`}
-      selected={
-        graphSettings?.ui_settings?.columns?.show_conjoint_tiered_metrics ===
-        true
-      }
-      onSelectedChange={(selected) => {
-        setGraphSettings({
-          ...graphSettings,
-          ui_settings: {
-            ...graphSettings.ui_settings,
-            columns: {
-              ...graphSettings.ui_settings?.columns,
-              hide_metrics: false,
-              show_conjoint_tiered_metrics: selected,
-            },
-          },
-        });
-      }}
-    >
-      <CircleDollarSign />
     </UToggleButton>
   );
 }

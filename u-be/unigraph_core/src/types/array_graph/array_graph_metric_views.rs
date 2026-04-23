@@ -68,10 +68,6 @@ fn push_tiered_views(views: &mut Vec<MetricView>, name: &str, tier_names: &[&str
             name: name.to_string(),
             tier_name: tier_name.to_string(),
         });
-        views.push(MetricView::ConjointTiered {
-            name: name.to_string(),
-            tier_name: tier_name.to_string(),
-        });
     }
 }
 
@@ -79,7 +75,6 @@ fn push_structural_counts(views: &mut Vec<MetricView>) {
     views.push(MetricView::ParentsCount {});
     views.push(MetricView::CountTransitive {});
     views.push(MetricView::CountDominated {});
-    views.push(MetricView::CountConjoint {});
 }
 
 fn metric_settings(ag: &ArrayGraph) -> Option<&BTreeMap<String, MetricViewSettings>> {
