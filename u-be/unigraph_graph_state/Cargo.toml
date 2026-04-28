@@ -9,7 +9,7 @@ license = "MIT"
 
 [dependencies]
 anyhow = "1.0.102"
-bitflags = { version = "2.9", features = ["serde", "std"], default-features = false }
+bitflags = { version = "2.11.1", features = ["serde", "std"], default-features = false }
 bytemuck = { version = "1.25", features = ["const_zeroed", "derive", "min_const_generics", "must_cast", "nightly_portable_simd", "nightly_stdsimd"] }
 glam = { version = "0.30.10", features = ["bytemuck", "serde"] }
 ll = "10.0.0"
