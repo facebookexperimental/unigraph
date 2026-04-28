@@ -35,14 +35,9 @@ use lru::LruCache;
 use tokio::sync::Mutex;
 use unigraph_core::ArrayGraph;
 use unigraph_core::ExploreCacheKey;
-use unigraph_core::GraphHandle;
-use unigraph_core::TraversalConfig;
 use unigraph_core::config_query::GraphQueryConfig;
-use unigraph_core::config_query::TraversalOverride;
 use unigraph_db::UnigraphDb;
 use unigraph_storage_core::TimelineID;
-
-const MAX_GQC_RECURSION_DEPTH: usize = 5;
 
 /// A cached graph — the value stored in each LRU slot.
 struct ArrayGraphCacheEntry {
@@ -117,7 +112,8 @@ impl GraphCache {
             }
 
             task.data("cache", "miss");
-            let graph = Arc::new(this.fetch_and_prepare_explored(&gqc, &task, 0).await?);
+            let (_, graph) = this.db.resolve_graph_query_config(&gqc, &task).await?;
+            let graph = Arc::new(graph);
             *guard = Some(ArrayGraphCacheEntry {
                 graph: Arc::clone(&graph),
             });
@@ -176,143 +172,6 @@ impl GraphCache {
 // ── Fetch helpers ───────────────────────────────────────────────
 
 impl GraphCache {
-    /// Fetch and prepare a graph according to the query config.
-    ///
-    /// 1. Resolve handle → if GQC key, fetch inner GQC for defaults (recursive).
-    /// 2. Fetch the actual graph from storage.
-    /// 3. Apply roots (gqc.roots > inner GQC roots > none).
-    /// 4. Apply traversal (gqc.traversal > inner GQC traversal > graph.traversal_config).
-    async fn fetch_and_prepare_explored(
-        &self,
-        gqc: &GraphQueryConfig,
-        task: &ll::Task,
-        depth: usize,
-    ) -> Result<ArrayGraph> {
-        anyhow::ensure!(
-            depth < MAX_GQC_RECURSION_DEPTH,
-            "GQC recursion depth exceeded (max {MAX_GQC_RECURSION_DEPTH})"
-        );
-
-        let (inner_gqc, ag_ser) = self.resolve_handle_and_fetch(gqc, task, depth).await?;
-        let roots = resolve_roots(gqc, &inner_gqc);
-        let traversal = self.resolve_traversal(gqc, &inner_gqc, task).await?;
-
-        let ag_ser = if roots.is_empty() {
-            ag_ser
-        } else {
-            let tmp = ag_ser.into_array_graph(task)?;
-            let root_idxs: Vec<_> = roots
-                .iter()
-                .filter_map(|name| tmp.data.node_names_ordered.name_to_idx_log(name.as_str()))
-                .collect();
-            tmp.get_reachable_subgraph_unconfigured(&root_idxs)?
-        };
-
-        let mut ag = ag_ser.into_array_graph(task)?;
-        apply_traversal(&mut ag, traversal.as_ref())?;
-        Ok(ag)
-    }
-
-    /// Resolve the handle: if it's a GQC key, fetch the inner GQC and use its
-    /// handle to fetch the graph. Otherwise fetch the graph directly.
-    ///
-    /// Returns `(Option<inner_gqc>, graph_serializable)`.
-    async fn resolve_handle_and_fetch(
-        &self,
-        gqc: &GraphQueryConfig,
-        task: &ll::Task,
-        depth: usize,
-    ) -> Result<(
-        Option<GraphQueryConfig>,
-        unigraph_core::ArrayGraphSerializable,
-    )> {
-        match &gqc.handle {
-            GraphHandle::GqcKey(gqc_key) => {
-                let inner_gqc = self
-                    .db
-                    .configs
-                    .fetch_graph_query_config(gqc_key, task)
-                    .await?;
-                let ag_ser = self
-                    .fetch_graph_for_handle(&inner_gqc.handle, task, depth + 1)
-                    .await?;
-                Ok((Some(inner_gqc), ag_ser))
-            }
-            handle => {
-                let ag_ser = self.fetch_graph_for_handle(handle, task, depth).await?;
-                Ok((None, ag_ser))
-            }
-        }
-    }
-
-    /// Fetch a graph by handle (timeline or graph key). Recurses if handle
-    /// points to another GQC.
-    async fn fetch_graph_for_handle(
-        &self,
-        handle: &GraphHandle,
-        task: &ll::Task,
-        depth: usize,
-    ) -> Result<unigraph_core::ArrayGraphSerializable> {
-        match handle {
-            GraphHandle::GqcKey(key) => {
-                anyhow::ensure!(
-                    depth < MAX_GQC_RECURSION_DEPTH,
-                    "GQC recursion depth exceeded (max {MAX_GQC_RECURSION_DEPTH})"
-                );
-                let inner = self.db.configs.fetch_graph_query_config(key, task).await?;
-                Box::pin(self.fetch_graph_for_handle(&inner.handle, task, depth + 1)).await
-            }
-            GraphHandle::GraphKey(key) => {
-                let ag_ser = self.db.graph.fetch(key, task).await?;
-                Ok(ag_ser)
-            }
-            GraphHandle::TimelineID(tid) => {
-                let (_key, ag_ser) = self.db.graph.fetch_latest(tid, task).await?;
-                Ok(ag_ser)
-            }
-        }
-    }
-
-    /// Resolve the traversal config to apply.
-    ///
-    /// Priority: gqc.traversal > inner GQC traversal > None (falls through to
-    /// graph.traversal_config in `apply_traversal`).
-    async fn resolve_traversal(
-        &self,
-        gqc: &GraphQueryConfig,
-        inner_gqc: &Option<GraphQueryConfig>,
-        task: &ll::Task,
-    ) -> Result<Option<TraversalConfig>> {
-        if let Some(traversal) = &gqc.traversal {
-            return self.resolve_traversal_override(traversal, task).await;
-        }
-        if let Some(inner) = inner_gqc {
-            if let Some(traversal) = &inner.traversal {
-                return self.resolve_traversal_override(traversal, task).await;
-            }
-        }
-        Ok(None)
-    }
-
-    /// Resolve a TraversalOverride to a full TraversalConfig.
-    async fn resolve_traversal_override(
-        &self,
-        traversal: &TraversalOverride,
-        task: &ll::Task,
-    ) -> Result<Option<TraversalConfig>> {
-        match traversal {
-            TraversalOverride::Inline(tc) => Ok(Some(tc.clone())),
-            TraversalOverride::Key(tvc_key) => {
-                let tc = self
-                    .db
-                    .configs
-                    .fetch_traversal_config(tvc_key, task)
-                    .await?;
-                Ok(Some(tc))
-            }
-        }
-    }
-
     /// Fetch the latest graph for a timeline — raw, no roots/traversal applied.
     async fn fetch_latest_graph(
         &self,
@@ -327,31 +186,6 @@ impl GraphCache {
         })
         .await
     }
-}
-
-// ── Resolution helpers ─────────────────────────────────────────
-
-/// Determine which roots to use.
-///
-/// Priority: gqc.roots > inner GQC roots > empty (no filtering).
-fn resolve_roots(gqc: &GraphQueryConfig, inner_gqc: &Option<GraphQueryConfig>) -> Vec<String> {
-    if let Some(roots) = &gqc.roots {
-        return roots.iter().cloned().collect();
-    }
-    if let Some(inner) = inner_gqc {
-        if let Some(roots) = &inner.roots {
-            return roots.iter().cloned().collect();
-        }
-    }
-    Vec::new()
-}
-
-fn apply_traversal(ag: &mut ArrayGraph, traversal: Option<&TraversalConfig>) -> Result<()> {
-    let tvc = traversal.or(ag.runtime.state.traversal_config.as_ref());
-    if let Some(tvc) = tvc {
-        ag.apply_traversal_config(tvc.clone())?;
-    }
-    Ok(())
 }
 
 // ── Generic LRU helpers ─────────────────────────────────────────

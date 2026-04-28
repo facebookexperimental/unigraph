@@ -130,6 +130,20 @@ impl Configs {
             .await
     }
 
+    /// Resolve a `TraversalOverride` to a full `TraversalConfig`.
+    ///
+    /// `Inline` configs are returned as-is. `Key` references are fetched from storage.
+    pub async fn resolve_traversal_override(
+        &self,
+        traversal: &TraversalOverride,
+        task: &ll::Task,
+    ) -> Result<TraversalConfig> {
+        match traversal {
+            TraversalOverride::Inline(tc) => Ok(tc.clone()),
+            TraversalOverride::Key(key) => self.fetch_traversal_config(key, task).await,
+        }
+    }
+
     /// Fetch a graph query config by key.
     ///
     /// Returns the traversal as `TraversalOverride::Key` (lazy — the caller

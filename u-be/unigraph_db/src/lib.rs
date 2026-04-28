@@ -26,6 +26,7 @@ mod frame_storage;
 pub mod graph_range;
 pub mod metric_history;
 mod namespaces;
+mod resolve;
 pub(crate) mod schemas;
 mod storage;
 
@@ -47,10 +48,15 @@ pub use namespaces::MetricHistory;
 pub use namespaces::Timelines;
 pub use namespaces::Utility;
 pub use storage::UnigraphStorage;
+use unigraph_core::ArrayGraphSerializable;
 use unigraph_core::ArrayGraphSerializablePackageConfig;
+use unigraph_core::GraphHandle;
+use unigraph_storage_core::GraphKey;
 use unigraph_storage_core::UnigraphBlobStorage;
 use unigraph_storage_core::UnigraphGraphConnection;
 use unigraph_storage_core::UnigraphGraphStorage;
+
+const MAX_GQC_RECURSION_DEPTH: usize = 5;
 
 /// High-level graph database — the single entry point for all storage operations.
 ///
@@ -141,5 +147,55 @@ impl UnigraphDb {
     /// namespaced API.
     pub async fn graph_conn_write(&self) -> Result<Box<dyn UnigraphGraphConnection + '_>> {
         self.ctx.storage.graph.conn_write().await
+    }
+
+    /// Resolve a [`GraphHandle`] to a concrete graph, recursively following GQC keys.
+    ///
+    /// - `GraphKey` — fetches the specific snapshot.
+    /// - `TimelineID` — fetches the latest graph.
+    /// - `GqcKey` — fetches the GQC config, then resolves its inner handle
+    ///   (which may itself be another GQC, up to [`MAX_GQC_RECURSION_DEPTH`]).
+    pub async fn fetch_graph_by_handle(
+        &self,
+        handle: &GraphHandle,
+        task: &ll::Task,
+    ) -> Result<(GraphKey, ArrayGraphSerializable)> {
+        self.fetch_graph_by_handle_recursive(handle, task, 0).await
+    }
+}
+
+// -- Recursive handle resolution (private) ------------------------------------
+
+impl UnigraphDb {
+    fn fetch_graph_by_handle_recursive<'a>(
+        &'a self,
+        handle: &'a GraphHandle,
+        task: &'a ll::Task,
+        depth: usize,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = Result<(GraphKey, ArrayGraphSerializable)>>
+                + Send
+                + 'a,
+        >,
+    > {
+        Box::pin(async move {
+            match handle {
+                GraphHandle::GraphKey(key) => {
+                    let ags = self.graph.fetch(key, task).await?;
+                    Ok((key.clone(), ags))
+                }
+                GraphHandle::TimelineID(tid) => self.graph.fetch_latest(tid, task).await,
+                GraphHandle::GqcKey(gqc_key) => {
+                    anyhow::ensure!(
+                        depth < MAX_GQC_RECURSION_DEPTH,
+                        "GQC recursion depth exceeded (max {MAX_GQC_RECURSION_DEPTH})"
+                    );
+                    let gqc = self.configs.fetch_graph_query_config(gqc_key, task).await?;
+                    self.fetch_graph_by_handle_recursive(&gqc.handle, task, depth + 1)
+                        .await
+                }
+            }
+        })
     }
 }
