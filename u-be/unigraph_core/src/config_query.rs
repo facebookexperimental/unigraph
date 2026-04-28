@@ -2,39 +2,94 @@
 
 //! Query configuration types for graph exploration.
 //!
-//! `GraphQueryConfig` bundles roots, traversal settings, and a graph handle
-//! into a single config for querying a graph.
+//! `GraphQueryConfig` bundles a graph handle, optional roots, and optional
+//! traversal override into a single config for querying a graph.
+//!
+//! Also contains `TraversalOverride` (inline or stored-key reference) and
+//! `ExploreCacheKey` (content-addressed LRU cache key).
 
 use std::collections::BTreeSet;
+use std::fmt;
 
+use serde::Deserialize;
+use serde::Serialize;
+
+use crate::config_key::TraversalConfigKey;
+use crate::graph_handle::GraphHandle;
 use crate::traversal::TraversalConfig;
 use crate::types::NodeName;
 
-/// Configuration for querying a graph — roots to start from, traversal rules,
-/// and which graph to query.
+/// Configuration for querying a graph — which graph to query, where to start,
+/// and how to traverse.
+///
+/// - `handle`: identifies the graph (timeline, snapshot, or saved GQC key)
+/// - `roots`: optional entry points override. `None` = use defaults,
+///   `Some(empty)` = explicitly empty roots (no entrypoints).
+/// - `traversal`: optional traversal override (inline config or stored key)
 #[derive(
     serde::Serialize,
     serde::Deserialize,
     Debug,
-    Default,
     Clone,
     PartialEq,
     typegen::TypeGen,
     unigraph_delta::Deltable
 )]
 pub struct GraphQueryConfig {
-    #[serde(skip_serializing_if = "BTreeSet::is_empty")]
+    pub handle: GraphHandle,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
-    pub roots: BTreeSet<NodeName>,
+    pub roots: Option<BTreeSet<NodeName>>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub traversal_config: Option<TraversalConfig>,
+    pub traversal: Option<TraversalOverride>,
+}
 
-    /// Graph target: timeline ID (`"my_timeline"`) for latest, or
-    /// `"my_timeline~123"` for a specific snapshot.
-    /// Uses the same format as `GraphKeyOrTimelineID`.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub handle: Option<String>,
+impl GraphQueryConfig {
+    /// Compute the content-addressed cache key for this query config.
+    pub fn cache_key(&self) -> ExploreCacheKey {
+        let json = serde_json::to_vec(self).expect("GraphQueryConfig serialization cannot fail");
+        let hash = xxhash_rust::xxh3::xxh3_64(&json);
+        ExploreCacheKey::from_hash(hash)
+    }
+}
+
+/// How to override the traversal config for an explored graph.
+#[derive(
+    Debug,
+    Clone,
+    Serialize,
+    Deserialize,
+    typegen::TypeGen,
+    PartialEq,
+    unigraph_delta::Deltable
+)]
+#[deltable(replace)]
+pub enum TraversalOverride {
+    /// Full inline traversal config.
+    Inline(TraversalConfig),
+    /// Reference to a stored traversal config by key.
+    Key(TraversalConfigKey),
+}
+
+/// Content-addressed cache key derived from a `GraphQueryConfig`.
+///
+/// Format: `"exp_{xxh3_64_hex}"` (e.g. `"exp_1a2b3c4d5e6f7890"`).
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ExploreCacheKey(String);
+
+impl ExploreCacheKey {
+    /// Create from a precomputed xxh3_64 hash.
+    pub fn from_hash(hash: u64) -> Self {
+        ExploreCacheKey(format!("exp_{hash:016x}"))
+    }
+}
+
+impl fmt::Display for ExploreCacheKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
 }
 
 #[cfg(test)]
@@ -43,16 +98,16 @@ mod tests {
 
     use super::*;
     use crate::traversal::Decision;
+    use crate::traversal::TraversalConfig;
+
+    fn test_handle() -> GraphHandle {
+        "my_timeline~42".parse().unwrap()
+    }
 
     /// Constructs two identical `GraphQueryConfig`s by inserting fields in
     /// different order, then asserts they produce the same serialized key.
-    ///
-    /// This guards against non-deterministic containers (e.g. HashMap) sneaking
-    /// into the type tree — if anyone replaces a BTreeMap/BTreeSet with a
-    /// HashMap/HashSet, this test will start flaking.
     #[test]
     fn identical_configs_produce_identical_serialized_keys() {
-        // Build config A: insert roots alphabetically
         let mut roots_a = BTreeSet::new();
         roots_a.insert("alpha".to_string());
         roots_a.insert("beta".to_string());
@@ -64,15 +119,14 @@ mod tests {
         force_nodes_a.insert("z".to_string(), Decision::include());
 
         let config_a = GraphQueryConfig {
-            roots: roots_a,
-            traversal_config: Some(TraversalConfig {
+            handle: test_handle(),
+            roots: Some(roots_a),
+            traversal: Some(TraversalOverride::Inline(TraversalConfig {
                 force_nodes: Some(force_nodes_a),
                 ..Default::default()
-            }),
-            handle: Some("my_timeline~42".to_string()),
+            })),
         };
 
-        // Build config B: insert roots in reverse order
         let mut roots_b = BTreeSet::new();
         roots_b.insert("gamma".to_string());
         roots_b.insert("alpha".to_string());
@@ -84,12 +138,12 @@ mod tests {
         force_nodes_b.insert("y".to_string(), Decision::exclude());
 
         let config_b = GraphQueryConfig {
-            roots: roots_b,
-            traversal_config: Some(TraversalConfig {
+            handle: test_handle(),
+            roots: Some(roots_b),
+            traversal: Some(TraversalOverride::Inline(TraversalConfig {
                 force_nodes: Some(force_nodes_b),
                 ..Default::default()
-            }),
-            handle: Some("my_timeline~42".to_string()),
+            })),
         };
 
         assert_eq!(config_a, config_b, "configs should be equal via PartialEq");
@@ -103,19 +157,21 @@ mod tests {
     }
 
     /// Deserializing the same JSON twice must produce configs with identical
-    /// serialized keys — this is the roundtrip that matters for LRU caches.
+    /// serialized keys.
     #[test]
     fn deserialized_configs_produce_identical_serialized_keys() {
         let json = r#"{
+            "handle": "my_timeline~42",
             "roots": ["gamma", "alpha", "beta"],
-            "traversal_config": {
-                "force_nodes": {
-                    "z": { "include": true },
-                    "x": { "include": true },
-                    "y": { "include": false }
+            "traversal": {
+                "Inline": {
+                    "force_nodes": {
+                        "z": { "include": true },
+                        "x": { "include": true },
+                        "y": { "include": false }
+                    }
                 }
-            },
-            "handle": "my_timeline~42"
+            }
         }"#;
 
         let config_1: GraphQueryConfig = serde_json::from_str(json).unwrap();
@@ -129,5 +185,51 @@ mod tests {
             key_1, key_2,
             "two deserialized copies of the same JSON must produce the same cache key"
         );
+    }
+
+    #[test]
+    fn cache_key_deterministic() {
+        let config = GraphQueryConfig {
+            handle: test_handle(),
+            roots: Some(BTreeSet::from(["a".to_string(), "b".to_string()])),
+            traversal: None,
+        };
+        assert_eq!(config.cache_key(), config.cache_key());
+    }
+
+    #[test]
+    fn different_handles_produce_different_cache_keys() {
+        let a = GraphQueryConfig {
+            handle: "timeline_a".parse().unwrap(),
+            roots: None,
+            traversal: None,
+        };
+        let b = GraphQueryConfig {
+            handle: "timeline_b".parse().unwrap(),
+            roots: None,
+            traversal: None,
+        };
+        assert_ne!(a.cache_key(), b.cache_key());
+    }
+
+    #[test]
+    fn roots_override_changes_cache_key() {
+        let base = GraphQueryConfig {
+            handle: test_handle(),
+            roots: None,
+            traversal: None,
+        };
+        let with_roots = GraphQueryConfig {
+            handle: test_handle(),
+            roots: Some(BTreeSet::from(["root_a".to_string()])),
+            traversal: None,
+        };
+        assert_ne!(base.cache_key(), with_roots.cache_key());
+    }
+
+    #[test]
+    fn explore_cache_key_format() {
+        let key = ExploreCacheKey::from_hash(0x1a2b3c4d5e6f7890);
+        assert_eq!(key.to_string(), "exp_1a2b3c4d5e6f7890");
     }
 }

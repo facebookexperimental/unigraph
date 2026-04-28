@@ -14,8 +14,9 @@ use unigraph_core::GraphSettings;
 use unigraph_core::MetricView;
 use unigraph_rpc::RpcExec;
 
-use crate::GraphHandle;
 use crate::Unigraph;
+use crate::graph_handle::GraphHandle;
+use crate::graph_handle::resolve_graph_handle;
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -66,7 +67,7 @@ impl RpcExec<Unigraph> for AboutGraphInput {
 
     async fn exec(self, ctx: &Unigraph, task: &ll::Task) -> Result<AboutGraphOutput> {
         let ttl = Duration::from_secs(5 * 60);
-        let ag = self.handle.resolve(ctx, task, ttl).await?;
+        let ag = resolve_graph_handle(&self.handle, ctx, task, ttl).await?;
         let handle_str = self.handle.to_string();
         tokio::task::spawn_blocking(move || build_about(&ag, &handle_str)).await?
     }

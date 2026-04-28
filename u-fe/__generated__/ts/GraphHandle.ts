@@ -5,7 +5,7 @@
  */
 
 
-// A parsed graph handle — resolves to a cached or fetched `ArrayGraph`.
+// A parsed graph handle — three ways to reference a graph.
 // 
 // Handles come in three forms:
 // - `gqc_{hash}` — GQC key (content-addressed config with embedded graph ref)

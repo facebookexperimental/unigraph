@@ -5,19 +5,20 @@
  */
 
 
-import type { TraversalConfig } from './TraversalConfig.ts';
+import type { GraphHandle } from './GraphHandle.ts';
+import type { TraversalOverride } from './TraversalOverride.ts';
 
 /**
- * Configuration for querying a graph — roots to start from, traversal rules,
- * and which graph to query.
+ * Configuration for querying a graph — which graph to query, where to start,
+ * and how to traverse.
+ * 
+ * - `handle`: identifies the graph (timeline, snapshot, or saved GQC key)
+ * - `roots`: optional entry points override. `None` = use defaults,
+ *   `Some(empty)` = explicitly empty roots (no entrypoints).
+ * - `traversal`: optional traversal override (inline config or stored key)
  */
 export interface GraphQueryConfig {
-  roots: string[];
-  traversal_config?: TraversalConfig | undefined;
-  /**
-   * Graph target: timeline ID (`"my_timeline"`) for latest, or
-   * `"my_timeline~123"` for a specific snapshot.
-   * Uses the same format as `GraphKeyOrTimelineID`.
-   */
-  handle?: string | undefined;
+  handle: GraphHandle;
+  roots?: string[] | undefined;
+  traversal?: TraversalOverride | undefined;
 }

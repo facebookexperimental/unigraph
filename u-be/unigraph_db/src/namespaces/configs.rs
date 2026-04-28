@@ -27,6 +27,7 @@ use unigraph_core::config_key::ConfigRow;
 use unigraph_core::config_key::GraphQueryConfigKey;
 use unigraph_core::config_key::TraversalConfigKey;
 use unigraph_core::config_query::GraphQueryConfig;
+use unigraph_core::config_query::TraversalOverride;
 use unigraph_core::types::NodeName;
 use unigraph_storage_core::UnigraphGraphConnection;
 use unigraph_timestamp::Timestamp;
@@ -44,15 +45,14 @@ use crate::context::UnigraphDbContext;
 /// Private to unigraph_db — callers only see GraphQueryConfig.
 #[derive(Serialize, Deserialize)]
 struct GraphQueryConfigStored {
-    #[serde(skip_serializing_if = "BTreeSet::is_empty")]
+    handle: String,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
-    roots: BTreeSet<NodeName>,
+    roots: Option<BTreeSet<NodeName>>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     traversal_config_key: Option<TraversalConfigKey>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    handle: Option<String>,
 }
 
 /// Handle for config operations.
@@ -102,41 +102,44 @@ impl Configs {
 
     /// Store a graph query config.
     ///
-    /// If `config.traversal_config` is `Some`, the TVC is stored first under its
-    /// own content-addressed key. The GQC blob stores only the TVC key reference.
+    /// If the traversal is `Inline`, the TVC is stored first under its own
+    /// content-addressed key. If it's already a `Key`, that key is used directly.
+    /// The GQC blob always stores only the TVC key reference.
     #[task(tags(l3))]
     pub async fn store_graph_query_config(
         &self,
         config: &GraphQueryConfig,
         task: &ll::Task,
     ) -> Result<GraphQueryConfigKey> {
-        // 1. Store TVC separately if present
-        let traversal_config_key = match &config.traversal_config {
-            Some(tvc) => Some(self.store_traversal_config(tvc, &task).await?),
+        let traversal_config_key = match &config.traversal {
+            Some(TraversalOverride::Inline(tvc)) => {
+                Some(self.store_traversal_config(tvc, &task).await?)
+            }
+            Some(TraversalOverride::Key(key)) => Some(key.clone()),
             None => None,
         };
 
-        // 2. Build stored form with TVC key reference
         let stored = GraphQueryConfigStored {
+            handle: config.handle.to_string(),
             roots: config.roots.clone(),
             traversal_config_key,
-            handle: config.handle.clone(),
         };
 
-        // 3. Store the compact stored form
         let prepared = prepare_config_blob(&stored)?;
         self.store_prepared(prepared, StoreGraphQueryConfig, &task)
             .await
     }
 
-    /// Fetch a graph query config by key, resolving the TVC reference.
+    /// Fetch a graph query config by key.
+    ///
+    /// Returns the traversal as `TraversalOverride::Key` (lazy — the caller
+    /// resolves the full TVC when needed).
     #[task(tags(l3))]
     pub async fn fetch_graph_query_config(
         &self,
         key: &GraphQueryConfigKey,
         task: &ll::Task,
     ) -> Result<GraphQueryConfig> {
-        // 1. Fetch the stored form
         let stored: GraphQueryConfigStored = {
             let mut conn = self.ctx.storage.graph.conn().await?;
             fetch_config(
@@ -149,17 +152,17 @@ impl Configs {
             .await?
         };
 
-        // 2. Resolve TVC if referenced
-        let traversal_config = match stored.traversal_config_key {
-            Some(tvc_key) => Some(self.fetch_traversal_config(&tvc_key, &task).await?),
-            None => None,
-        };
+        let handle = stored
+            .handle
+            .parse()
+            .map_err(|e| anyhow::anyhow!("invalid handle in stored GQC: {e}"))?;
 
-        // 3. Compose and return
+        let traversal = stored.traversal_config_key.map(TraversalOverride::Key);
+
         Ok(GraphQueryConfig {
+            handle,
             roots: stored.roots,
-            traversal_config,
-            handle: stored.handle,
+            traversal,
         })
     }
 }

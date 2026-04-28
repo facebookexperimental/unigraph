@@ -4,9 +4,9 @@
 //!
 //! `GraphCache` caches `Arc<ArrayGraph>` instances across two LRU caches:
 //!
-//! - **`explore`** — keyed by `ExploreCacheKey` (derived from `ExploreKey`). Stores
-//!   fully-prepared graphs (fetched, roots-filtered, traversal-applied). Used by
-//!   ExploreGraph RPC.
+//! - **`explore`** — keyed by `ExploreCacheKey` (derived from `GraphQueryConfig`).
+//!   Stores fully-prepared graphs (fetched, roots-filtered, traversal-applied).
+//!   Used by GraphQuery and ExploreGraph RPCs.
 //!
 //! - **`by_timeline_latest`** — keyed by `TimelineID`. Stores the latest raw graph
 //!   for a timeline (no roots/traversal). Used by SearchNodes RPC.
@@ -14,9 +14,9 @@
 //! Each entry carries its own TTL, set by the caller at fetch time.
 //!
 //! ```text
-//! get_explored(ExploreKey { handle, roots?, traversal? }, task, 5min)
+//! get_explored(GraphQueryConfig { handle, roots?, traversal? }, task, 5min)
 //!   ├─ cache hit   → Arc::clone(cached_graph)
-//!   └─ cache miss  → parse handle → fetch graph → apply roots → apply traversal
+//!   └─ cache miss  → resolve handle → fetch graph → apply roots → apply traversal
 //!                    → store entry with TTL → return Arc::clone
 //!
 //! get_latest_by_timeline("my-timeline", task, 60s)
@@ -35,15 +35,14 @@ use lru::LruCache;
 use tokio::sync::Mutex;
 use unigraph_core::ArrayGraph;
 use unigraph_core::ExploreCacheKey;
+use unigraph_core::GraphHandle;
 use unigraph_core::TraversalConfig;
-use unigraph_core::config_key::ConfigKeyLike;
-use unigraph_core::config_key::GraphQueryConfigKey;
 use unigraph_core::config_query::GraphQueryConfig;
-use unigraph_core::explore_key::ExploreKey;
-use unigraph_core::explore_key::TraversalOverride;
+use unigraph_core::config_query::TraversalOverride;
 use unigraph_db::UnigraphDb;
-use unigraph_storage_core::GraphKeyOrTimelineID;
 use unigraph_storage_core::TimelineID;
+
+const MAX_GQC_RECURSION_DEPTH: usize = 5;
 
 /// A cached graph — the value stored in each LRU slot.
 struct ArrayGraphCacheEntry {
@@ -56,8 +55,8 @@ type CacheSlot = Arc<Mutex<Option<ArrayGraphCacheEntry>>>;
 ///
 /// Two independent LRUs serve different access patterns:
 ///
-/// - `explore`: for interactive exploration — graph identity fixed by an
-///   `ExploreKey` (handle + optional roots/traversal overrides).
+/// - `explore`: for interactive exploration — graph identity fixed by a
+///   `GraphQueryConfig` (handle + optional roots/traversal overrides).
 /// - `by_timeline_latest`: for node search — caches the latest raw graph for a
 ///   timeline, avoids re-fetching on every keystroke.
 ///
@@ -89,24 +88,24 @@ impl GraphCache {
         }
     }
 
-    /// Retrieve a prepared `ArrayGraph` by explore key, fetching from storage on miss.
+    /// Retrieve a prepared `ArrayGraph` by query config, fetching from storage on miss.
     ///
     /// Resolution order:
-    /// 1. Parse handle → fetch the base graph (and optional GQC defaults).
-    /// 2. Roots: `explore_key.roots` > GQC roots > no filtering.
-    /// 3. Traversal: `explore_key.traversal` > GQC traversal > `graph.traversal_config`.
+    /// 1. Resolve handle → fetch the base graph (recursing into GQC if needed).
+    /// 2. Roots: `gqc.roots` > inner GQC roots > no filtering.
+    /// 3. Traversal: `gqc.traversal` > inner GQC traversal > `graph.traversal_config`.
     ///
     /// The returned graph has roots filtering and traversal config already applied.
     /// It is shared via `Arc` — all callers get the same immutable instance.
     pub async fn get_explored(
         &self,
-        key: &ExploreKey,
+        gqc: &GraphQueryConfig,
         task: &ll::Task,
         ttl: Duration,
     ) -> Result<Arc<ArrayGraph>> {
-        let cache_key = key.cache_key();
+        let cache_key = gqc.cache_key();
         let this = self.clone();
-        let key = key.clone();
+        let gqc = gqc.clone();
         task.spawn("get_explored", |task| async move {
             task.data("cache_key", cache_key.to_string());
             let slot = get_or_create_slot(&this.explore, &cache_key).await;
@@ -118,7 +117,7 @@ impl GraphCache {
             }
 
             task.data("cache", "miss");
-            let graph = Arc::new(this.fetch_and_prepare_explored(&key, &task).await?);
+            let graph = Arc::new(this.fetch_and_prepare_explored(&gqc, &task, 0).await?);
             *guard = Some(ArrayGraphCacheEntry {
                 graph: Arc::clone(&graph),
             });
@@ -177,20 +176,26 @@ impl GraphCache {
 // ── Fetch helpers ───────────────────────────────────────────────
 
 impl GraphCache {
-    /// Fetch and prepare a graph according to the explore key.
+    /// Fetch and prepare a graph according to the query config.
     ///
-    /// 1. Parse handle → if GQC key, fetch GQC for defaults.
+    /// 1. Resolve handle → if GQC key, fetch inner GQC for defaults (recursive).
     /// 2. Fetch the actual graph from storage.
-    /// 3. Apply roots (explore_key > GQC > none).
-    /// 4. Apply traversal (explore_key > GQC > graph.traversal_config).
+    /// 3. Apply roots (gqc.roots > inner GQC roots > none).
+    /// 4. Apply traversal (gqc.traversal > inner GQC traversal > graph.traversal_config).
     async fn fetch_and_prepare_explored(
         &self,
-        key: &ExploreKey,
+        gqc: &GraphQueryConfig,
         task: &ll::Task,
+        depth: usize,
     ) -> Result<ArrayGraph> {
-        let (gqc, ag_ser) = self.resolve_handle_and_fetch(key, task).await?;
-        let roots = resolve_roots(key, &gqc);
-        let traversal: Option<TraversalConfig> = self.resolve_traversal(key, &gqc, task).await?;
+        anyhow::ensure!(
+            depth < MAX_GQC_RECURSION_DEPTH,
+            "GQC recursion depth exceeded (max {MAX_GQC_RECURSION_DEPTH})"
+        );
+
+        let (inner_gqc, ag_ser) = self.resolve_handle_and_fetch(gqc, task, depth).await?;
+        let roots = resolve_roots(gqc, &inner_gqc);
+        let traversal = self.resolve_traversal(gqc, &inner_gqc, task).await?;
 
         let ag_ser = if roots.is_empty() {
             ag_ser
@@ -208,50 +213,96 @@ impl GraphCache {
         Ok(ag)
     }
 
-    /// Parse the handle, optionally fetch the GQC, and fetch the actual graph.
+    /// Resolve the handle: if it's a GQC key, fetch the inner GQC and use its
+    /// handle to fetch the graph. Otherwise fetch the graph directly.
     ///
-    /// Returns `(Option<GraphQueryConfig>, ArrayGraphSerializable)`.
+    /// Returns `(Option<inner_gqc>, graph_serializable)`.
     async fn resolve_handle_and_fetch(
         &self,
-        key: &ExploreKey,
+        gqc: &GraphQueryConfig,
         task: &ll::Task,
+        depth: usize,
     ) -> Result<(
         Option<GraphQueryConfig>,
         unigraph_core::ArrayGraphSerializable,
     )> {
-        if key.handle.starts_with(GraphQueryConfigKey::PREFIX) {
-            let gqc_key: GraphQueryConfigKey = key.handle.parse()?;
-            let gqc = self
-                .db
-                .configs
-                .fetch_graph_query_config(&gqc_key, task)
-                .await?;
-            let ag_ser = fetch_graph_for_handle(
-                &self.db,
-                gqc.handle.as_deref().context("GQC handle is required")?,
-                task,
-            )
-            .await?;
-            Ok((Some(gqc), ag_ser))
-        } else {
-            let ag_ser = fetch_graph_for_handle(&self.db, &key.handle, task).await?;
-            Ok((None, ag_ser))
+        match &gqc.handle {
+            GraphHandle::GqcKey(gqc_key) => {
+                let inner_gqc = self
+                    .db
+                    .configs
+                    .fetch_graph_query_config(gqc_key, task)
+                    .await?;
+                let ag_ser = self
+                    .fetch_graph_for_handle(&inner_gqc.handle, task, depth + 1)
+                    .await?;
+                Ok((Some(inner_gqc), ag_ser))
+            }
+            handle => {
+                let ag_ser = self.fetch_graph_for_handle(handle, task, depth).await?;
+                Ok((None, ag_ser))
+            }
+        }
+    }
+
+    /// Fetch a graph by handle (timeline or graph key). Recurses if handle
+    /// points to another GQC.
+    async fn fetch_graph_for_handle(
+        &self,
+        handle: &GraphHandle,
+        task: &ll::Task,
+        depth: usize,
+    ) -> Result<unigraph_core::ArrayGraphSerializable> {
+        match handle {
+            GraphHandle::GqcKey(key) => {
+                anyhow::ensure!(
+                    depth < MAX_GQC_RECURSION_DEPTH,
+                    "GQC recursion depth exceeded (max {MAX_GQC_RECURSION_DEPTH})"
+                );
+                let inner = self.db.configs.fetch_graph_query_config(key, task).await?;
+                Box::pin(self.fetch_graph_for_handle(&inner.handle, task, depth + 1)).await
+            }
+            GraphHandle::GraphKey(key) => {
+                let ag_ser = self.db.graph.fetch(key, task).await?;
+                Ok(ag_ser)
+            }
+            GraphHandle::TimelineID(tid) => {
+                let (_key, ag_ser) = self.db.graph.fetch_latest(tid, task).await?;
+                Ok(ag_ser)
+            }
         }
     }
 
     /// Resolve the traversal config to apply.
     ///
-    /// Priority: explore_key.traversal > GQC traversal > None (falls through to
+    /// Priority: gqc.traversal > inner GQC traversal > None (falls through to
     /// graph.traversal_config in `apply_traversal`).
     async fn resolve_traversal(
         &self,
-        key: &ExploreKey,
-        gqc: &Option<GraphQueryConfig>,
+        gqc: &GraphQueryConfig,
+        inner_gqc: &Option<GraphQueryConfig>,
         task: &ll::Task,
     ) -> Result<Option<TraversalConfig>> {
-        match &key.traversal {
-            Some(TraversalOverride::Inline(tc)) => Ok(Some(tc.clone())),
-            Some(TraversalOverride::Key(tvc_key)) => {
+        if let Some(traversal) = &gqc.traversal {
+            return self.resolve_traversal_override(traversal, task).await;
+        }
+        if let Some(inner) = inner_gqc {
+            if let Some(traversal) = &inner.traversal {
+                return self.resolve_traversal_override(traversal, task).await;
+            }
+        }
+        Ok(None)
+    }
+
+    /// Resolve a TraversalOverride to a full TraversalConfig.
+    async fn resolve_traversal_override(
+        &self,
+        traversal: &TraversalOverride,
+        task: &ll::Task,
+    ) -> Result<Option<TraversalConfig>> {
+        match traversal {
+            TraversalOverride::Inline(tc) => Ok(Some(tc.clone())),
+            TraversalOverride::Key(tvc_key) => {
                 let tc = self
                     .db
                     .configs
@@ -259,7 +310,6 @@ impl GraphCache {
                     .await?;
                 Ok(Some(tc))
             }
-            None => Ok(gqc.as_ref().and_then(|g| g.traversal_config.clone())),
         }
     }
 
@@ -283,14 +333,14 @@ impl GraphCache {
 
 /// Determine which roots to use.
 ///
-/// Priority: explore_key.roots > GQC roots > empty (no filtering).
-fn resolve_roots(key: &ExploreKey, gqc: &Option<GraphQueryConfig>) -> Vec<String> {
-    if let Some(roots) = &key.roots {
+/// Priority: gqc.roots > inner GQC roots > empty (no filtering).
+fn resolve_roots(gqc: &GraphQueryConfig, inner_gqc: &Option<GraphQueryConfig>) -> Vec<String> {
+    if let Some(roots) = &gqc.roots {
         return roots.iter().cloned().collect();
     }
-    if let Some(gqc) = gqc {
-        if !gqc.roots.is_empty() {
-            return gqc.roots.iter().cloned().collect();
+    if let Some(inner) = inner_gqc {
+        if let Some(roots) = &inner.roots {
+            return roots.iter().cloned().collect();
         }
     }
     Vec::new()
@@ -302,23 +352,6 @@ fn apply_traversal(ag: &mut ArrayGraph, traversal: Option<&TraversalConfig>) -> 
         ag.apply_traversal_config(tvc.clone())?;
     }
     Ok(())
-}
-
-/// Fetch a graph by parsing a handle string (timeline ID or graph key).
-async fn fetch_graph_for_handle(
-    db: &UnigraphDb,
-    handle: &str,
-    task: &ll::Task,
-) -> Result<unigraph_core::ArrayGraphSerializable> {
-    let parsed: GraphKeyOrTimelineID = handle.parse()?;
-    let (_key, ag_ser) = match parsed {
-        GraphKeyOrTimelineID::GraphKey(key) => {
-            let graph = db.graph.fetch(&key, task).await?;
-            (key, graph)
-        }
-        GraphKeyOrTimelineID::TimelineID(tid) => db.graph.fetch_latest(&tid, task).await?,
-    };
-    Ok(ag_ser)
 }
 
 // ── Generic LRU helpers ─────────────────────────────────────────

@@ -1,7 +1,6 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 use std::collections::BTreeMap;
-use std::collections::BTreeSet;
 use std::fmt::Write;
 use std::sync::Arc;
 use std::time::Duration;
@@ -16,14 +15,12 @@ use unigraph_core::DynamicEdgeInfo;
 /// Re-export MetricView for use in ExploreGraphInput.
 pub use unigraph_core::MetricView;
 use unigraph_core::NodeIDX;
-use unigraph_core::explore_key::ExploreKey;
-use unigraph_core::explore_key::TraversalOverride;
+use unigraph_core::config_query::GraphQueryConfig;
 use unigraph_core::graph_settings::GraphStructure;
 use unigraph_core::graph_settings::SortOrder;
 use unigraph_rpc::RpcExec;
 
 use crate::Unigraph;
-use crate::graph_handle::GraphHandle;
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -46,19 +43,8 @@ impl Default for ExploreGraphTarget {
 
 #[derive(Debug, Clone, Serialize, Deserialize, TypeGen)]
 pub struct ExploreGraphInput {
-    /// Graph handle: timeline ID (`"my_timeline"`), graph key
-    /// (`"my_timeline~123"`), or GQC key (`"gqc_abc123"`).
-    pub handle: GraphHandle,
-
-    /// Optional roots override. When set, overrides the handle's roots
-    /// (GQC roots or graph entry points).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub roots: Option<BTreeSet<String>>,
-
-    /// Optional traversal config override. When set, overrides the handle's
-    /// traversal config (GQC traversal or graph.traversal_config).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub traversal: Option<TraversalOverride>,
+    /// The query config: which graph, optional roots, optional traversal.
+    pub query: GraphQueryConfig,
 
     /// What to explore: entry points, a specific node, or all nodes.
     #[serde(default)]
@@ -142,16 +128,8 @@ impl RpcExec<Unigraph> for ExploreGraphInput {
     type Output = ExploreGraphOutput;
 
     async fn exec(self, ctx: &Unigraph, task: &ll::Task) -> Result<ExploreGraphOutput> {
-        let explore_key = ExploreKey {
-            handle: self.handle.to_string(),
-            roots: self.roots.clone(),
-            traversal: self.traversal.clone(),
-        };
         let ttl = Duration::from_mins(5);
-        let ag = ctx
-            .graph_cache
-            .get_explored(&explore_key, task, ttl)
-            .await?;
+        let ag = ctx.graph_cache.get_explored(&self.query, task, ttl).await?;
         let input = self;
         tokio::task::spawn_blocking(move || explore_node(ag, &input)).await?
     }

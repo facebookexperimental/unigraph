@@ -17,8 +17,9 @@ use unigraph_core::TraversalType;
 use unigraph_core::graph_settings::GraphStructure;
 use unigraph_rpc::RpcExec;
 
-use crate::GraphHandle;
 use crate::Unigraph;
+use crate::graph_handle::GraphHandle;
+use crate::graph_handle::resolve_graph_handle;
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -69,7 +70,7 @@ impl RpcExec<Unigraph> for FindPathInput {
 
     async fn exec(self, ctx: &Unigraph, task: &ll::Task) -> Result<FindPathOutput> {
         let ttl = Duration::from_secs(DEFAULT_TTL_SECS);
-        let ag = self.handle.resolve(ctx, task, ttl).await?;
+        let ag = resolve_graph_handle(&self.handle, ctx, task, ttl).await?;
         let input = self;
         task.spawn("find_path", |task| async move {
             tokio::task::spawn_blocking(move || find_path(ag, &input))

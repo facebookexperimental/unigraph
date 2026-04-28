@@ -650,9 +650,9 @@ fn parse_metrics(strs: &[&str]) -> Vec<MetricView> {
 
 async fn store_gqc(t: &TestApp, handle: &str) -> Result<GraphQueryConfigKey> {
     let gqc = GraphQueryConfig {
-        roots: Default::default(),
-        traversal_config: None,
-        handle: Some(handle.to_string()),
+        handle: handle.parse().unwrap(),
+        roots: None,
+        traversal: None,
     };
     let put = call_rpc!(
         t,
@@ -667,7 +667,7 @@ async fn store_gqc(t: &TestApp, handle: &str) -> Result<GraphQueryConfigKey> {
 // ── Input builder ───────────────────────────────────────────────
 
 struct Explore {
-    handle: GraphHandle,
+    query: GraphQueryConfig,
     target: ExploreGraphTarget,
     metrics: Option<Vec<MetricView>>,
     sort_by: Option<MetricView>,
@@ -680,7 +680,11 @@ struct Explore {
 impl Explore {
     fn new(gqc_key: GraphQueryConfigKey) -> Self {
         Self {
-            handle: GraphHandle::GqcKey(gqc_key),
+            query: GraphQueryConfig {
+                handle: GraphHandle::GqcKey(gqc_key),
+                roots: None,
+                traversal: None,
+            },
             target: ExploreGraphTarget::EntryPoints {},
             metrics: None,
             sort_by: None,
@@ -743,9 +747,7 @@ impl Explore {
 
     fn build(self) -> ExploreGraphInput {
         ExploreGraphInput {
-            handle: self.handle,
-            roots: None,
-            traversal: None,
+            query: self.query,
             target: self.target,
             graph_structure: self.graph_structure,
             metrics: self.metrics,

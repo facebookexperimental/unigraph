@@ -1,13 +1,11 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
+import { Suspense, useCallback, useMemo, useRef, type ReactNode } from "react";
 import {
-  Suspense,
-  use,
-  useCallback,
-  useMemo,
-  useRef,
-  type ReactNode,
-} from "react";
+  QueryClient,
+  QueryClientProvider,
+  useSuspenseQuery,
+} from "@tanstack/react-query";
 import { GraphLoadingAnimation } from "./components/GraphLoadingAnimation";
 import { Info, SlidersHorizontal, Waypoints } from "lucide-react";
 import {
@@ -138,11 +136,28 @@ import TraversalConfigEditorPanel from "./sidebar_panels/TraversalConfigEditorPa
 import GraphTreeTable from "./tree_table/GraphTreeTable";
 import type { NodeIDX } from "./types";
 
+// Graphs are huge (tens of MB) — never auto-refetch or garbage-collect.
+// Self-contained inside Explorer so UMD consumers don't need their own provider.
+const explorerQueryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: Infinity,
+      gcTime: Infinity,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+      refetchOnMount: false,
+      retry: false,
+    },
+  },
+});
+
 export function Explorer(props: ExplorerProps) {
   return (
-    <Suspense fallback={<GraphLoadingAnimation />}>
-      <ExplorerFetcher {...props} />
-    </Suspense>
+    <QueryClientProvider client={explorerQueryClient}>
+      <Suspense fallback={<GraphLoadingAnimation />}>
+        <ExplorerFetcher {...props} />
+      </Suspense>
+    </QueryClientProvider>
   );
 }
 
@@ -152,7 +167,20 @@ export function Explorer(props: ExplorerProps) {
 
 function ExplorerFetcher(props: ExplorerProps) {
   const rpc = useRpc();
-  const result = use(getOrFetchGraphSource(rpc, props.source));
+  // Track source by reference, not by value — source can contain 1MB+ traversal
+  // configs and TanStack Query JSON.stringifies the entire queryKey every render.
+  // Instead we use a cheap generation counter that bumps on reference change.
+  const sourceRef = useRef(props.source);
+  const generationRef = useRef(0);
+  if (sourceRef.current !== props.source) {
+    sourceRef.current = props.source;
+    generationRef.current += 1;
+  }
+
+  const { data: result } = useSuspenseQuery({
+    queryKey: ["graphSource", generationRef.current],
+    queryFn: () => fetchGraphSource(rpc, props.source),
+  });
 
   const baseGqcLJson = useMemo(
     () =>
@@ -427,8 +455,12 @@ function useResolvedSide(
       return [null, null];
     }
     const currentGqc = applyDelta(resolvedBase, gqcDelta);
+    const inlineTvc =
+      currentGqc.traversal != null && "Inline" in currentGqc.traversal
+        ? (currentGqc.traversal.Inline as TraversalConfig)
+        : null;
     const tvc: TraversalConfig =
-      currentGqc.traversal_config ?? nativeGraphNoTVC.getTraversalConfig();
+      inlineTvc ?? nativeGraphNoTVC.getTraversalConfig();
     return [tvc, nativeGraphNoTVC.getApplyTraversalConfig(tvc)];
   }, [resolvedBase, gqcDelta, nativeGraphNoTVC]);
 
@@ -439,7 +471,7 @@ function useResolvedSide(
       }
       const modified: GraphQueryConfig = {
         ...resolvedBase,
-        traversal_config: tvc,
+        traversal: { Inline: tvc },
       };
       const delta = derive_gqc_delta(
         JSON.stringify(resolvedBase),
@@ -462,8 +494,8 @@ function resolveBaseGqc(
   }
   // Local mode: construct a base GQC from graph defaults
   return {
-    roots: [],
-    traversal_config: nativeGraph.getTraversalConfig(),
+    handle: "local",
+    traversal: { Inline: nativeGraph.getTraversalConfig() },
   };
 }
 
@@ -515,27 +547,6 @@ interface FetchResult {
   baseGqcR: GraphQueryConfig | null;
 }
 
-// Promise cache keyed by source — survives across re-renders and suspension
-// retries so that `use()` always sees the same promise for the same source.
-const fetchPromiseCache = new Map<string, Promise<FetchResult>>();
-
-function getOrFetchGraphSource(
-  rpc: UnigraphRpc,
-  source: ExplorerGraphSource,
-): Promise<FetchResult> {
-  const key = JSON.stringify(source);
-  let promise = fetchPromiseCache.get(key);
-  if (promise != null) {
-    return promise;
-  }
-  promise = fetchGraphSource(rpc, source).catch((e) => {
-    fetchPromiseCache.delete(key);
-    throw e;
-  });
-  fetchPromiseCache.set(key, promise);
-  return promise;
-}
-
 async function fetchGraphSource(
   rpc: UnigraphRpc,
   source: ExplorerGraphSource,
@@ -573,27 +584,15 @@ function graphQueryOutputToInputGraph(
   };
 }
 
-function resolveTraversalConfig(
-  traversal: TraversalOverride | undefined,
-): TraversalConfig | undefined {
-  if (traversal == null) return undefined;
-  if ("Inline" in traversal) return traversal.Inline;
-  if ("Key" in traversal) return undefined;
-  return undefined;
-}
-
 async function fetchHandleGraph(
   rpc: UnigraphRpc,
   gh: ExplorerGraphHandle,
 ): Promise<GraphQueryOutput> {
-  if (gh.handle.startsWith("gqc_")) {
-    return rpc.call("GraphQuery", { graph_query_config_key: gh.handle });
-  }
   return rpc.call("GraphQuery", {
-    graph_query_config: {
-      roots: gh.roots ?? [],
+    query: {
       handle: gh.handle,
-      traversal_config: resolveTraversalConfig(gh.traversal),
+      roots: gh.roots,
+      traversal: gh.traversal,
     },
   });
 }
