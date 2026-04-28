@@ -7,7 +7,7 @@
 
 use anyhow::Result;
 use unigraph_db::UnigraphDb;
-use unigraph_rpc::RpcExec;
+pub use unigraph_rpc::RpcExec;
 
 mod graph_cache;
 mod graph_handle;

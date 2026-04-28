@@ -4,6 +4,7 @@ use clap::Parser;
 use clap::Subcommand;
 use unigraph_cli::UnigraphCLIContext;
 use unigraph_cli::UnigraphCLISubcommand;
+use unigraph_cli::graph::GraphExplore;
 use unigraph_cli::graph::GraphGet;
 use unigraph_cli::graph::GraphGetError;
 use unigraph_cli::graph::GraphPut;
@@ -19,6 +20,7 @@ pub enum GraphCommands {
     Get(GraphGet),
     Put(GraphPut),
     GetError(GraphGetError),
+    Explore(GraphExplore),
 }
 
 impl UnigraphCLISubcommand for Graph {
@@ -27,6 +29,7 @@ impl UnigraphCLISubcommand for Graph {
             GraphCommands::Get(cmd) => cmd.run(ctx, task).await,
             GraphCommands::Put(cmd) => cmd.run(ctx, task).await,
             GraphCommands::GetError(cmd) => cmd.run(ctx, task).await,
+            GraphCommands::Explore(cmd) => cmd.run(ctx, task).await,
         }
     }
 }
