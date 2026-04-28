@@ -47,6 +47,21 @@ pub struct MapGraph {
     pub properties: BTreeMap<PropertyName, PropertyValue>,
 }
 
+/// Large MapGraphs can take tens of seconds to deallocate due to the
+/// deeply nested BTreeMap<String, GraphNode> structure. Moving the heavy
+/// fields to a background thread keeps the caller's hot path fast, and on
+/// process exit the OS reclaims everything without running destructors.
+///
+/// See: https://abrams.cc/rust-dropping-things-in-another-thread
+impl Drop for MapGraph {
+    fn drop(&mut self) {
+        let nodes = std::mem::take(&mut self.nodes);
+        if nodes.len() > 1000 {
+            std::thread::spawn(move || drop(nodes));
+        }
+    }
+}
+
 #[derive(
     serde::Deserialize,
     serde::Serialize,

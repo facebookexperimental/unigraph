@@ -30,6 +30,17 @@ impl Frames {
         conn.select_frames(query, &task).await
     }
 
+    /// Select frames using the analytics connection (dedicated pool / longer timeouts).
+    #[task(tags(l3))]
+    pub async fn select_analytics(
+        &self,
+        query: &FrameQuery,
+        task: &ll::Task,
+    ) -> Result<Vec<FrameRow>> {
+        let mut conn = self.ctx.storage.graph.conn_analytics().await?;
+        conn.select_frames(query, &task).await
+    }
+
     /// Fetch a single frame by graph key.
     ///
     /// - `with_data: false` → fast metadata-only read
