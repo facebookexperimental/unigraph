@@ -31,7 +31,8 @@ type NodeName = String;
     Clone,
     PartialEq,
     Debug,
-    unigraph_delta::Deltable
+    unigraph_delta::Deltable,
+    typegen::TypeGen
 )]
 pub struct MapGraph {
     pub nodes: BTreeMap<NodeName, GraphNode>,
