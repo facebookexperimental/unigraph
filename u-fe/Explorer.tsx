@@ -167,18 +167,9 @@ export function Explorer(props: ExplorerProps) {
 
 function ExplorerFetcher(props: ExplorerProps) {
   const rpc = useRpc();
-  // Track source by reference, not by value — source can contain 1MB+ traversal
-  // configs and TanStack Query JSON.stringifies the entire queryKey every render.
-  // Instead we use a cheap generation counter that bumps on reference change.
-  const sourceRef = useRef(props.source);
-  const generationRef = useRef(0);
-  if (sourceRef.current !== props.source) {
-    sourceRef.current = props.source;
-    generationRef.current += 1;
-  }
 
   const { data: result } = useSuspenseQuery({
-    queryKey: ["graphSource", generationRef.current],
+    queryKey: ["graphSource", props.source],
     queryFn: () => fetchGraphSource(rpc, props.source),
   });
 
@@ -211,6 +202,7 @@ function ExplorerFetcher(props: ExplorerProps) {
 // ---------------------------------------------------------------------------
 
 function ExplorerImpl(props: {
+  source: ExplorerGraphSource;
   graphs: ExplorerComponentInputGraphs;
   config: ExplorerConfig;
   home_href?: string | undefined;
@@ -218,6 +210,7 @@ function ExplorerImpl(props: {
   hidden_panels?: BuiltinSidebarPanel[];
 }) {
   const {
+    source,
     graphs: rawGraphs,
     config,
     home_href,
@@ -325,7 +318,11 @@ function ExplorerImpl(props: {
                       setSettings={setSettingsCb}
                     >
                       <SelectedPathContextProvider syncToURL={true}>
-                        <Page homeHref={home_href} panels={resolvedPanels} />
+                        <Page
+                          homeHref={home_href}
+                          panels={resolvedPanels}
+                          source={source}
+                        />
                       </SelectedPathContextProvider>
                     </GraphSettingsContextProvider>
                   </SelectedNodesContextProvider>
@@ -342,9 +339,11 @@ function ExplorerImpl(props: {
 function Page({
   homeHref,
   panels,
+  source,
 }: {
   homeHref?: string;
   panels: ResolvedPanel[];
+  source: ExplorerGraphSource;
 }) {
   const [nativeGraphL, nativeGraphR] = useNativeGraphs();
   const [settings] = useGraphSettings();
@@ -394,6 +393,7 @@ function Page({
         selectedPanelTab={selectedSidebarPanel}
         homeHref={homeHref}
         panels={panels}
+        source={source}
       />
       {panelTab}
       <div className="flex flex-col h-full grow-1">

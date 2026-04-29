@@ -38,38 +38,42 @@ impl Unigraph {
         req: UnigraphRequest,
         task: &ll::Task,
     ) -> Result<UnigraphResponse> {
-        match req {
-            UnigraphRequest::PutConfigs(input) => {
-                Ok(UnigraphResponse::PutConfigs(input.exec(self, task).await?))
+        let task_name = format!("exec_rpc.{}", req.variant_name());
+        task.spawn(&task_name, |task| async move {
+            match req {
+                UnigraphRequest::PutConfigs(input) => {
+                    Ok(UnigraphResponse::PutConfigs(input.exec(self, &task).await?))
+                }
+                UnigraphRequest::GetConfigs(input) => {
+                    Ok(UnigraphResponse::GetConfigs(input.exec(self, &task).await?))
+                }
+                UnigraphRequest::GraphQuery(input) => {
+                    Ok(UnigraphResponse::GraphQuery(input.exec(self, &task).await?))
+                }
+                UnigraphRequest::ListTimelines(input) => Ok(UnigraphResponse::ListTimelines(
+                    input.exec(self, &task).await?,
+                )),
+                UnigraphRequest::SelectFrames(input) => Ok(UnigraphResponse::SelectFrames(
+                    input.exec(self, &task).await?,
+                )),
+                UnigraphRequest::ExploreGraph(input) => Ok(UnigraphResponse::ExploreGraph(
+                    input.exec(self, &task).await?,
+                )),
+                UnigraphRequest::FindAncestors(input) => Ok(UnigraphResponse::FindAncestors(
+                    input.exec(self, &task).await?,
+                )),
+                UnigraphRequest::FindPath(input) => {
+                    Ok(UnigraphResponse::FindPath(input.exec(self, &task).await?))
+                }
+                UnigraphRequest::SearchNodes(input) => Ok(UnigraphResponse::SearchNodes(
+                    input.exec(self, &task).await?,
+                )),
+                UnigraphRequest::AboutGraph(input) => {
+                    Ok(UnigraphResponse::AboutGraph(input.exec(self, &task).await?))
+                }
             }
-            UnigraphRequest::GetConfigs(input) => {
-                Ok(UnigraphResponse::GetConfigs(input.exec(self, task).await?))
-            }
-            UnigraphRequest::GraphQuery(input) => {
-                Ok(UnigraphResponse::GraphQuery(input.exec(self, task).await?))
-            }
-            UnigraphRequest::ListTimelines(input) => Ok(UnigraphResponse::ListTimelines(
-                input.exec(self, task).await?,
-            )),
-            UnigraphRequest::SelectFrames(input) => Ok(UnigraphResponse::SelectFrames(
-                input.exec(self, task).await?,
-            )),
-            UnigraphRequest::ExploreGraph(input) => Ok(UnigraphResponse::ExploreGraph(
-                input.exec(self, task).await?,
-            )),
-            UnigraphRequest::FindAncestors(input) => Ok(UnigraphResponse::FindAncestors(
-                input.exec(self, task).await?,
-            )),
-            UnigraphRequest::FindPath(input) => {
-                Ok(UnigraphResponse::FindPath(input.exec(self, task).await?))
-            }
-            UnigraphRequest::SearchNodes(input) => {
-                Ok(UnigraphResponse::SearchNodes(input.exec(self, task).await?))
-            }
-            UnigraphRequest::AboutGraph(input) => {
-                Ok(UnigraphResponse::AboutGraph(input.exec(self, task).await?))
-            }
-        }
+        })
+        .await
     }
 }
 

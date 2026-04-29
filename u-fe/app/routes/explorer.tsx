@@ -1,6 +1,6 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { useParams, useSearchParams } from "react-router";
 import ErrorBoundary from "../../components/ErrorBoundary";
 import { Explorer, type ExplorerGraphSource } from "../../Explorer";
@@ -9,18 +9,24 @@ const QUERY_PARAM_GQC_DELTA_L = "gqc_deltaL";
 const QUERY_PARAM_GQC_DELTA_R = "gqc_deltaR";
 const QUERY_PARAM_GRAPH_SETTINGS = "graph_settings";
 
+const LOCAL_SOURCE: ExplorerGraphSource = { type: "local" };
+
 export default function ExplorerRoute() {
   const { handleR, handleL } = useParams();
   const isLocal = handleR == null;
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const source: ExplorerGraphSource = isLocal
-    ? { type: "local" }
-    : {
-        type: "handle",
-        right: { handle: handleR },
-        left: handleL != null ? { handle: handleL } : undefined,
-      };
+  const source: ExplorerGraphSource = useMemo(
+    () =>
+      isLocal
+        ? LOCAL_SOURCE
+        : {
+            type: "handle",
+            right: { handle: handleR },
+            left: handleL != null ? { handle: handleL } : undefined,
+          },
+    [isLocal, handleR, handleL],
+  );
 
   const gqcDeltaL = searchParams.get(QUERY_PARAM_GQC_DELTA_L) ?? undefined;
   const gqcDeltaR = searchParams.get(QUERY_PARAM_GQC_DELTA_R) ?? undefined;

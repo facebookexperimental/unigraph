@@ -1,23 +1,26 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 import { Home, Wrench } from "lucide-react";
-import type { PanelTabPlugin } from "./Explorer";
+import type { ExplorerGraphSource, PanelTabPlugin } from "./Explorer";
 import type { SidebarPanel } from "./__generated__/ts/SidebarPanel";
 import UTooltip from "./components/UTooltip";
 import { Button } from "./components/ui/button";
 import { useDebugMode } from "./context/DebugModeContext";
 import { useGraphSettings } from "./context/GraphSettingsContext";
 import { useTwinGraph } from "./context/NativeGraphContext";
+import CopyGqcKeyButton from "./sidebar_panels/CopyGqcKeyButton";
 import TraversalConfigInspector from "./sidebar_panels/TraversalConfigInspector";
 
 export default function Sidebar({
   selectedPanelTab,
   homeHref,
   panels,
+  source,
 }: {
   selectedPanelTab: string;
   homeHref?: string;
   panels: PanelTabPlugin[];
+  source: ExplorerGraphSource;
 }) {
   const [debugMode, setDebugMode] = useDebugMode();
   const tg = useTwinGraph();
@@ -46,6 +49,9 @@ export default function Sidebar({
           </UTooltip>
         ))}
         {debugMode && <TraversalConfigInspector />}
+        {debugMode && source.type === "handle" && (
+          <CopyGqcKeyButton source={source} />
+        )}
       </div>
       <UTooltip tooltip="Toggle debug mode that shows additional info">
         <Button
