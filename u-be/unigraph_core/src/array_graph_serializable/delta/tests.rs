@@ -1882,3 +1882,175 @@ fn test_traversal_config_delta_comprehensive() -> Result<()> {
 
     Ok(())
 }
+
+// ---------------------------------------------------------------------------
+// Bug regression: dynamic edge branch targets dropped by remap
+// ---------------------------------------------------------------------------
+
+/// Removing a node that is a dynamic edge branch target must not crash
+/// delta reconstruction. The remap drops the target from the branch set
+/// (since the node left the final namespace), but the delta still says
+/// "remove that name from the branch." Without a pre-pass that re-inserts
+/// the removed name, `BTreeSet::apply_delta` fails with
+/// "removed item not found in set".
+#[test]
+fn test_remove_node_that_is_dynamic_edge_branch_target() -> Result<()> {
+    let base = make_graph(
+        r#"{
+        "nodes": {
+            "A": {
+                "edges_dynamic": {
+                    "platform": {
+                        "edge_1": {
+                            "branches": { "main": ["B", "C"] }
+                        }
+                    }
+                }
+            },
+            "B": {},
+            "C": {}
+        }
+    }"#,
+    )?;
+
+    // Remove C — A's dynamic edge branch "main" loses target C.
+    let target = make_graph(
+        r#"{
+        "nodes": {
+            "A": {
+                "edges_dynamic": {
+                    "platform": {
+                        "edge_1": {
+                            "branches": { "main": ["B"] }
+                        }
+                    }
+                }
+            },
+            "B": {}
+        }
+    }"#,
+    )?;
+
+    let delta = derive_delta(&base, &target)?;
+    let result = apply_delta(base, &delta)?;
+    assert_equal!(format_graph(&result), format_graph(&target));
+    Ok(())
+}
+
+/// Same scenario but via `apply_deltas` with multiple deltas — a node
+/// removed in a later delta that is a branch target in the base.
+#[test]
+fn test_multi_delta_remove_dynamic_edge_branch_target() -> Result<()> {
+    let g0 = make_graph(
+        r#"{
+        "nodes": {
+            "A": {
+                "edges_dynamic": {
+                    "platform": {
+                        "edge_1": {
+                            "branches": { "main": ["B", "C"], "fallback": ["D"] }
+                        }
+                    }
+                }
+            },
+            "B": {},
+            "C": {},
+            "D": {}
+        }
+    }"#,
+    )?;
+
+    // g1: change fallback branch targets
+    let g1 = make_graph(
+        r#"{
+        "nodes": {
+            "A": {
+                "edges_dynamic": {
+                    "platform": {
+                        "edge_1": {
+                            "branches": { "main": ["B", "C"], "fallback": ["B"] }
+                        }
+                    }
+                }
+            },
+            "B": {},
+            "C": {},
+            "D": {}
+        }
+    }"#,
+    )?;
+
+    // g2: remove C entirely — "main" branch loses C target
+    let g2 = make_graph(
+        r#"{
+        "nodes": {
+            "A": {
+                "edges_dynamic": {
+                    "platform": {
+                        "edge_1": {
+                            "branches": { "main": ["B"], "fallback": ["B"] }
+                        }
+                    }
+                }
+            },
+            "B": {},
+            "D": {}
+        }
+    }"#,
+    )?;
+
+    let d1 = derive_delta(&g0, &g1)?;
+    let d2 = derive_delta(&g1, &g2)?;
+
+    let result = apply_deltas(g0, &[d1, d2])?;
+    assert_equal!(format_graph(&result), format_graph(&g2));
+    Ok(())
+}
+
+/// When a changed dynamic edge within an existing type key introduces edge
+/// targets to nodes not in the base, those targets must be included in the
+/// final node set — otherwise they are silently dropped during name→idx
+/// conversion.
+#[test]
+fn test_changed_dynamic_edge_new_target_not_in_base() -> Result<()> {
+    let base = make_graph(
+        r#"{
+        "nodes": {
+            "A": {
+                "edges_dynamic": {
+                    "platform": {
+                        "edge_1": {
+                            "branches": { "main": ["B"] }
+                        }
+                    }
+                }
+            },
+            "B": {}
+        }
+    }"#,
+    )?;
+
+    // Add node C and point the existing edge's branch at it.
+    let target = make_graph(
+        r#"{
+        "nodes": {
+            "A": {
+                "edges_dynamic": {
+                    "platform": {
+                        "edge_1": {
+                            "branches": { "main": ["B", "C"] }
+                        }
+                    }
+                }
+            },
+            "B": {},
+            "C": {}
+        }
+    }"#,
+    )?;
+
+    let delta = derive_delta(&base, &target)?;
+    let result = apply_delta(base, &delta)?;
+    assert_equal!(format_graph(&result), format_graph(&target));
+    Ok(())
+}

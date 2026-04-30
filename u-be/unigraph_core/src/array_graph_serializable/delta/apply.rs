@@ -301,6 +301,29 @@ fn collect_edge_target_names_into(
                     }
                 }
             }
+            for inner_delta in map_delta.changed.values() {
+                for edge in inner_delta.added.values() {
+                    for branch_names in edge.branches.values() {
+                        for name in branch_names {
+                            names.insert(name.clone());
+                        }
+                    }
+                }
+                for edge_delta in inner_delta.changed.values() {
+                    if let Some(ref branches_delta) = edge_delta.branches {
+                        for branch_targets in branches_delta.added.values() {
+                            for name in branch_targets {
+                                names.insert(name.clone());
+                            }
+                        }
+                        for branch_set_delta in branches_delta.changed.values() {
+                            for name in &branch_set_delta.added {
+                                names.insert(name.clone());
+                            }
+                        }
+                    }
+                }
+            }
         }
         if let Some(OptionDelta::Set(ref edges)) = node_delta.edges_dynamic {
             for type_map in edges.values() {
@@ -644,6 +667,30 @@ fn apply_graph_node_delta(
                     let inner_map = serialized.entry(type_key.clone()).or_default();
                     for k in inner_delta.changed.keys().chain(inner_delta.removed.iter()) {
                         inner_map.entry(k.clone()).or_default();
+                    }
+
+                    // Ensure DynamicEdge branch keys and removed branch targets
+                    // exist. Remap may drop edge targets whose nodes were removed
+                    // from the graph, but the delta still references them.
+                    for (edge_name, edge_delta) in &inner_delta.changed {
+                        if let Some(edge) = inner_map.get_mut(edge_name) {
+                            if let Some(ref branches_delta) = edge_delta.branches {
+                                for k in branches_delta
+                                    .changed
+                                    .keys()
+                                    .chain(branches_delta.removed.iter())
+                                {
+                                    edge.branches.entry(k.clone()).or_default();
+                                }
+                                for (branch_name, branch_set_delta) in &branches_delta.changed {
+                                    if let Some(branch_set) = edge.branches.get_mut(branch_name) {
+                                        for name in &branch_set_delta.removed {
+                                            branch_set.insert(name.clone());
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
 
