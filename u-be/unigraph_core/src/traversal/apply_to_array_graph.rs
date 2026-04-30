@@ -270,6 +270,18 @@ fn match_label_predicates(
     Ok(())
 }
 
+/// Applies force_dynamic config to a dynamic edge.
+///
+/// Resolution for an edge with type_key + edge_name + branch:
+///
+///   1. Look up edge-specific override by (type_key, edge_name)
+///   2. If the override has `branches` only (no `decision`) → apply the filter
+///      to all branches (listed or not). This is the simple case.
+///   3. If the override has BOTH `branches` and `decision` → apply the filter
+///      only to branches explicitly listed in it. Unlisted branches (new/unknown
+///      ones added after the TVC was built) fall back to `decision`.
+///   4. If no override matched → fall back to type-level `default_branches`
+///   5. If nothing matched → edge stays included (default)
 fn match_dynamic_edges(
     force_dynamic: &BTreeMap<DynamicTypeKey, DynamicTypeConfig>,
     _parent_idx: crate::NodeIDX,
@@ -285,20 +297,20 @@ fn match_dynamic_edges(
     }) = metadata
     {
         if let Some(type_config) = force_dynamic.get(type_key) {
-            // Check edge-specific override first
             if let Some(overrides) = &type_config.overrides {
                 if let Some(edge_override) = overrides.get(edge_name) {
+                    if let Some(branches) = &edge_override.branches {
+                        if edge_override.decision.is_none() || branch_is_listed(branch, branches) {
+                            apply_branch_filter(edge, branch, branches, indexed_messages)?;
+                            return Ok(());
+                        }
+                    }
                     if let Some(decision) = &edge_override.decision {
                         apply_dynamic_decision(edge, decision, indexed_messages)?;
                         return Ok(());
                     }
-                    if let Some(branches) = &edge_override.branches {
-                        apply_branch_filter(edge, branch, branches, indexed_messages)?;
-                        return Ok(());
-                    }
                 }
             }
-            // Fall through to type-level default_branches
             if let Some(default_branches) = &type_config.default_branches {
                 apply_branch_filter(edge, branch, default_branches, indexed_messages)?;
             }
@@ -306,6 +318,14 @@ fn match_dynamic_edges(
     }
 
     Ok(())
+}
+
+fn branch_is_listed(branch: &str, branches: &DefaultBranches) -> bool {
+    match branches {
+        DefaultBranches::Include(list) | DefaultBranches::Exclude(list) => {
+            list.iter().any(|b| b == branch)
+        }
+    }
 }
 
 fn apply_dynamic_decision(

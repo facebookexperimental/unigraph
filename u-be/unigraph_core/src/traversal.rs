@@ -109,9 +109,14 @@ pub struct TraversalConfigIDX {
     unigraph_delta::Deltable
 )]
 #[deltable(replace)]
+/// Config for all dynamic edges of a given type (e.g. "ddd", "rc:gk").
+///
+/// Resolution order: edge-specific override (branches → decision) → default_branches.
 pub struct DynamicTypeConfig {
+    /// Branch filter applied to edges that have no matching override.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default_branches: Option<DefaultBranches>,
+    /// Per-edge-name overrides, checked before default_branches.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub overrides: Option<BTreeMap<DynamicEdgeName, DynamicEdgeOverride>>,
 }
@@ -139,9 +144,21 @@ pub enum DefaultBranches {
     unigraph_delta::Deltable
 )]
 #[deltable(replace)]
+/// Override for a specific dynamic edge name.
+///
+/// `branches` handles branches that are explicitly listed in the filter.
+/// `decision` is a fallback for branches NOT listed — e.g. a new branch
+/// appears in a newer graph that the TVC didn't know about when it was built.
+///
+/// Example: override has `branches: Include(["A", "B"])` and `decision: include`.
+///   - Branch "A" → listed → included (by filter)
+///   - Branch "B" → listed → included (by filter)
+///   - Branch "X" (new, unknown) → not listed → falls back to `decision` → included
 pub struct DynamicEdgeOverride {
+    /// Per-branch filter. Only applies to branches explicitly listed in it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub branches: Option<DefaultBranches>,
+    /// Fallback for branches not listed in `branches`. Covers unknown/new branches.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub decision: Option<Decision>,
 }
