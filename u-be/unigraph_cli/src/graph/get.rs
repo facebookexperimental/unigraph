@@ -1,7 +1,9 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
+use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::io::BufWriter;
+use std::path::PathBuf;
 
 use anyhow::Context;
 use clap::Parser;
@@ -40,6 +42,9 @@ use crate::UnigraphCLIContext;
 /// # Override roots (repeatable)
 /// unigraph graph get my_timeline --roots nodeA --roots nodeB
 ///
+/// # Roots from a JSON file (array or object-with-keys)
+/// unigraph graph get my_timeline --roots-json roots.json
+///
 /// # Override traversal config
 /// unigraph graph get my_timeline --traversal tvc_1a2b3c4d5e6f7890
 ///
@@ -57,6 +62,12 @@ pub struct GraphGet {
     /// Root node names for subgraph extraction (repeatable)
     #[arg(long)]
     roots: Option<Vec<String>>,
+
+    /// File containing root node names as JSON.
+    /// Accepts either a JSON array `["A", "B"]` or a JSON object
+    /// `{"A": ..., "B": ...}` (only keys are used). Merged with `--roots`.
+    #[arg(long)]
+    roots_json: Option<PathBuf>,
 
     /// Traversal config key (`tvc_{hash}`) to override graph traversal
     #[arg(long)]
@@ -96,10 +107,7 @@ impl GraphGet {
             .parse()
             .context("Failed to parse graph handle")?;
 
-        let roots = self
-            .roots
-            .as_ref()
-            .map(|r| r.iter().cloned().collect::<BTreeSet<_>>());
+        let roots = self.collect_roots()?;
 
         let traversal = self
             .traversal
@@ -113,6 +121,41 @@ impl GraphGet {
             handle,
             roots,
             traversal,
+        })
+    }
+
+    fn collect_roots(&self) -> anyhow::Result<Option<BTreeSet<String>>> {
+        let roots_from_file = self.parse_roots_json()?;
+
+        let all_roots: BTreeSet<String> = roots_from_file
+            .into_iter()
+            .chain(
+                self.roots
+                    .as_ref()
+                    .into_iter()
+                    .flat_map(|r| r.iter().cloned()),
+            )
+            .collect();
+
+        Ok(if all_roots.is_empty() {
+            None
+        } else {
+            Some(all_roots)
+        })
+    }
+
+    fn parse_roots_json(&self) -> anyhow::Result<Vec<String>> {
+        let path = match &self.roots_json {
+            Some(p) => p,
+            None => return Ok(vec![]),
+        };
+
+        let json = std::fs::read_to_string(path).context("Failed to read --roots-json file")?;
+
+        serde_json::from_str::<Vec<String>>(&json).or_else(|_| {
+            serde_json::from_str::<BTreeMap<String, serde_json::Value>>(&json)
+                .map(|map| map.into_keys().collect())
+                .context("--roots-json must be a JSON array or a JSON object")
         })
     }
 

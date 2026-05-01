@@ -22,7 +22,8 @@ use unigraph_cli::UnigraphCLISubcommand;
 async fn main() {
     let args = Args::parse();
 
-    if std::io::stderr().is_tty() && args.task_tree {
+    let is_serve = matches!(args.command, Commands::Serve(_));
+    if std::io::stderr().is_tty() && !is_serve {
         ll_stdio::term_status::show();
     } else {
         tracing_subscriber::fmt()
@@ -68,10 +69,6 @@ async fn run(args: Args) -> anyhow::Result<()> {
 #[derive(Parser)]
 #[command(long_about = None)]
 struct Args {
-    // show ll task tree in the terminal
-    #[arg(long)]
-    task_tree: bool,
-
     /// Path to the SQLite database file
     #[arg(long, default_value_os_t = default_sqlite_path(), global = true)]
     sqlite_path: PathBuf,
