@@ -140,7 +140,7 @@ impl RpcExec<Unigraph> for ExploreGraphInput {
 fn explore_node(ag: Arc<ArrayGraph>, input: &ExploreGraphInput) -> Result<ExploreGraphOutput> {
     let metric_names = collect_metric_names(&ag);
     let tier_names = collect_tier_names(&ag);
-    let metrics = resolve_metrics(&ag, &input.metrics);
+    let metrics = resolve_metrics(&ag, &input.metrics, input.graph_structure);
 
     let (parent_idx, arrow_data) = resolve_arrows(&ag, &input.target, input.graph_structure)?;
     let total_arrows_count = arrow_data.len();
@@ -209,10 +209,16 @@ fn collect_tier_names(ag: &ArrayGraph) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// Resolve the metrics list: `None` → all enabled, `Some(list)` → exactly that list.
-fn resolve_metrics(ag: &ArrayGraph, metrics: &Option<Vec<MetricView>>) -> Vec<MetricView> {
+/// Resolve the metrics list:
+///   `None`        → visible views for this graph structure
+///   `Some(list)`  → exactly that list (overrides visibility)
+fn resolve_metrics(
+    ag: &ArrayGraph,
+    metrics: &Option<Vec<MetricView>>,
+    structure: GraphStructure,
+) -> Vec<MetricView> {
     match metrics {
-        None => ag.enabled_metric_views(),
+        None => ag.visible_metric_views(structure),
         Some(list) => list.clone(),
     }
 }

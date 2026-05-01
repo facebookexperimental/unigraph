@@ -236,6 +236,8 @@ mod tests {
             } else {
                 None
             },
+            metrics_config: None,
+            metrics_visibility: None,
             ui_settings: if rng.next_bool(70) {
                 Some(ArrayGraphUISettings {
                     selected_sidebar_panel: if rng.next_bool(50) {

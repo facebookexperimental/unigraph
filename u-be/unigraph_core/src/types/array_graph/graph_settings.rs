@@ -21,63 +21,350 @@ pub struct GraphSettings {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
 
+    /// Which metric views exist at all (availability layer).
+    /// See `MetricsConfig` for details and examples.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metrics_config: Option<MetricsConfig>,
+
+    /// Per-view UI visibility overrides keyed by `MetricView.to_string()`.
+    /// Controls which available views are shown/hidden by default.
+    /// Views not listed here use their type-specific default
+    /// (non-dominated → shown, dominated → shown in dominator mode).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metrics_visibility: Option<BTreeMap<String, MetricViewVisibility>>,
+
+    /// UI presentation settings (columns, sort, sidebar, entry points).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ui_settings: Option<ArrayGraphUISettings>,
 }
 
 /// Controls when a metric view column is shown in the UI.
+///
+/// This is the visibility layer — it only applies to views that are
+/// already available (per `MetricsConfig`). Availability and visibility
+/// are separate concerns.
 #[derive(
     Debug,
     serde::Serialize,
     serde::Deserialize,
     typegen::TypeGen,
     Clone,
+    Copy,
     PartialEq,
     unigraph_delta::Deltable
 )]
 #[deltable(replace)]
 pub enum MetricViewVisibility {
     /// Show when the relevant global toggle is on.
-    Enabled {},
+    Enabled,
     /// Show only in dominator graph structure mode (and global toggle is on).
-    EnabledInDominatorMode {},
-    /// Never show.
-    Hidden {},
-    /// Not available — nonsensical combination (e.g. "size_transitive~transitive").
-    Unavailable { reason: String },
+    EnabledInDominatorMode,
+    /// Never show (but available — user can toggle on).
+    Hidden,
 }
 
-/// Per-view settings in the flat metric view map.
+/// Whether a metric view type can be computed in this graph.
 ///
-/// Keys are `MetricView.to_string()` values (e.g. `"size"`, `"size~transitive"`,
-/// `"node-count~dominated"`).
+/// Part of `MetricsConfig` — the data-level availability layer.
+/// `Unavailable` means the view doesn't exist at all: it won't appear
+/// in `available_metric_views()`, the `about` RPC, or the CLI.
+/// Defaults to `Available` so that old graphs without `MetricsConfig`
+/// keep all their views.
 #[derive(
     Debug,
     serde::Serialize,
     serde::Deserialize,
     typegen::TypeGen,
     Clone,
-    PartialEq,
+    Copy,
     Default,
+    PartialEq,
     unigraph_delta::Deltable
 )]
 #[deltable(replace)]
-pub struct MetricViewSettings {
-    /// Controls when this view is shown.
-    /// `None` = use default for this view type:
-    ///   - Non-dominated views default to `Enabled`
-    ///   - Dominated views default to `EnabledInDominatorMode`
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub visibility: Option<MetricViewVisibility>,
+pub enum Availability {
+    #[default]
+    Available,
+    Unavailable,
+}
 
-    /// Display format. Derived views (transitive, dominated, tiered)
-    /// inherit the format from their base metric key (e.g., `"size"`) if not set here.
+impl Availability {
+    pub fn is_available(self) -> bool {
+        matches!(self, Availability::Available)
+    }
+}
+
+/// Per-metric configuration: which derived view types are available,
+/// plus format and description shared by all views of this metric.
+///
+/// Each metric in a graph (e.g. `"size"`, `"build_time"`) can produce
+/// up to 5 kinds of views:
+///
+/// - **self_view** — the raw per-node value (e.g. this file is 42 KB)
+/// - **transitive** — DFS sum over forward edges (total reachable cost)
+/// - **dominated** — DFS sum over the dominator tree (uniquely owned cost)
+/// - **tiered** — transitive sum broken down by loading tier (e.g. eager/lazy)
+/// - **tiered_dominated** — dominated sum broken down by tier
+///
+/// All fields are optional. `None` means "inherit from the global default
+/// in `MetricsConfig`." This lets you set a project-wide policy and only
+/// override specific metrics.
+///
+/// `format` and `description` are shared across all views of this metric
+/// (the format for `size~transitive` is the same as `size` — both are bytes).
+///
+/// ```text
+/// // "size" metric: only show tiered views, hide everything else
+/// MetricConfig {
+///     self_view:        Some(Unavailable),
+///     transitive:       Some(Unavailable),
+///     dominated:        None,              // inherits global default
+///     tiered:           Some(Available),
+///     tiered_dominated: Some(Available),
+///     format:           Some(Size { .. }),
+///     description:      Some("File size in bytes"),
+/// }
+///
+/// // "impact_count": precomputed value, derived views make no sense
+/// MetricConfig {
+///     self_view:        Some(Available),
+///     transitive:       Some(Unavailable),
+///     dominated:        Some(Unavailable),
+///     tiered:           Some(Unavailable),
+///     tiered_dominated: Some(Unavailable),
+///     ..
+/// }
+/// ```
+#[derive(
+    Debug,
+    serde::Serialize,
+    serde::Deserialize,
+    typegen::TypeGen,
+    Clone,
+    Default,
+    PartialEq,
+    unigraph_delta::Deltable
+)]
+#[deltable(replace)]
+pub struct MetricConfig {
+    /// The raw per-node value. Hide when only tiered views matter.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub self_view: Option<Availability>,
+
+    /// Transitive sum over forward edges.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub transitive: Option<Availability>,
+
+    /// Transitive sum over the dominator tree (uniquely owned cost).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dominated: Option<Availability>,
+
+    /// Transitive sum broken down by loading tier (one column per tier).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tiered: Option<Availability>,
+
+    /// Dominated sum broken down by loading tier.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tiered_dominated: Option<Availability>,
+
+    /// Display format inherited by all views of this metric.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub format: Option<MetricFormat>,
 
-    /// Description. Typically only set on base metric keys.
+    /// Human-readable description of what this metric measures.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+}
+
+/// Global defaults for which view types are available per metric.
+///
+/// Resolution: per-metric field → this default → hardcoded `Available`.
+#[derive(
+    Debug,
+    serde::Serialize,
+    serde::Deserialize,
+    typegen::TypeGen,
+    Clone,
+    Default,
+    PartialEq,
+    unigraph_delta::Deltable
+)]
+#[deltable(replace)]
+pub struct DefaultAvailability {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub self_view: Option<Availability>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub transitive: Option<Availability>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dominated: Option<Availability>,
+
+    /// Set to `Unavailable` to suppress tier columns for all metrics
+    /// unless individually overridden in `MetricConfig`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tiered: Option<Availability>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tiered_dominated: Option<Availability>,
+}
+
+/// Global defaults for view type visibility.
+///
+/// Resolution: per-view override in `metrics_visibility` →
+/// per-type field → `all` → hardcoded (dominated → `EnabledInDominatorMode`,
+/// everything else → `Enabled`).
+///
+/// ```text
+/// // "Hide everything by default, only show what's explicitly enabled"
+/// DefaultVisibility { all: Some(Hidden), .. }
+///
+/// // "Hide tiered, show everything else normally"
+/// DefaultVisibility { tiered: Some(Hidden), tiered_dominated: Some(Hidden), .. }
+///
+/// // "Hide everything except tiered"
+/// DefaultVisibility { all: Some(Hidden), tiered: Some(Enabled), .. }
+/// ```
+#[derive(
+    Debug,
+    serde::Serialize,
+    serde::Deserialize,
+    typegen::TypeGen,
+    Clone,
+    Default,
+    PartialEq,
+    unigraph_delta::Deltable
+)]
+#[deltable(replace)]
+pub struct DefaultVisibility {
+    /// Catch-all default. Lowest precedence — overridden by any
+    /// per-type field below.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub all: Option<MetricViewVisibility>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub self_view: Option<MetricViewVisibility>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub transitive: Option<MetricViewVisibility>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dominated: Option<MetricViewVisibility>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tiered: Option<MetricViewVisibility>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tiered_dominated: Option<MetricViewVisibility>,
+}
+
+/// Graph-builder-authored metric configuration.
+///
+/// Controls both which metric views exist (availability) and which
+/// are shown by default (visibility). Per-view visibility overrides
+/// live in `GraphSettings.metrics_visibility`.
+///
+/// # Resolution chains
+///
+/// **Availability** (does this view exist?):
+///   1. `metrics["size"].tiered` (per-metric)
+///   2. `default_availability.tiered` (global default)
+///   3. hardcoded `Available`
+///
+/// **Visibility** (is this view shown by default?):
+///   1. `GraphSettings.metrics_visibility["size#eager"]` (per-view override)
+///   2. `default_visibility.tiered` (global default)
+///   3. hardcoded: dominated → `EnabledInDominatorMode`, else → `Enabled`
+///
+/// # Example
+///
+/// ```text
+/// MetricsConfig {
+///     default_availability: DefaultAvailability {
+///         tiered: Some(Unavailable),  // no tier columns except overrides
+///     },
+///     default_visibility: DefaultVisibility {
+///         dominated: Some(Hidden),    // dominated hidden by default
+///     },
+///     metrics: {
+///         "size": MetricConfig {
+///             tiered: Some(Available),  // override: size gets tiers
+///             self_view: Some(Unavailable),
+///         },
+///     },
+/// }
+/// ```
+#[derive(
+    Debug,
+    serde::Serialize,
+    serde::Deserialize,
+    typegen::TypeGen,
+    Clone,
+    Default,
+    PartialEq,
+    unigraph_delta::Deltable
+)]
+#[deltable(replace)]
+pub struct MetricsConfig {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_availability: Option<DefaultAvailability>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_visibility: Option<DefaultVisibility>,
+
+    /// Per-metric configuration keyed by metric name (e.g. `"size"`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metrics: Option<BTreeMap<String, MetricConfig>>,
+
+    // ── Structural (non-metric) view availability ────────
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parents_count: Option<Availability>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub count_transitive: Option<Availability>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub count_dominated: Option<Availability>,
+}
+
+impl MetricsConfig {
+    pub fn format_for(&self, metric_name: &str) -> Option<&MetricFormat> {
+        self.metrics
+            .as_ref()
+            .and_then(|m| m.get(metric_name))
+            .and_then(|mc| mc.format.as_ref())
+    }
+
+    pub fn description_for(&self, metric_name: &str) -> Option<&str> {
+        self.metrics
+            .as_ref()
+            .and_then(|m| m.get(metric_name))
+            .and_then(|mc| mc.description.as_deref())
+    }
+
+    pub(crate) fn resolve_availability(
+        &self,
+        name: &str,
+        per_metric: fn(&MetricConfig) -> Option<Availability>,
+        default_field: fn(&DefaultAvailability) -> Option<Availability>,
+    ) -> Availability {
+        if let Some(mc) = self.metrics.as_ref().and_then(|m| m.get(name)) {
+            if let Some(avail) = per_metric(mc) {
+                return avail;
+            }
+        }
+        self.default_availability
+            .as_ref()
+            .and_then(default_field)
+            .unwrap_or(Availability::Available)
+    }
+
+    pub(crate) fn resolve_visibility(
+        &self,
+        view_type: fn(&DefaultVisibility) -> Option<MetricViewVisibility>,
+    ) -> Option<MetricViewVisibility> {
+        self.default_visibility.as_ref().and_then(view_type)
+    }
 }
 
 #[derive(
@@ -402,11 +689,6 @@ pub struct ColumnSettings {
     /// Show a column that displays the tier each node
     #[serde(skip_serializing_if = "Option::is_none")]
     pub show_tier_column: Option<bool>,
-
-    /// Per-view settings keyed by `MetricView.to_string()`.
-    /// E.g. `"size"`, `"size~transitive"`, `"node-count~dominated"`.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub metric_settings: Option<BTreeMap<String, MetricViewSettings>>,
 }
 
 #[derive(

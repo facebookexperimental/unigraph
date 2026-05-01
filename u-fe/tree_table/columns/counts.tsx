@@ -20,7 +20,7 @@ import {
   NO_PRECISION_FORMAT,
   WouldBeDeltaMetricCell,
 } from "./Cells";
-import { MV, isEnabledForGraphStructure, isViewVisible } from "./ColumnUtils";
+import { MV, isVisibleForStructure } from "./ColumnUtils";
 import { MetricDeltaRightHovercard } from "./hovercards";
 import type { Column, ColumnsCtx } from "./useGraphTreeTableColumns";
 
@@ -38,8 +38,10 @@ export class TransitiveCountColumn implements Column {
 
   isEnabled() {
     return (
-      isViewVisible(this.ctx.viewVisibility(MV.countTransitive)) &&
-      this.ctx.showCounts
+      isVisibleForStructure(
+        this.ctx.resolvedVisibility(MV.countTransitive, "transitive"),
+        this.ctx.graphStructure,
+      ) && this.ctx.showCounts
     );
   }
 
@@ -140,9 +142,9 @@ export class DominatedCountColumn implements Column {
   isEnabled() {
     return (
       this.ctx.showCounts &&
-      isEnabledForGraphStructure(
+      isVisibleForStructure(
+        this.ctx.resolvedVisibility(MV.countDominated, "dominated"),
         this.ctx.graphStructure,
-        this.ctx.viewVisibility(MV.countDominated),
       )
     );
   }
@@ -224,8 +226,10 @@ export class TransitiveCountDeltaColumn implements Column {
 
   isEnabled() {
     return (
-      isViewVisible(this.ctx.viewVisibility(MV.countTransitive)) &&
-      this.ctx.showCounts
+      isVisibleForStructure(
+        this.ctx.resolvedVisibility(MV.countTransitive, "transitive"),
+        this.ctx.graphStructure,
+      ) && this.ctx.showCounts
     );
   }
 
@@ -303,7 +307,10 @@ export class TransitiveCountRightInDeltaViewColumn implements Column {
 
   isEnabled() {
     return (
-      isViewVisible(this.ctx.viewVisibility(MV.countTransitive)) &&
+      isVisibleForStructure(
+        this.ctx.resolvedVisibility(MV.countTransitive, "transitive"),
+        this.ctx.graphStructure,
+      ) &&
       this.ctx.showCounts &&
       this.twinGraph.l != null
     );
@@ -456,8 +463,10 @@ export class ParentsCountColumn implements Column {
 
   isEnabled() {
     return (
-      isViewVisible(this.ctx.viewVisibility(MV.parentsCount)) &&
-      this.ctx.showCounts
+      isVisibleForStructure(
+        this.ctx.resolvedVisibility(MV.parentsCount, "self_view"),
+        this.ctx.graphStructure,
+      ) && this.ctx.showCounts
     );
   }
 

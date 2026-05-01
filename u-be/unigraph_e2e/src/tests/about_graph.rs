@@ -27,24 +27,11 @@ async fn returns_graph_settings() -> Result<()> {
         .graph_settings
         .expect("graph_settings should be present");
     assert!(gs.description.is_none());
-    assert!(gs.ui_settings.is_some());
+    assert!(gs.metrics_config.is_some());
 
-    let metric_settings = gs
-        .ui_settings
-        .as_ref()
-        .unwrap()
-        .columns
-        .as_ref()
-        .unwrap()
-        .metric_settings
-        .as_ref()
-        .unwrap();
-
-    let keys: Vec<&str> = metric_settings.keys().map(|k| k.as_str()).collect();
-    snapshot!(
-        keys.join(", "),
-        "lines#eager, lines#eager~dominated, lines#lazy, lines#lazy~dominated, size"
-    );
+    let visibility = gs.metrics_visibility.as_ref().unwrap();
+    let keys: Vec<&str> = visibility.keys().map(|k| k.as_str()).collect();
+    snapshot!(keys.join(", "), "size#eager");
 
     Ok(())
 }

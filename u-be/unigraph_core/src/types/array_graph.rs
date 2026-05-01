@@ -421,11 +421,21 @@ impl ArrayGraph {
         get_arrows(self, node_idx, GraphStructure::Reverse)
     }
 
-    /// Returns metric views that are enabled (not Hidden or Unavailable).
+    /// Returns all metric views that are available in this graph (Layer 1).
     ///
-    /// Enumerates every combination of metric name × view type, then filters
-    /// through `graph_settings.metric_settings` visibility. Views with no
-    /// explicit setting are kept (default = enabled).
+    /// Filters by `MetricsConfig` availability. When no config is present,
+    /// all views are available (backward compatible).
+    pub fn available_metric_views(&self) -> Vec<MetricView> {
+        array_graph_metric_views::available_metric_views(self)
+    }
+
+    /// Returns available views further filtered by UI visibility (Layer 2).
+    /// Dominated views default to visible only in `Dominator` mode.
+    pub fn visible_metric_views(&self, structure: GraphStructure) -> Vec<MetricView> {
+        array_graph_metric_views::visible_metric_views(self, structure)
+    }
+
+    #[deprecated(note = "use available_metric_views() or visible_metric_views()")]
     pub fn enabled_metric_views(&self) -> Vec<MetricView> {
         array_graph_metric_views::enabled_metric_views(self)
     }

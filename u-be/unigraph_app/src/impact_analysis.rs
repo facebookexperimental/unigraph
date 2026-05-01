@@ -71,8 +71,10 @@ use unigraph_core::ArrayGraphSerializable;
 use unigraph_core::CombinedMetricsForNodes;
 use unigraph_core::Decision;
 use unigraph_core::TraversalConfig;
+use unigraph_core::graph_settings::Availability;
+use unigraph_core::graph_settings::MetricConfig;
 use unigraph_core::graph_settings::MetricFormat;
-use unigraph_core::graph_settings::MetricViewSettings;
+use unigraph_core::graph_settings::MetricViewVisibility;
 use unigraph_core::types::NodeIDX;
 
 // ── Public API ──────────────────────────────────────────────────────────
@@ -426,44 +428,48 @@ fn compute_leverage(
 // ── Patch graph ─────────────────────────────────────────────────────────
 
 fn patch_graph(ag: &mut ArrayGraph, impact_metrics: Vec<(ImpactMetric, Vec<f32>)>) {
-    // Snapshot existing metric settings before mutating
-    let existing_settings = ag
+    let existing_metrics_config = ag
         .data
         .graph_settings
         .as_ref()
-        .and_then(|gs| gs.ui_settings.as_ref())
-        .and_then(|ui| ui.columns.as_ref())
-        .and_then(|c| c.metric_settings.as_ref())
-        .cloned()
-        .unwrap_or_default();
+        .and_then(|gs| gs.metrics_config.as_ref())
+        .cloned();
 
-    let settings = ag
-        .data
-        .graph_settings
+    let gs = ag.data.graph_settings.get_or_insert_with(Default::default);
+
+    let metrics_map = gs
+        .metrics_config
         .get_or_insert_with(Default::default)
-        .ui_settings
-        .get_or_insert_with(Default::default)
-        .columns
-        .get_or_insert_with(Default::default)
-        .metric_settings
+        .metrics
         .get_or_insert_with(BTreeMap::new);
+
+    let visibility_map = gs.metrics_visibility.get_or_insert_with(BTreeMap::new);
+
+    let unavailable = Some(Availability::Unavailable);
 
     for (metric, values) in impact_metrics {
         let key = metric.key();
 
-        let source_format = metric
-            .source_metric_name()
-            .and_then(|src| existing_settings.get(src))
-            .and_then(|s| s.format.as_ref());
+        let source_format = metric.source_metric_name().and_then(|src| {
+            existing_metrics_config
+                .as_ref()
+                .and_then(|mc| mc.format_for(src))
+        });
 
-        settings.insert(
+        metrics_map.insert(
             key.clone(),
-            MetricViewSettings {
-                description: Some(metric.description()),
+            MetricConfig {
+                self_view: Some(Availability::Available),
+                transitive: unavailable,
+                dominated: unavailable,
+                tiered: unavailable,
+                tiered_dominated: unavailable,
                 format: metric.format(source_format),
-                visibility: Some(unigraph_core::graph_settings::MetricViewVisibility::Hidden {}),
+                description: Some(metric.description()),
             },
         );
+
+        visibility_map.insert(key.clone(), MetricViewVisibility::Hidden);
 
         ag.data.node_metadata.metrics.insert(key, values);
     }
@@ -606,23 +612,18 @@ D                          1                     1                    40        
     #[test]
     fn test_metric_settings_added() -> Result<()> {
         let ag = run(make_graph(CHAIN_GRAPH)?, None)?;
+        let gs = ag.data.graph_settings.as_ref().unwrap();
 
-        let settings = ag
-            .data
-            .graph_settings
+        let metric_configs = gs
+            .metrics_config
             .as_ref()
             .unwrap()
-            .ui_settings
-            .as_ref()
-            .unwrap()
-            .columns
-            .as_ref()
-            .unwrap()
-            .metric_settings
+            .metrics
             .as_ref()
             .unwrap();
 
-        // All impact metrics should have settings with descriptions
+        let visibility = gs.metrics_visibility.as_ref().unwrap();
+
         for key in ag
             .data
             .node_metadata
@@ -630,13 +631,27 @@ D                          1                     1                    40        
             .keys()
             .filter(|k| k.starts_with("impact_"))
         {
-            let s = settings.get(key).unwrap_or_else(|| {
-                panic!("missing metric settings for {key}");
+            let mc = metric_configs.get(key).unwrap_or_else(|| {
+                panic!("missing MetricConfig for {key}");
             });
-            assert!(s.description.is_some(), "missing description for {key}");
+            assert!(mc.description.is_some(), "missing description for {key}");
             assert_eq!(
-                s.visibility,
-                Some(unigraph_core::graph_settings::MetricViewVisibility::Hidden {}),
+                mc.self_view,
+                Some(unigraph_core::graph_settings::Availability::Available),
+                "impact metrics should have self_view Available for {key}"
+            );
+            assert_eq!(
+                mc.transitive,
+                Some(unigraph_core::graph_settings::Availability::Unavailable),
+                "impact metrics should have transitive Unavailable for {key}"
+            );
+
+            let v = visibility.get(key).unwrap_or_else(|| {
+                panic!("missing visibility for {key}");
+            });
+            assert_eq!(
+                *v,
+                unigraph_core::graph_settings::MetricViewVisibility::Hidden,
                 "impact metrics should be hidden for {key}"
             );
         }

@@ -4,7 +4,8 @@ import { useMemo } from "react";
 import type { GraphSettings } from "../../__generated__/ts/GraphSettings";
 import type { GraphStructure } from "../../__generated__/ts/GraphStructure";
 import type { GraphTableSort } from "../../__generated__/ts/GraphTableSort";
-import type { MetricViewSettings } from "../../__generated__/ts/MetricViewSettings";
+import type { MetricFormat } from "../../__generated__/ts/MetricFormat";
+import type { MetricsConfig } from "../../__generated__/ts/MetricsConfig";
 import type { MetricViewVisibility } from "../../__generated__/ts/MetricViewVisibility";
 import type { SortColumn } from "../../__generated__/ts/SortColumn";
 import type { SortOrder } from "../../__generated__/ts/SortOrder";
@@ -24,6 +25,11 @@ import type {
   TSortable,
 } from "../columns";
 import type { Row } from "../TreeTableRows";
+import {
+  isMetricAvailable,
+  isStructuralAvailable,
+  metricFormatFromConfig,
+} from "./ColumnUtils";
 import {
   DominatedCountColumn,
   ParentsCountColumn,
@@ -150,6 +156,7 @@ export class ColumnsCtx {
   graphSettings: GraphSettings;
   setGraphSettings: (gs: GraphSettings) => void;
   tvc: TraversalConfig;
+  metricsConfig: MetricsConfig | undefined;
   showMetrics: boolean;
   showTieredMetrics: boolean;
   hideDominatedTieredMetrics: boolean;
@@ -164,6 +171,7 @@ export class ColumnsCtx {
     this.graphSettings = graphSettings;
     this.setGraphSettings = setGraphSettings;
     this.tvc = tvc;
+    this.metricsConfig = graphSettings.metrics_config;
 
     this.showMetrics =
       graphSettings.ui_settings?.columns?.hide_metrics !== true;
@@ -177,16 +185,35 @@ export class ColumnsCtx {
       graphSettings.ui_settings?.graph_structure ?? "Forward";
   }
 
-  metricSettings(viewKey: string): MetricViewSettings | null {
-    return (
-      this.graphSettings.ui_settings?.columns?.metric_settings?.[viewKey] ??
-      null
-    );
+  viewVisibility(viewKey: string): MetricViewVisibility | undefined {
+    return this.graphSettings.metrics_visibility?.[viewKey];
   }
 
-  viewVisibility(viewKey: string): MetricViewVisibility | undefined {
-    return this.graphSettings.ui_settings?.columns?.metric_settings?.[viewKey]
-      ?.visibility;
+  resolvedVisibility(
+    viewKey: string,
+    viewType:
+      | "self_view"
+      | "transitive"
+      | "dominated"
+      | "tiered"
+      | "tiered_dominated",
+  ): MetricViewVisibility {
+    const explicit = this.graphSettings.metrics_visibility?.[viewKey];
+    if (explicit != null) return explicit;
+    const dv = this.metricsConfig?.default_visibility;
+    if (dv != null) {
+      const perType = dv[viewType];
+      if (perType != null) return perType;
+      if (dv.all != null) return dv.all;
+    }
+    if (viewType === "dominated" || viewType === "tiered_dominated") {
+      return "EnabledInDominatorMode";
+    }
+    return "Enabled";
+  }
+
+  metricFormat(metricName: string): MetricFormat | undefined {
+    return metricFormatFromConfig(this.metricsConfig, metricName);
   }
 
   sort(): GraphTableSort | null {
@@ -232,21 +259,37 @@ class SingleGraphColumnsBuilder {
   makeColumns(): Column[] {
     const { ctx, twinGraph } = this;
     const g = twinGraph.r;
-    const columns: Column[] = [
-      new NodeTierColumn(this.ctx, this.twinGraph),
-      new TransitiveCountColumn(ctx, g),
-      new DominatedCountColumn(ctx, g),
-      new ParentsCountColumn(ctx, g),
-    ];
+    const mc = ctx.metricsConfig;
+    const columns: Column[] = [new NodeTierColumn(this.ctx, this.twinGraph)];
+
+    if (isStructuralAvailable(mc, "count_transitive")) {
+      columns.push(new TransitiveCountColumn(ctx, g));
+    }
+    if (isStructuralAvailable(mc, "count_dominated")) {
+      columns.push(new DominatedCountColumn(ctx, g));
+    }
+    if (isStructuralAvailable(mc, "parents_count")) {
+      columns.push(new ParentsCountColumn(ctx, g));
+    }
 
     for (const metric of g.metricNames) {
-      columns.push(new MetricColumn(ctx, g, metric));
-      columns.push(new TransitiveMetricColumn(ctx, g, metric));
-      columns.push(new DominatedMetricColumn(ctx, g, metric));
+      if (isMetricAvailable(mc, metric, "self_view")) {
+        columns.push(new MetricColumn(ctx, g, metric));
+      }
+      if (isMetricAvailable(mc, metric, "transitive")) {
+        columns.push(new TransitiveMetricColumn(ctx, g, metric));
+      }
+      if (isMetricAvailable(mc, metric, "dominated")) {
+        columns.push(new DominatedMetricColumn(ctx, g, metric));
+      }
 
       for (const tier of g.stats().tier_names) {
-        columns.push(new TransitiveTieredMetricColumn(ctx, g, metric, tier));
-        columns.push(new TieredDominatedMetricColumn(ctx, g, metric, tier));
+        if (isMetricAvailable(mc, metric, "tiered")) {
+          columns.push(new TransitiveTieredMetricColumn(ctx, g, metric, tier));
+        }
+        if (isMetricAvailable(mc, metric, "tiered_dominated")) {
+          columns.push(new TieredDominatedMetricColumn(ctx, g, metric, tier));
+        }
       }
     }
 
@@ -270,34 +313,45 @@ class DeltaGraphColumnsBuilder {
 
   makeColumns(): Column[] {
     const r = this.twinGraph.r;
-    const columns: Column[] = [
-      new NodeTierColumn(this.ctx, this.twinGraph),
-      new TransitiveCountRightInDeltaViewColumn(this.ctx, this.twinGraph),
-      new TransitiveCountDeltaColumn(this.ctx, this.twinGraph),
-    ];
-    for (const metric of r.metricNames) {
+    const mc = this.ctx.metricsConfig;
+    const columns: Column[] = [new NodeTierColumn(this.ctx, this.twinGraph)];
+
+    if (isStructuralAvailable(mc, "count_transitive")) {
       columns.push(
-        new MetricRightInDeltaViewColumn(this.ctx, this.twinGraph, metric),
+        new TransitiveCountRightInDeltaViewColumn(this.ctx, this.twinGraph),
       );
-      columns.push(new MetricDeltaViewColumn(this.ctx, this.twinGraph, metric));
+      columns.push(new TransitiveCountDeltaColumn(this.ctx, this.twinGraph));
+    }
+
+    for (const metric of r.metricNames) {
+      if (isMetricAvailable(mc, metric, "self_view")) {
+        columns.push(
+          new MetricRightInDeltaViewColumn(this.ctx, this.twinGraph, metric),
+        );
+        columns.push(
+          new MetricDeltaViewColumn(this.ctx, this.twinGraph, metric),
+        );
+      }
 
       for (const tier of r.stats().tier_names) {
-        columns.push(
-          new TransitiveTieredMetricRightDeltaColumn(
-            this.ctx,
-            this.twinGraph,
-            metric,
-            tier,
-          ),
-        );
-        columns.push(
-          new TransitiveTieredMetricDeltaColumn(
-            this.ctx,
-            this.twinGraph,
-            metric,
-            tier,
-          ),
-        );
+        if (isMetricAvailable(mc, metric, "tiered")) {
+          columns.push(
+            new TransitiveTieredMetricRightDeltaColumn(
+              this.ctx,
+              this.twinGraph,
+              metric,
+              tier,
+            ),
+          );
+          columns.push(
+            new TransitiveTieredMetricDeltaColumn(
+              this.ctx,
+              this.twinGraph,
+              metric,
+              tier,
+            ),
+          );
+        }
       }
     }
     return columns;

@@ -101,21 +101,18 @@ fn extract_description(ag: &ArrayGraph) -> Option<String> {
 }
 
 fn collect_metric_view_infos(ag: &ArrayGraph) -> Vec<AboutGraphMetricViewInfo> {
-    let metric_settings = ag
+    let metrics_config = ag
         .data
         .graph_settings
         .as_ref()
-        .and_then(|gs| gs.ui_settings.as_ref())
-        .and_then(|ui| ui.columns.as_ref())
-        .and_then(|cols| cols.metric_settings.as_ref());
+        .and_then(|gs| gs.metrics_config.as_ref());
 
-    ag.enabled_metric_views()
+    ag.available_metric_views()
         .into_iter()
         .map(|view| {
-            let key = view.to_string();
-            let description = metric_settings
-                .and_then(|ms| ms.get(key.as_str()))
-                .and_then(|s| s.description.clone());
+            let description = view.metric_name().and_then(|name| {
+                metrics_config.and_then(|mc| mc.description_for(name).map(|s| s.to_string()))
+            });
             AboutGraphMetricViewInfo { view, description }
         })
         .collect()

@@ -4,11 +4,10 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
 use unigraph_core::MapGraph;
-use unigraph_core::graph_settings::ArrayGraphUISettings;
-use unigraph_core::graph_settings::ColumnSettings;
 use unigraph_core::graph_settings::GraphSettings;
+use unigraph_core::graph_settings::MetricConfig;
 use unigraph_core::graph_settings::MetricFormat;
-use unigraph_core::graph_settings::MetricViewSettings;
+use unigraph_core::graph_settings::MetricsConfig;
 use unigraph_core::graph_settings::SizeFormatConfig;
 use unigraph_core::graph_settings::SizeInputUnits;
 use unigraph_core::graph_settings::SizeOutputUnits;
@@ -106,12 +105,21 @@ pub fn build_map_graph(
         )
     };
 
-    // Configure metric display formats.
-    let mut metric_settings = BTreeMap::new();
-    metric_settings.insert(
+    let time_format = MetricFormat::NumberWithVariablePrecision {
+        min_precision: Some(1),
+        max_precision: Some(2),
+        use_delimiter: None,
+    };
+
+    let mut metrics = BTreeMap::new();
+    metrics.insert(
         "rlib_size".to_string(),
-        MetricViewSettings {
-            description: Some("Compiled .rlib artifact size".to_string()),
+        MetricConfig {
+            self_view: None,
+            transitive: None,
+            dominated: None,
+            tiered: None,
+            tiered_dominated: None,
             format: Some(MetricFormat::Size(SizeFormatConfig {
                 input_units: SizeInputUnits::Bytes,
                 output_units: SizeOutputUnits::MB,
@@ -119,57 +127,60 @@ pub fn build_map_graph(
                 max_precision: Some(2),
                 use_delimiter: None,
             })),
-            ..Default::default()
+            description: Some("Compiled .rlib artifact size".to_string()),
         },
     );
-    metric_settings.insert(
+    metrics.insert(
         "build_time".to_string(),
-        MetricViewSettings {
+        MetricConfig {
+            self_view: None,
+            transitive: None,
+            dominated: None,
+            tiered: None,
+            tiered_dominated: None,
+            format: Some(time_format.clone()),
             description: Some("Wall-clock build duration".to_string()),
-            format: Some(MetricFormat::NumberWithVariablePrecision {
-                min_precision: Some(1),
-                max_precision: Some(2),
-                use_delimiter: None,
-            }),
-            ..Default::default()
         },
     );
-    metric_settings.insert(
+    metrics.insert(
         "rmeta_time".to_string(),
-        MetricViewSettings {
+        MetricConfig {
+            self_view: None,
+            transitive: None,
+            dominated: None,
+            tiered: None,
+            tiered_dominated: None,
+            format: Some(time_format.clone()),
             description: Some(
                 "Time to produce rmeta (enables downstream crates to start building)".to_string(),
             ),
-            format: Some(MetricFormat::NumberWithVariablePrecision {
-                min_precision: Some(1),
-                max_precision: Some(2),
-                use_delimiter: None,
-            }),
-            ..Default::default()
         },
     );
-    metric_settings.insert(
+    metrics.insert(
         "codegen_time".to_string(),
-        MetricViewSettings {
+        MetricConfig {
+            self_view: None,
+            transitive: None,
+            dominated: None,
+            tiered: None,
+            tiered_dominated: None,
+            format: Some(time_format),
             description: Some("Time spent in codegen phase".to_string()),
-            format: Some(MetricFormat::NumberWithVariablePrecision {
-                min_precision: Some(1),
-                max_precision: Some(2),
-                use_delimiter: None,
-            }),
-            ..Default::default()
         },
     );
 
     let graph_settings = Some(GraphSettings {
         description: None,
-        ui_settings: Some(ArrayGraphUISettings {
-            columns: Some(ColumnSettings {
-                metric_settings: Some(metric_settings),
-                ..Default::default()
-            }),
-            ..Default::default()
+        metrics_config: Some(MetricsConfig {
+            default_availability: None,
+            default_visibility: None,
+            metrics: Some(metrics),
+            parents_count: None,
+            count_transitive: None,
+            count_dominated: None,
         }),
+        metrics_visibility: None,
+        ui_settings: None,
     });
 
     MapGraph {

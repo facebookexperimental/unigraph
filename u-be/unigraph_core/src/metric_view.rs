@@ -77,6 +77,15 @@ impl MetricView {
             | MetricView::CountDominated {} => None,
         }
     }
+
+    pub fn is_dominated(&self) -> bool {
+        matches!(
+            self,
+            MetricView::Dominated { .. }
+                | MetricView::TieredDominated { .. }
+                | MetricView::CountDominated {}
+        )
+    }
 }
 
 impl fmt::Display for MetricView {

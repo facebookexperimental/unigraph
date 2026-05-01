@@ -19,12 +19,13 @@ use unigraph_core::MapGraph;
 use unigraph_core::TieredTraversalConfig;
 use unigraph_core::TraversalConfig;
 use unigraph_core::graph_settings::ArrayGraphUISettings;
+use unigraph_core::graph_settings::Availability;
 use unigraph_core::graph_settings::ColumnSettings;
 use unigraph_core::graph_settings::GraphSettings;
 use unigraph_core::graph_settings::GraphTableSort;
+use unigraph_core::graph_settings::MetricConfig;
 use unigraph_core::graph_settings::MetricFormat;
-use unigraph_core::graph_settings::MetricViewSettings;
-use unigraph_core::graph_settings::MetricViewVisibility;
+use unigraph_core::graph_settings::MetricsConfig;
 use unigraph_core::graph_settings::SizeFormatConfig;
 use unigraph_core::graph_settings::SizeInputUnits;
 use unigraph_core::graph_settings::SizeOutputUnits;
@@ -517,49 +518,33 @@ fn graph_settings() -> GraphSettings {
         use_delimiter: None,
     });
 
-    let hidden = Some(MetricViewVisibility::Hidden {});
+    let unavailable = Some(Availability::Unavailable);
 
-    let mut metric_settings = BTreeMap::new();
+    let mut metrics = BTreeMap::new();
 
-    // Base `size` metric: hidden everywhere (compressed_size is more useful).
-    metric_settings.insert(
+    metrics.insert(
         METRIC_SIZE.to_string(),
-        MetricViewSettings {
-            description: Some("Source-map attributed module size in output bundles".to_string()),
+        MetricConfig {
+            self_view: unavailable,
+            transitive: unavailable,
+            dominated: unavailable,
+            tiered: unavailable,
+            tiered_dominated: unavailable,
             format: Some(size_format.clone()),
-            visibility: hidden.clone(),
+            description: Some("Source-map attributed module size in output bundles".to_string()),
         },
     );
 
-    // Base `compressed_size` metric: format + description, hidden at base level
-    // (tiered versions are shown instead via show_tiered_metrics).
-    metric_settings.insert(
+    metrics.insert(
         METRIC_COMPRESSED_SIZE.to_string(),
-        MetricViewSettings {
-            description: Some("Estimated compressed (gzip) size".to_string()),
+        MetricConfig {
+            self_view: unavailable,
+            transitive: unavailable,
+            dominated: None,
+            tiered: None,
+            tiered_dominated: None,
             format: Some(size_format),
-            visibility: hidden.clone(),
-        },
-    );
-
-    // Hide all `size` tiered/derived views — only compressed_size tiered views are shown.
-    // Note: tiered view keys use `~` not `#` in metric_settings (frontend convention).
-    for suffix in ["~transitive", "~dominated", "~eager", "~lazy"] {
-        metric_settings.insert(
-            format!("{METRIC_SIZE}{suffix}"),
-            MetricViewSettings {
-                visibility: hidden.clone(),
-                ..Default::default()
-            },
-        );
-    }
-
-    // Hide transitive for compressed_size (dominated is more useful).
-    metric_settings.insert(
-        format!("{METRIC_COMPRESSED_SIZE}~transitive"),
-        MetricViewSettings {
-            visibility: hidden.clone(),
-            ..Default::default()
+            description: Some("Estimated compressed (gzip) size".to_string()),
         },
     );
 
@@ -568,21 +553,28 @@ fn graph_settings() -> GraphSettings {
             "Next.js Turbopack module dependency graph from `next experimental-analyze`"
                 .to_string(),
         ),
+        metrics_config: Some(MetricsConfig {
+            default_availability: None,
+            default_visibility: None,
+            metrics: Some(metrics),
+            parents_count: None,
+            count_transitive: None,
+            count_dominated: None,
+        }),
+        metrics_visibility: None,
         ui_settings: Some(ArrayGraphUISettings {
             columns: Some(ColumnSettings {
-                metric_settings: Some(metric_settings),
-                // Show tiered columns (compressed_size#eager, compressed_size#lazy).
                 show_tiered_metrics: Some(true),
-                // Keep base metrics toggle available (not hidden).
                 hide_metrics: Some(false),
-                // Sort by initial load cost descending.
                 graph_table_sort: Some(GraphTableSort {
                     column: SortColumn::MetricView {
                         key: format!("{METRIC_SIZE}#{TIER_EAGER}"),
                     },
                     order: SortOrder::Desc,
                 }),
-                ..Default::default()
+                show_counts: None,
+                show_tier_column: None,
+                hide_dominated_tiered_metrics: None,
             }),
             ..Default::default()
         }),

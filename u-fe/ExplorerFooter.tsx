@@ -16,7 +16,8 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import type { MetricViewSettings } from "./__generated__/ts/MetricViewSettings";
+import type { MetricViewVisibility } from "./__generated__/ts/MetricViewVisibility";
+import { metricFormatFromConfig } from "./tree_table/columns/ColumnUtils";
 import Metric from "./components/Metric";
 import USplitToggleButton from "./components/USplitToggleButton";
 import UToggleButton from "./components/UToggleButton";
@@ -80,9 +81,10 @@ function SelectedNodesMetrics() {
 
   const metrics = Object.entries(combinedMetrics.metrics).map(
     ([metricName, value]) => {
-      const format =
-        graphSettings?.ui_settings?.columns?.metric_settings?.[metricName]
-          ?.format;
+      const format = metricFormatFromConfig(
+        graphSettings?.metrics_config,
+        metricName,
+      );
       const formatted = formatMetric(value ?? 0, format);
       return (
         <Metric
@@ -97,9 +99,10 @@ function SelectedNodesMetrics() {
 
   const tieredMetrics = Object.entries(combinedMetrics.tiered_metrics).flatMap(
     ([metricName, tiered]) => {
-      const format =
-        graphSettings?.ui_settings?.columns?.metric_settings?.[metricName]
-          ?.format;
+      const format = metricFormatFromConfig(
+        graphSettings?.metrics_config,
+        metricName,
+      );
 
       if (tiered == null) {
         return [];
@@ -250,22 +253,13 @@ function Toggles() {
 function setViewVisibility(
   graphSettings: ReturnType<typeof useGraphSettings>[0],
   viewKey: string,
-  visibility: MetricViewSettings["visibility"],
+  visibility: MetricViewVisibility,
 ): ReturnType<typeof useGraphSettings>[0] {
-  const prev =
-    graphSettings?.ui_settings?.columns?.metric_settings?.[viewKey] ?? {};
   return {
     ...graphSettings,
-    ui_settings: {
-      ...graphSettings.ui_settings,
-      columns: {
-        ...graphSettings.ui_settings?.columns,
-        show_counts: true,
-        metric_settings: {
-          ...graphSettings?.ui_settings?.columns?.metric_settings,
-          [viewKey]: { ...prev, visibility },
-        },
-      },
+    metrics_visibility: {
+      ...graphSettings.metrics_visibility,
+      [viewKey]: visibility,
     },
   };
 }
@@ -277,15 +271,9 @@ function CountsHovercardContent() {
   const twinGraph = useTwinGraph();
   const singleGraph = twinGraph.l == null;
 
-  const transitiveVis =
-    graphSettings.ui_settings?.columns?.metric_settings?.[MV.countTransitive]
-      ?.visibility;
-  const parentsVis =
-    graphSettings.ui_settings?.columns?.metric_settings?.[MV.parentsCount]
-      ?.visibility;
-  const dominatedVis =
-    graphSettings.ui_settings?.columns?.metric_settings?.[MV.countDominated]
-      ?.visibility;
+  const transitiveVis = graphSettings.metrics_visibility?.[MV.countTransitive];
+  const parentsVis = graphSettings.metrics_visibility?.[MV.parentsCount];
+  const dominatedVis = graphSettings.metrics_visibility?.[MV.countDominated];
 
   return (
     <div className="flex flex-col gap-2">
@@ -419,9 +407,7 @@ function MaxTierSelector() {
         onSelectedChange={(selected) => {
           let newGraphSettings = { ...graphSettings };
 
-          for (const metricName of Object.keys(
-            newGraphSettings?.ui_settings?.columns?.metric_settings ?? {},
-          )) {
+          for (const metricName of nativeGraph.metricNames) {
             /// When max tier is selected we want to hide columns for all tiers above it, because
             /// their value will be 0 anyway and showing it will clutter the UI and make it confusing.
             for (let idx = 0; idx < allTiers.length; idx++) {
@@ -540,8 +526,7 @@ function ToggleTierForMetric({
 }) {
   const [graphSettings, setGraphSettings] = useGraphSettings();
   const viewKey = MV.tiered(metricName, tierName);
-  const vis =
-    graphSettings?.ui_settings?.columns?.metric_settings?.[viewKey]?.visibility;
+  const vis = graphSettings?.metrics_visibility?.[viewKey];
 
   return (
     <UToggleButton
@@ -550,23 +535,19 @@ function ToggleTierForMetric({
       tooltip={`Show a column for transitive values of '${metricName}' metric for ${tierName} tier`}
       selected={isViewVisible(vis)}
       onSelectedChange={(selected) => {
+        const updated = setViewVisibility(
+          graphSettings,
+          viewKey,
+          selected ? ENABLED : HIDDEN,
+        );
         setGraphSettings({
-          ...graphSettings,
+          ...updated,
           ui_settings: {
-            ...graphSettings.ui_settings,
+            ...updated.ui_settings,
             columns: {
-              ...graphSettings.ui_settings?.columns,
+              ...updated.ui_settings?.columns,
               hide_metrics: false,
               show_tiered_metrics: true,
-              metric_settings: {
-                ...graphSettings?.ui_settings?.columns?.metric_settings,
-                [viewKey]: {
-                  ...graphSettings?.ui_settings?.columns?.metric_settings?.[
-                    viewKey
-                  ],
-                  visibility: selected ? ENABLED : HIDDEN,
-                },
-              },
             },
           },
         });
@@ -586,8 +567,7 @@ function DominatedForTierForMetric({
 }) {
   const [graphSettings, setGraphSettings] = useGraphSettings();
   const viewKey = MV.tieredDominated(metricName, tierName);
-  const vis =
-    graphSettings?.ui_settings?.columns?.metric_settings?.[viewKey]?.visibility;
+  const vis = graphSettings?.metrics_visibility?.[viewKey];
 
   const selected = isEnabledForGraphStructure(
     graphSettings?.ui_settings?.graph_structure,
@@ -601,23 +581,19 @@ function DominatedForTierForMetric({
       tooltip={`Dominated value for'${metricName}' metric for ${tierName} tier`}
       selected={selected}
       onSelectedChange={(selected) => {
+        const updated = setViewVisibility(
+          graphSettings,
+          viewKey,
+          selected ? ENABLED_IN_DOMINATOR : HIDDEN,
+        );
         setGraphSettings({
-          ...graphSettings,
+          ...updated,
           ui_settings: {
-            ...graphSettings.ui_settings,
+            ...updated.ui_settings,
             columns: {
-              ...graphSettings.ui_settings?.columns,
+              ...updated.ui_settings?.columns,
               hide_metrics: false,
               hide_dominated_tiered_metrics: false,
-              metric_settings: {
-                ...graphSettings?.ui_settings?.columns?.metric_settings,
-                [viewKey]: {
-                  ...graphSettings?.ui_settings?.columns?.metric_settings?.[
-                    viewKey
-                  ],
-                  visibility: selected ? ENABLED_IN_DOMINATOR : HIDDEN,
-                },
-              },
             },
           },
         });
@@ -697,8 +673,7 @@ function ChangedNodesOnlyToggle() {
 function EnableSelfMetricToggle({ metricName }: { metricName: string }) {
   const [graphSettings, setGraphSettings] = useGraphSettings();
   const viewKey = MV.metric(metricName);
-  const vis =
-    graphSettings?.ui_settings?.columns?.metric_settings?.[viewKey]?.visibility;
+  const vis = graphSettings?.metrics_visibility?.[viewKey];
   const selected = isViewVisible(vis);
 
   return (
@@ -708,22 +683,18 @@ function EnableSelfMetricToggle({ metricName }: { metricName: string }) {
       tooltip={`Show a column with the values of '${metricName}' metric`}
       selected={selected}
       onSelectedChange={(selected) => {
+        const updated = setViewVisibility(
+          graphSettings,
+          viewKey,
+          selected ? ENABLED : HIDDEN,
+        );
         setGraphSettings({
-          ...graphSettings,
+          ...updated,
           ui_settings: {
-            ...graphSettings.ui_settings,
+            ...updated.ui_settings,
             columns: {
-              ...graphSettings.ui_settings?.columns,
+              ...updated.ui_settings?.columns,
               hide_metrics: false,
-              metric_settings: {
-                ...graphSettings?.ui_settings?.columns?.metric_settings,
-                [viewKey]: {
-                  ...graphSettings?.ui_settings?.columns?.metric_settings?.[
-                    viewKey
-                  ],
-                  visibility: selected ? ENABLED : HIDDEN,
-                },
-              },
             },
           },
         });
@@ -737,8 +708,7 @@ function EnableSelfMetricToggle({ metricName }: { metricName: string }) {
 function EnableTransitiveMetricToggle({ metricName }: { metricName: string }) {
   const [graphSettings, setGraphSettings] = useGraphSettings();
   const viewKey = MV.transitive(metricName);
-  const vis =
-    graphSettings?.ui_settings?.columns?.metric_settings?.[viewKey]?.visibility;
+  const vis = graphSettings?.metrics_visibility?.[viewKey];
   const selected = isViewVisible(vis);
 
   return (
@@ -748,22 +718,18 @@ function EnableTransitiveMetricToggle({ metricName }: { metricName: string }) {
       tooltip={`Show a column with transitive values of '${metricName}' metric`}
       selected={selected}
       onSelectedChange={(selected) => {
+        const updated = setViewVisibility(
+          graphSettings,
+          viewKey,
+          selected ? ENABLED : HIDDEN,
+        );
         setGraphSettings({
-          ...graphSettings,
+          ...updated,
           ui_settings: {
-            ...graphSettings.ui_settings,
+            ...updated.ui_settings,
             columns: {
-              ...graphSettings.ui_settings?.columns,
+              ...updated.ui_settings?.columns,
               hide_metrics: false,
-              metric_settings: {
-                ...graphSettings?.ui_settings?.columns?.metric_settings,
-                [viewKey]: {
-                  ...graphSettings?.ui_settings?.columns?.metric_settings?.[
-                    viewKey
-                  ],
-                  visibility: selected ? ENABLED : HIDDEN,
-                },
-              },
             },
           },
         });
@@ -777,8 +743,7 @@ function EnableTransitiveMetricToggle({ metricName }: { metricName: string }) {
 function EnableDominatedMetricToggle({ metricName }: { metricName: string }) {
   const [graphSettings, setGraphSettings] = useGraphSettings();
   const viewKey = MV.dominated(metricName);
-  const vis =
-    graphSettings?.ui_settings?.columns?.metric_settings?.[viewKey]?.visibility;
+  const vis = graphSettings?.metrics_visibility?.[viewKey];
   const selected = isEnabledForGraphStructure(
     graphSettings?.ui_settings?.graph_structure,
     vis,
@@ -791,22 +756,18 @@ function EnableDominatedMetricToggle({ metricName }: { metricName: string }) {
       tooltip={`Show a column with dominated values for '${metricName}' metric`}
       selected={selected}
       onSelectedChange={(selected) => {
+        const updated = setViewVisibility(
+          graphSettings,
+          viewKey,
+          selected ? ENABLED_IN_DOMINATOR : HIDDEN,
+        );
         setGraphSettings({
-          ...graphSettings,
+          ...updated,
           ui_settings: {
-            ...graphSettings.ui_settings,
+            ...updated.ui_settings,
             columns: {
-              ...graphSettings.ui_settings?.columns,
+              ...updated.ui_settings?.columns,
               hide_metrics: false,
-              metric_settings: {
-                ...graphSettings?.ui_settings?.columns?.metric_settings,
-                [viewKey]: {
-                  ...graphSettings?.ui_settings?.columns?.metric_settings?.[
-                    viewKey
-                  ],
-                  visibility: selected ? ENABLED_IN_DOMINATOR : HIDDEN,
-                },
-              },
             },
           },
         });

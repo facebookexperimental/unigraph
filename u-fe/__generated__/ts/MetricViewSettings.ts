@@ -5,7 +5,6 @@
  */
 
 
-import type { MetricFormat } from './MetricFormat.ts';
 import type { MetricViewVisibility } from './MetricViewVisibility.ts';
 
 /**
@@ -16,17 +15,10 @@ import type { MetricViewVisibility } from './MetricViewVisibility.ts';
  */
 export interface MetricViewSettings {
   /**
-   * Controls when this view is shown.
+   * Controls when this view is shown in the UI.
    * `None` = use default for this view type:
    *   - Non-dominated views default to `Enabled`
    *   - Dominated views default to `EnabledInDominatorMode`
    */
   visibility?: MetricViewVisibility | undefined;
-  /**
-   * Display format. Derived views (transitive, dominated, tiered)
-   * inherit the format from their base metric key (e.g., `"size"`) if not set here.
-   */
-  format?: MetricFormat | undefined;
-  /** Description. Typically only set on base metric keys. */
-  description?: string | undefined;
 }

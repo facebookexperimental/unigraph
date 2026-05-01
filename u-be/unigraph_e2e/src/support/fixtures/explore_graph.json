@@ -150,38 +150,23 @@
     "app"
   ],
   "graph_settings": {
-    "ui_settings": {
-      "columns": {
-        "metric_settings": {
-          "size": {
-            "visibility": {
-              "Unavailable": {
-                "reason": "use tiered instead"
-              }
-            }
-          },
-          "lines#eager": {
-            "visibility": {
-              "Hidden": {}
-            }
-          },
-          "lines#eager~dominated": {
-            "visibility": {
-              "Hidden": {}
-            }
-          },
-          "lines#lazy": {
-            "visibility": {
-              "Hidden": {}
-            }
-          },
-          "lines#lazy~dominated": {
-            "visibility": {
-              "Hidden": {}
-            }
-          }
+    "metrics_config": {
+      "metrics": {
+        "size": {
+          "self_view": "Unavailable"
+        },
+        "lines": {
+          "tiered": "Unavailable",
+          "tiered_dominated": "Unavailable"
         }
+      },
+      "default_visibility": {
+        "tiered": "Hidden",
+        "tiered_dominated": "Hidden"
       }
+    },
+    "metrics_visibility": {
+      "size#eager": "Enabled"
     }
   }
 }

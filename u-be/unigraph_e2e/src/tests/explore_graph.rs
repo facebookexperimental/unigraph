@@ -11,6 +11,7 @@ use unigraph_app::PutConfigsInput;
 use unigraph_app::call_rpc;
 use unigraph_core::config_key::GraphQueryConfigKey;
 use unigraph_core::config_query::GraphQueryConfig;
+use unigraph_core::graph_settings::GraphSettings;
 use unigraph_core::graph_settings::GraphStructure;
 use unigraph_core::graph_settings::SortOrder;
 
@@ -32,9 +33,9 @@ async fn entry_points() -> Result<()> {
         "
 Entry points
 
-node_name | lines | lines~dominated | lines~transitive | node-count~dominated | node-count~transitive | parents-count | size#eager | size#eager~dominated | size#lazy | size#lazy~dominated | size~dominated | size~transitive
-==========+=======+=================+==================+======================+=======================+===============+============+======================+===========+=====================+================+================
-app       |  1200 |            4990 |             4990 |                   12 |                    12 |             0 |       1775 |                 1775 |      1985 |                1985 |           1985 |            1985
+node_name | lines | lines~transitive | node-count~transitive | parents-count | size#eager | size~transitive
+==========+=======+==================+=======================+===============+============+================
+app       |  1200 |             4990 |                    12 |             0 |       1775 |            1985
 
 "
     );
@@ -43,12 +44,12 @@ app       |  1200 |            4990 |             4990 |                   12 | 
 }
 
 #[tokio::test]
-async fn metrics_none_returns_all() -> Result<()> {
+async fn default_metrics_respects_visibility() -> Result<()> {
     let t = init_app();
     let handle = ingest_explore_graph(&t).await?;
     let gqc_key = store_gqc(&t, &handle).await?;
 
-    // No .metrics() call → None → all available metric views
+    // No .metrics() call → None → visible views only (Hidden views excluded)
     let out = call_rpc!(
         t,
         ExploreGraph(
@@ -64,13 +65,13 @@ async fn metrics_none_returns_all() -> Result<()> {
 Edges: forward
 Edges of: app
 
-node_name | lines | lines~dominated | lines~transitive | node-count~dominated | node-count~transitive | parents-count | size#eager | size#eager~dominated | size#lazy | size#lazy~dominated | size~dominated | size~transitive ▼
-==========+=======+=================+==================+======================+=======================+===============+============+======================+===========+=====================+================+==================
-app       |  1200 |            4990 |             4990 |                   12 |                    12 |             0 |       1775 |                 1775 |      1985 |                1985 |           1985 |              1985
-----------+-------+-----------------+------------------+----------------------+-----------------------+---------------+------------+----------------------+-----------+---------------------+----------------+------------------
-core      |   600 |            1770 |             1870 |                    4 |                     5 |             1 |        780 |                  730 |       870 |                 820 |            820 |               870
-ui        |   800 |            1920 |             2020 |                    6 |                     7 |             1 |        545 |                  495 |       665 |                 615 |            615 |               665
-utils     |   100 |             100 |              100 |                    1 |                     1 |             5 |         50 |                   50 |        50 |                  50 |             50 |                50
+node_name | lines | lines~transitive | node-count~transitive | parents-count | size#eager | size~transitive ▼
+==========+=======+==================+=======================+===============+============+==================
+app       |  1200 |             4990 |                    12 |             0 |       1775 |              1985
+----------+-------+------------------+-----------------------+---------------+------------+------------------
+core      |   600 |             1870 |                     5 |             1 |        780 |               870
+ui        |   800 |             2020 |                     7 |             1 |        545 |               665
+utils     |   100 |              100 |                     1 |             5 |         50 |                50
 
 "
     );
@@ -535,6 +536,292 @@ button_ios     |    80 |                    1 |                     1 |   30 |  
     Ok(())
 }
 
+// ── Visibility Tests ─────────────────────────────────────────
+
+#[tokio::test]
+async fn default_visibility_hides_tiered_but_override_shows_one() -> Result<()> {
+    let t = init_app();
+    let handle = ingest_explore_graph(&t).await?;
+    let gqc_key = store_gqc(&t, &handle).await?;
+
+    // Fixture config:
+    //   default_visibility: { tiered: Hidden, tiered_dominated: Hidden }
+    //   metrics_visibility: { "size#eager": Enabled }
+    //
+    // So default explore should NOT show lines#eager, lines#lazy, etc.
+    // (hidden by default_visibility), but SHOULD show size#eager
+    // (per-view override beats the default).
+    let out = call_rpc!(
+        t,
+        ExploreGraph(
+            Explore::new(gqc_key.clone())
+                .node("app")
+                .sort_by("size~transitive")
+                .build()
+        )
+    );
+
+    let ascii = out.ascii.as_ref().unwrap();
+    let header_line = ascii
+        .lines()
+        .find(|l| l.contains("node_name"))
+        .expect("should have header line");
+    let columns: Vec<&str> = header_line.split(" | ").map(|s| s.trim()).collect();
+    assert!(
+        columns.contains(&"size#eager"),
+        "size#eager should be visible (per-view override), got: {columns:?}"
+    );
+    assert!(
+        !columns.contains(&"lines#eager"),
+        "lines#eager should be hidden (default_visibility)"
+    );
+    assert!(
+        !columns.contains(&"size#lazy"),
+        "size#lazy should be hidden (default_visibility)"
+    );
+    assert!(
+        !columns.contains(&"lines~dominated"),
+        "dominated should be hidden (forward mode)"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn explicit_metrics_override_all_visibility() -> Result<()> {
+    let t = init_app();
+    let handle = ingest_explore_graph(&t).await?;
+    let gqc_key = store_gqc(&t, &handle).await?;
+
+    // lines#eager is Hidden by default_visibility.tiered, but requesting
+    // it explicitly overrides that — you get it regardless.
+    let out = call_rpc!(
+        t,
+        ExploreGraph(
+            Explore::new(gqc_key)
+                .node("app")
+                .metrics(&["lines", "lines#eager", "size~transitive"])
+                .build()
+        )
+    );
+    snapshot!(
+        out.ascii.unwrap(),
+        "
+Edges: forward
+Edges of: app
+
+node_name | lines | lines#eager | size~transitive
+==========+=======+=============+================
+app       |  1200 |        4390 |            1985
+----------+-------+-------------+----------------
+core      |   600 |        1620 |             870
+ui        |   800 |        1670 |             665
+utils     |   100 |         100 |              50
+
+"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn unavailable_metrics_excluded_from_about() -> Result<()> {
+    let t = init_app();
+    let handle = ingest_explore_graph(&t).await?;
+
+    let out = call_rpc!(
+        t,
+        AboutGraph(AboutGraphInput {
+            handle: handle.parse()?,
+        })
+    );
+
+    let view_names: Vec<String> = out
+        .metric_views
+        .iter()
+        .map(|m| m.view.to_string())
+        .collect();
+
+    // size self-view is Unavailable via MetricsConfig → not in the list
+    assert!(
+        !view_names.contains(&"size".to_string()),
+        "size self-view should be unavailable"
+    );
+
+    // lines tiered is Unavailable via per-metric config → not in the list
+    assert!(
+        !view_names.contains(&"lines#eager".to_string()),
+        "lines#eager should be unavailable (per-metric tiered: Unavailable)"
+    );
+
+    // size#eager IS available (tiered is available for size, just hidden by default_visibility)
+    assert!(
+        view_names.contains(&"size#eager".to_string()),
+        "size#eager should be available (Hidden != Unavailable)"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn default_visibility_all_hidden() -> Result<()> {
+    use unigraph_core::graph_settings::DefaultVisibility;
+    use unigraph_core::graph_settings::MetricViewVisibility;
+    use unigraph_core::graph_settings::MetricsConfig;
+
+    let t = init_app();
+    let gqc_key = ingest_with_settings(
+        &t,
+        "all_hidden",
+        GraphSettings {
+            description: None,
+            metrics_config: Some(MetricsConfig {
+                default_availability: None,
+                default_visibility: Some(DefaultVisibility {
+                    all: Some(MetricViewVisibility::Hidden),
+                    self_view: None,
+                    transitive: None,
+                    dominated: None,
+                    tiered: None,
+                    tiered_dominated: None,
+                }),
+                metrics: None,
+                parents_count: None,
+                count_transitive: None,
+                count_dominated: None,
+            }),
+            metrics_visibility: None,
+            ui_settings: None,
+        },
+    )
+    .await?;
+
+    let out = call_rpc!(t, ExploreGraph(Explore::new(gqc_key).node("app").build()));
+    let columns = header_columns(out.ascii.as_ref().unwrap());
+
+    assert_eq!(
+        columns,
+        vec!["node_name"],
+        "all metrics hidden, only node_name column"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn default_visibility_all_hidden_with_type_override() -> Result<()> {
+    use unigraph_core::graph_settings::DefaultVisibility;
+    use unigraph_core::graph_settings::MetricViewVisibility;
+    use unigraph_core::graph_settings::MetricsConfig;
+
+    let t = init_app();
+    let gqc_key = ingest_with_settings(
+        &t,
+        "all_hidden_transitive_shown",
+        GraphSettings {
+            description: None,
+            metrics_config: Some(MetricsConfig {
+                default_availability: None,
+                default_visibility: Some(DefaultVisibility {
+                    all: Some(MetricViewVisibility::Hidden),
+                    transitive: Some(MetricViewVisibility::Enabled),
+                    self_view: None,
+                    dominated: None,
+                    tiered: None,
+                    tiered_dominated: None,
+                }),
+                metrics: None,
+                parents_count: None,
+                count_transitive: None,
+                count_dominated: None,
+            }),
+            metrics_visibility: None,
+            ui_settings: None,
+        },
+    )
+    .await?;
+
+    let out = call_rpc!(t, ExploreGraph(Explore::new(gqc_key).node("app").build()));
+    let columns = header_columns(out.ascii.as_ref().unwrap());
+
+    assert!(
+        columns.contains(&"lines~transitive".to_string()),
+        "transitive should be visible (type override beats all)"
+    );
+    assert!(
+        columns.contains(&"size~transitive".to_string()),
+        "size~transitive too"
+    );
+    assert!(
+        columns.contains(&"node-count~transitive".to_string()),
+        "structural transitive too"
+    );
+    assert!(
+        !columns.contains(&"lines".to_string()),
+        "self_view should be hidden (all)"
+    );
+    assert!(
+        !columns.contains(&"size".to_string()),
+        "size self should be hidden (all)"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn default_visibility_all_hidden_with_per_view_override() -> Result<()> {
+    use std::collections::BTreeMap;
+
+    use unigraph_core::graph_settings::DefaultVisibility;
+    use unigraph_core::graph_settings::MetricViewVisibility;
+    use unigraph_core::graph_settings::MetricsConfig;
+
+    let t = init_app();
+    let mut overrides = BTreeMap::new();
+    overrides.insert("lines".to_string(), MetricViewVisibility::Enabled);
+
+    let gqc_key = ingest_with_settings(
+        &t,
+        "all_hidden_one_override",
+        GraphSettings {
+            description: None,
+            metrics_config: Some(MetricsConfig {
+                default_availability: None,
+                default_visibility: Some(DefaultVisibility {
+                    all: Some(MetricViewVisibility::Hidden),
+                    self_view: None,
+                    transitive: None,
+                    dominated: None,
+                    tiered: None,
+                    tiered_dominated: None,
+                }),
+                metrics: None,
+                parents_count: None,
+                count_transitive: None,
+                count_dominated: None,
+            }),
+            metrics_visibility: Some(overrides),
+            ui_settings: None,
+        },
+    )
+    .await?;
+
+    let out = call_rpc!(t, ExploreGraph(Explore::new(gqc_key).node("app").build()));
+    let columns = header_columns(out.ascii.as_ref().unwrap());
+
+    assert!(
+        columns.contains(&"lines".to_string()),
+        "lines should be visible (per-view override)"
+    );
+    assert!(
+        !columns.contains(&"size~transitive".to_string()),
+        "everything else hidden"
+    );
+    assert_eq!(columns.len(), 2, "only node_name + lines");
+
+    Ok(())
+}
+
 // ── AboutGraph Tests ─────────────────────────────────────────
 
 #[tokio::test]
@@ -662,6 +949,55 @@ async fn store_gqc(t: &TestApp, handle: &str) -> Result<GraphQueryConfigKey> {
         })
     );
     Ok(put.graph_query_configs.into_iter().next().unwrap())
+}
+
+/// Ingest the explore fixture with custom graph_settings, returning a GQC key.
+async fn ingest_with_settings(
+    t: &TestApp,
+    timeline_id: &str,
+    settings: GraphSettings,
+) -> Result<GraphQueryConfigKey> {
+    let json = include_str!("../support/fixtures/explore_graph.json");
+    let mut map_graph = unigraph_core::MapGraph::from_json(json)?;
+    map_graph.graph_settings = Some(settings);
+    let ag_ser = map_graph.to_array_graph_serializable()?;
+
+    let tid = unigraph_storage_core::TimelineID(timeline_id.to_string());
+    t.app
+        .db
+        .timelines
+        .create(
+            &tid,
+            &unigraph_storage_core::TimelineConfig {
+                schema: unigraph_storage_core::TimelineSchema::AdjacentDeltas(
+                    unigraph_storage_core::AdjacentDeltasConfig {},
+                ),
+                external_id_namespace: None,
+                blob_storage: Default::default(),
+                store_metric_history: None,
+            },
+            &t.task,
+        )
+        .await?;
+
+    let key = unigraph_core::GraphTimeKey {
+        timeline_id: tid,
+        timestamp: unigraph_core::Timestamp::from_unix_timestamp(1000),
+        graph_id: unigraph_core::GraphID(0),
+    };
+    t.app.db.graph.store(&key, &ag_ser, None, &t.task).await?;
+
+    store_gqc(t, timeline_id).await
+}
+
+fn header_columns(ascii: &str) -> Vec<String> {
+    ascii
+        .lines()
+        .find(|l| l.contains("node_name"))
+        .expect("should have header line")
+        .split(" | ")
+        .map(|s| s.trim().to_string())
+        .collect()
 }
 
 // ── Input builder ───────────────────────────────────────────────

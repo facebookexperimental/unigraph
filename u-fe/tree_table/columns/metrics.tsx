@@ -15,7 +15,7 @@ import {
   MissingMetric,
   WouldBeDeltaMetricCell,
 } from "./Cells";
-import { MV, isEnabledForGraphStructure, isViewVisible } from "./ColumnUtils";
+import { MV, isVisibleForStructure } from "./ColumnUtils";
 import { MetricDeltaRightHovercard } from "./hovercards";
 import type { Column, ColumnsCtx } from "./useGraphTreeTableColumns";
 
@@ -63,7 +63,10 @@ export class MetricColumn implements Column {
   isEnabled() {
     return (
       this.ctx.showMetrics &&
-      isViewVisible(this.ctx.viewVisibility(MV.metric(this.metricName)))
+      isVisibleForStructure(
+        this.ctx.resolvedVisibility(MV.metric(this.metricName), "self_view"),
+        this.ctx.graphStructure,
+      )
     );
   }
 
@@ -84,7 +87,7 @@ export class MetricColumn implements Column {
 
   definition(): [string, NumericValueColumnDefinition] {
     const columnID = this.getID();
-    const metricSettings = this.ctx.metricSettings(this.metricName);
+    const format = this.ctx.metricFormat(this.metricName);
     const definition: NumericValueColumnDefinition = {
       t: "numeric_value_column",
       label: columnID,
@@ -96,7 +99,7 @@ export class MetricColumn implements Column {
                 row.twinArrow.points_to,
                 this.metricName,
               )}
-              format={metricSettings?.format}
+              format={format}
             />
           );
         } else {
@@ -136,7 +139,13 @@ export class TransitiveMetricColumn implements Column {
   isEnabled() {
     return (
       this.ctx.showMetrics &&
-      isViewVisible(this.ctx.viewVisibility(MV.transitive(this.metricName)))
+      isVisibleForStructure(
+        this.ctx.resolvedVisibility(
+          MV.transitive(this.metricName),
+          "transitive",
+        ),
+        this.ctx.graphStructure,
+      )
     );
   }
 
@@ -167,7 +176,7 @@ export class TransitiveMetricColumn implements Column {
   definition(): [string, NumericValueColumnDefinition] {
     const columnID = this.getID();
     const getValues = this.getValuesFn();
-    const format = this.ctx.metricSettings(this.metricName)?.format;
+    const format = this.ctx.metricFormat(this.metricName);
 
     const definition: NumericValueColumnDefinition = {
       t: "numeric_value_column",
@@ -215,9 +224,9 @@ export class DominatedMetricColumn implements Column {
   isEnabled() {
     return (
       this.ctx.showMetrics &&
-      isEnabledForGraphStructure(
+      isVisibleForStructure(
+        this.ctx.resolvedVisibility(MV.dominated(this.metricName), "dominated"),
         this.ctx.graphStructure,
-        this.ctx.viewVisibility(MV.dominated(this.metricName)),
       )
     );
   }
@@ -252,7 +261,7 @@ export class DominatedMetricColumn implements Column {
   definition(): [string, NumericValueColumnDefinition] {
     const columnID = this.getID();
     const getValues = this.getValuesFn();
-    const format = this.ctx.metricSettings(this.metricName)?.format;
+    const format = this.ctx.metricFormat(this.metricName);
 
     const definition: NumericValueColumnDefinition = {
       t: "numeric_value_column",
@@ -305,8 +314,12 @@ export class TransitiveTieredMetricColumn implements Column {
     return (
       this.ctx.showMetrics &&
       this.ctx.showTieredMetrics &&
-      isViewVisible(
-        this.ctx.viewVisibility(MV.tiered(this.metricName, this.tierName)),
+      isVisibleForStructure(
+        this.ctx.resolvedVisibility(
+          MV.tiered(this.metricName, this.tierName),
+          "tiered",
+        ),
+        this.ctx.graphStructure,
       ) &&
       isBelowMaxTier(this.ctx, tierIDX)
     );
@@ -341,7 +354,7 @@ export class TransitiveTieredMetricColumn implements Column {
   definition(): [string, NumericValueColumnDefinition] {
     const columnID = this.getID();
     const getValues = this.getValuesFn();
-    const format = this.ctx.metricSettings(this.metricName)?.format;
+    const format = this.ctx.metricFormat(this.metricName);
 
     const definition: NumericValueColumnDefinition = {
       t: "numeric_value_column",
@@ -412,17 +425,18 @@ export class TieredDominatedMetricColumn implements Column {
   isEnabled() {
     const tierIDX = this.nativeGraph.stats().tier_names.indexOf(this.tierName);
 
-    const enabledForStructure = isEnabledForGraphStructure(
-      this.ctx.graphStructure,
-      this.ctx.viewVisibility(
+    const visibleForStructure = isVisibleForStructure(
+      this.ctx.resolvedVisibility(
         MV.tieredDominated(this.metricName, this.tierName),
+        "tiered_dominated",
       ),
+      this.ctx.graphStructure,
     );
 
     return (
       this.ctx.showMetrics &&
       !this.ctx.hideDominatedTieredMetrics &&
-      enabledForStructure &&
+      visibleForStructure &&
       isBelowMaxTier(this.ctx, tierIDX)
     );
   }
@@ -456,7 +470,7 @@ export class TieredDominatedMetricColumn implements Column {
   definition(): [string, NumericValueColumnDefinition] {
     const columnID = this.getID();
     const getValues = this.getValuesFn();
-    const format = this.ctx.metricSettings(this.metricName)?.format;
+    const format = this.ctx.metricFormat(this.metricName);
 
     const definition: NumericValueColumnDefinition = {
       t: "numeric_value_column",
@@ -513,8 +527,12 @@ export class TransitiveTieredMetricDeltaColumn implements Column {
     return (
       this.ctx.showMetrics &&
       this.ctx.showTieredMetrics &&
-      isViewVisible(
-        this.ctx.viewVisibility(MV.tiered(this.metricName, this.tierName)),
+      isVisibleForStructure(
+        this.ctx.resolvedVisibility(
+          MV.tiered(this.metricName, this.tierName),
+          "tiered",
+        ),
+        this.ctx.graphStructure,
       ) &&
       isBelowMaxTier(this.ctx, tierIDX)
     );
@@ -554,7 +572,7 @@ export class TransitiveTieredMetricDeltaColumn implements Column {
     const columnID = this.getID();
     const getValues = this.getValuesFn();
     const getValuesFnForSorting = this.getValuesFnForSorting();
-    const format = this.ctx.metricSettings(this.metricName)?.format;
+    const format = this.ctx.metricFormat(this.metricName);
 
     const definition: NumericValueColumnDefinition = {
       t: "numeric_value_column",
@@ -605,8 +623,12 @@ export class TransitiveTieredMetricRightDeltaColumn implements Column {
     return (
       this.ctx.showMetrics &&
       this.ctx.showTieredMetrics &&
-      isViewVisible(
-        this.ctx.viewVisibility(MV.tiered(this.metricName, this.tierName)),
+      isVisibleForStructure(
+        this.ctx.resolvedVisibility(
+          MV.tiered(this.metricName, this.tierName),
+          "tiered",
+        ),
+        this.ctx.graphStructure,
       ) &&
       isBelowMaxTier(this.ctx, tierIDX)
     );
@@ -642,7 +664,7 @@ export class TransitiveTieredMetricRightDeltaColumn implements Column {
     const columnID = this.getID();
     const getValuesL = this.getValuesFn(GRAPH_SIDE.L);
     const getValuesR = this.getValuesFn(GRAPH_SIDE.R);
-    const format = this.ctx.metricSettings(this.metricName)?.format;
+    const format = this.ctx.metricFormat(this.metricName);
     const r = this.twinGraph.r;
 
     const definition: NumericValueColumnDefinition = {
@@ -702,7 +724,10 @@ export class MetricRightInDeltaViewColumn implements Column {
     }
     return (
       this.ctx.showMetrics &&
-      isViewVisible(this.ctx.viewVisibility(MV.metric(this.metricName)))
+      isVisibleForStructure(
+        this.ctx.resolvedVisibility(MV.metric(this.metricName), "self_view"),
+        this.ctx.graphStructure,
+      )
     );
   }
 
@@ -721,8 +746,7 @@ export class MetricRightInDeltaViewColumn implements Column {
       this.twinGraph.leftGraphX().getNodeMetricBatched(idxs, this.metricName);
     const getValuesR = (idxs: NodeIDX[]) =>
       r.getNodeMetricBatched(idxs, this.metricName);
-    const metricSettings = this.ctx.metricSettings(this.metricName);
-    const format = metricSettings?.format;
+    const format = this.ctx.metricFormat(this.metricName);
 
     const definition: NumericValueColumnDefinition = {
       t: "numeric_value_column",
@@ -783,7 +807,10 @@ export class MetricDeltaViewColumn implements Column {
     }
     return (
       this.ctx.showMetrics &&
-      isViewVisible(this.ctx.viewVisibility(MV.metric(this.metricName)))
+      isVisibleForStructure(
+        this.ctx.resolvedVisibility(MV.metric(this.metricName), "self_view"),
+        this.ctx.graphStructure,
+      )
     );
   }
 
@@ -819,7 +846,7 @@ export class MetricDeltaViewColumn implements Column {
   definition(): [string, NumericValueColumnDefinition] {
     const r = this.twinGraph.r;
     const columnID = this.getID();
-    const metricSettings = this.ctx.metricSettings(this.metricName);
+    const format = this.ctx.metricFormat(this.metricName);
     const getValues = this.getValuesFn();
 
     const definition: NumericValueColumnDefinition = {
@@ -830,7 +857,7 @@ export class MetricDeltaViewColumn implements Column {
           return (
             <DeltaMetricCell
               value={getValues([row.twinArrow.points_to])[0] ?? 0}
-              format={metricSettings?.format}
+              format={format}
             />
           );
         } else {

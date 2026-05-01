@@ -6,7 +6,6 @@
 
 
 import type { GraphTableSort } from './GraphTableSort.ts';
-import type { MetricViewSettings } from './MetricViewSettings.ts';
 
 export interface ColumnSettings {
   /**
@@ -39,9 +38,4 @@ export interface ColumnSettings {
   show_counts?: boolean | undefined;
   /** Show a column that displays the tier each node */
   show_tier_column?: boolean | undefined;
-  /**
-   * Per-view settings keyed by `MetricView.to_string()`.
-   * E.g. `"size"`, `"size~transitive"`, `"node-count~dominated"`.
-   */
-  metric_settings?: { [key: string]: MetricViewSettings } | undefined;
 }
