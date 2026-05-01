@@ -4,6 +4,7 @@
 
 import {
   apply_traversal_config,
+  available_metric_views,
   determine_entrypoints,
   get_array_graph_stats,
   get_combined_metrics_for_entrypoints_with_force_include,
@@ -21,7 +22,9 @@ import {
   get_transitive_tiered_metrics,
   node_idx_to_name,
   node_name_to_idx_log,
+  set_graph_settings,
   set_graphs,
+  visible_metric_views,
 } from "../../.build/wasm/unigraph_wasm";
 import type { ArrayGraphStats } from "../__generated__/ts/ArrayGraphStats";
 import type { CombinedMetricsForNodes } from "../__generated__/ts/CombinedMetricsForNodes";
@@ -148,6 +151,18 @@ export default class NativeGraph {
   getGraphSettings(): GraphSettings {
     const graphSettingsJSON = get_graph_settings(this.side);
     return JSON.parse(graphSettingsJSON) as GraphSettings;
+  }
+
+  setGraphSettings(gs: GraphSettings): void {
+    set_graph_settings(JSON.stringify(gs), this.side);
+  }
+
+  getAvailableMetricViews(): string[] {
+    return JSON.parse(available_metric_views(this.side)) as string[];
+  }
+
+  getVisibleMetricViews(structure: number): string[] {
+    return JSON.parse(visible_metric_views(this.side, structure)) as string[];
   }
 
   /// This function changes the traversal config and returns a new

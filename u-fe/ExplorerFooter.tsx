@@ -6,7 +6,6 @@ import {
   ArrowUpToLine,
   ChartNoAxesCombined,
   FileDiff,
-  Layers,
   List,
   Network,
   Tally5,
@@ -17,7 +16,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { MetricViewVisibility } from "./__generated__/ts/MetricViewVisibility";
-import { metricFormatFromConfig } from "./tree_table/columns/ColumnUtils";
+import { MetricsConfigResolver } from "./lib/MetricsConfigResolver";
 import Metric from "./components/Metric";
 import USplitToggleButton from "./components/USplitToggleButton";
 import UToggleButton from "./components/UToggleButton";
@@ -46,8 +45,6 @@ import {
   ENABLED_IN_DOMINATOR,
   HIDDEN,
   MV,
-  isEnabledForGraphStructure,
-  isViewVisible,
 } from "./tree_table/columns/ColumnUtils";
 
 export default function ExplorerFooter() {
@@ -67,6 +64,11 @@ function SelectedNodesMetrics() {
     useSelectedNodes();
   const nativeGraph = useNativeGraphR();
 
+  const resolver = useMemo(
+    () => new MetricsConfigResolver(graphSettings),
+    [graphSettings],
+  );
+
   const combinedMetrics = useMemo(() => {
     return nativeGraph.getCombinedMetrics(selectedNodes);
   }, [nativeGraph, selectedNodes]);
@@ -81,10 +83,7 @@ function SelectedNodesMetrics() {
 
   const metrics = Object.entries(combinedMetrics.metrics).map(
     ([metricName, value]) => {
-      const format = metricFormatFromConfig(
-        graphSettings?.metrics_config,
-        metricName,
-      );
+      const format = resolver.format(metricName);
       const formatted = formatMetric(value ?? 0, format);
       return (
         <Metric
@@ -99,10 +98,7 @@ function SelectedNodesMetrics() {
 
   const tieredMetrics = Object.entries(combinedMetrics.tiered_metrics).flatMap(
     ([metricName, tiered]) => {
-      const format = metricFormatFromConfig(
-        graphSettings?.metrics_config,
-        metricName,
-      );
+      const format = resolver.format(metricName);
 
       if (tiered == null) {
         return [];
@@ -255,13 +251,11 @@ function setViewVisibility(
   viewKey: string,
   visibility: MetricViewVisibility,
 ): ReturnType<typeof useGraphSettings>[0] {
-  return {
-    ...graphSettings,
-    metrics_visibility: {
-      ...graphSettings.metrics_visibility,
-      [viewKey]: visibility,
-    },
-  };
+  return new MetricsConfigResolver(graphSettings).setVisibility(
+    graphSettings,
+    viewKey,
+    visibility,
+  );
 }
 
 // ── Count toggles hovercard ─────────────────────────────────────
@@ -270,10 +264,8 @@ function CountsHovercardContent() {
   const [graphSettings, setGraphSettings] = useGraphSettings();
   const twinGraph = useTwinGraph();
   const singleGraph = twinGraph.l == null;
-
-  const transitiveVis = graphSettings.metrics_visibility?.[MV.countTransitive];
-  const parentsVis = graphSettings.metrics_visibility?.[MV.parentsCount];
-  const dominatedVis = graphSettings.metrics_visibility?.[MV.countDominated];
+  const resolver = new MetricsConfigResolver(graphSettings);
+  const structure = graphSettings.ui_settings?.graph_structure ?? "Forward";
 
   return (
     <div className="flex flex-col gap-2">
@@ -282,7 +274,11 @@ function CountsHovercardContent() {
         <UToggleButton
           size="sm"
           tooltip="Show transitive children count"
-          selected={isViewVisible(transitiveVis)}
+          selected={resolver.isVisible(
+            MV.countTransitive,
+            "transitive",
+            structure,
+          )}
           onSelectedChange={(selected) => {
             setGraphSettings(
               setViewVisibility(
@@ -301,7 +297,11 @@ function CountsHovercardContent() {
             <UToggleButton
               tooltip="Show number of parent nodes"
               size="sm"
-              selected={isViewVisible(parentsVis)}
+              selected={resolver.isVisible(
+                MV.parentsCount,
+                "self_view",
+                structure,
+              )}
               onSelectedChange={(selected) => {
                 setGraphSettings(
                   setViewVisibility(
@@ -318,9 +318,10 @@ function CountsHovercardContent() {
             <UToggleButton
               tooltip="Show dominated nodes counts"
               size="sm"
-              selected={isEnabledForGraphStructure(
-                graphSettings?.ui_settings?.graph_structure,
-                dominatedVis,
+              selected={resolver.isVisible(
+                MV.countDominated,
+                "dominated",
+                structure,
               )}
               onSelectedChange={(selected) => {
                 setGraphSettings(
@@ -459,28 +460,18 @@ function MaxTierSelector() {
 }
 
 function MetricCard({ metricName }: { metricName: string }) {
+  const [graphSettings] = useGraphSettings();
   const nativeGraph = useNativeGraphR();
   const twinGraph = useTwinGraph();
   const singleGraph = twinGraph.l == null;
+  const resolver = new MetricsConfigResolver(graphSettings);
 
   const allTiers = nativeGraph.stats().tier_names;
-  const hasTiers = allTiers.length > 0;
-
-  const tiers = allTiers.map((tierName) => (
-    <ToggleTierForMetric
-      key={`${metricName}-${tierName}`}
-      tierName={tierName}
-      metricName={metricName}
-    />
-  ));
-
-  const dominatedTiered = allTiers.map((tierName) => (
-    <DominatedForTierForMetric
-      key={`${metricName}-dominated-${tierName}`}
-      tierName={tierName}
-      metricName={metricName}
-    />
-  ));
+  const tieredAvailable = resolver.isAvailable(metricName, "tiered");
+  const tieredDominatedAvailable = resolver.isAvailable(
+    metricName,
+    "tiered_dominated",
+  );
 
   return (
     <div className="w-full flex flex-col gap-2">
@@ -494,23 +485,31 @@ function MetricCard({ metricName }: { metricName: string }) {
             <EnableDominatedMetricToggle metricName={metricName} />
           )}
         </div>
-        {hasTiers && (
+        {tieredAvailable && (
           <>
             <H3 text="Tiers" />
             <div className="flex gap-2 flex-wrap">
-              <EnableTieredMetricsToggle />
-              {tiers}
+              {allTiers.map((tierName) => (
+                <ToggleTierForMetric
+                  key={`${metricName}-${tierName}`}
+                  tierName={tierName}
+                  metricName={metricName}
+                />
+              ))}
             </div>
           </>
         )}
 
-        {singleGraph && hasTiers && (
-          <>
-            <div className="flex gap-2 flex-wrap">
-              <DominatedTieredToggle />
-              {dominatedTiered}
-            </div>
-          </>
+        {singleGraph && tieredDominatedAvailable && (
+          <div className="flex gap-2 flex-wrap">
+            {allTiers.map((tierName) => (
+              <DominatedForTierForMetric
+                key={`${metricName}-dominated-${tierName}`}
+                tierName={tierName}
+                metricName={metricName}
+              />
+            ))}
+          </div>
         )}
       </div>
     </div>
@@ -525,32 +524,25 @@ function ToggleTierForMetric({
   metricName: string;
 }) {
   const [graphSettings, setGraphSettings] = useGraphSettings();
+  const resolver = new MetricsConfigResolver(graphSettings);
   const viewKey = MV.tiered(metricName, tierName);
-  const vis = graphSettings?.metrics_visibility?.[viewKey];
+  const graphStructure =
+    graphSettings.ui_settings?.graph_structure ?? "Forward";
 
   return (
     <UToggleButton
       key={`tiered-${metricName}-${tierName}`}
       size="sm"
       tooltip={`Show a column for transitive values of '${metricName}' metric for ${tierName} tier`}
-      selected={isViewVisible(vis)}
+      selected={resolver.isVisible(viewKey, "tiered", graphStructure)}
       onSelectedChange={(selected) => {
-        const updated = setViewVisibility(
-          graphSettings,
-          viewKey,
-          selected ? ENABLED : HIDDEN,
+        setGraphSettings(
+          setViewVisibility(
+            graphSettings,
+            viewKey,
+            selected ? ENABLED : HIDDEN,
+          ),
         );
-        setGraphSettings({
-          ...updated,
-          ui_settings: {
-            ...updated.ui_settings,
-            columns: {
-              ...updated.ui_settings?.columns,
-              hide_metrics: false,
-              show_tiered_metrics: true,
-            },
-          },
-        });
       }}
     >
       <span className="text-sm">{tierName}</span>
@@ -566,13 +558,11 @@ function DominatedForTierForMetric({
   metricName: string;
 }) {
   const [graphSettings, setGraphSettings] = useGraphSettings();
+  const resolver = new MetricsConfigResolver(graphSettings);
   const viewKey = MV.tieredDominated(metricName, tierName);
-  const vis = graphSettings?.metrics_visibility?.[viewKey];
+  const structure = graphSettings.ui_settings?.graph_structure ?? "Forward";
 
-  const selected = isEnabledForGraphStructure(
-    graphSettings?.ui_settings?.graph_structure,
-    vis,
-  );
+  const selected = resolver.isVisible(viewKey, "tiered_dominated", structure);
 
   return (
     <UToggleButton
@@ -593,7 +583,6 @@ function DominatedForTierForMetric({
             columns: {
               ...updated.ui_settings?.columns,
               hide_metrics: false,
-              hide_dominated_tiered_metrics: false,
             },
           },
         });
@@ -672,9 +661,10 @@ function ChangedNodesOnlyToggle() {
 
 function EnableSelfMetricToggle({ metricName }: { metricName: string }) {
   const [graphSettings, setGraphSettings] = useGraphSettings();
+  const resolver = new MetricsConfigResolver(graphSettings);
   const viewKey = MV.metric(metricName);
-  const vis = graphSettings?.metrics_visibility?.[viewKey];
-  const selected = isViewVisible(vis);
+  const structure = graphSettings.ui_settings?.graph_structure ?? "Forward";
+  const selected = resolver.isVisible(viewKey, "self_view", structure);
 
   return (
     <UToggleButton
@@ -707,9 +697,10 @@ function EnableSelfMetricToggle({ metricName }: { metricName: string }) {
 
 function EnableTransitiveMetricToggle({ metricName }: { metricName: string }) {
   const [graphSettings, setGraphSettings] = useGraphSettings();
+  const resolver = new MetricsConfigResolver(graphSettings);
   const viewKey = MV.transitive(metricName);
-  const vis = graphSettings?.metrics_visibility?.[viewKey];
-  const selected = isViewVisible(vis);
+  const structure = graphSettings.ui_settings?.graph_structure ?? "Forward";
+  const selected = resolver.isVisible(viewKey, "transitive", structure);
 
   return (
     <UToggleButton
@@ -742,12 +733,10 @@ function EnableTransitiveMetricToggle({ metricName }: { metricName: string }) {
 
 function EnableDominatedMetricToggle({ metricName }: { metricName: string }) {
   const [graphSettings, setGraphSettings] = useGraphSettings();
+  const resolver = new MetricsConfigResolver(graphSettings);
   const viewKey = MV.dominated(metricName);
-  const vis = graphSettings?.metrics_visibility?.[viewKey];
-  const selected = isEnabledForGraphStructure(
-    graphSettings?.ui_settings?.graph_structure,
-    vis,
-  );
+  const structure = graphSettings.ui_settings?.graph_structure ?? "Forward";
+  const selected = resolver.isVisible(viewKey, "dominated", structure);
 
   return (
     <UToggleButton
@@ -774,65 +763,6 @@ function EnableDominatedMetricToggle({ metricName }: { metricName: string }) {
       }}
     >
       <TreePalm />
-    </UToggleButton>
-  );
-}
-
-function DominatedTieredToggle() {
-  const [graphSettings, setGraphSettings] = useGraphSettings();
-
-  const selected =
-    (graphSettings?.ui_settings?.columns?.hide_dominated_tiered_metrics ??
-      false) === false;
-  return (
-    <UToggleButton
-      size="sm"
-      tooltip={`Show dominated metric columns`}
-      selected={selected}
-      onSelectedChange={(selected) => {
-        setGraphSettings({
-          ...graphSettings,
-          ui_settings: {
-            ...graphSettings.ui_settings,
-            columns: {
-              ...graphSettings.ui_settings?.columns,
-              hide_metrics: false,
-              hide_dominated_tiered_metrics: !selected,
-            },
-          },
-        });
-      }}
-    >
-      <TreePalm />
-    </UToggleButton>
-  );
-}
-
-function EnableTieredMetricsToggle() {
-  const [graphSettings, setGraphSettings] = useGraphSettings();
-
-  return (
-    <UToggleButton
-      size="sm"
-      tooltip={`Show tiered metric columns`}
-      selected={
-        graphSettings?.ui_settings?.columns?.show_tiered_metrics === true
-      }
-      onSelectedChange={(selected) => {
-        setGraphSettings({
-          ...graphSettings,
-          ui_settings: {
-            ...graphSettings.ui_settings,
-            columns: {
-              ...graphSettings.ui_settings?.columns,
-              hide_metrics: false,
-              show_tiered_metrics: selected,
-            },
-          },
-        });
-      }}
-    >
-      <Layers />
     </UToggleButton>
   );
 }

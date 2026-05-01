@@ -215,3 +215,384 @@ fn push_available_structural_counts(views: &mut Vec<MetricView>, config: Option<
         views.push(MetricView::CountDominated {});
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+
+    use k9::snapshot;
+
+    use crate::ArrayGraph;
+    use crate::types::array_graph::graph_settings::Availability;
+    use crate::types::array_graph::graph_settings::DefaultAvailability;
+    use crate::types::array_graph::graph_settings::DefaultVisibility;
+    use crate::types::array_graph::graph_settings::GraphSettings;
+    use crate::types::array_graph::graph_settings::GraphStructure;
+    use crate::types::array_graph::graph_settings::MetricConfig;
+    use crate::types::array_graph::graph_settings::MetricViewVisibility;
+    use crate::types::array_graph::graph_settings::MetricsConfig;
+    use crate::types::map_graph::MapGraph;
+
+    const GRAPH_WITH_TIERS: &str = r#"{
+        "nodes": {
+            "app":  { "edges_directed": ["lib"], "metrics": { "size": 100, "lines": 50 } },
+            "lib":  { "metrics": { "size": 200, "lines": 80 } }
+        },
+        "traversal_config": {
+            "tiered_traversal": {
+                "AscendingTiers": {
+                    "tiers": [
+                        { "name": "eager", "tags_that_transition_to_this_tier": [] },
+                        { "name": "lazy",  "tags_that_transition_to_this_tier": ["lazy"] }
+                    ]
+                }
+            }
+        }
+    }"#;
+
+    const SIMPLE_GRAPH: &str = r#"{
+        "nodes": {
+            "a": { "edges_directed": ["b"], "metrics": { "size": 10 } },
+            "b": { "metrics": { "size": 20 } }
+        }
+    }"#;
+
+    fn make_graph(json: &str) -> ArrayGraph {
+        MapGraph::from_json(json)
+            .unwrap()
+            .to_array_graph(&ll::Task::create_new("test"))
+            .unwrap()
+    }
+
+    fn format_views(views: &[crate::MetricView]) -> String {
+        views
+            .iter()
+            .map(|v| v.to_string())
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    fn with_settings(mut ag: ArrayGraph, gs: GraphSettings) -> ArrayGraph {
+        ag.data.graph_settings = Some(gs);
+        ag
+    }
+
+    // ── Available views ─────────────────────────────────────
+
+    #[test]
+    fn available_no_config() {
+        let ag = make_graph(SIMPLE_GRAPH);
+        snapshot!(
+            format_views(&ag.available_metric_views()),
+            "
+size
+size~transitive
+size~dominated
+parents-count
+node-count~transitive
+node-count~dominated
+"
+        );
+    }
+
+    #[test]
+    fn available_with_tiers() {
+        let ag = make_graph(GRAPH_WITH_TIERS);
+        snapshot!(
+            format_views(&ag.available_metric_views()),
+            "
+lines
+lines~transitive
+lines~dominated
+lines#eager
+lines#eager~dominated
+lines#lazy
+lines#lazy~dominated
+size
+size~transitive
+size~dominated
+size#eager
+size#eager~dominated
+size#lazy
+size#lazy~dominated
+parents-count
+node-count~transitive
+node-count~dominated
+"
+        );
+    }
+
+    #[test]
+    fn available_per_metric_unavailable() {
+        let ag = with_settings(
+            make_graph(GRAPH_WITH_TIERS),
+            GraphSettings {
+                description: None,
+                metrics_config: Some(MetricsConfig {
+                    default_availability: None,
+                    default_visibility: None,
+                    metrics: Some(BTreeMap::from([(
+                        "lines".to_string(),
+                        MetricConfig {
+                            self_view: None,
+                            transitive: None,
+                            dominated: None,
+                            tiered: Some(Availability::Unavailable),
+                            tiered_dominated: Some(Availability::Unavailable),
+                            format: None,
+                            description: None,
+                        },
+                    )])),
+                    parents_count: None,
+                    count_transitive: None,
+                    count_dominated: None,
+                }),
+                metrics_visibility: None,
+                ui_settings: None,
+            },
+        );
+        snapshot!(
+            format_views(&ag.available_metric_views()),
+            "
+lines
+lines~transitive
+lines~dominated
+size
+size~transitive
+size~dominated
+size#eager
+size#eager~dominated
+size#lazy
+size#lazy~dominated
+parents-count
+node-count~transitive
+node-count~dominated
+"
+        );
+    }
+
+    #[test]
+    fn available_default_tiered_unavailable() {
+        let ag = with_settings(
+            make_graph(GRAPH_WITH_TIERS),
+            GraphSettings {
+                description: None,
+                metrics_config: Some(MetricsConfig {
+                    default_availability: Some(DefaultAvailability {
+                        self_view: None,
+                        transitive: None,
+                        dominated: None,
+                        tiered: Some(Availability::Unavailable),
+                        tiered_dominated: Some(Availability::Unavailable),
+                    }),
+                    default_visibility: None,
+                    metrics: None,
+                    parents_count: None,
+                    count_transitive: None,
+                    count_dominated: None,
+                }),
+                metrics_visibility: None,
+                ui_settings: None,
+            },
+        );
+        snapshot!(
+            format_views(&ag.available_metric_views()),
+            "
+lines
+lines~transitive
+lines~dominated
+size
+size~transitive
+size~dominated
+parents-count
+node-count~transitive
+node-count~dominated
+"
+        );
+    }
+
+    // ── Visible views ───────────────────────────────────────
+
+    #[test]
+    fn visible_no_config_forward() {
+        let ag = make_graph(SIMPLE_GRAPH);
+        snapshot!(
+            format_views(&ag.visible_metric_views(GraphStructure::Forward)),
+            "
+size
+size~transitive
+parents-count
+node-count~transitive
+"
+        );
+    }
+
+    #[test]
+    fn visible_no_config_dominator() {
+        let ag = make_graph(SIMPLE_GRAPH);
+        snapshot!(
+            format_views(&ag.visible_metric_views(GraphStructure::Dominator)),
+            "
+size
+size~transitive
+size~dominated
+parents-count
+node-count~transitive
+node-count~dominated
+"
+        );
+    }
+
+    #[test]
+    fn visible_tiered_hidden_by_default() {
+        let ag = with_settings(
+            make_graph(GRAPH_WITH_TIERS),
+            GraphSettings {
+                description: None,
+                metrics_config: Some(MetricsConfig {
+                    default_availability: None,
+                    default_visibility: Some(DefaultVisibility {
+                        all: None,
+                        self_view: None,
+                        transitive: None,
+                        dominated: None,
+                        tiered: Some(MetricViewVisibility::Hidden),
+                        tiered_dominated: Some(MetricViewVisibility::Hidden),
+                    }),
+                    metrics: None,
+                    parents_count: None,
+                    count_transitive: None,
+                    count_dominated: None,
+                }),
+                metrics_visibility: None,
+                ui_settings: None,
+            },
+        );
+        snapshot!(
+            format_views(&ag.visible_metric_views(GraphStructure::Forward)),
+            "
+lines
+lines~transitive
+size
+size~transitive
+parents-count
+node-count~transitive
+"
+        );
+    }
+
+    #[test]
+    fn visible_all_hidden() {
+        let ag = with_settings(
+            make_graph(SIMPLE_GRAPH),
+            GraphSettings {
+                description: None,
+                metrics_config: Some(MetricsConfig {
+                    default_availability: None,
+                    default_visibility: Some(DefaultVisibility {
+                        all: Some(MetricViewVisibility::Hidden),
+                        self_view: None,
+                        transitive: None,
+                        dominated: None,
+                        tiered: None,
+                        tiered_dominated: None,
+                    }),
+                    metrics: None,
+                    parents_count: None,
+                    count_transitive: None,
+                    count_dominated: None,
+                }),
+                metrics_visibility: None,
+                ui_settings: None,
+            },
+        );
+        let views = ag.visible_metric_views(GraphStructure::Forward);
+        assert!(views.is_empty(), "all views hidden");
+    }
+
+    #[test]
+    fn visible_all_hidden_with_type_override() {
+        let ag = with_settings(
+            make_graph(SIMPLE_GRAPH),
+            GraphSettings {
+                description: None,
+                metrics_config: Some(MetricsConfig {
+                    default_availability: None,
+                    default_visibility: Some(DefaultVisibility {
+                        all: Some(MetricViewVisibility::Hidden),
+                        self_view: None,
+                        transitive: Some(MetricViewVisibility::Enabled),
+                        dominated: None,
+                        tiered: None,
+                        tiered_dominated: None,
+                    }),
+                    metrics: None,
+                    parents_count: None,
+                    count_transitive: None,
+                    count_dominated: None,
+                }),
+                metrics_visibility: None,
+                ui_settings: None,
+            },
+        );
+        snapshot!(
+            format_views(&ag.visible_metric_views(GraphStructure::Forward)),
+            "
+size~transitive
+node-count~transitive
+"
+        );
+    }
+
+    #[test]
+    fn visible_per_view_override_beats_default() {
+        let mut overrides = BTreeMap::new();
+        overrides.insert("size#eager".to_string(), MetricViewVisibility::Enabled);
+
+        let ag = with_settings(
+            make_graph(GRAPH_WITH_TIERS),
+            GraphSettings {
+                description: None,
+                metrics_config: Some(MetricsConfig {
+                    default_availability: None,
+                    default_visibility: Some(DefaultVisibility {
+                        all: Some(MetricViewVisibility::Hidden),
+                        self_view: None,
+                        transitive: None,
+                        dominated: None,
+                        tiered: None,
+                        tiered_dominated: None,
+                    }),
+                    metrics: None,
+                    parents_count: None,
+                    count_transitive: None,
+                    count_dominated: None,
+                }),
+                metrics_visibility: Some(overrides),
+                ui_settings: None,
+            },
+        );
+        snapshot!(
+            format_views(&ag.visible_metric_views(GraphStructure::Forward)),
+            "size#eager"
+        );
+    }
+
+    #[test]
+    fn visible_dominated_shows_in_dominator_mode() {
+        let ag = make_graph(GRAPH_WITH_TIERS);
+        let forward = ag.visible_metric_views(GraphStructure::Forward);
+        let dominator = ag.visible_metric_views(GraphStructure::Dominator);
+
+        assert!(
+            !forward.iter().any(|v| v.to_string().contains("dominated")),
+            "no dominated views in forward mode"
+        );
+        assert!(
+            dominator
+                .iter()
+                .any(|v| v.to_string().contains("dominated")),
+            "dominated views show in dominator mode"
+        );
+    }
+}

@@ -11,13 +11,10 @@ import { Info, SlidersHorizontal, Waypoints } from "lucide-react";
 import {
   apply_gqc_delta,
   derive_gqc_delta,
-  from_zstd_base64_url_safe_no_pad,
-  to_zstd_base64_url_safe_no_pad,
 } from "../.build/wasm/unigraph_wasm";
 import type { ArrayGraphUISettingsTreeTableEntryPoints } from "./__generated__/ts/ArrayGraphUISettingsTreeTableEntryPoints";
 import type { GraphQueryConfig } from "./__generated__/ts/GraphQueryConfig";
 import type { GraphQueryOutput } from "./__generated__/ts/GraphQueryOutput";
-import type { GraphSettings } from "./__generated__/ts/GraphSettings";
 import type { TraversalConfig } from "./__generated__/ts/TraversalConfig";
 import type { TraversalOverride } from "./__generated__/ts/TraversalOverride";
 import { useRpc, type UnigraphRpc } from "./api/rpc";
@@ -65,8 +62,6 @@ export interface ExplorerConfig {
   on_gqc_delta_change_l?: CallbackFn | undefined;
   gqc_delta_r?: string | undefined;
   on_gqc_delta_change_r?: CallbackFn | undefined;
-  graph_settings?: string | undefined;
-  on_graph_settings_change: CallbackFn;
 }
 
 export type BuiltinSidebarPanel =
@@ -112,10 +107,8 @@ import {
   usePortalContainer,
 } from "./context/GlobalElementRefs";
 import { useGlobalKeyboardShortcuts } from "./context/GlobalKeyboardShortcutsContext";
-import {
-  GraphSettingsContextProvider,
-  useGraphSettings,
-} from "./context/GraphSettingsContext";
+import { useGraphSettings } from "./context/GraphSettingsContext";
+import { MetricViewStateProvider } from "./context/MetricViewStateContext";
 import {
   NativeGraphContextProvider,
   useNativeGraphs,
@@ -224,8 +217,6 @@ function ExplorerImpl(props: {
     on_gqc_delta_change_l,
     gqc_delta_r,
     on_gqc_delta_change_r,
-    graph_settings,
-    on_graph_settings_change,
   } = config;
 
   // Stabilize graphs reference so consumers don't need to memoize.
@@ -282,20 +273,6 @@ function ExplorerImpl(props: {
     return [...builtins, ...(customPanels ?? [])];
   }, [BUILTIN_PANELS, customPanels, hidden_panels]);
 
-  const settings = useMemo(() => {
-    return graph_settings == null
-      ? nativeGraphNoTVCR.getGraphSettings()
-      : JSON.parse(from_zstd_base64_url_safe_no_pad(graph_settings));
-  }, [graph_settings, nativeGraphNoTVCR]);
-
-  const setSettingsCb = useCallback(
-    (settings: GraphSettings) => {
-      const base64 = to_zstd_base64_url_safe_no_pad(JSON.stringify(settings));
-      on_graph_settings_change?.(base64);
-    },
-    [on_graph_settings_change],
-  );
-
   return (
     <div className="h-screen flex flex-col unigraph-explorer bg-background">
       <DebugModeContextProvider>
@@ -313,10 +290,7 @@ function ExplorerImpl(props: {
               >
                 <SimulationParamsContextProvider>
                   <SelectedNodesContextProvider>
-                    <GraphSettingsContextProvider
-                      settings={settings}
-                      setSettings={setSettingsCb}
-                    >
+                    <MetricViewStateProvider nativeGraph={right.nativeGraph!}>
                       <SelectedPathContextProvider syncToURL={true}>
                         <Page
                           homeHref={home_href}
@@ -324,7 +298,7 @@ function ExplorerImpl(props: {
                           source={source}
                         />
                       </SelectedPathContextProvider>
-                    </GraphSettingsContextProvider>
+                    </MetricViewStateProvider>
                   </SelectedNodesContextProvider>
                 </SimulationParamsContextProvider>
               </TraversalConfigContextProvider>

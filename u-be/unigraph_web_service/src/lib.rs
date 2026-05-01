@@ -138,7 +138,11 @@ pub async fn start(
     let addr = "localhost:3000";
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    info!("Listening on http://{addr}");
+    if graph_file_path.is_some() {
+        info!("Listening on http://{addr}/local");
+    } else {
+        info!("Listening on http://{addr}");
+    }
     let trace_layer = TraceLayer::new_for_http()
         .make_span_with(|req: &http::Request<Body>| {
             tracing::info_span!("req", method = %req.method(), uri = %req.uri())

@@ -547,6 +547,43 @@ pub fn get_graph_settings(side: u32) -> Result<String, WasmJSError> {
 }
 
 #[wasm_bindgen]
+pub fn set_graph_settings(graph_settings_json: String, side: u32) -> Result<(), WasmJSError> {
+    let graph_settings: unigraph_core::graph_settings::GraphSettings =
+        serde_json::from_str(&graph_settings_json).context("Failed to parse graph settings")?;
+    GlobalGraphState::graph_state_mut()
+        .mode
+        .graph_mut(side)?
+        .data
+        .graph_settings = Some(graph_settings);
+    Ok(())
+}
+
+#[wasm_bindgen]
+pub fn available_metric_views(side: u32) -> Result<String, WasmJSError> {
+    let gs = GlobalGraphState::graph_state().get();
+    let ag = gs.mode.graph(side)?;
+    let views: Vec<String> = ag
+        .available_metric_views()
+        .iter()
+        .map(|v| v.to_string())
+        .collect();
+    Ok(serde_json::to_string(&views).context("Failed to serialize metric views")?)
+}
+
+#[wasm_bindgen]
+pub fn visible_metric_views(side: u32, structure: u8) -> Result<String, WasmJSError> {
+    let structure = GraphStructure::from_u8(structure).context("Invalid graph structure value")?;
+    let gs = GlobalGraphState::graph_state().get();
+    let ag = gs.mode.graph(side)?;
+    let views: Vec<String> = ag
+        .visible_metric_views(structure)
+        .iter()
+        .map(|v| v.to_string())
+        .collect();
+    Ok(serde_json::to_string(&views).context("Failed to serialize metric views")?)
+}
+
+#[wasm_bindgen]
 pub fn apply_traversal_config(traversal_config_json: String, side: u32) -> Result<(), WasmJSError> {
     let traversal_config: TraversalConfig =
         serde_json::from_str(&traversal_config_json).context("Failed to parse traversal config")?;

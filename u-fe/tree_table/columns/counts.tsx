@@ -20,7 +20,7 @@ import {
   NO_PRECISION_FORMAT,
   WouldBeDeltaMetricCell,
 } from "./Cells";
-import { MV, isVisibleForStructure } from "./ColumnUtils";
+import { MV } from "./ColumnUtils";
 import { MetricDeltaRightHovercard } from "./hovercards";
 import type { Column, ColumnsCtx } from "./useGraphTreeTableColumns";
 
@@ -37,12 +37,7 @@ export class TransitiveCountColumn implements Column {
   }
 
   isEnabled() {
-    return (
-      isVisibleForStructure(
-        this.ctx.resolvedVisibility(MV.countTransitive, "transitive"),
-        this.ctx.graphStructure,
-      ) && this.ctx.showCounts
-    );
+    return this.ctx.isVisible(MV.countTransitive) && this.ctx.showCounts;
   }
 
   sortable(): TSortable | null {
@@ -140,13 +135,7 @@ export class DominatedCountColumn implements Column {
   }
 
   isEnabled() {
-    return (
-      this.ctx.showCounts &&
-      isVisibleForStructure(
-        this.ctx.resolvedVisibility(MV.countDominated, "dominated"),
-        this.ctx.graphStructure,
-      )
-    );
+    return this.ctx.showCounts && this.ctx.isVisible(MV.countDominated);
   }
 
   sortable(): TSortable | null {
@@ -225,12 +214,7 @@ export class TransitiveCountDeltaColumn implements Column {
   }
 
   isEnabled() {
-    return (
-      isVisibleForStructure(
-        this.ctx.resolvedVisibility(MV.countTransitive, "transitive"),
-        this.ctx.graphStructure,
-      ) && this.ctx.showCounts
-    );
+    return this.ctx.isVisible(MV.countTransitive) && this.ctx.showCounts;
   }
 
   sortable(): TSortable | null {
@@ -307,10 +291,7 @@ export class TransitiveCountRightInDeltaViewColumn implements Column {
 
   isEnabled() {
     return (
-      isVisibleForStructure(
-        this.ctx.resolvedVisibility(MV.countTransitive, "transitive"),
-        this.ctx.graphStructure,
-      ) &&
+      this.ctx.isVisible(MV.countTransitive) &&
       this.ctx.showCounts &&
       this.twinGraph.l != null
     );
@@ -462,12 +443,7 @@ export class ParentsCountColumn implements Column {
   }
 
   isEnabled() {
-    return (
-      isVisibleForStructure(
-        this.ctx.resolvedVisibility(MV.parentsCount, "self_view"),
-        this.ctx.graphStructure,
-      ) && this.ctx.showCounts
-    );
+    return this.ctx.isVisible(MV.parentsCount) && this.ctx.showCounts;
   }
 
   getID(): string {
