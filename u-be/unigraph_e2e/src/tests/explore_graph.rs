@@ -33,9 +33,9 @@ async fn entry_points() -> Result<()> {
         "
 Entry points
 
-node_name | lines | lines~transitive | node-count~transitive | parents-count | size#eager | size~transitive
-==========+=======+==================+=======================+===============+============+================
-app       |  1200 |             4990 |                    12 |             0 |       1775 |            1985
+node_name | lines | lines~transitive | node-count~transitive | parents-count | size#eager | size~transitive |  tier
+==========+=======+==================+=======================+===============+============+=================+======
+app       | 1,200 |            4,990 |                    12 |             0 |    1.78 kB |         1.99 kB | eager
 
 "
     );
@@ -65,13 +65,13 @@ async fn default_metrics_respects_visibility() -> Result<()> {
 Edges: forward
 Edges of: app
 
-node_name | lines | lines~transitive | node-count~transitive | parents-count | size#eager | size~transitive ▼
-==========+=======+==================+=======================+===============+============+==================
-app       |  1200 |             4990 |                    12 |             0 |       1775 |              1985
-----------+-------+------------------+-----------------------+---------------+------------+------------------
-core      |   600 |             1870 |                     5 |             1 |        780 |               870
-ui        |   800 |             2020 |                     7 |             1 |        545 |               665
-utils     |   100 |              100 |                     1 |             5 |         50 |                50
+node_name | lines | lines~transitive | node-count~transitive | parents-count | size#eager | size~transitive ▼ |  tier
+==========+=======+==================+=======================+===============+============+===================+======
+app       | 1,200 |            4,990 |                    12 |             0 |    1.78 kB |           1.99 kB | eager
+----------+-------+------------------+-----------------------+---------------+------------+-------------------+------
+core      |   600 |            1,870 |                     5 |             1 |    0.78 kB |           0.87 kB | eager
+ui        |   800 |            2,020 |                     7 |             1 |    0.55 kB |           0.67 kB | eager
+utils     |   100 |              100 |                     1 |             5 |    0.05 kB |           0.05 kB | eager
 
 "
     );
@@ -132,7 +132,6 @@ async fn all_nodes() -> Result<()> {
             Explore::new(gqc_key)
                 .all_nodes()
                 .metrics(&[
-                    "size",
                     "lines",
                     "size~transitive",
                     "size~dominated",
@@ -154,20 +153,20 @@ async fn all_nodes() -> Result<()> {
         "
 All reachable nodes
 
-node_name      | lines | node-count~dominated | node-count~transitive | size | size#eager | size#lazy | size~dominated | size~transitive ▼
-===============+=======+======================+=======================+======+============+===========+================+==================
-app            |  1200 |                   12 |                    12 |  500 |       1775 |      1985 |           1985 |              1985
-core           |   600 |                    4 |                     5 |  300 |        780 |       870 |            820 |               870
-ui             |   800 |                    6 |                     7 |  200 |        545 |       665 |            615 |               665
-auth           |   420 |                    1 |                     3 |  180 |        480 |       480 |            180 |               480
-dialogs        |   350 |                    1 |                     5 |  120 |        265 |       385 |            120 |               385
-db             |   500 |                    1 |                     2 |  250 |        300 |       300 |            250 |               300
-components     |   400 |                    3 |                     4 |  150 |        265 |       265 |            215 |               265
-analytics      |   250 |                    1 |                     2 |   90 |         50 |       140 |             90 |               140
-styles         |   200 |                    1 |                     1 |   80 |         80 |        80 |             80 |                80
-utils          |   100 |                    1 |                     1 |   50 |         50 |        50 |             50 |                50
-button_android |    90 |                    1 |                     1 |   35 |         35 |        35 |             35 |                35
-button_ios     |    80 |                    1 |                     1 |   30 |         30 |        30 |             30 |                30
+node_name      | lines | node-count~dominated | node-count~transitive | size#eager | size#lazy | size~dominated | size~transitive ▼
+===============+=======+======================+=======================+============+===========+================+==================
+app            | 1,200 |                   12 |                    12 |    1.78 kB |   1.99 kB |        1.99 kB |           1.99 kB
+core           |   600 |                    4 |                     5 |    0.78 kB |   0.87 kB |        0.82 kB |           0.87 kB
+ui             |   800 |                    6 |                     7 |    0.55 kB |   0.67 kB |        0.62 kB |           0.67 kB
+auth           |   420 |                    1 |                     3 |    0.48 kB |   0.48 kB |        0.18 kB |           0.48 kB
+dialogs        |   350 |                    1 |                     5 |    0.26 kB |   0.39 kB |        0.12 kB |           0.39 kB
+db             |   500 |                    1 |                     2 |    0.30 kB |   0.30 kB |        0.25 kB |           0.30 kB
+components     |   400 |                    3 |                     4 |    0.26 kB |   0.26 kB |        0.22 kB |           0.26 kB
+analytics      |   250 |                    1 |                     2 |    0.05 kB |   0.14 kB |        0.09 kB |           0.14 kB
+styles         |   200 |                    1 |                     1 |    0.08 kB |   0.08 kB |        0.08 kB |           0.08 kB
+utils          |   100 |                    1 |                     1 |    0.05 kB |   0.05 kB |        0.05 kB |           0.05 kB
+button_android |    90 |                    1 |                     1 |    0.04 kB |   0.04 kB |        0.04 kB |           0.04 kB
+button_ios     |    80 |                    1 |                     1 |    0.03 kB |   0.03 kB |        0.03 kB |           0.03 kB
 
 "
     );
@@ -186,7 +185,7 @@ async fn drill_into_app() -> Result<()> {
         ExploreGraph(
             Explore::new(gqc_key)
                 .node("app")
-                .metrics(&["size", "size~transitive"])
+                .metrics(&["size~transitive"])
                 .sort_by("size~transitive")
                 .build()
         )
@@ -197,13 +196,13 @@ async fn drill_into_app() -> Result<()> {
 Edges: forward
 Edges of: app
 
-node_name | size | size~transitive ▼
-==========+======+==================
-app       |  500 |              1985
-----------+------+------------------
-core      |  300 |               870
-ui        |  200 |               665
-utils     |   50 |                50
+node_name | size~transitive ▼
+==========+==================
+app       |           1.99 kB
+----------+------------------
+core      |           0.87 kB
+ui        |           0.67 kB
+utils     |           0.05 kB
 
 "
     );
@@ -219,7 +218,12 @@ async fn drill_into_ui_with_tags() -> Result<()> {
 
     let out = call_rpc!(
         t,
-        ExploreGraph(Explore::new(gqc_key).node("ui").metrics(&["size"]).build())
+        ExploreGraph(
+            Explore::new(gqc_key)
+                .node("ui")
+                .metrics(&["size~transitive"])
+                .build()
+        )
     );
     snapshot!(
         out.ascii.unwrap(),
@@ -227,13 +231,13 @@ async fn drill_into_ui_with_tags() -> Result<()> {
 Edges: forward
 Edges of: ui
 
-node_name  | size | tag
-===========+======+=====
-ui         |  200 |
------------+------+-----
-components |  150 |
-styles     |   80 |
-dialogs    |  120 | lazy
+node_name  | size~transitive | tag
+===========+=================+=====
+ui         |         0.67 kB |
+-----------+-----------------+-----
+components |         0.26 kB |
+styles     |         0.08 kB |
+dialogs    |         0.39 kB | lazy
 
 "
     );
@@ -252,7 +256,7 @@ async fn drill_into_components_with_dynamic() -> Result<()> {
         ExploreGraph(
             Explore::new(gqc_key.clone())
                 .node("components")
-                .metrics(&["size"])
+                .metrics(&["size~transitive"])
                 .build()
         )
     );
@@ -262,13 +266,13 @@ async fn drill_into_components_with_dynamic() -> Result<()> {
 Edges: forward
 Edges of: components
 
-node_name      | size | dynamic
-===============+======+========================
-components     |  150 |
----------------+------+------------------------
-utils          |   50 |
-button_android |   35 | platform:button/android
-button_ios     |   30 | platform:button/ios
+node_name      | size~transitive | dynamic
+===============+=================+========================
+components     |         0.26 kB |
+---------------+-----------------+------------------------
+utils          |         0.05 kB |
+button_android |         0.04 kB | platform:button/android
+button_ios     |         0.03 kB | platform:button/ios
 
 "
     );
@@ -287,7 +291,7 @@ async fn reverse_edges() -> Result<()> {
         ExploreGraph(
             Explore::new(gqc_key)
                 .node("utils")
-                .metrics(&["size"])
+                .metrics(&["size~transitive"])
                 .structure(GraphStructure::Reverse)
                 .build()
         )
@@ -298,15 +302,15 @@ async fn reverse_edges() -> Result<()> {
 Edges: reverse
 Edges of: utils
 
-node_name  | size
-===========+=====
-utils      |   50
------------+-----
-analytics  |   90
-app        |  500
-auth       |  180
-components |  150
-db         |  250
+node_name  | size~transitive
+===========+================
+utils      |         0.05 kB
+-----------+----------------
+analytics  |         0.14 kB
+app        |         1.99 kB
+auth       |         0.48 kB
+components |         0.26 kB
+db         |         0.30 kB
 
 "
     );
@@ -325,7 +329,7 @@ async fn dominator_tree() -> Result<()> {
         ExploreGraph(
             Explore::new(gqc_key)
                 .node("app")
-                .metrics(&["size", "size~dominated", "node-count~dominated"])
+                .metrics(&["size~transitive", "size~dominated", "node-count~dominated"])
                 .sort_by("size~dominated")
                 .structure(GraphStructure::Dominator)
                 .build()
@@ -337,13 +341,13 @@ async fn dominator_tree() -> Result<()> {
 Edges: dominator
 Edges of: app
 
-node_name | node-count~dominated | size | size~dominated ▼
-==========+======================+======+=================
-app       |                   12 |  500 |             1985
-----------+----------------------+------+-----------------
-core      |                    4 |  300 |              820
-ui        |                    6 |  200 |              615
-utils     |                    1 |   50 |               50
+node_name | node-count~dominated | size~dominated ▼ | size~transitive
+==========+======================+==================+================
+app       |                   12 |          1.99 kB |         1.99 kB
+----------+----------------------+------------------+----------------
+core      |                    4 |          0.82 kB |         0.87 kB
+ui        |                    6 |          0.62 kB |         0.67 kB
+utils     |                    1 |          0.05 kB |         0.05 kB
 
 "
     );
@@ -362,8 +366,8 @@ async fn sort_ascending() -> Result<()> {
         ExploreGraph(
             Explore::new(gqc_key)
                 .node("app")
-                .metrics(&["size"])
-                .sort_by("size")
+                .metrics(&["size~transitive"])
+                .sort_by("size~transitive")
                 .sort_order(SortOrder::Asc)
                 .build()
         )
@@ -374,13 +378,13 @@ async fn sort_ascending() -> Result<()> {
 Edges: forward
 Edges of: app
 
-node_name | size ▲
-==========+=======
-app       |    500
-----------+-------
-utils     |     50
-ui        |    200
-core      |    300
+node_name | size~transitive ▲
+==========+==================
+app       |           1.99 kB
+----------+------------------
+utils     |           0.05 kB
+ui        |           0.67 kB
+core      |           0.87 kB
 
 "
     );
@@ -400,8 +404,8 @@ async fn offset_and_limit() -> Result<()> {
         ExploreGraph(
             Explore::new(gqc_key.clone())
                 .node("app")
-                .metrics(&["size"])
-                .sort_by("size")
+                .metrics(&["size~transitive"])
+                .sort_by("size~transitive")
                 .limit(2)
                 .build()
         )
@@ -412,12 +416,12 @@ async fn offset_and_limit() -> Result<()> {
 Edges: forward
 Edges of: app
 
-node_name | size ▼
-==========+=======
-app       |    500
-----------+-------
-core      |    300
-ui        |    200
+node_name | size~transitive ▼
+==========+==================
+app       |           1.99 kB
+----------+------------------
+core      |           0.87 kB
+ui        |           0.67 kB
 
 (showing 2 of 3 rows, offset 0)
 "
@@ -429,8 +433,8 @@ ui        |    200
         ExploreGraph(
             Explore::new(gqc_key)
                 .node("app")
-                .metrics(&["size"])
-                .sort_by("size")
+                .metrics(&["size~transitive"])
+                .sort_by("size~transitive")
                 .offset(2)
                 .limit(2)
                 .build()
@@ -442,11 +446,11 @@ ui        |    200
 Edges: forward
 Edges of: app
 
-node_name | size ▼
-==========+=======
-app       |    500
-----------+-------
-utils     |     50
+node_name | size~transitive ▼
+==========+==================
+app       |           1.99 kB
+----------+------------------
+utils     |           0.05 kB
 
 (showing 1 of 3 rows, offset 2)
 "
@@ -466,7 +470,7 @@ async fn tiered_metrics() -> Result<()> {
         ExploreGraph(
             Explore::new(gqc_key)
                 .node("ui")
-                .metrics(&["size", "size#eager", "size#lazy"])
+                .metrics(&["size~transitive", "size#eager", "size#lazy"])
                 .build()
         )
     );
@@ -476,13 +480,13 @@ async fn tiered_metrics() -> Result<()> {
 Edges: forward
 Edges of: ui
 
-node_name  | size | size#eager | size#lazy | tag
-===========+======+============+===========+=====
-ui         |  200 |        545 |       665 |
------------+------+------------+-----------+-----
-components |  150 |        265 |       265 |
-styles     |   80 |         80 |        80 |
-dialogs    |  120 |        265 |       385 | lazy
+node_name  | size#eager | size#lazy | size~transitive | tag
+===========+============+===========+=================+=====
+ui         |    0.55 kB |   0.67 kB |         0.67 kB |
+-----------+------------+-----------+-----------------+-----
+components |    0.26 kB |   0.26 kB |         0.26 kB |
+styles     |    0.08 kB |   0.08 kB |         0.08 kB |
+dialogs    |    0.26 kB |   0.39 kB |         0.39 kB | lazy
 
 "
     );
@@ -503,7 +507,6 @@ async fn exhaustive_columns() -> Result<()> {
             Explore::new(gqc_key)
                 .node("components")
                 .metrics(&[
-                    "size",
                     "lines",
                     "size~transitive",
                     "size~dominated",
@@ -522,13 +525,13 @@ async fn exhaustive_columns() -> Result<()> {
 Edges: forward
 Edges of: components
 
-node_name      | lines | node-count~dominated | node-count~transitive | size | size#eager | size#lazy | size~dominated | size~transitive ▼ | dynamic
-===============+=======+======================+=======================+======+============+===========+================+===================+========================
-components     |   400 |                    3 |                     4 |  150 |        265 |       265 |            215 |               265 |
----------------+-------+----------------------+-----------------------+------+------------+-----------+----------------+-------------------+------------------------
-utils          |   100 |                    1 |                     1 |   50 |         50 |        50 |             50 |                50 |
-button_android |    90 |                    1 |                     1 |   35 |         35 |        35 |             35 |                35 | platform:button/android
-button_ios     |    80 |                    1 |                     1 |   30 |         30 |        30 |             30 |                30 | platform:button/ios
+node_name      | lines | node-count~dominated | node-count~transitive | size#eager | size#lazy | size~dominated | size~transitive ▼ | dynamic
+===============+=======+======================+=======================+============+===========+================+===================+========================
+components     |   400 |                    3 |                     4 |    0.26 kB |   0.26 kB |        0.22 kB |           0.26 kB |
+---------------+-------+----------------------+-----------------------+------------+-----------+----------------+-------------------+------------------------
+utils          |   100 |                    1 |                     1 |    0.05 kB |   0.05 kB |        0.05 kB |           0.05 kB |
+button_android |    90 |                    1 |                     1 |    0.04 kB |   0.04 kB |        0.04 kB |           0.04 kB | platform:button/android
+button_ios     |    80 |                    1 |                     1 |    0.03 kB |   0.03 kB |        0.03 kB |           0.03 kB | platform:button/ios
 
 "
     );
@@ -593,14 +596,14 @@ async fn explicit_metrics_override_all_visibility() -> Result<()> {
     let handle = ingest_explore_graph(&t).await?;
     let gqc_key = store_gqc(&t, &handle).await?;
 
-    // lines#eager is Hidden by default_visibility.tiered, but requesting
+    // size#lazy is Hidden by default_visibility.tiered, but requesting
     // it explicitly overrides that — you get it regardless.
     let out = call_rpc!(
         t,
         ExploreGraph(
             Explore::new(gqc_key)
                 .node("app")
-                .metrics(&["lines", "lines#eager", "size~transitive"])
+                .metrics(&["lines", "size#lazy", "size~transitive"])
                 .build()
         )
     );
@@ -610,13 +613,13 @@ async fn explicit_metrics_override_all_visibility() -> Result<()> {
 Edges: forward
 Edges of: app
 
-node_name | lines | lines#eager | size~transitive
-==========+=======+=============+================
-app       |  1200 |        4390 |            1985
-----------+-------+-------------+----------------
-core      |   600 |        1620 |             870
-ui        |   800 |        1670 |             665
-utils     |   100 |         100 |              50
+node_name | lines | size#lazy | size~transitive
+==========+=======+===========+================
+app       | 1,200 |   1.99 kB |         1.99 kB
+----------+-------+-----------+----------------
+core      |   600 |   0.87 kB |         0.87 kB
+ui        |   800 |   0.67 kB |         0.67 kB
+utils     |   100 |   0.05 kB |         0.05 kB
 
 "
     );
@@ -636,13 +639,9 @@ async fn unavailable_metrics_excluded_from_about() -> Result<()> {
         })
     );
 
-    let view_names: Vec<String> = out
-        .metric_views
-        .iter()
-        .map(|m| m.view.to_string())
-        .collect();
+    let view_names = &out.metric_views;
 
-    // size self-view is Unavailable via MetricsConfig → not in the list
+    // size self-view is Unavailable via MetricsConfig
     assert!(
         !view_names.contains(&"size".to_string()),
         "size self-view should be unavailable"
@@ -841,11 +840,7 @@ async fn about_graph_by_timeline() -> Result<()> {
     assert!(out.description.is_none());
 
     // Enabled metric views: 22 total minus 1 Unavailable (size) minus 6 Hidden (lines tiered) = 15
-    let view_names: Vec<String> = out
-        .metric_views
-        .iter()
-        .map(|m| m.view.to_string())
-        .collect();
+    let view_names = &out.metric_views;
     snapshot!(
         view_names.join("\n"),
         "
@@ -861,6 +856,7 @@ size#lazy~dominated
 parents-count
 node-count~transitive
 node-count~dominated
+tier
 "
     );
 
@@ -874,7 +870,12 @@ node-count~dominated
 - **Nodes**: 12
 - **Edges**: 17 (13 directed, 2 tagged, 2 dynamic)
 
-## Metric Views
+## Metrics
+
+- **`lines`** — Lines of code
+- **`size`** — Module size in bytes
+
+## All Available Metric Views
 
 - `lines`
 - `lines~transitive`
@@ -888,6 +889,7 @@ node-count~dominated
 - `parents-count`
 - `node-count~transitive`
 - `node-count~dominated`
+- `tier`
 
 ## Tiers
 

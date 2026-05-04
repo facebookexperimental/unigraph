@@ -9,18 +9,20 @@ import type { MetricViewVisibility } from "../../__generated__/ts/MetricViewVisi
 // Must match Rust `MetricView::Display` output exactly.
 
 const SEP = "~";
+const TIER_SEP = "#";
 const SIDE_SEP = "@";
 
 export const MV = {
   metric: (name: string) => name,
   transitive: (name: string) => `${name}${SEP}transitive`,
   dominated: (name: string) => `${name}${SEP}dominated`,
-  tiered: (name: string, tier: string) => `${name}${SEP}${tier}`,
+  tiered: (name: string, tier: string) => `${name}${TIER_SEP}${tier}`,
   tieredDominated: (name: string, tier: string) =>
-    `${name}${SEP}dominated${SEP}${tier}`,
+    `${name}${TIER_SEP}${tier}${SEP}dominated`,
   parentsCount: "parents-count",
   countTransitive: `node-count${SEP}transitive`,
   countDominated: `node-count${SEP}dominated`,
+  tierIndex: "tier",
 
   left: (key: string) => `${key}${SIDE_SEP}left`,
   delta: (key: string) => `${key}${SIDE_SEP}delta`,

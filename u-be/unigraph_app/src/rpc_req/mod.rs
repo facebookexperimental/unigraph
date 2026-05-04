@@ -12,7 +12,7 @@ mod search_nodes;
 mod select_frames;
 
 pub use about_graph::AboutGraphInput;
-pub use about_graph::AboutGraphMetricViewInfo;
+pub use about_graph::AboutGraphMetricInfo;
 pub use about_graph::AboutGraphOutput;
 pub use explore_graph::ExploreGraphArrow;
 pub use explore_graph::ExploreGraphInput;

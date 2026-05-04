@@ -28,6 +28,9 @@ pub fn available_metric_views(ag: &ArrayGraph) -> Vec<MetricView> {
     }
 
     push_available_structural_counts(&mut views, config);
+    if !tier_names.is_empty() {
+        views.push(MetricView::TierIndex {});
+    }
     views
 }
 
@@ -113,7 +116,7 @@ fn view_type_default_visibility(
         MetricView::Dominated { .. } | MetricView::CountDominated {} => dv.dominated,
         MetricView::Tiered { .. } => dv.tiered,
         MetricView::TieredDominated { .. } => dv.tiered_dominated,
-        MetricView::ParentsCount {} => None,
+        MetricView::ParentsCount {} | MetricView::TierIndex {} => None,
     };
     per_type
         .or(dv.all)
@@ -318,6 +321,7 @@ size#lazy~dominated
 parents-count
 node-count~transitive
 node-count~dominated
+tier
 "
         );
     }
@@ -367,6 +371,7 @@ size#lazy~dominated
 parents-count
 node-count~transitive
 node-count~dominated
+tier
 "
         );
     }
@@ -407,6 +412,7 @@ size~dominated
 parents-count
 node-count~transitive
 node-count~dominated
+tier
 "
         );
     }
@@ -477,6 +483,7 @@ size
 size~transitive
 parents-count
 node-count~transitive
+tier
 "
         );
     }
@@ -593,6 +600,100 @@ node-count~transitive
                 .iter()
                 .any(|v| v.to_string().contains("dominated")),
             "dominated views show in dominator mode"
+        );
+    }
+
+    #[test]
+    fn format_inherited_by_derived_views() {
+        use crate::graph_settings::MetricFormat;
+        use crate::graph_settings::SizeFormatConfig;
+        use crate::graph_settings::SizeInputUnits;
+        use crate::graph_settings::SizeOutputUnits;
+
+        let size_format = MetricFormat::Size(SizeFormatConfig {
+            input_units: SizeInputUnits::Bytes,
+            output_units: SizeOutputUnits::MB,
+            min_precision: None,
+            max_precision: Some(2),
+            use_delimiter: None,
+        });
+
+        let config = MetricsConfig {
+            default_availability: None,
+            default_visibility: None,
+            metrics: Some(BTreeMap::from([(
+                "size".to_string(),
+                MetricConfig {
+                    self_view: None,
+                    transitive: None,
+                    dominated: None,
+                    tiered: None,
+                    tiered_dominated: None,
+                    format: Some(size_format.clone()),
+                    description: Some("File size".to_string()),
+                },
+            )])),
+            parents_count: None,
+            count_transitive: None,
+            count_dominated: None,
+        };
+
+        let views = vec![
+            (
+                "size",
+                crate::MetricView::Metric {
+                    name: "size".into(),
+                },
+            ),
+            (
+                "size~transitive",
+                crate::MetricView::Transitive {
+                    name: "size".into(),
+                },
+            ),
+            (
+                "size~dominated",
+                crate::MetricView::Dominated {
+                    name: "size".into(),
+                },
+            ),
+            (
+                "size#T1",
+                crate::MetricView::Tiered {
+                    name: "size".into(),
+                    tier_name: "T1".into(),
+                },
+            ),
+            (
+                "size#T1~dominated",
+                crate::MetricView::TieredDominated {
+                    name: "size".into(),
+                    tier_name: "T1".into(),
+                },
+            ),
+            ("parents-count", crate::MetricView::ParentsCount {}),
+        ];
+
+        let mut results = Vec::new();
+        for (label, view) in &views {
+            let fmt = config.format_for_view(view);
+            results.push(format!(
+                "{:<20} {}",
+                label,
+                if fmt.is_some() { "Size(MB)" } else { "-" }
+            ));
+        }
+
+        snapshot!(
+            results.join("\n"),
+            "
+size                 Size(MB)
+size~transitive      Size(MB)
+size~dominated       Size(MB)
+size#T1              Size(MB)
+size#T1~dominated    Size(MB)
+parents-count        -
+"
         );
     }
 }

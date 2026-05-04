@@ -9,6 +9,7 @@ const SEPARATOR: char = '~';
 const TIER_SEPARATOR: char = '#';
 const NODE_COUNT: &str = "node-count";
 const PARENTS_COUNT: &str = "parents-count";
+const TIER_INDEX: &str = "tier";
 const TRANSITIVE: &str = "transitive";
 const DOMINATED: &str = "dominated";
 
@@ -60,6 +61,8 @@ pub enum MetricView {
     CountTransitive {},
     /// Dominated dependency count (dominator tree DFS).
     CountDominated {},
+    /// Tier index of the node (0-based). Only available when tiers are configured.
+    TierIndex {},
 }
 
 impl MetricView {
@@ -74,7 +77,8 @@ impl MetricView {
             | MetricView::TieredDominated { name, .. } => Some(name),
             MetricView::ParentsCount {}
             | MetricView::CountTransitive {}
-            | MetricView::CountDominated {} => None,
+            | MetricView::CountDominated {}
+            | MetricView::TierIndex {} => None,
         }
     }
 
@@ -103,6 +107,7 @@ impl fmt::Display for MetricView {
             MetricView::ParentsCount {} => write!(f, "{PARENTS_COUNT}"),
             MetricView::CountTransitive {} => write!(f, "{NODE_COUNT}{SEPARATOR}{TRANSITIVE}"),
             MetricView::CountDominated {} => write!(f, "{NODE_COUNT}{SEPARATOR}{DOMINATED}"),
+            MetricView::TierIndex {} => write!(f, "{TIER_INDEX}"),
         }
     }
 }
@@ -142,6 +147,7 @@ fn parse_non_tiered(s: &str) -> anyhow::Result<MetricView> {
     let parts: Vec<&str> = s.split(SEPARATOR).collect();
     match parts.as_slice() {
         [PARENTS_COUNT] => Ok(MetricView::ParentsCount {}),
+        [TIER_INDEX] => Ok(MetricView::TierIndex {}),
         [NODE_COUNT, TRANSITIVE] => Ok(MetricView::CountTransitive {}),
         [NODE_COUNT, DOMINATED] => Ok(MetricView::CountDominated {}),
         [NODE_COUNT, other] => {

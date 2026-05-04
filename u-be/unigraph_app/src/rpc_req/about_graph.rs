@@ -36,8 +36,11 @@ pub struct AboutGraphOutput {
     /// Graph statistics (node/edge counts by kind, tier names, etc).
     pub stats: unigraph_core::ArrayGraphStats,
 
-    /// All available metric views with optional descriptions.
-    pub metric_views: Vec<AboutGraphMetricViewInfo>,
+    /// Per-metric info: description + list of derived views.
+    pub metrics: Vec<AboutGraphMetricInfo>,
+
+    /// All available metric views (flat list).
+    pub metric_views: Vec<String>,
 
     /// Graph-level settings (description, UI config), if present.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -54,10 +57,11 @@ pub struct AboutGraphOutput {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TypeGen)]
-pub struct AboutGraphMetricViewInfo {
-    pub view: MetricView,
+pub struct AboutGraphMetricInfo {
+    pub name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    pub derived_views: Vec<String>,
 }
 
 // ── Handler ──────────────────────────────────────────────────
@@ -78,14 +82,23 @@ impl RpcExec<Unigraph> for AboutGraphInput {
 fn build_about(ag: &Arc<ArrayGraph>, handle: &str) -> Result<AboutGraphOutput> {
     let stats = ag.stats();
     let description = extract_description(ag);
-    let metric_views = collect_metric_view_infos(ag);
+    let available = ag.available_metric_views();
+    let metrics = collect_metric_infos(ag, &available);
+    let metric_views: Vec<String> = available.iter().map(|v| v.to_string()).collect();
     let graph_settings = ag.data.graph_settings.clone();
     let properties = ag.data.properties.clone();
-    let text = render_markdown(handle, description.as_deref(), &stats, &metric_views);
+    let text = render_markdown(
+        handle,
+        description.as_deref(),
+        &stats,
+        &metrics,
+        &metric_views,
+    );
 
     Ok(AboutGraphOutput {
         description,
         stats,
+        metrics,
         metric_views,
         graph_settings,
         properties,
@@ -100,20 +113,38 @@ fn extract_description(ag: &ArrayGraph) -> Option<String> {
         .and_then(|gs| gs.description.clone())
 }
 
-fn collect_metric_view_infos(ag: &ArrayGraph) -> Vec<AboutGraphMetricViewInfo> {
+fn collect_metric_infos(ag: &ArrayGraph, available: &[MetricView]) -> Vec<AboutGraphMetricInfo> {
     let metrics_config = ag
         .data
         .graph_settings
         .as_ref()
         .and_then(|gs| gs.metrics_config.as_ref());
 
-    ag.available_metric_views()
-        .into_iter()
-        .map(|view| {
-            let description = view.metric_name().and_then(|name| {
-                metrics_config.and_then(|mc| mc.description_for(name).map(|s| s.to_string()))
-            });
-            AboutGraphMetricViewInfo { view, description }
+    let metric_names: Vec<&str> = ag
+        .data
+        .node_metadata
+        .metrics
+        .keys()
+        .map(|s| s.as_str())
+        .collect();
+
+    metric_names
+        .iter()
+        .map(|&name| {
+            let description =
+                metrics_config.and_then(|mc| mc.description_for(name).map(|s| s.to_string()));
+            let derived_views = available
+                .iter()
+                .filter(|v| {
+                    v.metric_name() == Some(name) && !matches!(v, MetricView::Metric { .. })
+                })
+                .map(|v| v.to_string())
+                .collect();
+            AboutGraphMetricInfo {
+                name: name.to_string(),
+                description,
+                derived_views,
+            }
         })
         .collect()
 }
@@ -124,14 +155,16 @@ fn render_markdown(
     handle: &str,
     description: Option<&str>,
     stats: &unigraph_core::ArrayGraphStats,
-    metric_views: &[AboutGraphMetricViewInfo],
+    metrics: &[AboutGraphMetricInfo],
+    metric_views: &[String],
 ) -> String {
     let mut out = String::with_capacity(512);
 
     write_heading(&mut out, handle);
     write_description(&mut out, description);
     write_stats(&mut out, stats);
-    write_metric_views(&mut out, metric_views);
+    write_metrics(&mut out, metrics);
+    write_all_metric_views(&mut out, metric_views);
     write_tiers(&mut out, &stats.tier_names);
 
     out
@@ -175,18 +208,29 @@ fn write_stats(out: &mut String, stats: &unigraph_core::ArrayGraphStats) {
     }
 }
 
-fn write_metric_views(out: &mut String, metric_views: &[AboutGraphMetricViewInfo]) {
+fn write_metrics(out: &mut String, metrics: &[AboutGraphMetricInfo]) {
+    if metrics.is_empty() {
+        return;
+    }
+
+    let _ = writeln!(out, "\n## Metrics\n");
+    for metric in metrics {
+        if let Some(desc) = &metric.description {
+            let _ = writeln!(out, "- **`{}`** — {desc}", metric.name);
+        } else {
+            let _ = writeln!(out, "- **`{}`**", metric.name);
+        }
+    }
+}
+
+fn write_all_metric_views(out: &mut String, metric_views: &[String]) {
     if metric_views.is_empty() {
         return;
     }
 
-    let _ = writeln!(out, "\n## Metric Views\n");
-    for mv in metric_views {
-        if let Some(desc) = &mv.description {
-            let _ = writeln!(out, "- `{}` — {}", mv.view, desc);
-        } else {
-            let _ = writeln!(out, "- `{}`", mv.view);
-        }
+    let _ = writeln!(out, "\n## All Available Metric Views\n");
+    for view in metric_views {
+        let _ = writeln!(out, "- `{view}`");
     }
 }
 

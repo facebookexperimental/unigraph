@@ -47,13 +47,13 @@ async fn consistent_across_handle_types() -> Result<()> {
 Edges: forward
 Edges of: app
 
-node_name | size | size~transitive ▼
-==========+======+==================
-app       |  500 |              1985
-----------+------+------------------
-core      |  300 |               870
-ui        |  200 |               665
-utils     |   50 |                50
+node_name | size~transitive ▼
+==========+==================
+app       |           1.99 kB
+----------+------------------
+core      |           0.87 kB
+ui        |           0.67 kB
+utils     |           0.05 kB
 
 "
     );
@@ -86,9 +86,9 @@ async fn root_overrides() -> Result<()> {
         "
 Entry points
 
-node_name | size | size~transitive ▼
-==========+======+==================
-ui        |  200 |               665
+node_name | size~transitive ▼
+==========+==================
+ui        |           0.67 kB
 
 "
     );
@@ -131,12 +131,12 @@ async fn traversal_overrides_inline_and_by_key() -> Result<()> {
 Edges: forward
 Edges of: app
 
-node_name | size | size~transitive ▼
-==========+======+==================
-app       |  500 |              1935
-----------+------+------------------
-core      |  300 |               820
-ui        |  200 |               615
+node_name | size~transitive ▼
+==========+==================
+app       |           1.94 kB
+----------+------------------
+core      |           0.82 kB
+ui        |           0.62 kB
 
 "
     );
@@ -171,9 +171,9 @@ async fn nested_gqc_with_root_override() -> Result<()> {
         "
 Entry points
 
-node_name | size | size~transitive ▼
-==========+======+==================
-core      |  300 |               870
+node_name | size~transitive ▼
+==========+==================
+core      |           0.87 kB
 
 "
     );
@@ -235,7 +235,7 @@ fn explore_input(query: GraphQueryConfig, target: ExploreGraphTarget) -> Explore
         query,
         target,
         graph_structure: GraphStructure::Forward,
-        metrics: Some(parse_metrics(&["size", "size~transitive"])),
+        metrics: Some(parse_metrics(&["size~transitive"])),
         sort_by: Some("size~transitive".parse().unwrap()),
         sort_order: None,
         offset: None,

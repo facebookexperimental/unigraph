@@ -153,11 +153,29 @@
     "metrics_config": {
       "metrics": {
         "size": {
-          "self_view": "Unavailable"
+          "self_view": "Unavailable",
+          "format": {
+            "Size": {
+              "input_units": "Bytes",
+              "output_units": "KB",
+              "min_precision": null,
+              "max_precision": 2,
+              "use_delimiter": null
+            }
+          },
+          "description": "Module size in bytes"
         },
         "lines": {
           "tiered": "Unavailable",
-          "tiered_dominated": "Unavailable"
+          "tiered_dominated": "Unavailable",
+          "format": {
+            "NumberWithVariablePrecision": {
+              "min_precision": 0,
+              "max_precision": 0,
+              "use_delimiter": true
+            }
+          },
+          "description": "Lines of code"
         }
       },
       "default_visibility": {

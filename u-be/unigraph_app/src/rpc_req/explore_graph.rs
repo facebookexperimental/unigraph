@@ -7,6 +7,7 @@ use std::time::Duration;
 
 use anyhow::Context;
 use anyhow::Result;
+use anyhow::bail;
 use serde::Deserialize;
 use serde::Serialize;
 use typegen::TypeGen;
@@ -140,7 +141,7 @@ impl RpcExec<Unigraph> for ExploreGraphInput {
 fn explore_node(ag: Arc<ArrayGraph>, input: &ExploreGraphInput) -> Result<ExploreGraphOutput> {
     let metric_names = collect_metric_names(&ag);
     let tier_names = collect_tier_names(&ag);
-    let metrics = resolve_metrics(&ag, &input.metrics, input.graph_structure);
+    let metrics = resolve_metrics(&ag, &input.metrics, input.graph_structure)?;
 
     let (parent_idx, arrow_data) = resolve_arrows(&ag, &input.target, input.graph_structure)?;
     let total_arrows_count = arrow_data.len();
@@ -166,6 +167,11 @@ fn explore_node(ag: Arc<ArrayGraph>, input: &ExploreGraphInput) -> Result<Explor
 
     let include_ascii = input.include_ascii.unwrap_or(false);
     let sort_by_key = input.sort_by.as_ref().map(|m| m.to_string());
+    let metrics_config = ag
+        .data
+        .graph_settings
+        .as_ref()
+        .and_then(|gs| gs.metrics_config.as_ref());
     let ascii = if include_ascii {
         Some(render_ascii(
             &input.target,
@@ -176,6 +182,8 @@ fn explore_node(ag: Arc<ArrayGraph>, input: &ExploreGraphInput) -> Result<Explor
             offset,
             sort_by_key.as_deref(),
             sort_order,
+            metrics_config,
+            &tier_names,
         ))
     } else {
         None
@@ -211,15 +219,40 @@ fn collect_tier_names(ag: &ArrayGraph) -> Vec<String> {
 
 /// Resolve the metrics list:
 ///   `None`        → visible views for this graph structure
-///   `Some(list)`  → exactly that list (overrides visibility)
+///   `Some(list)`  → exactly that list, validated against available views
 fn resolve_metrics(
     ag: &ArrayGraph,
     metrics: &Option<Vec<MetricView>>,
     structure: GraphStructure,
-) -> Vec<MetricView> {
+) -> Result<Vec<MetricView>> {
     match metrics {
-        None => ag.visible_metric_views(structure),
-        Some(list) => list.clone(),
+        None => Ok(ag.visible_metric_views(structure)),
+        Some(list) => {
+            let available: std::collections::HashSet<String> = ag
+                .available_metric_views()
+                .iter()
+                .map(|v| v.to_string())
+                .collect();
+            let invalid: Vec<String> = list
+                .iter()
+                .filter(|v| !available.contains(&v.to_string()))
+                .map(|v| v.to_string())
+                .collect();
+            if !invalid.is_empty() {
+                let mut available_sorted: Vec<&String> = available.iter().collect();
+                available_sorted.sort();
+                bail!(
+                    "Unknown metric view(s): {}. Available views:\n{}",
+                    invalid.join(", "),
+                    available_sorted
+                        .iter()
+                        .map(|v| format!("  - {v}"))
+                        .collect::<Vec<_>>()
+                        .join("\n"),
+                );
+            }
+            Ok(list.clone())
+        }
     }
 }
 
@@ -379,6 +412,7 @@ fn compute_metric(
         MetricView::CountDominated {} => {
             Ok(ag.transitive_count_configured_dominated(node_idx) as f32)
         }
+        MetricView::TierIndex {} => Ok(ag.node_tier_idx(node_idx).unwrap_or(0) as f32),
     }
 }
 
@@ -455,17 +489,23 @@ fn render_ascii(
     offset: usize,
     sort_by_key: Option<&str>,
     sort_order: SortOrder,
+    metrics_config: Option<&unigraph_core::graph_settings::MetricsConfig>,
+    tier_names: &[String],
 ) -> String {
     let all_arrows = node.into_iter().chain(arrows.iter()).collect::<Vec<_>>();
     let metric_cols = collect_metric_columns_from(&all_arrows);
     let has_tags = all_arrows.iter().any(|a| a.tag.is_some());
     let has_dynamic = all_arrows.iter().any(|a| a.dynamic.is_some());
+
+    let formats = build_format_map(&metric_cols, metrics_config, tier_names);
+
     let widths = compute_column_widths(
         &metric_cols,
         has_tags,
         has_dynamic,
         &all_arrows,
         sort_by_key,
+        &formats,
     );
 
     let mut out = String::with_capacity(256);
@@ -489,6 +529,7 @@ fn render_ascii(
             has_tags,
             has_dynamic,
             &widths,
+            &formats,
         );
         write_separator(&mut out, '-', &widths);
     }
@@ -501,6 +542,7 @@ fn render_ascii(
             has_tags,
             has_dynamic,
             &widths,
+            &formats,
         );
     }
 
@@ -550,6 +592,7 @@ fn compute_column_widths(
     has_dynamic: bool,
     arrows: &[&ExploreGraphArrow],
     sort_by_key: Option<&str>,
+    formats: &std::collections::HashMap<String, unigraph_core::graph_settings::MetricFormat>,
 ) -> Vec<usize> {
     let num_cols = 1 + metric_cols.len() + usize::from(has_tags) + usize::from(has_dynamic);
     let mut widths = Vec::with_capacity(num_cols);
@@ -571,7 +614,7 @@ fn compute_column_widths(
         let mut w = header_w;
         for a in arrows {
             if let Some(v) = a.metrics.get(col) {
-                w = w.max(format_metric(*v).len());
+                w = w.max(format_metric(*v, formats.get(col)).len());
             }
         }
         widths.push(w);
@@ -663,6 +706,7 @@ fn write_row(
     has_tags: bool,
     has_dynamic: bool,
     widths: &[usize],
+    formats: &std::collections::HashMap<String, unigraph_core::graph_settings::MetricFormat>,
 ) {
     let start = out.len();
     write_cell(out, &arrow.name, widths[0], true);
@@ -671,7 +715,7 @@ fn write_row(
         let val = arrow
             .metrics
             .get(col)
-            .map(|v| format_metric(*v))
+            .map(|v| format_metric(*v, formats.get(col)))
             .unwrap_or_else(|| "0".to_string());
         write_cell(out, &val, widths[1 + i], false);
     }
@@ -721,10 +765,43 @@ fn trim_trailing_spaces(out: &mut String, start: usize) {
     out.truncate(start + trimmed);
 }
 
-fn format_metric(v: f32) -> String {
-    if v == v.trunc() && v.abs() < 1e15 {
-        format!("{}", v as i64)
-    } else {
-        format!("{v:.2}")
+fn format_metric(v: f32, fmt: Option<&unigraph_core::graph_settings::MetricFormat>) -> String {
+    match fmt {
+        Some(f) => f.format_value(v),
+        None => {
+            if v == v.trunc() && v.abs() < 1e15 {
+                format!("{}", v as i64)
+            } else {
+                format!("{v:.2}")
+            }
+        }
     }
+}
+
+fn build_format_map(
+    metric_cols: &[String],
+    metrics_config: Option<&unigraph_core::graph_settings::MetricsConfig>,
+    tier_names: &[String],
+) -> std::collections::HashMap<String, unigraph_core::graph_settings::MetricFormat> {
+    let mut map: std::collections::HashMap<String, unigraph_core::graph_settings::MetricFormat> =
+        std::collections::HashMap::new();
+    for col in metric_cols {
+        let view: unigraph_core::MetricView = match col.parse() {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        if matches!(view, unigraph_core::MetricView::TierIndex {}) {
+            map.insert(
+                col.clone(),
+                unigraph_core::graph_settings::MetricFormat::TierName {
+                    tier_names: tier_names.to_vec(),
+                },
+            );
+        } else if let Some(config) = metrics_config {
+            if let Some(fmt) = config.format_for_view(&view) {
+                map.insert(col.clone(), fmt.clone());
+            }
+        }
+    }
+    map
 }

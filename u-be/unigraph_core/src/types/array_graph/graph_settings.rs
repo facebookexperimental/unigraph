@@ -335,6 +335,12 @@ impl MetricsConfig {
             .and_then(|mc| mc.format.as_ref())
     }
 
+    /// Look up format for any MetricView. Derived views (transitive,
+    /// dominated, tiered) inherit format from their base metric name.
+    pub fn format_for_view(&self, view: &crate::MetricView) -> Option<&MetricFormat> {
+        view.metric_name().and_then(|name| self.format_for(name))
+    }
+
     pub fn description_for(&self, metric_name: &str) -> Option<&str> {
         self.metrics
             .as_ref()
@@ -390,6 +396,8 @@ pub enum MetricFormat {
     Size(SizeFormatConfig),
     /// Given a value of 0 or 1, format it as a boolean
     NumericBoolean {},
+    /// Maps a tier index (0, 1, 2, ...) to the tier name.
+    TierName { tier_names: Vec<String> },
     /// 1       -> {min:    2, max: 4, delimiter: true}  -> "1.00"
     /// 1.1     -> {min:    2, max: 4, delimiter: true}  -> "1.10"
     /// 1.12    -> {min:    2, max: 4, delimiter: true}  -> "1.12"
@@ -466,6 +474,143 @@ pub enum SizeOutputUnits {
     /// Forces the units to be in Gigibytes. Please consider using ForceGB instead
     /// https://fburl.com/workplace/2bl6qcmn
     GiB,
+}
+
+impl MetricFormat {
+    pub fn format_value(&self, value: f32) -> String {
+        match self {
+            MetricFormat::Percent { scaled_percentage } => {
+                let pct = if *scaled_percentage == Some(true) {
+                    value * 100.0
+                } else {
+                    value
+                };
+                format!("{}%", format_number(pct, 0, 2, true))
+            }
+            MetricFormat::Size(config) => format_size(value, config),
+            MetricFormat::NumericBoolean {} => match value as i32 {
+                0 => "False".into(),
+                1 => "True".into(),
+                _ => format!("{value}"),
+            },
+            MetricFormat::NumberWithVariablePrecision {
+                min_precision,
+                max_precision,
+                use_delimiter,
+            } => format_number(
+                value,
+                min_precision.unwrap_or(0),
+                max_precision.unwrap_or(2),
+                use_delimiter.unwrap_or(true),
+            ),
+            MetricFormat::TierName { tier_names } => {
+                let idx = value as usize;
+                tier_names
+                    .get(idx)
+                    .cloned()
+                    .unwrap_or_else(|| format!("T{idx}"))
+            }
+        }
+    }
+}
+
+fn format_size(value: f32, config: &SizeFormatConfig) -> String {
+    let bytes = match config.input_units {
+        SizeInputUnits::Bytes => value,
+    };
+    let (scaled, unit, default_decimals) = match config.output_units {
+        SizeOutputUnits::VariableUnits => {
+            if bytes.abs() < 1.0 {
+                (bytes, "bytes", 0)
+            } else {
+                let i = (bytes.abs().log10() / 3.0).floor() as usize;
+                let i = i.min(8);
+                let units = ["bytes", "kB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
+                let decimals = if i == 0 { 0 } else { 2 };
+                (bytes / 1000f32.powi(i as i32), units[i], decimals)
+            }
+        }
+        SizeOutputUnits::KB => (bytes / 1000.0, "kB", 2),
+        SizeOutputUnits::MB => (bytes / 1_000_000.0, "MB", 2),
+        SizeOutputUnits::GB => (bytes / 1_000_000_000.0, "GB", 2),
+        SizeOutputUnits::KiB => (bytes / 1024.0, "KiB", 2),
+        SizeOutputUnits::MiB => (bytes / (1024.0 * 1024.0), "MiB", 2),
+        SizeOutputUnits::GiB => (bytes / (1024.0 * 1024.0 * 1024.0), "GiB", 2),
+    };
+    let min_p = config.min_precision.unwrap_or(default_decimals);
+    let max_p = config.max_precision.unwrap_or(default_decimals);
+    let delimiter = config.use_delimiter.unwrap_or(true);
+    format!("{} {unit}", format_number(scaled, min_p, max_p, delimiter))
+}
+
+fn format_number(
+    value: f32,
+    min_precision: usize,
+    max_precision: usize,
+    use_delimiter: bool,
+) -> String {
+    let rounded = if max_precision == 0 {
+        value.round()
+    } else {
+        let factor = 10f32.powi(max_precision as i32);
+        (value * factor).round() / factor
+    };
+
+    let formatted = format!("{:.prec$}", rounded, prec = max_precision);
+
+    let trimmed = if min_precision < max_precision {
+        let dot_pos = formatted.find('.');
+        if let Some(dot) = dot_pos {
+            let min_end = dot + 1 + min_precision;
+            let actual_end = formatted.len();
+            let mut end = actual_end;
+            while end > min_end && formatted.as_bytes()[end - 1] == b'0' {
+                end -= 1;
+            }
+            if end == dot + 1 && min_precision == 0 {
+                &formatted[..dot]
+            } else {
+                &formatted[..end]
+            }
+        } else {
+            &formatted
+        }
+    } else {
+        &formatted
+    };
+
+    if use_delimiter {
+        add_thousands_delimiter(trimmed)
+    } else {
+        trimmed.to_string()
+    }
+}
+
+fn add_thousands_delimiter(s: &str) -> String {
+    let (integer_part, decimal_part) = match s.find('.') {
+        Some(dot) => (&s[..dot], Some(&s[dot..])),
+        None => (s, None),
+    };
+    let negative = integer_part.starts_with('-');
+    let digits = if negative {
+        &integer_part[1..]
+    } else {
+        integer_part
+    };
+    let mut result = String::with_capacity(s.len() + digits.len() / 3);
+    if negative {
+        result.push('-');
+    }
+    for (i, ch) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i) % 3 == 0 {
+            result.push(',');
+        }
+        result.push(ch);
+    }
+    if let Some(dec) = decimal_part {
+        result.push_str(dec);
+    }
+    result
 }
 
 #[derive(

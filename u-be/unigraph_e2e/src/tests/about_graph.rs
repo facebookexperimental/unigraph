@@ -93,7 +93,12 @@ async fn text_summary() -> Result<()> {
 - **Nodes**: 12
 - **Edges**: 17 (13 directed, 2 tagged, 2 dynamic)
 
-## Metric Views
+## Metrics
+
+- **`lines`** — Lines of code
+- **`size`** — Module size in bytes
+
+## All Available Metric Views
 
 - `lines`
 - `lines~transitive`
@@ -107,6 +112,7 @@ async fn text_summary() -> Result<()> {
 - `parents-count`
 - `node-count~transitive`
 - `node-count~dominated`
+- `tier`
 
 ## Tiers
 
@@ -151,7 +157,11 @@ async fn text_summary_with_properties() -> Result<()> {
 - **Nodes**: 2
 - **Edges**: 1 (1 directed)
 
-## Metric Views
+## Metrics
+
+- **`size`**
+
+## All Available Metric Views
 
 - `size`
 - `size~transitive`

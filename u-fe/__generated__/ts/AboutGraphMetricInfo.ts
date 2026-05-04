@@ -8,4 +8,5 @@
 export interface AboutGraphMetricInfo {
   name: string;
   description?: string | undefined;
+  derived_views: string[];
 }
