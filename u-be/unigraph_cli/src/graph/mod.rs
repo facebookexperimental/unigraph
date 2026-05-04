@@ -3,9 +3,11 @@
 mod explore;
 mod get;
 mod get_error;
-mod put;
+pub mod put;
+mod upload;
 
 pub use explore::GraphExplore;
 pub use get::GraphGet;
 pub use get_error::GraphGetError;
 pub use put::GraphPut;
+pub use upload::GraphUpload;

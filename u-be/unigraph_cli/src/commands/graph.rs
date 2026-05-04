@@ -8,6 +8,7 @@ use unigraph_cli::graph::GraphExplore;
 use unigraph_cli::graph::GraphGet;
 use unigraph_cli::graph::GraphGetError;
 use unigraph_cli::graph::GraphPut;
+use unigraph_cli::graph::GraphUpload;
 
 #[derive(Parser)]
 pub struct Graph {
@@ -21,6 +22,7 @@ pub enum GraphCommands {
     Put(GraphPut),
     GetError(GraphGetError),
     Explore(GraphExplore),
+    Upload(GraphUpload),
 }
 
 impl UnigraphCLISubcommand for Graph {
@@ -30,6 +32,7 @@ impl UnigraphCLISubcommand for Graph {
             GraphCommands::Put(cmd) => cmd.run(ctx, task).await,
             GraphCommands::GetError(cmd) => cmd.run(ctx, task).await,
             GraphCommands::Explore(cmd) => cmd.run(ctx, task).await,
+            GraphCommands::Upload(cmd) => cmd.run(ctx, task).await,
         }
     }
 }

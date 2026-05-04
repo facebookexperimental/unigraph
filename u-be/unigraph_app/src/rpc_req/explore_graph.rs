@@ -228,7 +228,7 @@ fn resolve_metrics(
     match metrics {
         None => Ok(ag.visible_metric_views(structure)),
         Some(list) => {
-            let available: std::collections::HashSet<String> = ag
+            let available: std::collections::BTreeSet<String> = ag
                 .available_metric_views()
                 .iter()
                 .map(|v| v.to_string())
@@ -592,7 +592,7 @@ fn compute_column_widths(
     has_dynamic: bool,
     arrows: &[&ExploreGraphArrow],
     sort_by_key: Option<&str>,
-    formats: &std::collections::HashMap<String, unigraph_core::graph_settings::MetricFormat>,
+    formats: &BTreeMap<String, unigraph_core::graph_settings::MetricFormat>,
 ) -> Vec<usize> {
     let num_cols = 1 + metric_cols.len() + usize::from(has_tags) + usize::from(has_dynamic);
     let mut widths = Vec::with_capacity(num_cols);
@@ -706,7 +706,7 @@ fn write_row(
     has_tags: bool,
     has_dynamic: bool,
     widths: &[usize],
-    formats: &std::collections::HashMap<String, unigraph_core::graph_settings::MetricFormat>,
+    formats: &BTreeMap<String, unigraph_core::graph_settings::MetricFormat>,
 ) {
     let start = out.len();
     write_cell(out, &arrow.name, widths[0], true);
@@ -782,9 +782,8 @@ fn build_format_map(
     metric_cols: &[String],
     metrics_config: Option<&unigraph_core::graph_settings::MetricsConfig>,
     tier_names: &[String],
-) -> std::collections::HashMap<String, unigraph_core::graph_settings::MetricFormat> {
-    let mut map: std::collections::HashMap<String, unigraph_core::graph_settings::MetricFormat> =
-        std::collections::HashMap::new();
+) -> BTreeMap<String, unigraph_core::graph_settings::MetricFormat> {
+    let mut map: BTreeMap<String, unigraph_core::graph_settings::MetricFormat> = BTreeMap::new();
     for col in metric_cols {
         let view: unigraph_core::MetricView = match col.parse() {
             Ok(v) => v,

@@ -110,7 +110,7 @@ impl GraphPut {
     }
 }
 
-fn parse_graph_file(path: &PathBuf, task: &ll::Task) -> anyhow::Result<ArrayGraphSerializable> {
+pub fn parse_graph_file(path: &PathBuf, task: &ll::Task) -> anyhow::Result<ArrayGraphSerializable> {
     let bytes = std::fs::read(path)
         .with_context(|| format!("Failed to read graph file: {}", path.display()))?;
     task.data("file_size_bytes", bytes.len());

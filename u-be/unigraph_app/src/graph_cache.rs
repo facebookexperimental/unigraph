@@ -113,6 +113,7 @@ impl GraphCache {
 
             task.data("cache", "miss");
             let (_, graph) = this.db.resolve_graph_query_config(&gqc, &task).await?;
+            let graph = graph.append_super_root(false)?;
             let graph = Arc::new(graph);
             *guard = Some(ArrayGraphCacheEntry {
                 graph: Arc::clone(&graph),
