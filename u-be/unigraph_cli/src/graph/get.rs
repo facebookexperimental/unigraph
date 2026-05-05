@@ -88,12 +88,15 @@ impl GraphGet {
         let (key, ag) = ctx.db.resolve_graph_query_config(&gqc, task).await?;
         task.data("graph_key", key.to_string());
 
+        let graph_nodes = ag.nodes_len();
+        let graph_edges = ag.data.edges.edges_len();
+
         if self.array_graph {
             let ags = ag.into_serializable();
-            self.write_output(ctx, &key, &ags, task)
+            self.write_output(ctx, &key, &ags, graph_nodes, graph_edges, task)
         } else {
             let map_graph = ag.to_map_graph().context("Failed to convert to MapGraph")?;
-            self.write_output(ctx, &key, &map_graph, task)
+            self.write_output(ctx, &key, &map_graph, graph_nodes, graph_edges, task)
         }
     }
 }
@@ -164,6 +167,8 @@ impl GraphGet {
         ctx: &UnigraphCLIContext,
         key: &GraphKey,
         value: &impl serde::Serialize,
+        graph_nodes: usize,
+        graph_edges: usize,
         task: &ll::Task,
     ) -> anyhow::Result<()> {
         if self.stdout {
@@ -185,6 +190,8 @@ impl GraphGet {
                 "timeline_id": &key.timeline_id.0,
                 "graph_id": &key.graph_id.0,
                 "graph_key": key.to_string(),
+                "graph_nodes": graph_nodes,
+                "graph_edges": graph_edges,
                 "size_mb": format!("{:.2}", size_mb),
                 "path": path.display().to_string(),
             });
