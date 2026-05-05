@@ -257,7 +257,7 @@ mod tests {
             idx_to_names(l, entrypoints_l),
             r#"
 [
-    "\u{10ffff}__root__\u{10ffff}",
+    "~root~",
 ]
 "#
         );
@@ -265,7 +265,7 @@ mod tests {
             idx_to_names(r, entrypoints_r),
             r#"
 [
-    "\u{10ffff}__root__\u{10ffff}",
+    "~root~",
 ]
 "#
         );

@@ -226,7 +226,7 @@ O:
   - P
   - N
 P:
-\u{10ffff}__root__\u{10ffff}:
+~root~:
   - L
   - F
   - D

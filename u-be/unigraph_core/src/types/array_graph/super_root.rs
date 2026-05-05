@@ -6,50 +6,59 @@ use anyhow::Context;
 use anyhow::Result;
 
 use crate::ArrayGraph;
+use crate::ArrayGraphSerializable;
+use crate::types::NodeIDX;
 use crate::types::array_graph::NodeFlags;
 use crate::types::array_graph::array_graph_derived_state::ArrayGraphDerivedState;
 use crate::types::array_graph::offset_graph::edge_flags::EdgeFlags;
+use crate::types::array_graph::remap_utils::make_remapped_node_names_ordered;
+use crate::types::array_graph::remap_utils::remap_edges;
+use crate::types::array_graph::remap_utils::remap_node_metadata;
+use crate::types::array_graph::remap_utils::sort_and_return_mapping;
 
-const HIGHEST_UNICODE_CODEPOINT: u32 = 0x10FFFF;
+const SUPER_ROOT_BASE: &str = "root";
+const SUPER_ROOT_WRAP: char = '~';
+const MAX_APPEND_ATTEMPTS: usize = 3;
 
-/// If the graph has more than one entrypoint it makes it very very annoying to work with
-/// in most cases. Like... if i load it in the UI i would want to know the transitive size
-/// of "the whole thing" but when there are multiple entrypoints i would only be able to
-/// see the separate values for each entrypoints and not combined.
-/// To make it easier we can add a super root node that will become a single entrypoint
-/// for the whole graph. It will have directed edges to the multiple entrypoints we had initially.
+fn make_super_root_name(attempt: usize) -> String {
+    let tildes: String = std::iter::repeat_n(SUPER_ROOT_WRAP, attempt + 1).collect();
+    format!("{tildes}{SUPER_ROOT_BASE}{tildes}")
+}
+
+/// If the graph has more than one entrypoint it makes it very annoying to work with.
+/// To make it easier we add a super root node that becomes a single entrypoint
+/// with directed edges to all original entrypoints.
 ///
-/// Since most of the time our graphs are immutable / append-only we'll have to do some sketchy stuff
-/// to actually add the super root node.
-/// The name of the super root will be prefixed with the highest unicode code point
-/// so that it is always the last node in the ordered list of node names. It is not guaranteed
-/// but should probably work in most cases, unless someone actually used these characters in the actual
-/// graph node names.
-pub fn append_super_root(
-    mut ag: ArrayGraph,
-    // force super root creation even if there's only one entrypoint
-    force: bool,
-) -> Result<ArrayGraph> {
+/// Tries to append a `~root~` node (which sorts after most real node names).
+/// If that name doesn't sort last, cascades to `~~root~~`, `~~~root~~~`.
+/// After 3 failed attempts, falls back to inserting the node at the correct
+/// sorted position with a full index remap.
+pub fn append_super_root(mut ag: ArrayGraph, force: bool) -> Result<ArrayGraph> {
     let entrypoints = ag.determine_entrypoints();
 
     if entrypoints.len() < 2 && !force {
-        return Ok(ag); // No need to add super root if there's only one entrypoint
+        return Ok(ag);
     }
 
-    let highest_unicode_char =
-        char::from_u32(HIGHEST_UNICODE_CODEPOINT).context("Failed to get highest unicode char")?;
-    let super_root_name = format!("{highest_unicode_char}__root__{highest_unicode_char}");
+    for attempt in 0..MAX_APPEND_ATTEMPTS {
+        let name = make_super_root_name(attempt);
+        if ag.data.node_names_ordered.append_node_name(&name).is_ok() {
+            return finish_append(ag, name, &entrypoints);
+        }
+    }
 
-    ag.data.node_names_ordered.append_node_name(&super_root_name).context(
-        "Failed to add super root node name. Super root name uses the highest unicode code point
-prefix to become append-only last node in the ordered list but it is not guaranteed that there will
-be no other node already on the list that doesn't start from the same character",
-    )?;
+    let name = find_unique_name(&ag);
+    insert_with_remap(ag, &name, &entrypoints)
+}
 
+fn finish_append(
+    mut ag: ArrayGraph,
+    super_root_name: String,
+    entrypoints: &[NodeIDX],
+) -> Result<ArrayGraph> {
     ag.runtime.node_flags.push(NodeFlags::empty());
 
-    // Append super root edges to CSR data and runtime edge_flags
-    for &entrypoint in &entrypoints {
+    for &entrypoint in entrypoints {
         ag.data.edges.edges.push(entrypoint);
         ag.runtime.edge_flags.push(EdgeFlags::empty());
     }
@@ -61,10 +70,196 @@ be no other node already on the list that doesn't start from the same character"
         .values_mut()
         .for_each(|m| m.push(0.0));
 
-    // Invalidate derived state (reverse, dominator, SCCs)
     ag.runtime.derived_state = ArrayGraphDerivedState::new();
-
     ag.data.entry_points = Some(BTreeSet::from([super_root_name]));
 
     Ok(ag)
+}
+
+fn find_unique_name(ag: &ArrayGraph) -> String {
+    (0..)
+        .map(make_super_root_name)
+        .find(|name| ag.data.node_names_ordered.name_to_idx_log(name).is_none())
+        .expect("infinite tilde names available, one must be unused")
+}
+
+fn insert_with_remap(
+    ag: ArrayGraph,
+    super_root_name: &str,
+    entrypoints: &[NodeIDX],
+) -> Result<ArrayGraph> {
+    let mut names: Vec<String> = ag
+        .data
+        .node_names_ordered
+        .node_names_iter()
+        .map(|s| s.to_string())
+        .collect();
+    names.push(super_root_name.to_string());
+
+    let mut edges = ag.data.edges;
+    for &ep in entrypoints {
+        edges.edges.push(ep);
+    }
+    edges.edge_offsets.push(edges.edges.len());
+
+    let mut metadata = ag.data.node_metadata;
+    for metrics in metadata.metrics.values_mut() {
+        metrics.push(0.0);
+    }
+
+    let ctx = sort_and_return_mapping(&mut names);
+
+    let new_sg = ArrayGraphSerializable {
+        node_names_ordered: make_remapped_node_names_ordered(&names),
+        edges: remap_edges(&edges, &ctx)?,
+        node_metadata: remap_node_metadata(&metadata, &ctx)?,
+        graph_settings: ag.data.graph_settings,
+        traversal_config: ag.data.traversal_config,
+        entry_points: Some(BTreeSet::from([super_root_name.to_string()])),
+        properties: ag.data.properties,
+    };
+
+    new_sg
+        .into_array_graph(&ll::Task::create_new(""))
+        .context("Failed to reconstruct ArrayGraph after super root remap")
+}
+
+#[cfg(test)]
+mod tests {
+    use anyhow::Result;
+    use k9::snapshot;
+
+    use super::*;
+    use crate::GraphBuilder;
+
+    #[test]
+    fn test_make_super_root_name() {
+        snapshot!(make_super_root_name(0), "~root~");
+        snapshot!(make_super_root_name(1), "~~root~~");
+        snapshot!(make_super_root_name(2), "~~~root~~~");
+    }
+
+    fn make_graph(edges: &[(&str, &str)]) -> Result<ArrayGraph> {
+        let mut b = GraphBuilder::new();
+        for &(from, to) in edges {
+            b.add_edge(from, to)?;
+        }
+        b.build().to_array_graph(&ll::Task::create_new("test"))
+    }
+
+    #[test]
+    fn test_normal_append() -> Result<()> {
+        let ag = make_graph(&[("A", "B"), ("C", "D")])?;
+        let ag = ag.append_super_root(false)?;
+
+        snapshot!(
+            ag.debug().to_forward_edges_string()?,
+            "
+A:
+  - B
+B:
+C:
+  - D
+D:
+~root~:
+  - A
+  - C
+"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_single_entrypoint_no_force() -> Result<()> {
+        let ag = make_graph(&[("A", "B"), ("B", "C")])?;
+        let ag = ag.append_super_root(false)?;
+
+        snapshot!(
+            ag.debug().to_forward_edges_string()?,
+            "
+A:
+  - B
+B:
+  - C
+C:
+"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_single_entrypoint_force() -> Result<()> {
+        let ag = make_graph(&[("A", "B"), ("B", "C")])?;
+        let ag = ag.append_super_root(true)?;
+
+        snapshot!(
+            ag.debug().to_forward_edges_string()?,
+            "
+A:
+  - B
+B:
+  - C
+C:
+~root~:
+  - A
+"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_cascading_name() -> Result<()> {
+        let mut b = GraphBuilder::new();
+        b.add_edge("A", "B")?;
+        b.add_edge("C", "D")?;
+        b.add_node("~root~".to_string());
+        let ag = b.build().to_array_graph(&ll::Task::create_new("test"))?;
+        let ag = ag.append_super_root(false)?;
+
+        snapshot!(
+            ag.debug().to_forward_edges_string()?,
+            "
+A:
+  - B
+B:
+C:
+  - D
+D:
+~root~:
+~~root~~:
+  - A
+  - C
+  - ~root~
+"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_remap_fallback() -> Result<()> {
+        let mut b = GraphBuilder::new();
+        b.add_edge("A", "B")?;
+        b.add_edge("C", "D")?;
+        b.add_node("~~~~z".to_string());
+        let ag = b.build().to_array_graph(&ll::Task::create_new("test"))?;
+        let ag = ag.append_super_root(false)?;
+
+        snapshot!(
+            ag.debug().to_forward_edges_string()?,
+            "
+A:
+  - B
+B:
+C:
+  - D
+D:
+~root~:
+  - A
+  - C
+  - ~~~~z
+~~~~z:
+"
+        );
+        Ok(())
+    }
 }

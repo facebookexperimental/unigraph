@@ -308,7 +308,7 @@ Q: ADDED
 R: ADDED
 S: ADDED
 T: ADDED
-\u{10ffff}__root__\u{10ffff}:
+~root~:
 "#
         );
         Ok(())
