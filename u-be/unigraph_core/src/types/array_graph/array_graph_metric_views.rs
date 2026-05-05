@@ -6,7 +6,6 @@ use crate::ArrayGraph;
 use crate::MetricView;
 use crate::types::array_graph::graph_settings::Availability;
 use crate::types::array_graph::graph_settings::DefaultAvailability;
-use crate::types::array_graph::graph_settings::DefaultVisibility;
 use crate::types::array_graph::graph_settings::GraphStructure;
 use crate::types::array_graph::graph_settings::MetricViewVisibility;
 use crate::types::array_graph::graph_settings::MetricsConfig;

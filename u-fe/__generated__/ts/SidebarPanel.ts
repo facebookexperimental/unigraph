@@ -5,4 +5,4 @@
  */
 
 
-export type SidebarPanel = "None" | "Simulation" | "GraphInfo" | "TraversalConfigEditor";
+export type SidebarPanel = "None" | "Simulation" | "GraphInfo" | "TraversalConfigEditor" | "DebugPanel";

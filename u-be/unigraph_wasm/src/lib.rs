@@ -598,7 +598,7 @@ pub fn apply_traversal_config(traversal_config_json: String, side: u32) -> Resul
 }
 
 #[wasm_bindgen]
-pub fn get_graph_node_count(side: u32) -> Result<usize, WasmJSError> {
+pub fn get_graph_node_count(_side: u32) -> Result<usize, WasmJSError> {
     Ok(GlobalGraphState::graph_state().get().mode.node_count())
 }
 

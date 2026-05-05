@@ -83,12 +83,12 @@ impl UnigraphDb {
                 self.configs.resolve_traversal_override(t, task).await?,
             ));
         }
-        if let Some(inner) = inner_gqc {
-            if let Some(t) = &inner.traversal {
-                return Ok(Some(
-                    self.configs.resolve_traversal_override(t, task).await?,
-                ));
-            }
+        if let Some(inner) = inner_gqc
+            && let Some(t) = &inner.traversal
+        {
+            return Ok(Some(
+                self.configs.resolve_traversal_override(t, task).await?,
+            ));
         }
         Ok(None)
     }
@@ -101,10 +101,10 @@ fn resolve_roots(gqc: &GraphQueryConfig, inner_gqc: &Option<GraphQueryConfig>) -
     if let Some(roots) = &gqc.roots {
         return roots.iter().cloned().collect();
     }
-    if let Some(inner) = inner_gqc {
-        if let Some(roots) = &inner.roots {
-            return roots.iter().cloned().collect();
-        }
+    if let Some(inner) = inner_gqc
+        && let Some(roots) = &inner.roots
+    {
+        return roots.iter().cloned().collect();
     }
     Vec::new()
 }

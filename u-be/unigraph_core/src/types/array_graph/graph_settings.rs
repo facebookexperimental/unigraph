@@ -364,13 +364,6 @@ impl MetricsConfig {
             .and_then(default_field)
             .unwrap_or(Availability::Available)
     }
-
-    pub(crate) fn resolve_visibility(
-        &self,
-        view_type: fn(&DefaultVisibility) -> Option<MetricViewVisibility>,
-    ) -> Option<MetricViewVisibility> {
-        self.default_visibility.as_ref().and_then(view_type)
-    }
 }
 
 #[derive(
@@ -396,8 +389,6 @@ pub enum MetricFormat {
     Size(SizeFormatConfig),
     /// Given a value of 0 or 1, format it as a boolean
     NumericBoolean {},
-    /// Maps a tier index (0, 1, 2, ...) to the tier name.
-    TierName { tier_names: Vec<String> },
     /// 1       -> {min:    2, max: 4, delimiter: true}  -> "1.00"
     /// 1.1     -> {min:    2, max: 4, delimiter: true}  -> "1.10"
     /// 1.12    -> {min:    2, max: 4, delimiter: true}  -> "1.12"
@@ -503,13 +494,6 @@ impl MetricFormat {
                 max_precision.unwrap_or(2),
                 use_delimiter.unwrap_or(true),
             ),
-            MetricFormat::TierName { tier_names } => {
-                let idx = value as usize;
-                tier_names
-                    .get(idx)
-                    .cloned()
-                    .unwrap_or_else(|| format!("T{idx}"))
-            }
         }
     }
 }
@@ -643,6 +627,7 @@ pub enum SidebarPanel {
     Simulation,
     GraphInfo,
     TraversalConfigEditor,
+    DebugPanel,
 }
 
 /// Enum that defines whether an option is enabled or not depending

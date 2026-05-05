@@ -13,6 +13,10 @@
 pub struct ParsedIdent {
     pub path: String,
     pub layer: Option<String>,
+    #[expect(
+        dead_code,
+        reason = "parsed from ident but not yet used in node ID construction"
+    )]
     pub module_type: Option<String>,
     pub fragment: Option<String>,
 }
@@ -63,10 +67,8 @@ pub fn node_id(parsed: &ParsedIdent, collapse_fragments: bool) -> String {
     if let Some(layer) = &parsed.layer {
         id = format!("{id} [{layer}]");
     }
-    if !collapse_fragments {
-        if let Some(fragment) = &parsed.fragment {
-            id = format!("{id} <{fragment}>");
-        }
+    if !collapse_fragments && let Some(fragment) = &parsed.fragment {
+        id = format!("{id} <{fragment}>");
     }
     id
 }

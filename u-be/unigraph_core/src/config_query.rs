@@ -66,6 +66,10 @@ impl GraphQueryConfig {
     unigraph_delta::Deltable
 )]
 #[deltable(replace)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "Inline variant is the common case"
+)]
 pub enum TraversalOverride {
     /// Full inline traversal config.
     Inline(TraversalConfig),

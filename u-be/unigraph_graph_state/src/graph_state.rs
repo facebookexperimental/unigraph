@@ -17,6 +17,10 @@ use unigraph_core::types::NodeIDX;
 use crate::simulation_graph::SimulationGraph;
 
 /// The top-level state: either a single graph or a twin (comparison) graph.
+#[expect(
+    clippy::large_enum_variant,
+    reason = "both variants are large graph structures"
+)]
 pub enum GraphMode {
     Single(ArrayGraph),
     Twin(TwinGraph),

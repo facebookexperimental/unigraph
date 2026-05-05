@@ -106,11 +106,10 @@ impl<'a> ShouldCount for CountChangedNodesCountsForDelta<'a> {
             }
         };
 
-        match (l_unreachable, r_unreachable) {
-            (true, true) => false,
-            (false, false) => false,
-            _ => true,
-        }
+        matches!(
+            (l_unreachable, r_unreachable),
+            (true, false) | (false, true)
+        )
     }
 }
 
@@ -157,11 +156,10 @@ impl<'a> ShouldCount for CountChangedNodesMetricsForDelta<'a> {
             }
         };
 
-        match (l_unreachable, r_unreachable) {
-            (true, true) => false,
-            (false, false) => false,
-            _ => true,
-        }
+        matches!(
+            (l_unreachable, r_unreachable),
+            (true, false) | (false, true)
+        )
     }
 }
 

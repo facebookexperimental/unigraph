@@ -9,7 +9,6 @@ import { useDebugMode } from "./context/DebugModeContext";
 import { useGraphSettings } from "./context/GraphSettingsContext";
 import { useTwinGraph } from "./context/NativeGraphContext";
 import CopyGqcKeyButton from "./sidebar_panels/CopyGqcKeyButton";
-import TraversalConfigInspector from "./sidebar_panels/TraversalConfigInspector";
 
 export default function Sidebar({
   selectedPanelTab,
@@ -48,7 +47,6 @@ export default function Sidebar({
             </TabSelector>
           </UTooltip>
         ))}
-        {debugMode && <TraversalConfigInspector />}
         {debugMode && source.type === "handle" && (
           <CopyGqcKeyButton source={source} />
         )}

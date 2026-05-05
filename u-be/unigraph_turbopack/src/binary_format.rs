@@ -88,8 +88,9 @@ pub struct AnalyzeModule {
 #[derive(Debug, Deserialize)]
 pub struct ModulesDataHeader {
     pub modules: Vec<AnalyzeModule>,
+    #[expect(dead_code, reason = "deserialized from binary format but not yet used")]
     pub module_dependents: EdgesDataReference,
-    #[allow(dead_code)]
+    #[expect(dead_code, reason = "deserialized from binary format but not yet used")]
     pub async_module_dependents: EdgesDataReference,
     pub module_dependencies: EdgesDataReference,
     pub async_module_dependencies: EdgesDataReference,

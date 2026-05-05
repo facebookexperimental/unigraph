@@ -45,6 +45,10 @@ impl ArrayGraphNodes {
         self.offsets.len() - 1
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     #[inline]
     pub fn idx_to_name<I>(&self, node_idx: I) -> &str
     where

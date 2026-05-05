@@ -167,6 +167,10 @@ impl UnigraphDb {
 // -- Recursive handle resolution (private) ------------------------------------
 
 impl UnigraphDb {
+    #[expect(
+        clippy::type_complexity,
+        reason = "recursive async requires explicit Pin<Box<dyn Future>>"
+    )]
     fn fetch_graph_by_handle_recursive<'a>(
         &'a self,
         handle: &'a GraphHandle,

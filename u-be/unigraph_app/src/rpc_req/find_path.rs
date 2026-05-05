@@ -72,7 +72,7 @@ impl RpcExec<Unigraph> for FindPathInput {
         let ttl = Duration::from_secs(DEFAULT_TTL_SECS);
         let ag = resolve_graph_handle(&self.handle, ctx, task, ttl).await?;
         let input = self;
-        task.spawn("find_path", |task| async move {
+        task.spawn("find_path", |_task| async move {
             tokio::task::spawn_blocking(move || find_path(ag, &input))
                 .await
                 .context("spawn_blocking panicked")?

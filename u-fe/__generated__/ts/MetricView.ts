@@ -45,6 +45,8 @@ export type MetricView =
   /** Transitive dependency count (forward DFS). */
   { "CountTransitive": {  } } |
   /** Dominated dependency count (dominator tree DFS). */
-  { "CountDominated": {  } };
+  { "CountDominated": {  } } |
+  /** Tier index of the node (0-based). Only available when tiers are configured. */
+  { "TierIndex": {  } };
 
-export type MetricViewVariants = "Metric" | "Transitive" | "Dominated" | "Tiered" | "TieredDominated" | "ParentsCount" | "CountTransitive" | "CountDominated";
+export type MetricViewVariants = "Metric" | "Transitive" | "Dominated" | "Tiered" | "TieredDominated" | "ParentsCount" | "CountTransitive" | "CountDominated" | "TierIndex";

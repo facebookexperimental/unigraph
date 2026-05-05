@@ -135,10 +135,10 @@ fn collect_matching_ancestors(
 
     // If the caller requested properties but some don't exist in the graph,
     // no node can possibly match all predicates — return early.
-    if let Some(props) = &input.properties {
-        if property_indices.len() < props.len() {
-            return Ok(Vec::new());
-        }
+    if let Some(props) = &input.properties
+        && property_indices.len() < props.len()
+    {
+        return Ok(Vec::new());
     }
 
     let reverse = ag.edges_reverse();

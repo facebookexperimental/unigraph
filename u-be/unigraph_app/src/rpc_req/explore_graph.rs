@@ -480,6 +480,10 @@ fn sort_arrow(order: SortOrder) -> &'static str {
     }
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "ASCII rendering helper with many formatting options"
+)]
 fn render_ascii(
     target: &ExploreGraphTarget,
     graph_structure: GraphStructure,
@@ -497,7 +501,7 @@ fn render_ascii(
     let has_tags = all_arrows.iter().any(|a| a.tag.is_some());
     let has_dynamic = all_arrows.iter().any(|a| a.dynamic.is_some());
 
-    let formats = build_format_map(&metric_cols, metrics_config, tier_names);
+    let formats = build_format_map(&metric_cols, metrics_config);
 
     let widths = compute_column_widths(
         &metric_cols,
@@ -506,6 +510,7 @@ fn render_ascii(
         &all_arrows,
         sort_by_key,
         &formats,
+        tier_names,
     );
 
     let mut out = String::with_capacity(256);
@@ -530,6 +535,7 @@ fn render_ascii(
             has_dynamic,
             &widths,
             &formats,
+            tier_names,
         );
         write_separator(&mut out, '-', &widths);
     }
@@ -543,6 +549,7 @@ fn render_ascii(
             has_dynamic,
             &widths,
             &formats,
+            tier_names,
         );
     }
 
@@ -593,6 +600,7 @@ fn compute_column_widths(
     arrows: &[&ExploreGraphArrow],
     sort_by_key: Option<&str>,
     formats: &BTreeMap<String, unigraph_core::graph_settings::MetricFormat>,
+    tier_names: &[String],
 ) -> Vec<usize> {
     let num_cols = 1 + metric_cols.len() + usize::from(has_tags) + usize::from(has_dynamic);
     let mut widths = Vec::with_capacity(num_cols);
@@ -614,7 +622,7 @@ fn compute_column_widths(
         let mut w = header_w;
         for a in arrows {
             if let Some(v) = a.metrics.get(col) {
-                w = w.max(format_metric(*v, formats.get(col)).len());
+                w = w.max(format_cell_value(*v, col, formats, tier_names).len());
             }
         }
         widths.push(w);
@@ -699,6 +707,10 @@ fn write_separator(out: &mut String, ch: char, widths: &[usize]) {
     out.push('\n');
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "ASCII rendering helper with many formatting options"
+)]
 fn write_row(
     out: &mut String,
     arrow: &ExploreGraphArrow,
@@ -707,6 +719,7 @@ fn write_row(
     has_dynamic: bool,
     widths: &[usize],
     formats: &BTreeMap<String, unigraph_core::graph_settings::MetricFormat>,
+    tier_names: &[String],
 ) {
     let start = out.len();
     write_cell(out, &arrow.name, widths[0], true);
@@ -715,7 +728,7 @@ fn write_row(
         let val = arrow
             .metrics
             .get(col)
-            .map(|v| format_metric(*v, formats.get(col)))
+            .map(|v| format_cell_value(*v, col, formats, tier_names))
             .unwrap_or_else(|| "0".to_string());
         write_cell(out, &val, widths[1 + i], false);
     }
@@ -765,8 +778,20 @@ fn trim_trailing_spaces(out: &mut String, start: usize) {
     out.truncate(start + trimmed);
 }
 
-fn format_metric(v: f32, fmt: Option<&unigraph_core::graph_settings::MetricFormat>) -> String {
-    match fmt {
+fn format_cell_value(
+    v: f32,
+    col: &str,
+    formats: &BTreeMap<String, unigraph_core::graph_settings::MetricFormat>,
+    tier_names: &[String],
+) -> String {
+    if let Ok(unigraph_core::MetricView::TierIndex {}) = col.parse::<unigraph_core::MetricView>() {
+        let idx = v as usize;
+        return tier_names
+            .get(idx)
+            .cloned()
+            .unwrap_or_else(|| format!("T{idx}"));
+    }
+    match formats.get(col) {
         Some(f) => f.format_value(v),
         None => {
             if v == v.trunc() && v.abs() < 1e15 {
@@ -781,25 +806,18 @@ fn format_metric(v: f32, fmt: Option<&unigraph_core::graph_settings::MetricForma
 fn build_format_map(
     metric_cols: &[String],
     metrics_config: Option<&unigraph_core::graph_settings::MetricsConfig>,
-    tier_names: &[String],
 ) -> BTreeMap<String, unigraph_core::graph_settings::MetricFormat> {
     let mut map: BTreeMap<String, unigraph_core::graph_settings::MetricFormat> = BTreeMap::new();
+    let Some(config) = metrics_config else {
+        return map;
+    };
     for col in metric_cols {
         let view: unigraph_core::MetricView = match col.parse() {
             Ok(v) => v,
             Err(_) => continue,
         };
-        if matches!(view, unigraph_core::MetricView::TierIndex {}) {
-            map.insert(
-                col.clone(),
-                unigraph_core::graph_settings::MetricFormat::TierName {
-                    tier_names: tier_names.to_vec(),
-                },
-            );
-        } else if let Some(config) = metrics_config {
-            if let Some(fmt) = config.format_for_view(&view) {
-                map.insert(col.clone(), fmt.clone());
-            }
+        if let Some(fmt) = config.format_for_view(&view) {
+            map.insert(col.clone(), fmt.clone());
         }
     }
     map

@@ -7,7 +7,7 @@ import {
   useSuspenseQuery,
 } from "@tanstack/react-query";
 import { GraphLoadingAnimation } from "./components/GraphLoadingAnimation";
-import { Info, SlidersHorizontal, Waypoints } from "lucide-react";
+import { Bug, Info, SlidersHorizontal, Waypoints } from "lucide-react";
 import {
   apply_gqc_delta,
   derive_gqc_delta,
@@ -67,7 +67,8 @@ export interface ExplorerConfig {
 export type BuiltinSidebarPanel =
   | "Simulation"
   | "GraphInfo"
-  | "TraversalConfigEditor";
+  | "TraversalConfigEditor"
+  | "DebugPanel";
 
 export interface PanelTabPlugin {
   id: string;
@@ -101,7 +102,10 @@ interface ResolvedPanel {
   render: () => ReactNode;
 }
 import ErrorBoundary from "./components/ErrorBoundary";
-import { DebugModeContextProvider } from "./context/DebugModeContext";
+import {
+  DebugModeContextProvider,
+  useDebugMode,
+} from "./context/DebugModeContext";
 import {
   GlobalElementRefsContextProvider,
   usePortalContainer,
@@ -125,6 +129,7 @@ import NativeGraph from "./native/NativeGraph";
 import Sidebar from "./Sidebar";
 import Simulation from "./Simulation";
 import GraphInfoPanel from "./sidebar_panels/GraphInfoPanel";
+import DebugPanel from "./sidebar_panels/DebugPanel";
 import TraversalConfigEditorPanel from "./sidebar_panels/TraversalConfigEditorPanel";
 import GraphTreeTable from "./tree_table/GraphTreeTable";
 import type { NodeIDX } from "./types";
@@ -261,6 +266,12 @@ function ExplorerImpl(props: {
         tooltip: "Traversal Config",
         render: () => <TraversalConfigEditorPanel />,
       },
+      {
+        id: "DebugPanel",
+        icon: <Bug />,
+        tooltip: "Debug",
+        render: () => <DebugPanel />,
+      },
     ],
     [],
   );
@@ -323,13 +334,19 @@ function Page({
   const [settings] = useGraphSettings();
   const [selectedNodes] = useSelectedNodes();
   const portalRef = usePortalContainer();
+  const [debugMode] = useDebugMode();
   useGlobalKeyboardShortcuts();
+
+  const visiblePanels = useMemo(
+    () => (debugMode ? panels : panels.filter((p) => p.id !== "DebugPanel")),
+    [panels, debugMode],
+  );
 
   const selectedSidebarPanel =
     settings.ui_settings?.selected_sidebar_panel ?? "None";
 
   const panelTab =
-    panels.find((p) => p.id === selectedSidebarPanel)?.render() ?? null;
+    visiblePanels.find((p) => p.id === selectedSidebarPanel)?.render() ?? null;
 
   const roots = useMemo(() => {
     const rootsR = getRoots(
@@ -366,7 +383,7 @@ function Page({
       <Sidebar
         selectedPanelTab={selectedSidebarPanel}
         homeHref={homeHref}
-        panels={panels}
+        panels={visiblePanels}
         source={source}
       />
       {panelTab}
