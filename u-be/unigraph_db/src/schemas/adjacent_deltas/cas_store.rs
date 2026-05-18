@@ -244,6 +244,11 @@ pub async fn store_range(
         }
     }
 
+    // Validate adjacent-delta invariant: each Delta's base must be the
+    // immediately preceding frame in the timeline. Fetch all frames in
+    // the range's span (single query, metadata only) and verify.
+    validate_adjacency(&mut *conn, &timeline_id, &packed_entries, task).await?;
+
     // Delete all Empty frames.
     for graph_id in &graph_ids {
         let key = GraphKey {
@@ -288,6 +293,80 @@ pub async fn store_range(
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/// Validate that every Delta in the range has its `base` pointing to the
+/// immediately preceding frame in the timeline — not a frame further back.
+///
+/// This catches callers that chain non-adjacent Empty frames into a single
+/// delta range (e.g., when intervening frames were already stored by a
+/// previous run).
+async fn validate_adjacency(
+    conn: &mut dyn unigraph_storage_core::UnigraphGraphConnection,
+    timeline_id: &unigraph_storage_core::TimelineID,
+    entries: &[PackedEntry],
+    task: &ll::Task,
+) -> Result<()> {
+    let deltas_with_base: Vec<_> = entries
+        .iter()
+        .filter_map(|e| {
+            if e.frame_type == FrameType::Delta {
+                e.base.as_ref().map(|b| (&e.key, b.graph_id))
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    if deltas_with_base.is_empty() {
+        return Ok(());
+    }
+
+    let first_id = entries.first().unwrap().key.graph_id;
+    let last_id = entries.last().unwrap().key.graph_id;
+
+    let span = conn
+        .select_frames(
+            &FrameQuery {
+                timeline_id: timeline_id.clone(),
+                graph_id_bounds: Some((Some(first_id), Some(last_id))),
+                with_data: Some(false),
+                order: Some(unigraph_storage_core::Order::Asc),
+                limit: None,
+                frame_types: None,
+                timestamp_bounds: None,
+                graph_ids: None,
+                before: None,
+                expires_before: None,
+            },
+            task,
+        )
+        .await
+        .context("Failed to fetch span for adjacency validation")?;
+
+    let mut preceding: std::collections::HashMap<GraphID, GraphID> =
+        std::collections::HashMap::new();
+    for pair in span.windows(2) {
+        preceding.insert(pair[1].frame.graph_id, pair[0].frame.graph_id);
+    }
+
+    for (key, base_graph_id) in &deltas_with_base {
+        if let Some(&actual_prev) = preceding.get(&key.graph_id) {
+            if actual_prev != *base_graph_id {
+                anyhow::bail!(
+                    "Adjacent delta invariant violated in timeline '{}': \
+                     Delta graph_id={} has base={} but the preceding frame \
+                     in the timeline is graph_id={}",
+                    timeline_id.0,
+                    key.graph_id.0,
+                    base_graph_id.0,
+                    actual_prev.0,
+                );
+            }
+        }
+    }
+
+    Ok(())
+}
 
 /// Merge newly prepared history entries into the accumulated result.
 fn merge_history(
