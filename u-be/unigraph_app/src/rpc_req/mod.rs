@@ -32,6 +32,8 @@ pub use list_timelines::ListTimelinesInput;
 pub use list_timelines::ListTimelinesOutput;
 pub use put_configs::PutConfigsInput;
 pub use put_configs::PutConfigsOutput;
+pub use search_nodes::SearchMode;
+pub use search_nodes::SearchNodeMatch;
 pub use search_nodes::SearchNodesInput;
 pub use search_nodes::SearchNodesOutput;
 pub use select_frames::FrameInfo;

@@ -62,6 +62,7 @@ use crate::types::array_graph::offset_graph::lengauer_tarjan_dominator_tree::mak
 use crate::types::array_graph::offset_graph::reverse_parallel;
 use crate::types::array_graph::tiers::ALL_TIER_FLAGS;
 use crate::types::array_graph::tiers::TIER_FLAGS;
+use crate::types::map_graph::GraphNode;
 
 pub struct ArrayGraph {
     /// The persistent graph data — not modified at runtime.
@@ -167,6 +168,10 @@ impl ArrayGraph {
 
     pub fn to_map_graph(&self) -> Result<MapGraph> {
         to_map_graph::to_map_graph(self)
+    }
+
+    pub fn get_map_node(&self, node_idx: NodeIDX) -> GraphNode {
+        to_map_graph::get_map_node(self, node_idx)
     }
 
     pub fn nodes_len(&self) -> usize {

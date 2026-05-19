@@ -86,6 +86,7 @@ pub use crate::types::array_graph::graph_settings;
 pub use crate::types::array_graph::graph_settings::GraphSettings;
 pub use crate::types::array_graph::offset_graph::TraversalType;
 pub use crate::types::array_graph::remap_utils;
+pub use crate::types::map_graph::GraphNode;
 pub use crate::types::map_graph::MapGraph;
 pub use crate::types::twin_graph::GraphSide;
 pub use crate::types::twin_graph::NodeDiff;
