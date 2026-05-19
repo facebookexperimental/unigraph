@@ -6,11 +6,13 @@
 /// per-route size and membership data to produce a fully configured
 /// Unigraph graph with tiered traversal and metric formatting.
 ///
-/// Nodes carry only metrics and edges — no labels or properties.
+/// Module nodes carry only metrics and edges — no labels or properties.
 /// Layer, path, and fragment info are encoded in the node name.
+/// Route nodes carry `node_type: "route"` in properties.
 /// Route membership is derivable by DFS from the `[route] /...` entry nodes.
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
+use std::collections::VecDeque;
 
 use anyhow::Result;
 use unigraph_core::AscendingTier;
@@ -44,6 +46,10 @@ const TIER_EAGER: &str = "eager";
 const TIER_LAZY: &str = "lazy";
 const METRIC_SIZE: &str = "size";
 const METRIC_COMPRESSED_SIZE: &str = "compressed_size";
+const METRIC_EAGER_SIZE: &str = "eager_size";
+const METRIC_EAGER_COMPRESSED_SIZE: &str = "eager_compressed_size";
+const METRIC_LAZY_SIZE: &str = "lazy_size";
+const METRIC_LAZY_COMPRESSED_SIZE: &str = "lazy_compressed_size";
 
 pub fn build_map_graph(
     modules_data: &ModulesData,
@@ -57,6 +63,7 @@ pub fn build_map_graph(
     let (route_nodes, entry_points) =
         build_route_nodes(modules_data, route_data, &parsed.node_ids, &nodes);
     nodes.extend(route_nodes);
+    compute_route_metrics(&mut nodes);
 
     Ok(MapGraph {
         nodes,
@@ -290,7 +297,10 @@ fn build_route_nodes(
         route_nodes.insert(
             name.clone(),
             GraphNode {
-                properties: None,
+                properties: Some(BTreeMap::from([(
+                    "node_type".to_string(),
+                    "route".to_string(),
+                )])),
                 labels: None,
                 metrics: None,
                 edges_directed: if roots.is_empty() { None } else { Some(roots) },
@@ -453,6 +463,147 @@ fn build_path_to_node_ids<'a>(
     map
 }
 
+// ── Precomputed route metrics ───────────────────────────────────────────────
+
+/// For each route node, BFS its subgraph and sum tiered sizes.
+///
+/// Eager = reachable via sync edges only.
+/// Lazy  = additionally reachable via async (lazy-tagged) edges.
+fn compute_route_metrics(nodes: &mut BTreeMap<String, GraphNode>) {
+    let route_names: Vec<String> = nodes
+        .iter()
+        .filter(|(_, node)| is_route_node(node))
+        .map(|(name, _)| name.clone())
+        .collect();
+
+    for route_name in &route_names {
+        let (eager, lazy) = tiered_sizes(nodes, route_name);
+        if let Some(route_node) = nodes.get_mut(route_name) {
+            let metrics = route_node.metrics.get_or_insert_with(BTreeMap::new);
+            metrics.insert(METRIC_EAGER_SIZE.to_string(), eager.size);
+            metrics.insert(METRIC_EAGER_COMPRESSED_SIZE.to_string(), eager.compressed);
+            metrics.insert(METRIC_LAZY_SIZE.to_string(), lazy.size);
+            metrics.insert(METRIC_LAZY_COMPRESSED_SIZE.to_string(), lazy.compressed);
+        }
+    }
+}
+
+fn is_route_node(node: &GraphNode) -> bool {
+    node.properties
+        .as_ref()
+        .and_then(|p| p.get("node_type"))
+        .is_some_and(|v| v == "route")
+}
+
+#[derive(Default)]
+struct TierSizes {
+    size: f32,
+    compressed: f32,
+}
+
+/// BFS from a route node and compute per-tier size totals.
+///
+/// Pass 1: follow only sync edges → eager tier.
+/// Pass 2: follow all edges from eager set → new nodes are lazy tier.
+fn tiered_sizes(nodes: &BTreeMap<String, GraphNode>, root: &str) -> (TierSizes, TierSizes) {
+    let seeds: Vec<&str> = nodes
+        .get(root)
+        .and_then(|n| n.edges_directed.as_ref())
+        .map(|edges| edges.iter().map(|s| s.as_str()).collect())
+        .unwrap_or_default();
+
+    let eager_set = bfs_sync_only(nodes, &seeds);
+
+    let all_set = bfs_all_edges(nodes, &seeds);
+
+    let mut eager = TierSizes::default();
+    let mut lazy = TierSizes::default();
+
+    for name in &all_set {
+        let Some(node) = nodes.get(name.as_str()) else {
+            continue;
+        };
+        let Some(metrics) = &node.metrics else {
+            continue;
+        };
+        let s = metrics.get(METRIC_SIZE).copied().unwrap_or(0.0);
+        let c = metrics.get(METRIC_COMPRESSED_SIZE).copied().unwrap_or(0.0);
+
+        if eager_set.contains(name) {
+            eager.size += s;
+            eager.compressed += c;
+        } else {
+            lazy.size += s;
+            lazy.compressed += c;
+        }
+    }
+
+    (eager, lazy)
+}
+
+/// BFS following only sync (directed) edges.
+fn bfs_sync_only(nodes: &BTreeMap<String, GraphNode>, seeds: &[&str]) -> BTreeSet<String> {
+    let mut visited = BTreeSet::new();
+    let mut queue: VecDeque<&str> = VecDeque::new();
+
+    for &seed in seeds {
+        if visited.insert(seed.to_string()) {
+            queue.push_back(seed);
+        }
+    }
+
+    while let Some(current) = queue.pop_front() {
+        let Some(node) = nodes.get(current) else {
+            continue;
+        };
+        if let Some(edges) = &node.edges_directed {
+            for target in edges {
+                if visited.insert(target.clone()) {
+                    queue.push_back(target);
+                }
+            }
+        }
+    }
+
+    visited
+}
+
+/// BFS following both sync and lazy edges.
+fn bfs_all_edges(nodes: &BTreeMap<String, GraphNode>, seeds: &[&str]) -> BTreeSet<String> {
+    let mut visited = BTreeSet::new();
+    let mut queue: VecDeque<&str> = VecDeque::new();
+
+    for &seed in seeds {
+        if visited.insert(seed.to_string()) {
+            queue.push_back(seed);
+        }
+    }
+
+    while let Some(current) = queue.pop_front() {
+        let Some(node) = nodes.get(current) else {
+            continue;
+        };
+        if let Some(edges) = &node.edges_directed {
+            for target in edges {
+                if visited.insert(target.clone()) {
+                    queue.push_back(target);
+                }
+            }
+        }
+        if let Some(tagged) = &node.edges_tagged {
+            for targets in tagged.values() {
+                for target in targets {
+                    if visited.insert(target.clone()) {
+                        queue.push_back(target);
+                    }
+                }
+            }
+        }
+    }
+
+    visited
+}
+
 // ── Entry points ────────────────────────────────────────────────────────────
 
 /// Find entry points: nodes with no incoming edges in the built graph.
@@ -540,13 +691,27 @@ fn graph_settings() -> GraphSettings {
         MetricConfig {
             self_view: unavailable,
             transitive: unavailable,
-            dominated: None,
+            dominated: unavailable,
             tiered: None,
             tiered_dominated: None,
-            format: Some(size_format),
+            format: Some(size_format.clone()),
             description: Some("Estimated compressed (gzip) size".to_string()),
         },
     );
+
+    let hidden = MetricConfig {
+        self_view: unavailable,
+        transitive: unavailable,
+        dominated: unavailable,
+        tiered: unavailable,
+        tiered_dominated: unavailable,
+        format: Some(size_format),
+        description: None,
+    };
+    metrics.insert(METRIC_EAGER_SIZE.to_string(), hidden.clone());
+    metrics.insert(METRIC_EAGER_COMPRESSED_SIZE.to_string(), hidden.clone());
+    metrics.insert(METRIC_LAZY_SIZE.to_string(), hidden.clone());
+    metrics.insert(METRIC_LAZY_COMPRESSED_SIZE.to_string(), hidden);
 
     GraphSettings {
         description: Some(
@@ -568,12 +733,12 @@ fn graph_settings() -> GraphSettings {
                 hide_metrics: Some(false),
                 graph_table_sort: Some(GraphTableSort {
                     column: SortColumn::MetricView {
-                        key: format!("{METRIC_SIZE}#{TIER_EAGER}"),
+                        key: format!("{METRIC_COMPRESSED_SIZE}#{TIER_EAGER}"),
                     },
                     order: SortOrder::Desc,
                 }),
                 show_counts: None,
-                show_tier_column: None,
+                show_tier_column: Some(true),
                 hide_dominated_tiered_metrics: None,
             }),
             ..Default::default()
@@ -802,8 +967,16 @@ NODE: [project]/src/chart.tsx [app-client]
   metric size = 2000
 NODE: [project]/src/utils.ts [app-rsc]
 NODE: [route] /
+  metric eager_compressed_size = 0
+  metric eager_size = 0
+  metric lazy_compressed_size = 800
+  metric lazy_size = 2000
   -> [project]/src/app/page.tsx [app-rsc]
 NODE: [route] /dashboard
+  metric eager_compressed_size = 0
+  metric eager_size = 0
+  metric lazy_compressed_size = 800
+  metric lazy_size = 2000
   -> [project]/src/app/page.tsx [app-rsc]
 
 ENTRY POINTS:
