@@ -1,0 +1,24 @@
+{
+  "useTabs": false,
+  "tabWidth": 2,
+  "printWidth": 80,
+  "singleQuote": false,
+  "jsxSingleQuote": false,
+  "quoteProps": "as-needed",
+  "trailingComma": "all",
+  "semi": true,
+  "arrowParens": "always",
+  "bracketSameLine": false,
+  "bracketSpacing": true,
+  "ignorePatterns": [
+    "wasm_build",
+    "node_modules",
+    "target",
+    "dist",
+    ".build",
+    "*.tera*",
+    "u-be/**/bindings/*",
+    "*/__generated__/*",
+    "*/test_types/ts/*.ts"
+  ]
+}

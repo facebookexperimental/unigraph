@@ -1,0 +1,46 @@
+[package]
+edition = "2024"
+name = "unigraph_wasm"
+publish = false
+version = "0.0.0"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+anyhow = "1.0.98"
+base64 = "0.22.1"
+console_error_panic_hook = "0.1.7"
+console_log = "1"
+ll = "10.0.0"
+log = "0.4"
+serde = { version = "1.0.219", features = ["derive", "rc"] }
+serde_json = { version = "1.0.140", features = ["alloc", "float_roundtrip", "raw_value", "unbounded_depth"] }
+unigraph_core = { path = "../unigraph_core" }
+unigraph_delta = { path = "../unigraph_delta" }
+unigraph_wgpu = { path = "../unigraph_wgpu" }
+unigraph_serialization = { path = "../unigraph_serialization" }
+unigraph_graph_state = { path = "../unigraph_graph_state" }
+unigraph_error = { path = "../unigraph_error" }
+wasm-bindgen = "*"
+wasm-bindgen-futures = "0.4.45"
+winit = "0.30.9"
+zstd = "0.13.3" # NOTE: zstdmt feature is not supported in wasm (no thread support)
+tracing-wasm = "0.2.1"
+
+[dependencies.web-sys]
+features = [
+    'Document',
+    'Element',
+    'HtmlCanvasElement',
+    'WebGlBuffer',
+    'WebGlVertexArrayObject',
+    'WebGl2RenderingContext',
+    'WebGlProgram',
+    'WebGlShader',
+    'Window',
+]
+version = "*"
+
+[dev-dependencies]
+k9 = "*"

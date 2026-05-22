@@ -1,0 +1,50 @@
+{
+  "nodes": {
+    "A": {
+      "metrics": { "size": 1 },
+      "edges_directed": ["B", "D"]
+    },
+    "B": {
+      "metrics": { "size": 1 },
+      "edges_tagged": { "BL": ["C"], "RD": ["J"] }
+    },
+    "C": {
+      "metrics": { "size": 1 },
+      "labels": { "disallow_tags": ["b", "c"] }
+    },
+    "D": {
+      "metrics": { "size": 1 },
+      "edges_directed": ["F"],
+      "edges_tagged": { "RDFD": ["E"] }
+    },
+    "E": {
+      "metrics": { "size": 1 }
+    },
+    "F": {
+      "metrics": { "size": 1 },
+      "edges_dynamic": {
+        "ddd": {
+          "ddd_1": {
+            "branches": {
+              "b1": ["G", "H"],
+              "b2": ["I"]
+            }
+          }
+        }
+      }
+    },
+    "G": {
+      "metrics": { "size": 1 }
+    },
+    "H": {
+      "metrics": { "size": 1 }
+    },
+    "I": {
+      "metrics": { "size": 1 }
+    },
+    "J": {
+      "metrics": { "size": 1 },
+      "labels": { "assert_tags": ["a", "b"] }
+    }
+  }
+}

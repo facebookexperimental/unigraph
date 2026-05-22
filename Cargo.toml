@@ -1,0 +1,19 @@
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+
+[workspace]
+resolver = "2"
+members = ["u-be/*"]
+
+[profile.release]
+strip = true
+
+# WASM-optimized: smallest binary, worth the slower compile
+[profile.release-wasm]
+inherits = "release"
+lto = true
+opt-level = "z"
+codegen-units = 1
+
+[workspace.dependencies]
+ll = "7.1.0"
+tokio = { version = "1.38", features = ["full", "rt"] }

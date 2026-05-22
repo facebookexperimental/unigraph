@@ -1,0 +1,94 @@
+{
+  "nodes": {
+    "A": {
+      "metrics": { "size": 2 },
+      "edges_directed": ["B", "D", "T"]
+    },
+    "B": {
+      "metrics": { "size": 1 },
+      "edges_tagged": { "BL": ["C"], "RDFD": ["J"] }
+    },
+    "C": {
+      "metrics": { "size": 1 },
+      "labels": { "disallow_tags": ["b", "c"] }
+    },
+    "D": {
+      "metrics": { "size": 1 },
+      "edges_directed": ["F"],
+      "edges_tagged": { "RDFD": ["E"] }
+    },
+    "E": {
+      "metrics": { "size": 1 },
+      "edges_directed": ["K"]
+    },
+    "F": {
+      "metrics": { "size": 1 },
+      "edges_directed": ["H"],
+      "edges_dynamic": {
+        "ddd": {
+          "ddd_1": {
+            "branches": {
+              "b1": ["G"],
+              "b2": ["I"]
+            }
+          }
+        }
+      }
+    },
+    "G": {
+      "metrics": { "size": 1 }
+    },
+    "H": {
+      "metrics": { "size": 1 }
+    },
+    "I": {
+      "metrics": { "size": 1 }
+    },
+    "J": {
+      "metrics": { "size": 1 },
+      "edges_directed": ["K", "Q", "R", "S"],
+      "labels": { "assert_tags": ["a", "b"] }
+    },
+    "K": {
+      "metrics": { "size": 1 },
+      "edges_directed": []
+    },
+    "L": {
+      "metrics": { "size": 1 },
+      "edges_directed": ["D", "M"]
+    },
+    "M": {
+      "metrics": { "size": 1 },
+      "edges_directed": ["O"]
+    },
+    "N": {
+      "metrics": { "size": 1 },
+      "edges_directed": ["M"]
+    },
+    "O": {
+      "metrics": { "size": 1 },
+      "edges_directed": ["N", "P"],
+      "edges_tagged": { "BL": ["F"] }
+    },
+    "P": {
+      "metrics": { "size": 1 },
+      "edges_directed": []
+    },
+    "Q": {
+      "metrics": { "size": 1 },
+      "edges_directed": []
+    },
+    "R": {
+      "metrics": { "size": 1 },
+      "edges_directed": []
+    },
+    "S": {
+      "metrics": { "size": 1 },
+      "edges_directed": []
+    },
+    "T": {
+      "metrics": { "size": 1 },
+      "edges_directed": ["D"]
+    }
+  }
+}

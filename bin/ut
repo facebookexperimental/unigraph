@@ -1,0 +1,9 @@
+#!/bin/bash
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+# Shortcut for tasks/task.py (unigraph task runner).
+# Add this directory to your PATH, or symlink this script:
+#   export PATH="$PATH:/path/to/oss/bin"
+#   ln -s /path/to/oss/bin/ut ~/bin/ut
+# Then: ut build wasm, ut check js, ut test rust -u, etc.
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+exec "$SCRIPT_DIR/../tasks/task.py" "$@"

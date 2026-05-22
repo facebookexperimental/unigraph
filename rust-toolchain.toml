@@ -1,0 +1,4 @@
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+
+[toolchain]
+channel = "nightly-2025-11-03"

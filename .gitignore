@@ -1,0 +1,10 @@
+/wasm_build/
+/node_modules/
+.parcel-cache/
+.build/
+dist/
+build/
+.react-router/
+/test-results/
+/playwright-report/
+package-lock.json

@@ -1,0 +1,20 @@
+/**
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ *
+ * @generated
+ */
+
+
+/**
+ * Enum that defines whether an individual option is enabled or not.
+ * This is for cases where we have a global settings that can show/hide certain
+ * things plus individual settings for the same thing on each metric/tier/etc.
+ * E.g. we have dominator tree and dominated size columns we want to display.
+ * We have a single "show dominator tree" button that we can enable/disable.
+ * But normally that would add multiple dominated size/count columns. For graphs
+ * with many tiers/metrics we're talkinb about 10+ columns, while the user is likely
+ * to only care about one or two.
+ * For that reason we can add these settings to individual columns that can make them
+ * be disabled even when the global setting is enabled.
+ */
+export type IndividualOptionEnabled = "WhenEnabledGlobally" | "Never";
