@@ -17,7 +17,7 @@ unigraph_timestamp = { path = "../unigraph_timestamp" }
 anyhow = "1.0.102"
 k9 = { version = "0.12.0", features = ["custom_comparison_formatters", "regex"] }
 ll = "10.0.0"
-tokio = { version = "1.52.1", features = ["full", "test-util", "tracing"] }
+tokio = { version = "1.52.3", features = ["full", "test-util", "tracing"] }
 unigraph_db = { path = "../unigraph_db" }
 unigraph_error = { path = "../unigraph_error" }
 unigraph_metric_history = { path = "../unigraph_metric_history" }

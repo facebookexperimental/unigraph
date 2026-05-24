@@ -10,7 +10,7 @@ license = "MIT"
 [dependencies]
 anyhow = "1.0.102"
 lru = { version = "0.16.4", default-features = false }
-tokio = { version = "1.52.1", features = ["full", "test-util", "tracing"] }
+tokio = { version = "1.52.3", features = ["full", "test-util", "tracing"] }
 
 [dev-dependencies]
 k9 = { version = "0.12.0", features = ["custom_comparison_formatters", "regex"] }
