@@ -2,9 +2,12 @@
 
 [package]
 name = "unigraph_error"
-version = "0.1.0"
+version = "0.1.1-alpha.0"
 authors = ["Meta Platforms, Inc. and affiliates"]
 edition = "2024"
+description = "Structured error formatting for graph operations"
+homepage = "https://github.com/facebookexperimental/unigraph"
+repository = "https://github.com/facebookexperimental/unigraph"
 license = "MIT"
 
 [dependencies]

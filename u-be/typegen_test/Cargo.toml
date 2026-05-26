@@ -6,6 +6,7 @@ version = "0.1.0"
 authors = ["Meta Platforms, Inc. and affiliates"]
 edition = "2024"
 license = "MIT"
+publish = false
 
 [dependencies]
 typegen = { path = "../typegen" }

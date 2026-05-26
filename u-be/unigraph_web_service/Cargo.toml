@@ -2,9 +2,12 @@
 
 [package]
 name = "unigraph_web_service"
-version = "0.1.0"
+version = "0.1.1-alpha.0"
 authors = ["Meta Platforms, Inc. and affiliates"]
 edition = "2024"
+description = "Axum-based web service for serving graph data and UI"
+homepage = "https://github.com/facebookexperimental/unigraph"
+repository = "https://github.com/facebookexperimental/unigraph"
 license = "MIT"
 
 [dependencies]
@@ -16,8 +19,8 @@ serde_json = { version = "1.0.140", features = ["alloc", "float_roundtrip", "raw
 tokio = { version = "1.52.3", features = ["full", "test-util", "tracing"] }
 tower-http = { version = "0.6.8", features = ["compression-full", "cors", "fs", "set-header", "trace"] }
 tracing = { version = "0.1.41", features = ["attributes", "valuable"] }
-unigraph_app = { path = "../unigraph_app" }
-unigraph_core = { path = "../unigraph_core" }
-unigraph_db = { path = "../unigraph_db" }
-unigraph_serialization = { path = "../unigraph_serialization" }
-unigraph_storage_sqlite = { path = "../unigraph_storage_sqlite" }
+unigraph_app = { version = "0.1.1-alpha.0", path = "../unigraph_app" }
+unigraph_core = { version = "0.1.1-alpha.0", path = "../unigraph_core" }
+unigraph_db = { version = "0.1.1-alpha.0", path = "../unigraph_db" }
+unigraph_serialization = { version = "0.1.1-alpha.0", path = "../unigraph_serialization" }
+unigraph_storage_sqlite = { version = "0.1.1-alpha.0", path = "../unigraph_storage_sqlite" }

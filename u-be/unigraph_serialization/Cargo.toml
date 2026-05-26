@@ -2,9 +2,12 @@
 
 [package]
 name = "unigraph_serialization"
-version = "0.1.0"
+version = "0.1.1-alpha.0"
 authors = ["Meta Platforms, Inc. and affiliates"]
 edition = "2024"
+description = "Graph serialization with JSON, zstd compression, and base64 encoding"
+homepage = "https://github.com/facebookexperimental/unigraph"
+repository = "https://github.com/facebookexperimental/unigraph"
 license = "MIT"
 
 [dependencies]
@@ -13,7 +16,7 @@ base64 = { version = "0.22.1", features = ["alloc"] }
 serde = { version = "1.0.219", features = ["derive", "rc"] }
 serde_json = { version = "1.0.140", features = ["alloc", "float_roundtrip", "raw_value", "unbounded_depth"] }
 serde_path_to_error = "0.1.20"
-typegen = { path = "../typegen" }
+typegen = { version = "0.1.1-alpha.0", path = "../typegen" }
 zstd = "0.13.3"
 
 [dev-dependencies]

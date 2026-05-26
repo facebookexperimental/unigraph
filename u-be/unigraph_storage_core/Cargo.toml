@@ -2,9 +2,12 @@
 
 [package]
 name = "unigraph_storage_core"
-version = "0.1.0"
+version = "0.1.1-alpha.0"
 authors = ["Meta Platforms, Inc. and affiliates"]
 edition = "2024"
+description = "Storage trait definitions for graph persistence"
+homepage = "https://github.com/facebookexperimental/unigraph"
+repository = "https://github.com/facebookexperimental/unigraph"
 license = "MIT"
 
 [dependencies]
@@ -12,5 +15,5 @@ anyhow = "1.0.102"
 async-trait = "0.1.86"
 ll = "10.0.0"
 serde = { version = "1.0.219", features = ["derive", "rc"] }
-typegen = { path = "../typegen" }
-unigraph_core = { path = "../unigraph_core" }
+typegen = { version = "0.1.1-alpha.0", path = "../typegen" }
+unigraph_core = { version = "0.1.1-alpha.0", path = "../unigraph_core" }

@@ -2,9 +2,12 @@
 
 [package]
 name = "unigraph_core"
-version = "0.1.0"
+version = "0.1.1-alpha.0"
 authors = ["Meta Platforms, Inc. and affiliates"]
 edition = "2024"
+description = "Core graph data model: nodes, edges, metrics, tags, and traversal algorithms"
+homepage = "https://github.com/facebookexperimental/unigraph"
+repository = "https://github.com/facebookexperimental/unigraph"
 license = "MIT"
 
 [dependencies]
@@ -18,10 +21,10 @@ readonly = "0.2.13"
 regex = "1.12.3"
 serde = { version = "1.0.219", features = ["derive", "rc"] }
 serde_json = { version = "1.0.140", features = ["alloc", "float_roundtrip", "raw_value", "unbounded_depth"] }
-typegen = { path = "../typegen" }
-unigraph_delta = { path = "../unigraph_delta" }
-unigraph_serialization = { path = "../unigraph_serialization" }
-unigraph_timestamp = { path = "../unigraph_timestamp" }
+typegen = { version = "0.1.1-alpha.0", path = "../typegen" }
+unigraph_delta = { version = "0.1.1-alpha.0", path = "../unigraph_delta" }
+unigraph_serialization = { version = "0.1.1-alpha.0", path = "../unigraph_serialization" }
+unigraph_timestamp = { version = "0.1.1-alpha.0", path = "../unigraph_timestamp" }
 xxhash-rust = { version = "0.8.15", features = ["xxh3", "xxh64"] }
 
 [dev-dependencies]

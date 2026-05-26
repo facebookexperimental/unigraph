@@ -2,12 +2,15 @@
 
 [package]
 name = "unigraph_git"
-version = "0.1.0"
+version = "0.1.1-alpha.0"
 authors = ["Meta Platforms, Inc. and affiliates"]
 edition = "2024"
+description = "Git repository integration for graph data ingestion"
+homepage = "https://github.com/facebookexperimental/unigraph"
+repository = "https://github.com/facebookexperimental/unigraph"
 license = "MIT"
 
 [dependencies]
 anyhow = "1.0.102"
 git2 = "0.20.4"
-unigraph_timestamp = { path = "../unigraph_timestamp" }
+unigraph_timestamp = { version = "0.1.1-alpha.0", path = "../unigraph_timestamp" }

@@ -2,9 +2,12 @@
 
 [package]
 name = "unigraph_storage_sqlite"
-version = "0.1.0"
+version = "0.1.1-alpha.0"
 authors = ["Meta Platforms, Inc. and affiliates"]
 edition = "2024"
+description = "SQLite storage backend for graph persistence"
+homepage = "https://github.com/facebookexperimental/unigraph"
+repository = "https://github.com/facebookexperimental/unigraph"
 license = "MIT"
 
 [dependencies]
@@ -13,5 +16,5 @@ async-trait = "0.1.86"
 ll = "10.0.0"
 rusqlite = { version = "0.37.0", features = ["bundled"] }
 serde_json = { version = "1.0.140", features = ["alloc", "float_roundtrip", "raw_value", "unbounded_depth"] }
-unigraph_storage_core = { path = "../unigraph_storage_core" }
-unigraph_timestamp = { path = "../unigraph_timestamp" }
+unigraph_storage_core = { version = "0.1.1-alpha.0", path = "../unigraph_storage_core" }
+unigraph_timestamp = { version = "0.1.1-alpha.0", path = "../unigraph_timestamp" }

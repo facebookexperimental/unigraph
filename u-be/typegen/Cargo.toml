@@ -2,16 +2,19 @@
 
 [package]
 name = "typegen"
-version = "0.1.0"
+version = "0.1.1-alpha.0"
 authors = ["Meta Platforms, Inc. and affiliates"]
 edition = "2024"
+description = "Generate TypeScript, Flow, and Hack types from Rust struct definitions"
+homepage = "https://github.com/facebookexperimental/unigraph"
+repository = "https://github.com/facebookexperimental/unigraph"
 license = "MIT"
 
 [dependencies]
 anyhow = "1.0.102"
 serde = { version = "1.0.219", features = ["derive", "rc"] }
 toml = { version = "0.9.12", features = ["preserve_order"] }
-typegen_derive = { path = "../typegen_derive" }
+typegen_derive = { version = "0.1.1-alpha.0", path = "../typegen_derive" }
 
 [dev-dependencies]
 k9 = { version = "0.12.0", features = ["custom_comparison_formatters", "regex"] }

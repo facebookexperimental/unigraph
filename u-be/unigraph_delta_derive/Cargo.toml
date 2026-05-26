@@ -2,9 +2,12 @@
 
 [package]
 name = "unigraph_delta_derive"
-version = "0.1.0"
+version = "0.1.1-alpha.0"
 authors = ["Meta Platforms, Inc. and affiliates"]
 edition = "2024"
+description = "Derive macro for delta diffing and patching of graph structures"
+homepage = "https://github.com/facebookexperimental/unigraph"
+repository = "https://github.com/facebookexperimental/unigraph"
 license = "MIT"
 
 [lib]
