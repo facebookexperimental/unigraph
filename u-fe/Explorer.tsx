@@ -53,15 +53,9 @@ export interface ExplorerComponentInputGraphs {
   right: ExplorerComponentInputGraph;
 }
 
-export type CallbackFn = (value: string) => void;
-
 export interface ExplorerConfig {
   base_gqc_l?: string | undefined;
   base_gqc_r?: string | undefined;
-  gqc_delta_l?: string | undefined;
-  on_gqc_delta_change_l?: CallbackFn | undefined;
-  gqc_delta_r?: string | undefined;
-  on_gqc_delta_change_r?: CallbackFn | undefined;
 }
 
 export type BuiltinSidebarPanel =
@@ -89,10 +83,12 @@ export type ExplorerGraphSource =
 
 export interface ExplorerProps {
   source: ExplorerGraphSource;
-  config: ExplorerConfig;
+  config?: ExplorerConfig;
   home_href?: string | undefined;
   panels?: PanelTabPlugin[];
   hidden_panels?: BuiltinSidebarPanel[];
+  initialSearchParams?: Record<string, string>;
+  onSearchParamsChange?: (params: Record<string, string>) => void;
 }
 
 interface ResolvedPanel {
@@ -113,6 +109,10 @@ import {
 import { useGlobalKeyboardShortcuts } from "./context/GlobalKeyboardShortcutsContext";
 import { useGraphSettings } from "./context/GraphSettingsContext";
 import { MetricViewStateProvider } from "./context/MetricViewStateContext";
+import {
+  SearchParamsProvider,
+  useSearchParamsContext,
+} from "./context/SearchParamsContext";
 import {
   NativeGraphContextProvider,
   useNativeGraphs,
@@ -151,11 +151,16 @@ const explorerQueryClient = new QueryClient({
 
 export function Explorer(props: ExplorerProps) {
   return (
-    <QueryClientProvider client={explorerQueryClient}>
-      <Suspense fallback={<GraphLoadingAnimation />}>
-        <ExplorerFetcher {...props} />
-      </Suspense>
-    </QueryClientProvider>
+    <SearchParamsProvider
+      initialSearchParams={props.initialSearchParams ?? {}}
+      onParamsChange={props.onSearchParamsChange}
+    >
+      <QueryClientProvider client={explorerQueryClient}>
+        <Suspense fallback={<GraphLoadingAnimation />}>
+          <ExplorerFetcher {...props} />
+        </Suspense>
+      </QueryClientProvider>
+    </SearchParamsProvider>
   );
 }
 
@@ -188,8 +193,8 @@ function ExplorerFetcher(props: ExplorerProps) {
       graphs={result.graphs}
       config={{
         ...props.config,
-        base_gqc_l: baseGqcLJson,
-        base_gqc_r: baseGqcRJson,
+        base_gqc_l: baseGqcLJson ?? props.config?.base_gqc_l,
+        base_gqc_r: baseGqcRJson ?? props.config?.base_gqc_r,
       }}
     />
   );
@@ -202,7 +207,7 @@ function ExplorerFetcher(props: ExplorerProps) {
 function ExplorerImpl(props: {
   source: ExplorerGraphSource;
   graphs: ExplorerComponentInputGraphs;
-  config: ExplorerConfig;
+  config?: ExplorerConfig;
   home_href?: string | undefined;
   panels?: PanelTabPlugin[];
   hidden_panels?: BuiltinSidebarPanel[];
@@ -215,14 +220,7 @@ function ExplorerImpl(props: {
     panels: customPanels,
     hidden_panels,
   } = props;
-  const {
-    base_gqc_l,
-    base_gqc_r,
-    gqc_delta_l,
-    on_gqc_delta_change_l,
-    gqc_delta_r,
-    on_gqc_delta_change_r,
-  } = config;
+  const { base_gqc_l, base_gqc_r } = config ?? {};
 
   // Stabilize graphs reference so consumers don't need to memoize.
   // Only re-parses through WASM when the actual serialized data changes.
@@ -235,16 +233,10 @@ function ExplorerImpl(props: {
 
   const left = useResolvedSide(
     base_gqc_l,
-    gqc_delta_l,
-    on_gqc_delta_change_l,
+    "gqc_deltaL",
     nativeGraphNoTVCL ?? null,
   );
-  const right = useResolvedSide(
-    base_gqc_r,
-    gqc_delta_r,
-    on_gqc_delta_change_r,
-    nativeGraphNoTVCR,
-  );
+  const right = useResolvedSide(base_gqc_r, "gqc_deltaR", nativeGraphNoTVCR);
 
   const BUILTIN_PANELS: ResolvedPanel[] = useMemo(
     () => [
@@ -429,10 +421,12 @@ function getRoots(
 
 function useResolvedSide(
   baseGqcJson: string | undefined,
-  gqcDelta: string | undefined,
-  onDeltaChange: ((delta: string) => void) | undefined,
+  deltaParamKey: string,
   nativeGraphNoTVC: NativeGraph | null,
 ) {
+  const { params, setParam } = useSearchParamsContext();
+  const gqcDelta = params[deltaParamKey];
+
   const resolvedBase = useMemo(
     () =>
       nativeGraphNoTVC != null
@@ -468,9 +462,9 @@ function useResolvedSide(
         JSON.stringify(resolvedBase),
         JSON.stringify(modified),
       );
-      onDeltaChange?.(delta);
+      setParam(deltaParamKey, delta);
     },
-    [resolvedBase, onDeltaChange],
+    [resolvedBase, setParam, deltaParamKey],
   );
 
   return { tvc, nativeGraph, setTvc };

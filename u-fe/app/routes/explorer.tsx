@@ -5,9 +5,6 @@ import { useParams, useSearchParams } from "react-router";
 import ErrorBoundary from "../../components/ErrorBoundary";
 import { Explorer, type ExplorerGraphSource } from "../../Explorer";
 
-const QUERY_PARAM_GQC_DELTA_L = "gqc_deltaL";
-const QUERY_PARAM_GQC_DELTA_R = "gqc_deltaR";
-
 const LOCAL_SOURCE: ExplorerGraphSource = { type: "local" };
 
 export default function ExplorerRoute() {
@@ -47,35 +44,21 @@ function ExplorerWithSearchParams({
 }) {
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const gqcDeltaL = searchParams.get(QUERY_PARAM_GQC_DELTA_L) ?? undefined;
-  const gqcDeltaR = searchParams.get(QUERY_PARAM_GQC_DELTA_R) ?? undefined;
-
-  const onGqcDeltaChangeL = useCallback(
-    (value: string) => {
-      setSearchParams((prev) => {
-        const next = new URLSearchParams(prev);
-        if (value === "") {
-          next.delete(QUERY_PARAM_GQC_DELTA_L);
-        } else {
-          next.set(QUERY_PARAM_GQC_DELTA_L, value);
-        }
-        return next;
-      });
-    },
-    [setSearchParams],
+  const initialSearchParams = useMemo(
+    () => Object.fromEntries(searchParams.entries()),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
   );
 
-  const onGqcDeltaChangeR = useCallback(
-    (value: string) => {
-      setSearchParams((prev) => {
-        const next = new URLSearchParams(prev);
-        if (value === "") {
-          next.delete(QUERY_PARAM_GQC_DELTA_R);
-        } else {
-          next.set(QUERY_PARAM_GQC_DELTA_R, value);
+  const onSearchParamsChange = useCallback(
+    (params: Record<string, string>) => {
+      const next = new URLSearchParams();
+      for (const [key, value] of Object.entries(params)) {
+        if (value !== "") {
+          next.set(key, value);
         }
-        return next;
-      });
+      }
+      setSearchParams(next, { replace: true });
     },
     [setSearchParams],
   );
@@ -84,13 +67,9 @@ function ExplorerWithSearchParams({
     <ErrorBoundary>
       <Explorer
         source={source}
-        config={{
-          gqc_delta_l: gqcDeltaL,
-          on_gqc_delta_change_l: onGqcDeltaChangeL,
-          gqc_delta_r: gqcDeltaR,
-          on_gqc_delta_change_r: onGqcDeltaChangeR,
-        }}
         home_href={home_href}
+        initialSearchParams={initialSearchParams}
+        onSearchParamsChange={onSearchParamsChange}
       />
     </ErrorBoundary>
   );

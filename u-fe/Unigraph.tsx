@@ -34,7 +34,11 @@ export { default as initWasm } from "./init_wasm";
 // ---------------------------------------------------------------------------
 
 export { Explorer } from "./Explorer";
-export type { PanelTabPlugin, BuiltinSidebarPanel } from "./Explorer";
+export type {
+  ExplorerProps,
+  PanelTabPlugin,
+  BuiltinSidebarPanel,
+} from "./Explorer";
 
 // ---------------------------------------------------------------------------
 // RPC — typed client, React context, and Suspense hook

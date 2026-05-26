@@ -3,21 +3,21 @@
 //! Single source of truth for graph settings + metric view resolution.
 //!
 //! State lifecycle:
-//!   1. Init: URL param → parse → push to WASM. No URL param → read from WASM.
-//!   2. User changes settings: push to WASM → read visible/available back → sync URL.
+//!   1. Init: search param → parse → push to WASM. No param → read from WASM.
+//!   2. User changes settings: push to WASM → read visible/available back → sync param.
 //!   3. Graph structure or traversal config changes: re-resolve from WASM.
 //!
 //! WASM is the source of truth. React state mirrors it.
-//! URL param `graph_settings` (zstd+base64) is kept in sync automatically.
+//! Search param `graph_settings` (zstd+base64) is kept in sync automatically.
 
 import { createContext, useCallback, useContext, useMemo } from "react";
-import { useSearchParams } from "react-router";
 import type { GraphSettings } from "@/__generated__/ts/GraphSettings";
 import type NativeGraph from "../native/NativeGraph";
 import {
   from_zstd_base64_url_safe_no_pad,
   to_zstd_base64_url_safe_no_pad,
 } from "../../.build/wasm/unigraph_wasm";
+import { useSearchParamsContext } from "./SearchParamsContext";
 
 const GRAPH_SETTINGS_PARAM = "graph_settings";
 
@@ -37,10 +37,10 @@ export function MetricViewStateProvider({
   children: React.ReactNode;
   nativeGraph: NativeGraph;
 }) {
-  const [searchParams, setSearchParams] = useSearchParams();
+  const { params, setParam } = useSearchParamsContext();
 
   const graphSettings = useMemo(() => {
-    const param = searchParams.get(GRAPH_SETTINGS_PARAM);
+    const param = params[GRAPH_SETTINGS_PARAM];
     if (param != null) {
       const gs: GraphSettings = JSON.parse(
         from_zstd_base64_url_safe_no_pad(param),
@@ -49,7 +49,7 @@ export function MetricViewStateProvider({
       return gs;
     }
     return nativeGraph.getGraphSettings();
-  }, [searchParams, nativeGraph]);
+  }, [params, nativeGraph]);
 
   const graphStructure =
     graphSettings.ui_settings?.graph_structure ?? "Forward";
@@ -69,16 +69,9 @@ export function MetricViewStateProvider({
     (gs: GraphSettings) => {
       nativeGraph.setGraphSettings(gs);
       const base64 = to_zstd_base64_url_safe_no_pad(JSON.stringify(gs));
-      setSearchParams(
-        (prev) => {
-          const next = new URLSearchParams(prev);
-          next.set(GRAPH_SETTINGS_PARAM, base64);
-          return next;
-        },
-        { replace: true },
-      );
+      setParam(GRAPH_SETTINGS_PARAM, base64);
     },
-    [nativeGraph, setSearchParams],
+    [nativeGraph, setParam],
   );
 
   const value = useMemo(
