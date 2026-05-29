@@ -79,7 +79,7 @@ export default function TreeCell(props: Props) {
       <ArrowBadge twinArrow={twinArrow} />
       <span
         className={clsx(
-          "text-ellipsis text-nowrap",
+          "min-w-0 overflow-hidden text-ellipsis text-nowrap",
           isExcludedInBoth(twinGraph, twinArrow) && "text-foreground/50",
           lineThrough,
         )}

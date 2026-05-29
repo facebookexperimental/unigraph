@@ -40,12 +40,7 @@ import formatMetric from "./lib/formatMetric";
 import formatNumber from "./lib/formatNumber";
 import NodeSearch from "./NodeSearch";
 import { H2, H3 } from "./Typography";
-import {
-  ENABLED,
-  ENABLED_IN_DOMINATOR,
-  HIDDEN,
-  MV,
-} from "./tree_table/columns/ColumnUtils";
+import { ENABLED, HIDDEN, MV } from "./tree_table/columns/ColumnUtils";
 
 export default function ExplorerFooter() {
   return (
@@ -267,6 +262,33 @@ function CountsHovercardContent() {
   const resolver = new MetricsConfigResolver(graphSettings);
   const structure = graphSettings.ui_settings?.graph_structure ?? "Forward";
 
+  // Set a count column's visibility and, when turning one on, also enable the
+  // global "show counts" toggle so the column is actually rendered. Turning a
+  // column off never flips the global toggle.
+  const setCountVisibility = (
+    viewKey: string,
+    selected: boolean,
+    visibilityWhenSelected: MetricViewVisibility,
+  ) => {
+    const updated = setViewVisibility(
+      graphSettings,
+      viewKey,
+      selected ? visibilityWhenSelected : HIDDEN,
+    );
+    setGraphSettings({
+      ...updated,
+      ui_settings: {
+        ...updated.ui_settings,
+        columns: {
+          ...updated.ui_settings?.columns,
+          show_counts: selected
+            ? true
+            : updated.ui_settings?.columns?.show_counts,
+        },
+      },
+    });
+  };
+
   return (
     <div className="flex flex-col gap-2">
       <H3 text="Node count columns" />
@@ -280,13 +302,7 @@ function CountsHovercardContent() {
             structure,
           )}
           onSelectedChange={(selected) => {
-            setGraphSettings(
-              setViewVisibility(
-                graphSettings,
-                MV.countTransitive,
-                selected ? ENABLED : HIDDEN,
-              ),
-            );
+            setCountVisibility(MV.countTransitive, selected, ENABLED);
           }}
         >
           <Tally5 />
@@ -303,13 +319,7 @@ function CountsHovercardContent() {
                 structure,
               )}
               onSelectedChange={(selected) => {
-                setGraphSettings(
-                  setViewVisibility(
-                    graphSettings,
-                    MV.parentsCount,
-                    selected ? ENABLED : HIDDEN,
-                  ),
-                );
+                setCountVisibility(MV.parentsCount, selected, ENABLED);
               }}
             >
               <ArrowUpNarrowWide />
@@ -324,13 +334,7 @@ function CountsHovercardContent() {
                 structure,
               )}
               onSelectedChange={(selected) => {
-                setGraphSettings(
-                  setViewVisibility(
-                    graphSettings,
-                    MV.countDominated,
-                    selected ? ENABLED_IN_DOMINATOR : HIDDEN,
-                  ),
-                );
+                setCountVisibility(MV.countDominated, selected, ENABLED);
               }}
             >
               <TreePalm />
@@ -459,6 +463,36 @@ function MaxTierSelector() {
   );
 }
 
+// A labeled group of metric toggle buttons. Renders nothing when it has no
+// children so callers don't have to guard against empty sections themselves.
+function MetricSection({
+  label,
+  icon,
+  children,
+}: {
+  label: string;
+  icon?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  const hasContent = Array.isArray(children)
+    ? children.some(Boolean)
+    : children != null && children !== false;
+
+  if (!hasContent) {
+    return null;
+  }
+
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-1.5 text-muted-foreground">
+        {icon}
+        <span className="text-sm font-medium">{label}</span>
+      </div>
+      <div className="flex gap-2 flex-wrap">{children}</div>
+    </div>
+  );
+}
+
 function MetricCard({ metricName }: { metricName: string }) {
   const [graphSettings] = useGraphSettings();
   const nativeGraph = useNativeGraphR();
@@ -467,51 +501,77 @@ function MetricCard({ metricName }: { metricName: string }) {
   const resolver = new MetricsConfigResolver(graphSettings);
 
   const allTiers = nativeGraph.stats().tier_names;
-  const tieredAvailable = resolver.isAvailable(metricName, "tiered");
-  const tieredDominatedAvailable = resolver.isAvailable(
-    metricName,
-    "tiered_dominated",
-  );
+  const hasTiers = allTiers.length > 0;
+
+  // Only show a toggle when its underlying view is actually available for this
+  // metric. Dominated views additionally only make sense for a single graph.
+  const selfAvailable = resolver.isAvailable(metricName, "self_view");
+  const transitiveAvailable = resolver.isAvailable(metricName, "transitive");
+  const dominatedAvailable =
+    singleGraph && resolver.isAvailable(metricName, "dominated");
+  const tieredAvailable =
+    hasTiers && resolver.isAvailable(metricName, "tiered");
+  const tieredDominatedAvailable =
+    hasTiers &&
+    singleGraph &&
+    resolver.isAvailable(metricName, "tiered_dominated");
+
+  const hasAnyView =
+    selfAvailable ||
+    transitiveAvailable ||
+    dominatedAvailable ||
+    tieredAvailable ||
+    tieredDominatedAvailable;
+
+  // Nothing is available for this metric — don't render an empty card.
+  if (!hasAnyView) {
+    return null;
+  }
 
   return (
-    <div className="w-full flex flex-col gap-2">
+    <div className="w-full flex flex-col gap-3">
       <SeparatorHorizontal />
-      <H2 text={`${metricName}`} />
-      <div className="flex flex-col gap-2 flex-wrap">
-        <div className="flex  gap-2 flex-wrap">
-          <EnableSelfMetricToggle metricName={metricName} />
-          <EnableTransitiveMetricToggle metricName={metricName} />
-          {singleGraph && (
-            <EnableDominatedMetricToggle metricName={metricName} />
-          )}
-        </div>
-        {tieredAvailable && (
-          <>
-            <H3 text="Tiers" />
-            <div className="flex gap-2 flex-wrap">
-              {allTiers.map((tierName) => (
-                <ToggleTierForMetric
-                  key={`${metricName}-${tierName}`}
-                  tierName={tierName}
-                  metricName={metricName}
-                />
-              ))}
-            </div>
-          </>
-        )}
+      <H2 text={metricName} />
 
-        {singleGraph && tieredDominatedAvailable && (
-          <div className="flex gap-2 flex-wrap">
-            {allTiers.map((tierName) => (
-              <DominatedForTierForMetric
-                key={`${metricName}-dominated-${tierName}`}
-                tierName={tierName}
-                metricName={metricName}
-              />
-            ))}
-          </div>
+      <MetricSection label="Node values">
+        {selfAvailable && <EnableSelfMetricToggle metricName={metricName} />}
+        {transitiveAvailable && (
+          <EnableTransitiveMetricToggle metricName={metricName} />
         )}
-      </div>
+        {dominatedAvailable && (
+          <EnableDominatedMetricToggle metricName={metricName} />
+        )}
+      </MetricSection>
+
+      {tieredAvailable && (
+        <MetricSection
+          label="Transitive by tier"
+          icon={<Network className="size-4" />}
+        >
+          {allTiers.map((tierName) => (
+            <ToggleTierForMetric
+              key={`${metricName}-${tierName}`}
+              tierName={tierName}
+              metricName={metricName}
+            />
+          ))}
+        </MetricSection>
+      )}
+
+      {tieredDominatedAvailable && (
+        <MetricSection
+          label="Dominated by tier"
+          icon={<TreePalm className="size-4" />}
+        >
+          {allTiers.map((tierName) => (
+            <DominatedForTierForMetric
+              key={`${metricName}-dominated-${tierName}`}
+              tierName={tierName}
+              metricName={metricName}
+            />
+          ))}
+        </MetricSection>
+      )}
     </div>
   );
 }
@@ -545,6 +605,7 @@ function ToggleTierForMetric({
         );
       }}
     >
+      <Network />
       <span className="text-sm">{tierName}</span>
     </UToggleButton>
   );
@@ -568,13 +629,13 @@ function DominatedForTierForMetric({
     <UToggleButton
       key={`dominated-tiered-${metricName}-${tierName}`}
       size="sm"
-      tooltip={`Dominated value for'${metricName}' metric for ${tierName} tier`}
+      tooltip={`Show a column for dominated values of '${metricName}' metric for ${tierName} tier`}
       selected={selected}
       onSelectedChange={(selected) => {
         const updated = setViewVisibility(
           graphSettings,
           viewKey,
-          selected ? ENABLED_IN_DOMINATOR : HIDDEN,
+          selected ? ENABLED : HIDDEN,
         );
         setGraphSettings({
           ...updated,
@@ -588,7 +649,8 @@ function DominatedForTierForMetric({
         });
       }}
     >
-      {tierName}
+      <TreePalm />
+      <span className="text-sm">{tierName}</span>
     </UToggleButton>
   );
 }
@@ -748,7 +810,7 @@ function EnableDominatedMetricToggle({ metricName }: { metricName: string }) {
         const updated = setViewVisibility(
           graphSettings,
           viewKey,
-          selected ? ENABLED_IN_DOMINATOR : HIDDEN,
+          selected ? ENABLED : HIDDEN,
         );
         setGraphSettings({
           ...updated,

@@ -300,6 +300,9 @@ export function TreeTable(props: {
         style={{
           height: `${rowVirtualizer.getTotalSize() + headerHeight}px`,
           flexGrow: column.c.flexGrow ?? 0,
+          // Allow the flexible tree column to shrink below its content size so
+          // very long node names truncate instead of widening the whole table.
+          minWidth: column.t === "tree" ? 0 : undefined,
         }}
       >
         <div
@@ -331,7 +334,7 @@ export function TreeTable(props: {
   });
 
   return (
-    <div className="relative flex flex-col grow shrink min-h-0">
+    <div className="relative flex flex-col grow shrink min-h-0 min-w-0">
       {/* The scrollable element  */}
       <div
         ref={parentRef}

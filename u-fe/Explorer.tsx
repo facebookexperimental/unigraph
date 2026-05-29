@@ -379,7 +379,7 @@ function Page({
         source={source}
       />
       {panelTab}
-      <div className="flex flex-col h-full grow-1">
+      <div className="flex flex-col h-full grow-1 min-w-0">
         <GraphTreeTable focusOnMount={true} roots={roots} />
         <ExplorerFooter />
       </div>
