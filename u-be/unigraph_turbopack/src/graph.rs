@@ -23,10 +23,12 @@ use unigraph_core::TraversalConfig;
 use unigraph_core::graph_settings::ArrayGraphUISettings;
 use unigraph_core::graph_settings::Availability;
 use unigraph_core::graph_settings::ColumnSettings;
+use unigraph_core::graph_settings::DefaultVisibility;
 use unigraph_core::graph_settings::GraphSettings;
 use unigraph_core::graph_settings::GraphTableSort;
 use unigraph_core::graph_settings::MetricConfig;
 use unigraph_core::graph_settings::MetricFormat;
+use unigraph_core::graph_settings::MetricViewVisibility;
 use unigraph_core::graph_settings::MetricsConfig;
 use unigraph_core::graph_settings::SizeFormatConfig;
 use unigraph_core::graph_settings::SizeInputUnits;
@@ -669,6 +671,7 @@ fn graph_settings() -> GraphSettings {
         use_delimiter: None,
     });
 
+    let available = Some(Availability::Available);
     let unavailable = Some(Availability::Unavailable);
 
     let mut metrics = BTreeMap::new();
@@ -686,20 +689,27 @@ fn graph_settings() -> GraphSettings {
         },
     );
 
+    // `compressed_size` exposes its self view and tiered views. The plain
+    // transitive/dominated views are unavailable; the tier breakdown covers
+    // those needs. All available views are hidden by default (see
+    // `default_visibility` below) except the tiered views, which are
+    // explicitly enabled in `metrics_visibility`.
     metrics.insert(
         METRIC_COMPRESSED_SIZE.to_string(),
         MetricConfig {
-            self_view: unavailable,
+            self_view: available,
             transitive: unavailable,
             dominated: unavailable,
-            tiered: None,
-            tiered_dominated: None,
+            tiered: available,
+            tiered_dominated: available,
             format: Some(size_format.clone()),
             description: Some("Estimated compressed (gzip) size".to_string()),
         },
     );
 
-    let hidden = MetricConfig {
+    // These per-tier metrics are fully unavailable — the tier breakdown is
+    // already expressed via the tiered views of `compressed_size`.
+    let unavailable_metric = MetricConfig {
         self_view: unavailable,
         transitive: unavailable,
         dominated: unavailable,
@@ -708,10 +718,13 @@ fn graph_settings() -> GraphSettings {
         format: Some(size_format),
         description: None,
     };
-    metrics.insert(METRIC_EAGER_SIZE.to_string(), hidden.clone());
-    metrics.insert(METRIC_EAGER_COMPRESSED_SIZE.to_string(), hidden.clone());
-    metrics.insert(METRIC_LAZY_SIZE.to_string(), hidden.clone());
-    metrics.insert(METRIC_LAZY_COMPRESSED_SIZE.to_string(), hidden);
+    metrics.insert(METRIC_EAGER_SIZE.to_string(), unavailable_metric.clone());
+    metrics.insert(
+        METRIC_EAGER_COMPRESSED_SIZE.to_string(),
+        unavailable_metric.clone(),
+    );
+    metrics.insert(METRIC_LAZY_SIZE.to_string(), unavailable_metric.clone());
+    metrics.insert(METRIC_LAZY_COMPRESSED_SIZE.to_string(), unavailable_metric);
 
     GraphSettings {
         description: Some(
@@ -720,13 +733,37 @@ fn graph_settings() -> GraphSettings {
         ),
         metrics_config: Some(MetricsConfig {
             default_availability: None,
-            default_visibility: None,
+            // Hide every available view by default; specific views are opted
+            // back in via `metrics_visibility` below.
+            default_visibility: Some(DefaultVisibility {
+                all: Some(MetricViewVisibility::Hidden),
+                ..Default::default()
+            }),
             metrics: Some(metrics),
             parents_count: None,
             count_transitive: None,
             count_dominated: None,
         }),
-        metrics_visibility: None,
+        // Visible by default: the eager/lazy tiered columns. The dominated
+        // tiered columns are shown only in dominator mode.
+        metrics_visibility: Some(BTreeMap::from([
+            (
+                format!("{METRIC_COMPRESSED_SIZE}#{TIER_EAGER}"),
+                MetricViewVisibility::Enabled,
+            ),
+            (
+                format!("{METRIC_COMPRESSED_SIZE}#{TIER_LAZY}"),
+                MetricViewVisibility::Enabled,
+            ),
+            (
+                format!("{METRIC_COMPRESSED_SIZE}#{TIER_EAGER}~dominated"),
+                MetricViewVisibility::EnabledInDominatorMode,
+            ),
+            (
+                format!("{METRIC_COMPRESSED_SIZE}#{TIER_LAZY}~dominated"),
+                MetricViewVisibility::EnabledInDominatorMode,
+            ),
+        ])),
         ui_settings: Some(ArrayGraphUISettings {
             columns: Some(ColumnSettings {
                 show_tiered_metrics: Some(true),
