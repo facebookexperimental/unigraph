@@ -17,6 +17,7 @@ import type { GraphQueryConfig } from "./__generated__/ts/GraphQueryConfig";
 import type { GraphQueryOutput } from "./__generated__/ts/GraphQueryOutput";
 import type { TraversalConfig } from "./__generated__/ts/TraversalConfig";
 import type { TraversalOverride } from "./__generated__/ts/TraversalOverride";
+import type { TwinArrow } from "./__generated__/ts/TwinArrow";
 import { useRpc, type UnigraphRpc } from "./api/rpc";
 
 // ---------------------------------------------------------------------------
@@ -71,6 +72,27 @@ export interface PanelTabPlugin {
   render: () => ReactNode;
 }
 
+// ---------------------------------------------------------------------------
+// Plugins — optional UI extensions supplied by external consumers. Each plugin
+// slot is rendered at a specific spot in the Explorer UI.
+// ---------------------------------------------------------------------------
+
+export interface TableNodeNameAfterProps {
+  twinArrow: TwinArrow;
+}
+
+/**
+ * Renders custom content in the tree table's node-name column, immediately
+ * after the node name and the built-in debug/info icons. Return `null` to
+ * render nothing for a given row.
+ */
+export type TableNodeNameAfterComponent =
+  React.ComponentType<TableNodeNameAfterProps>;
+
+export interface ExplorerPlugins {
+  table_node_name_after_component?: TableNodeNameAfterComponent;
+}
+
 export interface ExplorerGraphHandle {
   handle: string;
   roots?: string[];
@@ -87,6 +109,7 @@ export interface ExplorerProps {
   home_href?: string | undefined;
   panels?: PanelTabPlugin[];
   hidden_panels?: BuiltinSidebarPanel[];
+  plugins?: ExplorerPlugins;
   initialSearchParams?: Record<string, string>;
   onSearchParamsChange?: (params: Record<string, string>) => void;
 }
@@ -117,6 +140,7 @@ import {
   NativeGraphContextProvider,
   useNativeGraphs,
 } from "./context/NativeGraphContext";
+import { PluginsContextProvider } from "./context/PluginsContext";
 import {
   SelectedNodesContextProvider,
   useSelectedNodes,
@@ -211,6 +235,7 @@ function ExplorerImpl(props: {
   home_href?: string | undefined;
   panels?: PanelTabPlugin[];
   hidden_panels?: BuiltinSidebarPanel[];
+  plugins?: ExplorerPlugins;
 }) {
   const {
     source,
@@ -219,6 +244,7 @@ function ExplorerImpl(props: {
     home_href,
     panels: customPanels,
     hidden_panels,
+    plugins,
   } = props;
   const { base_gqc_l, base_gqc_r } = config ?? {};
 
@@ -281,31 +307,33 @@ function ExplorerImpl(props: {
       <DebugModeContextProvider>
         <GlobalElementRefsContextProvider>
           <ErrorBoundary>
-            <NativeGraphContextProvider
-              nativeGraphL={left.nativeGraph}
-              nativeGraphR={right.nativeGraph!}
-            >
-              <TraversalConfigContextProvider
-                tvcL={left.tvc}
-                setTvcL={left.setTvc}
-                tvcR={right.tvc!}
-                setTvcR={right.setTvc}
+            <PluginsContextProvider plugins={plugins}>
+              <NativeGraphContextProvider
+                nativeGraphL={left.nativeGraph}
+                nativeGraphR={right.nativeGraph!}
               >
-                <SimulationParamsContextProvider>
-                  <SelectedNodesContextProvider>
-                    <MetricViewStateProvider nativeGraph={right.nativeGraph!}>
-                      <SelectedPathContextProvider syncToURL={true}>
-                        <Page
-                          homeHref={home_href}
-                          panels={resolvedPanels}
-                          source={source}
-                        />
-                      </SelectedPathContextProvider>
-                    </MetricViewStateProvider>
-                  </SelectedNodesContextProvider>
-                </SimulationParamsContextProvider>
-              </TraversalConfigContextProvider>
-            </NativeGraphContextProvider>
+                <TraversalConfigContextProvider
+                  tvcL={left.tvc}
+                  setTvcL={left.setTvc}
+                  tvcR={right.tvc!}
+                  setTvcR={right.setTvc}
+                >
+                  <SimulationParamsContextProvider>
+                    <SelectedNodesContextProvider>
+                      <MetricViewStateProvider nativeGraph={right.nativeGraph!}>
+                        <SelectedPathContextProvider syncToURL={true}>
+                          <Page
+                            homeHref={home_href}
+                            panels={resolvedPanels}
+                            source={source}
+                          />
+                        </SelectedPathContextProvider>
+                      </MetricViewStateProvider>
+                    </SelectedNodesContextProvider>
+                  </SimulationParamsContextProvider>
+                </TraversalConfigContextProvider>
+              </NativeGraphContextProvider>
+            </PluginsContextProvider>
           </ErrorBoundary>
         </GlobalElementRefsContextProvider>
       </DebugModeContextProvider>

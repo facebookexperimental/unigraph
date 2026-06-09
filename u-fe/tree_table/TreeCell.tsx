@@ -18,6 +18,7 @@ import { Badge } from "../components/ui/badge";
 import { useDebugMode } from "../context/DebugModeContext";
 import { useGraphSettings } from "../context/GraphSettingsContext";
 import { useTwinGraph } from "../context/NativeGraphContext";
+import { usePlugins } from "../context/PluginsContext";
 import { useSelectedPath } from "../context/SelectedPathContext";
 import { displayNodeName } from "../lib/utils";
 import { nodeEdgesChanged, nodeMetricsChanged } from "../native/NodeDiff";
@@ -87,11 +88,20 @@ export default function TreeCell(props: Props) {
         {props.nodeName}
       </span>
       <InfoIcon twinArrow={twinArrow} twinGraph={twinGraph} />
+      <NodeNameAfterPlugin twinArrow={twinArrow} />
       <ArrowDiffBadges twinArrow={twinArrow} arrowDiff={arrowDiff} />
       {debugMode && <NodeDebugInfo twinArrow={twinArrow} />}
       {isHovered && <CopyToClipboard text={props.nodeName} className="ml-2" />}
     </div>
   );
+}
+
+function NodeNameAfterPlugin({ twinArrow }: { twinArrow: TwinArrow }) {
+  const { table_node_name_after_component: Component } = usePlugins();
+  if (Component == null) {
+    return null;
+  }
+  return <Component twinArrow={twinArrow} />;
 }
 
 function InfoIcon({
