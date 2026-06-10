@@ -66,6 +66,28 @@ export function RpcProvider({
   return <RpcContext value={rpc}>{children}</RpcContext>;
 }
 
+/**
+ * Returns the app's `UnigraphRpc` instance from context (referentially stable
+ * for the lifetime of the provider).
+ *
+ * RECOMMENDED USAGE: drive RPC calls through TanStack Query's `useSuspenseQuery`
+ * (or `useQuery`). Do NOT call `rpc.call(...)` directly in render and hand the
+ * raw promise to React's `use()` or wrap it in `useMemo`. A component that
+ * suspends never commits, so its `useMemo` cache is discarded on every Suspense
+ * retry — the promise, and the underlying network request, is recreated on each
+ * attempt, causing a request storm. `rpc.call` itself does no caching or
+ * de-duplication. TanStack Query's cache lives outside the React tree and
+ * de-dupes by `queryKey`, so the request fires once:
+ *
+ * ```tsx
+ * const rpc = useRpc();
+ * const {data} = useSuspenseQuery({
+ *   queryKey: ['SearchNodes', timelineId],
+ *   queryFn: () =>
+ *     rpc.call('SearchNodes', {timeline_id: timelineId, match_properties: {...}}),
+ * });
+ * ```
+ */
 export function useRpc(): UnigraphRpc {
   const rpc = useContext(RpcContext);
   if (rpc == null) {
@@ -79,6 +101,13 @@ export function useRpc(): UnigraphRpc {
  * and returns the resolved output synchronously once ready.
  *
  * Must be used inside a `<Suspense>` boundary.
+ *
+ * ⚠️ CAVEAT: the promise is memoized with `useMemo`, which is discarded while
+ * the component is suspended (a suspended component never commits). On each
+ * Suspense retry the promise — and the underlying request — is recreated, so
+ * the same RPC can fire many times before it resolves. Prefer TanStack Query's
+ * `useSuspenseQuery` (see `useRpc`), whose cache survives outside the React tree
+ * and de-dupes by `queryKey`.
  */
 export function useRpcCall<M extends RpcMethod>(
   method: M,
