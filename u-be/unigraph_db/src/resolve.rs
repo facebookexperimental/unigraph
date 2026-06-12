@@ -28,9 +28,14 @@ impl UnigraphDb {
     /// Handles the full pipeline: handle resolution (including nested GQC keys),
     /// root filtering, and traversal config application. This is the primary
     /// entry point for "give me the graph described by this query config".
+    ///
+    /// When `add_super_root` is true and the graph has multiple entry points, a
+    /// synthetic super-root is appended *before* traversal so it is tiered and
+    /// made reachable by the same traversal pass as every other node.
     pub async fn resolve_graph_query_config(
         &self,
         gqc: &GraphQueryConfig,
+        add_super_root: bool,
         task: &ll::Task,
     ) -> Result<(GraphKey, ArrayGraph)> {
         let (inner_gqc, key, ags) = self.resolve_handle_and_fetch(gqc, task).await?;
@@ -40,6 +45,9 @@ impl UnigraphDb {
         let ags = extract_subgraph(ags, &roots, task)?;
 
         let mut ag = ags.into_array_graph(task)?;
+        if add_super_root {
+            ag = ag.append_super_root(false)?;
+        }
         apply_traversal(&mut ag, traversal.as_ref())?;
         Ok((key, ag))
     }

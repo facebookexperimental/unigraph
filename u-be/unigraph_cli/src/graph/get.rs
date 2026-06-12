@@ -85,7 +85,7 @@ pub struct GraphGet {
 impl GraphGet {
     pub async fn run(&self, ctx: &UnigraphCLIContext, task: &ll::Task) -> anyhow::Result<()> {
         let gqc = self.build_query_config()?;
-        let (key, ag) = ctx.db.resolve_graph_query_config(&gqc, task).await?;
+        let (key, ag) = ctx.db.resolve_graph_query_config(&gqc, false, task).await?;
         task.data("graph_key", key.to_string());
 
         let graph_nodes = ag.nodes_len();

@@ -26,6 +26,20 @@ pub async fn ingest_explore_graph(t: &TestApp) -> Result<String> {
     Ok(timeline_id.to_string())
 }
 
+/// Ingest the "explore_graph_two_entry_points" fixture into the test app.
+///
+/// This is the same graph as `ingest_explore_graph`, but with an extra
+/// standalone `root` node and no explicit `entry_points`, so the system
+/// auto-detects entry points (nodes with no parents) — yielding two:
+/// `app` and `root`.
+/// Returns the timeline ID for use in RPC handles.
+pub async fn ingest_two_entry_points_graph(t: &TestApp) -> Result<String> {
+    let json = include_str!("fixtures/explore_graph_two_entry_points.json");
+    let timeline_id = "explore_two_entry_points";
+    ingest_map_graph_json(t, timeline_id, json).await?;
+    Ok(timeline_id.to_string())
+}
+
 /// Ingest a MapGraph JSON string into the test app under the given timeline ID.
 pub async fn ingest_map_graph_json(t: &TestApp, timeline_id: &str, json: &str) -> Result<()> {
     let map_graph = MapGraph::from_json(json)?;

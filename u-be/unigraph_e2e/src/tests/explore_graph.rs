@@ -18,6 +18,7 @@ use unigraph_core::graph_settings::SortOrder;
 use crate::support::app::TestApp;
 use crate::support::app::init_app;
 use crate::support::fixtures::ingest_explore_graph;
+use crate::support::fixtures::ingest_two_entry_points_graph;
 
 // ── Tests ────────────────────────────────────────────────────────
 
@@ -36,6 +37,63 @@ Entry points
 node_name | lines | lines~transitive | node-count~transitive | parents-count | size#eager | size~transitive |  tier
 ==========+=======+==================+=======================+===============+============+=================+======
 app       | 1,200 |            4,990 |                    12 |             0 |    1.78 kB |         1.99 kB | eager
+
+"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn two_entry_points() -> Result<()> {
+    let t = init_app();
+    // Graph with a standalone `root` node and no explicit entry_points.
+    // Entry points are auto-detected as the parentless nodes: `app` + `root`.
+    //
+    // Because the graph has >1 entry point, the system synthesizes a single
+    // `~root~` super-node (see unigraph_core super_root.rs) with edges to both
+    // real entry points. The EntryPoints target therefore shows just `~root~`,
+    // whose self metrics are 0 but whose transitive metrics aggregate the whole
+    // graph (14 nodes = 13 real + the synthetic super-root).
+    let handle = ingest_two_entry_points_graph(&t).await?;
+    let gqc_key = store_gqc(&t, &handle).await?;
+
+    let out = call_rpc!(t, ExploreGraph(Explore::new(gqc_key.clone()).build()));
+    snapshot!(
+        out.ascii.unwrap(),
+        "
+Entry points
+
+node_name | lines | lines~transitive | node-count~transitive | parents-count | size#eager | size~transitive |  tier
+==========+=======+==================+=======================+===============+============+=================+======
+~root~    |     0 |            5,690 |                    14 |             0 |    2.18 kB |         2.39 kB | eager
+
+"
+    );
+
+    // Drilling into the synthetic super-root reveals the two real entry points.
+    let out = call_rpc!(
+        t,
+        ExploreGraph(
+            Explore::new(gqc_key)
+                .node("~root~")
+                .metrics(&["size~transitive"])
+                .sort_by("size~transitive")
+                .build()
+        )
+    );
+    snapshot!(
+        out.ascii.unwrap(),
+        "
+Edges: forward
+Edges of: ~root~
+
+node_name | size~transitive ▼
+==========+==================
+~root~    |           2.39 kB
+----------+------------------
+app       |           1.99 kB
+root      |           0.45 kB
 
 "
     );
