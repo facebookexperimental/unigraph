@@ -18,7 +18,7 @@ fst = "0.4"
 ll = "10.0.0"
 rayon = "1.11.0"
 readonly = "0.2.13"
-regex = "1.12.3"
+regex = "1.12.4"
 serde = { version = "1.0.219", features = ["derive", "rc"] }
 serde_json = { version = "1.0.140", features = ["alloc", "float_roundtrip", "raw_value", "unbounded_depth"] }
 typegen = { version = "0.1.1-alpha.0", path = "../typegen" }
