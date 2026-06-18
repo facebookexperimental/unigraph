@@ -34,9 +34,9 @@ async fn entry_points() -> Result<()> {
         "
 Entry points
 
-node_name | lines | lines~transitive | node-count~transitive | parents-count | size#eager | size~transitive |  tier
-==========+=======+==================+=======================+===============+============+=================+======
-app       | 1,200 |            4,990 |                    12 |             0 |    1.78 kB |         1.99 kB | eager
+node_name | lines | lines~transitive | node-count~transitive | node_type | parents-count | size#eager | size~transitive |  tier
+==========+=======+==================+=======================+===========+===============+============+=================+======
+app       | 1,200 |            4,990 |                    12 |      root |             0 |    1.78 kB |         1.99 kB | eager
 
 "
     );
@@ -123,13 +123,13 @@ async fn default_metrics_respects_visibility() -> Result<()> {
 Edges: forward
 Edges of: app
 
-node_name | lines | lines~transitive | node-count~transitive | parents-count | size#eager | size~transitive ▼ |  tier
-==========+=======+==================+=======================+===============+============+===================+======
-app       | 1,200 |            4,990 |                    12 |             0 |    1.78 kB |           1.99 kB | eager
-----------+-------+------------------+-----------------------+---------------+------------+-------------------+------
-core      |   600 |            1,870 |                     5 |             1 |    0.78 kB |           0.87 kB | eager
-ui        |   800 |            2,020 |                     7 |             1 |    0.55 kB |           0.67 kB | eager
-utils     |   100 |              100 |                     1 |             5 |    0.05 kB |           0.05 kB | eager
+node_name | lines | lines~transitive | node-count~transitive | node_type | parents-count | size#eager | size~transitive ▼ |  tier
+==========+=======+==================+=======================+===========+===============+============+===================+======
+app       | 1,200 |            4,990 |                    12 |      root |             0 |    1.78 kB |           1.99 kB | eager
+----------+-------+------------------+-----------------------+-----------+---------------+------------+-------------------+------
+core      |   600 |            1,870 |                     5 |  bootload |             1 |    0.78 kB |           0.87 kB | eager
+ui        |   800 |            2,020 |                     7 |    nested |             1 |    0.55 kB |           0.67 kB | eager
+utils     |   100 |              100 |                     1 |    nested |             5 |    0.05 kB |           0.05 kB | eager
 
 "
     );
@@ -597,6 +597,52 @@ button_ios     |    80 |                    1 |                     1 |    0.03 
     Ok(())
 }
 
+#[tokio::test]
+async fn enum_metric_renders_labels() -> Result<()> {
+    let t = init_app();
+    let handle = ingest_explore_graph(&t).await?;
+    let gqc_key = store_gqc(&t, &handle).await?;
+
+    // `node_type` is an enum metric (0 => root, 1 => nested, 3 => bootload).
+    // The raw integer value stored per node is rendered as its label in the
+    // explorer CLI output, while sorting still works on the numeric value
+    // under the hood.
+    let out = call_rpc!(
+        t,
+        ExploreGraph(
+            Explore::new(gqc_key)
+                .all_nodes()
+                .metrics(&["node_type", "size~transitive"])
+                .sort_by("size~transitive")
+                .build()
+        )
+    );
+    snapshot!(
+        out.ascii.unwrap(),
+        "
+All reachable nodes
+
+node_name      | node_type | size~transitive ▼
+===============+===========+==================
+app            |      root |           1.99 kB
+core           |  bootload |           0.87 kB
+ui             |    nested |           0.67 kB
+auth           |    nested |           0.48 kB
+dialogs        |    nested |           0.39 kB
+db             |  bootload |           0.30 kB
+components     |    nested |           0.26 kB
+analytics      |    nested |           0.14 kB
+styles         |    nested |           0.08 kB
+utils          |    nested |           0.05 kB
+button_android |    nested |           0.04 kB
+button_ios     |    nested |           0.03 kB
+
+"
+    );
+
+    Ok(())
+}
+
 // ── Visibility Tests ─────────────────────────────────────────
 
 #[tokio::test]
@@ -897,7 +943,9 @@ async fn about_graph_by_timeline() -> Result<()> {
     assert!(out.stats.num_all_edges > 0);
     assert!(out.description.is_none());
 
-    // Enabled metric views: 22 total minus 1 Unavailable (size) minus 6 Hidden (lines tiered) = 15
+    // Available metric views below. `node_type` is an enum metric that
+    // contributes only its self-view — its transitive/dominated/tiered views
+    // are marked Unavailable since aggregating enum codes is meaningless.
     let view_names = &out.metric_views;
     snapshot!(
         view_names.join("\n"),
@@ -905,6 +953,7 @@ async fn about_graph_by_timeline() -> Result<()> {
 lines
 lines~transitive
 lines~dominated
+node_type
 size~transitive
 size~dominated
 size#eager
@@ -931,6 +980,7 @@ tier
 ## Metrics
 
 - **`lines`** — Lines of code
+- **`node_type`** — Kind of module
 - **`size`** — Module size in bytes
 
 ## All Available Metric Views
@@ -938,6 +988,7 @@ tier
 - `lines`
 - `lines~transitive`
 - `lines~dominated`
+- `node_type`
 - `size~transitive`
 - `size~dominated`
 - `size#eager`

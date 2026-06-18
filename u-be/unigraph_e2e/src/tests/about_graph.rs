@@ -96,6 +96,7 @@ async fn text_summary() -> Result<()> {
 ## Metrics
 
 - **`lines`** — Lines of code
+- **`node_type`** — Kind of module
 - **`size`** — Module size in bytes
 
 ## All Available Metric Views
@@ -103,6 +104,7 @@ async fn text_summary() -> Result<()> {
 - `lines`
 - `lines~transitive`
 - `lines~dominated`
+- `node_type`
 - `size~transitive`
 - `size~dominated`
 - `size#eager`

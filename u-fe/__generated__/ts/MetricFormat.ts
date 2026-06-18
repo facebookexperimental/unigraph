@@ -31,6 +31,13 @@ export type MetricFormat =
    * 1000000 -> {min:    2, max: 4, delimiter: false} -> "1000000.00"
    * 1000000 -> {min:    0, max: 0, delimiter: true}  -> "1,000,000"
    */
-  { "NumberWithVariablePrecision": { min_precision: number | undefined, max_precision: number | undefined, use_delimiter: boolean | undefined } };
+  { "NumberWithVariablePrecision": { min_precision: number | undefined, max_precision: number | undefined, use_delimiter: boolean | undefined } } |
+  /**
+   * Treat the value as an enum: map an integer value to a display label.
+   * The metric value is coerced to an integer (rounded) before lookup.
+   * e.g. {0 => "root", 1 => "nested", 3 => "bootload"}
+   * Values without a matching label fall back to the raw integer string.
+   */
+  { "Enum": { variants: { [key: number]: string } } };
 
-export type MetricFormatVariants = "Percent" | "Size" | "NumericBoolean" | "NumberWithVariablePrecision";
+export type MetricFormatVariants = "Percent" | "Size" | "NumericBoolean" | "NumberWithVariablePrecision" | "Enum";

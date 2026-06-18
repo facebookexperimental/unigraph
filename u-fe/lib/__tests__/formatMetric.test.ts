@@ -141,3 +141,25 @@ test("NumberWithVariablePrecision", () => {
   expect(formatMetric(1000, format)).toBe("1,000.0");
   expect(formatMetric(1.2345, format)).toBe("1.235");
 });
+
+test("Enum", () => {
+  const format: MetricFormat = {
+    Enum: {
+      variants: {
+        0: "root",
+        1: "nested",
+        3: "bootload",
+      },
+    },
+  };
+
+  expect(formatMetric(0, format)).toBe("root");
+  expect(formatMetric(1, format)).toBe("nested");
+  expect(formatMetric(3, format)).toBe("bootload");
+  // Floats are rounded before lookup.
+  expect(formatMetric(1.4, format)).toBe("nested");
+  expect(formatMetric(2.6, format)).toBe("bootload");
+  // Unknown values fall back to the raw integer.
+  expect(formatMetric(2, format)).toBe("2");
+  expect(formatMetric(9, format)).toBe("9");
+});

@@ -403,6 +403,14 @@ pub enum MetricFormat {
         max_precision: Option<usize>,
         use_delimiter: Option<bool>,
     },
+    /// Treat the value as an enum: map an integer value to a display label.
+    /// The metric value is coerced to an integer (rounded) before lookup.
+    /// e.g. {0 => "root", 1 => "nested", 3 => "bootload"}
+    /// Values without a matching label fall back to the raw integer string.
+    Enum {
+        /// Map from integer value to its display label.
+        variants: BTreeMap<i64, String>,
+    },
 }
 
 #[derive(
@@ -494,6 +502,13 @@ impl MetricFormat {
                 max_precision.unwrap_or(2),
                 use_delimiter.unwrap_or(true),
             ),
+            MetricFormat::Enum { variants } => {
+                let key = value.round() as i64;
+                variants
+                    .get(&key)
+                    .cloned()
+                    .unwrap_or_else(|| format!("{key}"))
+            }
         }
     }
 }
@@ -857,5 +872,34 @@ pub enum SortColumn {
 impl Default for SortColumn {
     fn default() -> Self {
         SortColumn::NodeName {}
+    }
+}
+
+#[cfg(test)]
+mod format_value_tests {
+    use super::*;
+
+    #[test]
+    fn test_enum_format_value() {
+        let format = MetricFormat::Enum {
+            variants: BTreeMap::from([
+                (0, "root".to_string()),
+                (1, "nested".to_string()),
+                (3, "bootload".to_string()),
+            ]),
+        };
+
+        // Exact integer values map to their labels.
+        assert_eq!(format.format_value(0.0), "root");
+        assert_eq!(format.format_value(1.0), "nested");
+        assert_eq!(format.format_value(3.0), "bootload");
+
+        // Floats are rounded to the nearest integer before lookup.
+        assert_eq!(format.format_value(1.4), "nested");
+        assert_eq!(format.format_value(2.6), "bootload"); // rounds to 3
+
+        // Values without a matching label fall back to the raw integer.
+        assert_eq!(format.format_value(2.0), "2");
+        assert_eq!(format.format_value(9.0), "9");
     }
 }

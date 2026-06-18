@@ -3,7 +3,8 @@
     "app": {
       "metrics": {
         "size": 500,
-        "lines": 1200
+        "lines": 1200,
+        "node_type": 0
       },
       "edges_directed": [
         "ui",
@@ -14,7 +15,8 @@
     "ui": {
       "metrics": {
         "size": 200,
-        "lines": 800
+        "lines": 800,
+        "node_type": 1
       },
       "edges_directed": [
         "components",
@@ -29,7 +31,8 @@
     "core": {
       "metrics": {
         "size": 300,
-        "lines": 600
+        "lines": 600,
+        "node_type": 3
       },
       "edges_directed": [
         "db",
@@ -44,14 +47,16 @@
     "utils": {
       "metrics": {
         "size": 50,
-        "lines": 100
+        "lines": 100,
+        "node_type": 1
       },
       "edges_directed": []
     },
     "components": {
       "metrics": {
         "size": 150,
-        "lines": 400
+        "lines": 400,
+        "node_type": 1
       },
       "edges_directed": [
         "utils"
@@ -74,13 +79,15 @@
     "styles": {
       "metrics": {
         "size": 80,
-        "lines": 200
+        "lines": 200,
+        "node_type": 1
       }
     },
     "dialogs": {
       "metrics": {
         "size": 120,
-        "lines": 350
+        "lines": 350,
+        "node_type": 1
       },
       "edges_directed": [
         "components"
@@ -89,7 +96,8 @@
     "db": {
       "metrics": {
         "size": 250,
-        "lines": 500
+        "lines": 500,
+        "node_type": 3
       },
       "edges_directed": [
         "utils"
@@ -98,7 +106,8 @@
     "auth": {
       "metrics": {
         "size": 180,
-        "lines": 420
+        "lines": 420,
+        "node_type": 1
       },
       "edges_directed": [
         "db",
@@ -108,7 +117,8 @@
     "analytics": {
       "metrics": {
         "size": 90,
-        "lines": 250
+        "lines": 250,
+        "node_type": 1
       },
       "edges_directed": [
         "utils"
@@ -117,13 +127,15 @@
     "button_ios": {
       "metrics": {
         "size": 30,
-        "lines": 80
+        "lines": 80,
+        "node_type": 1
       }
     },
     "button_android": {
       "metrics": {
         "size": 35,
-        "lines": 90
+        "lines": 90,
+        "node_type": 1
       }
     }
   },
@@ -176,6 +188,22 @@
             }
           },
           "description": "Lines of code"
+        },
+        "node_type": {
+          "transitive": "Unavailable",
+          "dominated": "Unavailable",
+          "tiered": "Unavailable",
+          "tiered_dominated": "Unavailable",
+          "format": {
+            "Enum": {
+              "variants": {
+                "0": "root",
+                "1": "nested",
+                "3": "bootload"
+              }
+            }
+          },
+          "description": "Kind of module"
         }
       },
       "default_visibility": {

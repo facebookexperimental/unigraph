@@ -41,6 +41,9 @@ export default function formatMetric(
       config.max_precision ?? 2,
       config.use_delimiter ?? true,
     );
+  } else if ("Enum" in format) {
+    const key = Math.round(value);
+    return format.Enum.variants[key] ?? key.toString();
   } else {
     const _exhaustive: never = format;
     throw new Error(`Unhandled metric format: ${JSON.stringify(_exhaustive)}`);
