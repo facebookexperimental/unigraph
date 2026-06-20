@@ -9,8 +9,9 @@ import {
   RefreshCw,
   Wrench,
 } from "lucide-react";
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import type { Arrow } from "../__generated__/ts/Arrow";
+import type { DynamicEdgeInfo } from "../__generated__/ts/DynamicEdgeInfo";
 import type { TwinArrow } from "../__generated__/ts/TwinArrow";
 import CopyToClipboard from "../components/CopyToClipboard";
 import UHoverCard from "../components/UHoverCard";
@@ -172,20 +173,20 @@ function ArrowBadge({ twinArrow }: { twinArrow: TwinArrow }) {
     const areEqual = l.t === r.t && l.label === r.label;
 
     if (areEqual) {
-      return <EdgeBadge label={l.label} badgeType={l.t} />;
+      return <EdgeBadge label={l.label} badgeType={l.t} dynamic={l.dynamic} />;
     } else {
       return (
         <span className="flex">
-          <EdgeBadge label={l.label} badgeType={l.t} />
+          <EdgeBadge label={l.label} badgeType={l.t} dynamic={l.dynamic} />
           <ArrowRight size={16} className="me-2" />
-          <EdgeBadge label={r.label} badgeType={r.t} />
+          <EdgeBadge label={r.label} badgeType={r.t} dynamic={r.dynamic} />
         </span>
       );
     }
   } else if (l != null) {
-    return <EdgeBadge label={l.label} badgeType={l.t} />;
+    return <EdgeBadge label={l.label} badgeType={l.t} dynamic={l.dynamic} />;
   } else if (r != null) {
-    return <EdgeBadge label={r.label} badgeType={r.t} />;
+    return <EdgeBadge label={r.label} badgeType={r.t} dynamic={r.dynamic} />;
   } else {
     return null;
   }
@@ -194,20 +195,55 @@ function ArrowBadge({ twinArrow }: { twinArrow: TwinArrow }) {
 function EdgeBadge({
   label,
   badgeType,
+  dynamic,
 }: {
   label: string;
   badgeType?: BadgeType;
+  dynamic?: DynamicEdgeInfo;
 }) {
   const color = badgeType === "tag" ? "bg-green-800" : "bg-orange-800";
-  return (
+  const badge = (
     <Badge className={clsx("me-2 text-xs py-0 px-0.5", color)}>{label}</Badge>
+  );
+
+  if (dynamic != null) {
+    return (
+      <UHoverCard asChild content={<DynamicEdgeHovercard dynamic={dynamic} />}>
+        {badge}
+      </UHoverCard>
+    );
+  }
+
+  return badge;
+}
+
+function DynamicEdgeHovercard({ dynamic }: { dynamic: DynamicEdgeInfo }) {
+  const metadata = Object.entries(dynamic.metadata ?? {});
+  return (
+    <div className="flex flex-col gap-2">
+      <H2 text="Dynamic edge" />
+      <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
+        <dt className="text-foreground/60">Type key</dt>
+        <dd className="break-words">{dynamic.type_key}</dd>
+        <dt className="text-foreground/60">Edge name</dt>
+        <dd className="break-words">{dynamic.edge_name}</dd>
+        <dt className="text-foreground/60">Branch</dt>
+        <dd className="break-words">{dynamic.branch}</dd>
+        {metadata.map(([key, value]) => (
+          <Fragment key={key}>
+            <dt className="text-foreground/60 break-words">{key}</dt>
+            <dd className="break-words">{value}</dd>
+          </Fragment>
+        ))}
+      </dl>
+    </div>
   );
 }
 
 type BadgeType = "tag" | "dyn";
 function getBadgeData(
   arrow: Arrow | null,
-): { t: BadgeType; label: string } | null {
+): { t: BadgeType; label: string; dynamic?: DynamicEdgeInfo } | null {
   if (arrow == null) return null;
 
   const tag = arrow.tag;
@@ -215,10 +251,10 @@ function getBadgeData(
   if (tag != null) {
     return { t: "tag", label: tag };
   } else if (dynamic != null) {
-    const label = dynamic.metadata?.type ?? dynamic.branch;
     return {
       t: "dyn",
-      label,
+      label: `${dynamic.type_key}:${dynamic.edge_name}:${dynamic.branch}`,
+      dynamic,
     };
   }
 
