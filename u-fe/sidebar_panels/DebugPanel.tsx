@@ -2,12 +2,13 @@
 
 import { useMemo, useState } from "react";
 import { Button } from "../components/ui/button";
+import { useGraphSettings } from "../context/GraphSettingsContext";
 import { useMetricViewState } from "../context/MetricViewStateContext";
 import { useTVC } from "../context/TraversalConfigContext";
 import { Pre } from "../Typography";
 import { SidebarPanel, SidebarPanelHeader } from "./SidebarPanel";
 
-type Tab = "tvc" | "available" | "visible";
+type Tab = "tvc" | "graph_settings" | "available" | "visible";
 
 export default function DebugPanel() {
   const [activeTab, setActiveTab] = useState<Tab>("tvc");
@@ -18,6 +19,7 @@ export default function DebugPanel() {
       <TabBar activeTab={activeTab} setActiveTab={setActiveTab} />
       <div className="mt-4">
         {activeTab === "tvc" && <TVCTab />}
+        {activeTab === "graph_settings" && <GraphSettingsTab />}
         {activeTab === "available" && <AvailableMetricsTab />}
         {activeTab === "visible" && <VisibleMetricsTab />}
       </div>
@@ -34,6 +36,7 @@ function TabBar({
 }) {
   const tabs: { id: Tab; label: string }[] = [
     { id: "tvc", label: "TVC" },
+    { id: "graph_settings", label: "Graph Settings" },
     { id: "available", label: "Available Metrics" },
     { id: "visible", label: "Visible Metrics" },
   ];
@@ -59,6 +62,17 @@ function TVCTab() {
   const { tvcR } = useTVC();
 
   const json = useMemo(() => JSON.stringify(tvcR, null, 2), [tvcR]);
+
+  return <Pre text={json} className="text-xs" />;
+}
+
+function GraphSettingsTab() {
+  const [graphSettings] = useGraphSettings();
+
+  const json = useMemo(
+    () => JSON.stringify(graphSettings, null, 2),
+    [graphSettings],
+  );
 
   return <Pre text={json} className="text-xs" />;
 }
