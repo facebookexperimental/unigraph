@@ -27,10 +27,12 @@ export default function ContextMenuCell(props: { row: Row }) {
 }
 
 function Content({ row }: { row: Readonly<Row> }) {
-  const arrowL = row.twinArrow.l;
+  // The context-menu column is only rendered in single-graph mode
+  // (twinGraph.l === null), where the edge lives in the `r` arrow. The force
+  // hooks below also operate on the right graph despite their `L` suffix.
+  const arrow = row.twinArrow.r;
 
-  if (arrowL == null) {
-    // exclusion gets messy with two graphs. need to figure this one out later
+  if (arrow == null) {
     return null;
   }
   return (
@@ -43,8 +45,8 @@ function Content({ row }: { row: Readonly<Row> }) {
         e.preventDefault();
       }}
     >
-      <ForceEdgeItem arrow={arrowL} row={row} />
-      <ExcludeNodeItem arrow={arrowL} row={row} />
+      <ForceEdgeItem arrow={arrow} row={row} />
+      <ExcludeNodeItem arrow={arrow} row={row} />
     </DropdownMenuContent>
   );
 }
