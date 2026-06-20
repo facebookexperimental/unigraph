@@ -1,6 +1,7 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 mod derive_tests;
+mod enum_tests;
 mod leaf_tests;
 mod map_tests;
 mod merge_tests;

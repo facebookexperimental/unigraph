@@ -65,7 +65,6 @@ impl GraphQueryConfig {
     PartialEq,
     unigraph_delta::Deltable
 )]
-#[deltable(replace)]
 #[expect(
     clippy::large_enum_variant,
     reason = "Inline variant is the common case"
@@ -99,6 +98,8 @@ impl fmt::Display for ExploreCacheKey {
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
+
+    use unigraph_delta::Deltable;
 
     use super::*;
     use crate::traversal::Decision;
@@ -235,5 +236,71 @@ mod tests {
     fn explore_cache_key_format() {
         let key = ExploreCacheKey::from_hash(0x1a2b3c4d5e6f7890);
         assert_eq!(key.to_string(), "exp_1a2b3c4d5e6f7890");
+    }
+
+    /// Regression test for the giant-`tvc_delta` bug.
+    ///
+    /// Changing a single field (`max_tier`) on an inline TVC that carries a
+    /// large `force_nodes` map must produce a tiny delta — not a copy of the
+    /// whole `TraversalConfig`. Before enum field-level diffing, the
+    /// `#[deltable(replace)]` on `TraversalOverride` serialized the entire
+    /// inline config (~MBs) into the delta.
+    #[test]
+    fn max_tier_change_yields_tiny_delta() {
+        use crate::traversal::tiered_traversal::AscendingTiersConfig;
+        use crate::traversal::tiered_traversal::TieredTraversalConfig;
+
+        // A large force_nodes map (the part that used to bloat the delta).
+        let force_nodes: BTreeMap<String, Decision> = (0..5_000)
+            .map(|i| (format!("SomeLongModuleName_{i:05}"), Decision::include()))
+            .collect();
+
+        let make = |max_tier: Option<usize>| GraphQueryConfig {
+            handle: test_handle(),
+            roots: None,
+            traversal: Some(TraversalOverride::Inline(TraversalConfig {
+                force_nodes: Some(force_nodes.clone()),
+                tiered_traversal: Some(TieredTraversalConfig::AscendingTiers(
+                    AscendingTiersConfig {
+                        tiers: vec![],
+                        max_tier,
+                    },
+                )),
+                ..Default::default()
+            })),
+        };
+
+        let base = make(None);
+        let modified = make(Some(1));
+
+        // Sanity: the full configs really are large.
+        let base_json_len = serde_json::to_string(&base).unwrap().len();
+        assert!(
+            base_json_len > 100_000,
+            "expected a large base config, got {base_json_len} bytes"
+        );
+
+        let delta = base.derive_delta(&modified).expect("configs differ");
+        let delta_json = serde_json::to_string(&delta).unwrap();
+
+        // The delta must be tiny and must not drag along the force_nodes map.
+        assert!(
+            delta_json.len() < 500,
+            "delta should be tiny, got {} bytes: {delta_json}",
+            delta_json.len()
+        );
+        assert!(
+            !delta_json.contains("force_nodes"),
+            "delta must not contain force_nodes: {delta_json}"
+        );
+        assert!(
+            !delta_json.contains("SomeLongModuleName"),
+            "delta must not contain any node keys: {delta_json}"
+        );
+
+        // And it must still round-trip back to the modified config.
+        let mut applied = base.clone();
+        applied.apply_delta(delta).unwrap();
+        assert_eq!(applied, modified);
     }
 }
