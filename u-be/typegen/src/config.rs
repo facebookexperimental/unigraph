@@ -120,6 +120,7 @@ impl TypeGenConfig {
                     Lang::Hack => HackGenerator::generate(self, &decl),
                 };
                 let content = shared_config.prepend_header(content);
+                let content = crate::signed_source::sign(content);
                 let mut path = self.resolve_path(export_path)?;
                 path.push(self.make_file_name(&decl.original_type_name, lang));
                 return Ok(Some(TypeGenFile { path, content }));

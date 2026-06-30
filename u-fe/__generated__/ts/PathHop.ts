@@ -1,7 +1,7 @@
 /**
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
- * @generated
+ * @generated SignedSource<<103fbc212de8b8189a922242b70703a2>>
  */
 
 
