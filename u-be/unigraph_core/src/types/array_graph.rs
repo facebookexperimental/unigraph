@@ -58,6 +58,7 @@ use crate::types::array_graph::array_graph_metrics::parents_len_configured;
 use crate::types::array_graph::array_graph_state::ArrayGraphState;
 use crate::types::array_graph::array_graph_stats::ArrayGraphStats;
 use crate::types::array_graph::offset_graph::DFSConfigured;
+use crate::types::array_graph::offset_graph::EdgeOverrides;
 use crate::types::array_graph::offset_graph::lengauer_tarjan_dominator_tree::make_dominator_tree;
 use crate::types::array_graph::offset_graph::reverse_parallel;
 use crate::types::array_graph::tiers::ALL_TIER_FLAGS;
@@ -383,10 +384,10 @@ impl ArrayGraph {
     }
 
     pub fn get_combined_metrics_for_entry_points(
-        &mut self,
-        force_edge_include: Option<(NodeIDX, NodeIDX)>, // from -> to
+        &self,
+        overrides: &EdgeOverrides,
     ) -> Result<CombinedMetricsForNodes> {
-        get_combined_metrics_for_entry_points(self, force_edge_include)
+        get_combined_metrics_for_entry_points(self, overrides)
             .context("Failed to get combined metrics for entry points")
     }
 

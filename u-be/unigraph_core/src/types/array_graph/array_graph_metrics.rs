@@ -9,6 +9,7 @@ use crate::TieredTraversalConfig;
 use crate::types::MetricName;
 use crate::types::TierName;
 use crate::types::array_graph::offset_graph::DFSConfigured;
+use crate::types::array_graph::offset_graph::EdgeOverrides;
 use crate::types::array_graph::offset_graph::edge_flags::EdgeFlags;
 use crate::types::twin_graph::NodeDiff;
 
@@ -363,31 +364,17 @@ pub fn get_metrics_sums_tiered_for_nodes(
 
 /// Get Tiered metrics for the set of entry points (which normally means
 /// the whole reachable graph).
+///
+/// `overrides` lets callers run a "what-if" traversal that force-includes or
+/// force-excludes specific edges without mutating the graph's edge flags. Pass
+/// `&EdgeOverrides::default()` for the plain traversal.
 pub fn get_combined_metrics_for_entry_points(
-    ag: &mut ArrayGraph,
-    force_edge_include: Option<(NodeIDX, NodeIDX)>,
+    ag: &ArrayGraph,
+    overrides: &EdgeOverrides,
 ) -> Result<CombinedMetricsForNodes> {
     let mut tiered_result = BTreeMap::new();
     let mut metric_result = BTreeMap::new();
     let mut node_count = 0;
-
-    let edge_override = if let Some((from, to)) = force_edge_include {
-        // if we have a forced edge, we need to include it in the graph
-        // and make sure it's not excluded.
-        // Find the edge in the forward CSR and clear its EXCLUDED flag.
-        let start = ag.data.edges.edge_offsets[from];
-        let end = ag.data.edges.edge_offsets[from + 1];
-        let edge_idx = (start..end).find(|&idx| ag.data.edges.edges[idx] == to);
-        if let Some(idx) = edge_idx {
-            let original_flags = ag.runtime.edge_flags[idx];
-            ag.runtime.edge_flags[idx].remove(EdgeFlags::EXCLUDED);
-            Some((idx, original_flags))
-        } else {
-            None
-        }
-    } else {
-        None
-    };
 
     let tier_config = ag
         .runtime
@@ -429,12 +416,13 @@ pub fn get_combined_metrics_for_entry_points(
     // Single traversal loop — tiered DFS when tiers are configured,
     // plain DFS otherwise. Both produce (node_idx, Option<tier_idx>).
     if let Some(ascending_tiers) = ascending_tiers {
-        let iter = crate::traversal::tiered_traversal::TieredTraversalIter::new(
+        let iter = crate::traversal::tiered_traversal::TieredTraversalIter::new_with_overrides(
             &ag.data.edges.edges,
             &ag.runtime.edge_flags,
             &ag.data.edges.edge_offsets,
             &ascending_tiers.tiers,
             &entry_points,
+            Some(overrides),
         );
         for next in iter {
             let (node_idx, tier_idx) = next?;
@@ -449,11 +437,12 @@ pub fn get_combined_metrics_for_entry_points(
             }
         }
     } else {
-        for node_idx in DFSConfigured::new(
+        for node_idx in DFSConfigured::new_with_overrides(
             &ag.data.edges.edges,
             &ag.runtime.edge_flags,
             &ag.data.edges.edge_offsets,
             &entry_points,
+            Some(overrides),
         ) {
             node_count += 1;
 
@@ -484,11 +473,6 @@ pub fn get_combined_metrics_for_entry_points(
 
             tiered_result.insert(metric_name.clone(), tiered_map);
         }
-    }
-
-    if let Some((idx, original_flags)) = edge_override {
-        // restore the edge override
-        ag.runtime.edge_flags[idx] = original_flags;
     }
 
     Ok(CombinedMetricsForNodes {
@@ -552,53 +536,81 @@ O -> F [T]
 "
         );
 
-        let original_r = ag.get_combined_metrics_for_entry_points(None)?;
-
-        snapshot!(
-            &original_r,
-            r#"
-CombinedMetricsForNodes {
-    metrics: {
-        "size": 12.0,
-    },
-    tiered_metrics: {
-        "size": {
-            "T1": 8.0,
-            "T2": 10.0,
-            "T3": 11.0,
-            "T4": 12.0,
-        },
-    },
-    node_count: 12,
-}
-"#
-        );
-
-        let overridden_r = ag.get_combined_metrics_for_entry_points(Some((
+        // Node `F` is forced out, so the edges D->F and O->F are EXCLUDED and
+        // P is reachable only via O->P. Each case overlays edge overrides on
+        // top of these flags WITHOUT mutating the graph, then re-measures.
+        let (o, f, p) = (
             name_to_idx(&ag, "O"),
             name_to_idx(&ag, "F"),
-        )))?;
+            name_to_idx(&ag, "P"),
+        );
+
+        let cases: Vec<(&str, EdgeOverrides)> = vec![
+            ("baseline (no overrides)", EdgeOverrides::default()),
+            // Force-include the excluded, tagged O->F edge: pulls F + its
+            // dominated subtree (G, H, I) in at tier T4.
+            ("include O->F", EdgeOverrides::from_triplets([(o, f, true)])),
+            // Force-exclude the normally-included O->P edge: drops P (T1).
+            (
+                "exclude O->P",
+                EdgeOverrides::from_triplets([(o, p, false)]),
+            ),
+            // Multiple overrides at once, mixing include + exclude.
+            (
+                "include O->F + exclude O->P",
+                EdgeOverrides::from_triplets([(o, f, true), (o, p, false)]),
+            ),
+        ];
+
+        let mut results = Vec::with_capacity(cases.len());
+        for (label, overrides) in &cases {
+            results.push((*label, ag.get_combined_metrics_for_entry_points(overrides)?));
+        }
 
         snapshot!(
-            overridden_r,
-            r#"
-CombinedMetricsForNodes {
-    metrics: {
-        "size": 16.0,
-    },
-    tiered_metrics: {
-        "size": {
-            "T1": 8.0,
-            "T2": 10.0,
-            "T3": 11.0,
-            "T4": 16.0,
-        },
-    },
-    node_count: 16,
-}
-"#
+            format_metrics_table(&results),
+            "
+case                         nodes   size     T1     T2     T3     T4
+baseline (no overrides)         12     12      8     10     11     12
+include O->F                    16     16      8     10     11     16
+exclude O->P                    11     11      7      9     10     11
+include O->F + exclude O->P     15     15      7      9     10     15
+
+"
         );
 
         Ok(())
+    }
+
+    /// Render combined-metrics results (one row per case) as a single ASCII
+    /// table so all inputs/outputs are visible in one snapshot.
+    fn format_metrics_table(results: &[(&str, CombinedMetricsForNodes)]) -> String {
+        let tier = |r: &CombinedMetricsForNodes, name: &str| -> f32 {
+            r.tiered_metrics
+                .get("size")
+                .and_then(|t| t.get(name))
+                .copied()
+                .unwrap_or(0.0)
+        };
+
+        let mut out = String::new();
+        out.push_str(&format!(
+            "{:<28} {:>5} {:>6} {:>6} {:>6} {:>6} {:>6}\n",
+            "case", "nodes", "size", "T1", "T2", "T3", "T4"
+        ));
+        for (label, r) in results {
+            let size = r.metrics.get("size").copied().unwrap_or(0.0);
+            out.push_str(&format!(
+                "{:<28} {:>5} {:>6} {:>6} {:>6} {:>6} {:>6}\n",
+                label,
+                r.node_count,
+                size,
+                tier(r, "T1"),
+                tier(r, "T2"),
+                tier(r, "T3"),
+                tier(r, "T4"),
+            ));
+        }
+        out
     }
 }

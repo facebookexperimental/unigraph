@@ -1,6 +1,7 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 pub mod edge_flags;
+pub mod edge_overrides;
 pub(super) mod lengauer_tarjan_dominator_tree;
 mod offset_graph_traversal;
 pub(super) mod shortest_path;
@@ -18,6 +19,7 @@ use crate::types::EdgeIDX;
 use crate::types::EdgeMetaIDX;
 use crate::types::NodeIDX;
 use crate::types::array_graph::offset_graph::edge_flags::EdgeFlags;
+pub use crate::types::array_graph::offset_graph::edge_overrides::EdgeOverrides;
 pub use crate::types::array_graph::offset_graph::offset_graph_traversal::DFSConfigured;
 pub use crate::types::array_graph::offset_graph::offset_graph_traversal::DFSUnconfigured;
 
@@ -306,37 +308,6 @@ impl OffsetGraph {
             traversal_type,
         )
     }
-
-    /// Override an edge to exclude it from the graph and returns a struct
-    /// containing the original information about the edge so we can restore it later.
-    pub fn override_edge_force_include(
-        &mut self,
-        from_idx: NodeIDX,
-        to_idx: NodeIDX,
-    ) -> Option<EdgeOverride> {
-        let range = self.edge_range(from_idx);
-        let edge_idx = range.clone().find(|&idx| self.targets[idx] == to_idx);
-        if let Some(idx) = edge_idx {
-            let original_flags = self.flags[idx];
-            self.flags[idx].remove(EdgeFlags::EXCLUDED);
-            Some(EdgeOverride {
-                original_flags,
-                edge_idx: idx,
-            })
-        } else {
-            None
-        }
-    }
-
-    pub fn restore_edge_override(&mut self, edge_override: EdgeOverride) {
-        self.flags[edge_override.edge_idx] = edge_override.original_flags;
-    }
-}
-
-#[derive(Debug)]
-pub struct EdgeOverride {
-    original_flags: EdgeFlags,
-    edge_idx: usize,
 }
 
 // ---------------------------------------------------------------------------

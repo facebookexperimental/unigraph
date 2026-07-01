@@ -11,7 +11,9 @@ use crate::types::Tag;
 use crate::types::TierIDX;
 use crate::types::TierName;
 use crate::types::array_graph::NodeFlags;
+use crate::types::array_graph::offset_graph::EdgeOverrides;
 use crate::types::array_graph::offset_graph::edge_flags::EdgeFlags;
+use crate::types::array_graph::offset_graph::edge_overrides::edge_should_be_followed;
 use crate::types::array_graph::tiers::tier_idx_to_flags;
 
 /// Configuration for tiered traversal, which allows traversing the graph in tiers.
@@ -119,6 +121,7 @@ pub struct TieredTraversalIter<'a> {
     targets: &'a [NodeIDX],
     flags: &'a [EdgeFlags],
     edge_offsets: &'a [usize],
+    overrides: Option<&'a EdgeOverrides>,
     current_tier: usize,
     visited: HashSet<NodeIDX>,
     stacks: [Vec<NodeIDX>; 4],
@@ -133,12 +136,24 @@ impl<'a> TieredTraversalIter<'a> {
         tiers: &[AscendingTier],
         entry_points: &[NodeIDX],
     ) -> Self {
+        Self::new_with_overrides(targets, flags, edge_offsets, tiers, entry_points, None)
+    }
+
+    pub fn new_with_overrides(
+        targets: &'a [NodeIDX],
+        flags: &'a [EdgeFlags],
+        edge_offsets: &'a [usize],
+        tiers: &[AscendingTier],
+        entry_points: &[NodeIDX],
+        overrides: Option<&'a EdgeOverrides>,
+    ) -> Self {
         let stacks = [entry_points.to_vec(), Vec::new(), Vec::new(), Vec::new()];
 
         TieredTraversalIter {
             targets,
             flags,
             edge_offsets,
+            overrides,
             current_tier: 0,
             visited: HashSet::new(),
             stacks,
@@ -163,13 +178,14 @@ impl<'a> TieredTraversalIter<'a> {
             }
             self.visited.insert(node_idx);
 
+            let parent_overrides = self.overrides.and_then(|o| o.for_parent(node_idx));
             let start = self.edge_offsets[node_idx];
             let end = self.edge_offsets[node_idx + 1];
             for i in start..end {
                 let target = self.targets[i];
                 let edge_flags = self.flags[i];
 
-                if edge_flags.contains(EdgeFlags::EXCLUDED) {
+                if !edge_should_be_followed(parent_overrides, target, edge_flags) {
                     continue;
                 }
 

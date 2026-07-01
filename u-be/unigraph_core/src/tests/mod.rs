@@ -502,7 +502,7 @@ Node: J, Tier: T3
     );
 
     snapshot!(
-        g.get_combined_metrics_for_entry_points(None)?,
+        g.get_combined_metrics_for_entry_points(&crate::EdgeOverrides::default())?,
         r#"
 CombinedMetricsForNodes {
     metrics: {

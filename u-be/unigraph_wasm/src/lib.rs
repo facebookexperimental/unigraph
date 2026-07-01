@@ -11,6 +11,7 @@ use log::trace;
 use unigraph_core::ArrayGraphSerializable;
 use unigraph_core::ArrayGraphSerializablePackage;
 use unigraph_core::ArrayGraphSerializablePackageBase64;
+use unigraph_core::EdgeOverrides;
 use unigraph_core::GraphQueryConfig;
 use unigraph_core::MapGraph;
 use unigraph_core::TraversalConfig;
@@ -336,9 +337,9 @@ pub fn get_combined_metrics_for_entrypoints_with_force_include(
     force_edge_include_to: Option<u32>,
     side: u32,
 ) -> Result<String, WasmJSError> {
-    let force_edge_include = match (force_edge_include_from, force_edge_include_to) {
+    let gs = GlobalGraphState::graph_state().get();
+    let overrides = match (force_edge_include_from, force_edge_include_to) {
         (Some(from), Some(to)) => {
-            let mut gs = GlobalGraphState::graph_state().get_mut();
             let local_from = gs
                 .mode
                 .to_local(side, NodeIDX(from))?
@@ -347,13 +348,9 @@ pub fn get_combined_metrics_for_entrypoints_with_force_include(
                 .mode
                 .to_local(side, NodeIDX(to))?
                 .context("force_edge_include_to node not found on this side")?;
-            let result = gs
-                .mode
-                .graph_mut(side)?
-                .get_combined_metrics_for_entry_points(Some((local_from, local_to)))?;
-            return Ok(serde_json::to_string(&result).context("Failed to serialize")?);
+            EdgeOverrides::from_triplets([(local_from, local_to, true)])
         }
-        (None, None) => None,
+        (None, None) => EdgeOverrides::default(),
         _ => {
             return Err(anyhow::anyhow!(
                 "force_edge_include_from and force_edge_include_to must both be set or both be None"
@@ -362,11 +359,10 @@ pub fn get_combined_metrics_for_entrypoints_with_force_include(
         }
     };
 
-    let mut gs = GlobalGraphState::graph_state().get_mut();
     let result = gs
         .mode
-        .graph_mut(side)?
-        .get_combined_metrics_for_entry_points(force_edge_include)?;
+        .graph(side)?
+        .get_combined_metrics_for_entry_points(&overrides)?;
     Ok(serde_json::to_string(&result).context("Failed to serialize combined metrics")?)
 }
 

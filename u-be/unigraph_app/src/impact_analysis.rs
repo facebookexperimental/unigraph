@@ -70,6 +70,7 @@ use unigraph_core::ArrayGraph;
 use unigraph_core::ArrayGraphSerializable;
 use unigraph_core::CombinedMetricsForNodes;
 use unigraph_core::Decision;
+use unigraph_core::EdgeOverrides;
 use unigraph_core::TraversalConfig;
 use unigraph_core::graph_settings::Availability;
 use unigraph_core::graph_settings::MetricConfig;
@@ -118,7 +119,7 @@ fn compute_baseline(ag: &ArrayGraph, task: &ll::Task) -> Result<CombinedMetricsF
     if let Some(tc) = ag.runtime.state.traversal_config.clone() {
         baseline_ag.apply_traversal_config(tc)?;
     }
-    baseline_ag.get_combined_metrics_for_entry_points(None)
+    baseline_ag.get_combined_metrics_for_entry_points(&EdgeOverrides::default())
 }
 
 fn collect_candidates(ag: &ArrayGraph, max_parents: Option<usize>) -> Vec<NodeIDX> {
@@ -179,7 +180,7 @@ fn simulate_chunk(
         let tc = make_exclude_config(base_tc, &node_name);
         thread_ag.apply_traversal_config(tc)?;
 
-        let metrics = thread_ag.get_combined_metrics_for_entry_points(None)?;
+        let metrics = thread_ag.get_combined_metrics_for_entry_points(&EdgeOverrides::default())?;
         results.push((node_idx, metrics));
 
         let prev = done.fetch_add(1, Ordering::Relaxed);
