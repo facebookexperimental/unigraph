@@ -11,7 +11,7 @@ repository = "https://github.com/facebookexperimental/unigraph"
 license = "MIT"
 
 [dependencies]
-anyhow = "1.0.102"
+anyhow = "1.0.103"
 cargo_metadata = "0.23.1"
 serde_json = { version = "1.0.140", features = ["alloc", "float_roundtrip", "raw_value", "unbounded_depth"] }
 unigraph_core = { version = "0.1.1-alpha.0", path = "../unigraph_core" }

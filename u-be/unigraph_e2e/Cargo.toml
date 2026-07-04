@@ -9,7 +9,7 @@ license = "MIT"
 publish = false
 
 [dependencies]
-anyhow = "1.0.102"
+anyhow = "1.0.103"
 ll = "10.0.0"
 unigraph_app = { path = "../unigraph_app" }
 unigraph_core = { path = "../unigraph_core" }

@@ -11,7 +11,7 @@ repository = "https://github.com/facebookexperimental/unigraph"
 license = "MIT"
 
 [dependencies]
-anyhow = "1.0.102"
+anyhow = "1.0.103"
 ll = "10.0.0"
 serde = { version = "1.0.219", features = ["derive", "rc"] }
 typegen = { version = "0.1.1-alpha.0", path = "../typegen" }
