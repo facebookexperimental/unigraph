@@ -15,7 +15,6 @@ anyhow = "1.0.103"
 ll = "10.0.0"
 lru = { version = "0.16.4", default-features = false }
 paste = "1.0.14"
-rayon = "1.11.0"
 serde = { version = "1.0.219", features = ["derive", "rc"] }
 tokio = { version = "1.52.3", features = ["full", "test-util", "tracing"] }
 typegen = { version = "0.1.1-alpha.0", path = "../typegen" }
@@ -23,6 +22,3 @@ unigraph_core = { version = "0.1.1-alpha.0", path = "../unigraph_core" }
 unigraph_db = { version = "0.1.1-alpha.0", path = "../unigraph_db" }
 unigraph_rpc = { version = "0.1.1-alpha.0", path = "../unigraph_rpc" }
 unigraph_storage_core = { version = "0.1.1-alpha.0", path = "../unigraph_storage_core" }
-
-[dev-dependencies]
-k9 = { version = "0.12.0", features = ["custom_comparison_formatters", "regex"] }

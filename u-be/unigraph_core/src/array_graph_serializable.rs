@@ -18,6 +18,7 @@ pub(crate) mod package;
 
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
+use std::sync::Arc;
 
 use anyhow::Context;
 use anyhow::Result;
@@ -282,19 +283,32 @@ impl ArrayGraphSerializable {
     /// Zero-cost move: the CSR data stays in `data`, and we allocate only
     /// the runtime edge flags (populated from the sparse metadata map) and
     /// the OffsetGraph forward-edge view.
-    pub fn into_array_graph(self, _task: &ll::Task) -> Result<ArrayGraph> {
-        let node_count = self.node_names_ordered.len();
-        let edge_count = self.edges.edges.len();
+    pub fn into_array_graph(self, task: &ll::Task) -> Result<ArrayGraph> {
+        Self::array_graph_from_shared(Arc::new(self), task)
+    }
 
-        let tiers = self
+    /// Builds an `ArrayGraph` that SHARES this data, without consuming it.
+    ///
+    /// The runtime state is derived purely from reads of `data`, so many
+    /// `ArrayGraph`s can be built from one `Arc<ArrayGraphSerializable>`
+    /// (e.g. one per thread) — each gets its own mutable `runtime` while the
+    /// heavy payload is shared via a cheap refcount clone, no deep copy.
+    pub fn array_graph_from_shared(
+        data: Arc<ArrayGraphSerializable>,
+        _task: &ll::Task,
+    ) -> Result<ArrayGraph> {
+        let node_count = data.node_names_ordered.len();
+        let edge_count = data.edges.edges.len();
+
+        let tiers = data
             .traversal_config
             .as_ref()
             .map_or_else(Default::default, |config| config.get_tiers());
 
         // Build per-edge flags from the sparse metadata map.
         let mut edge_flags = vec![EdgeFlags::empty(); edge_count];
-        for (&edge_idx, &meta_idx) in &self.edges.edge_metadata_map {
-            let flag = match &self.edges.edge_metadata[usize::from(meta_idx)] {
+        for (&edge_idx, &meta_idx) in &data.edges.edge_metadata_map {
+            let flag = match &data.edges.edge_metadata[usize::from(meta_idx)] {
                 EdgeMeta::Tagged { .. } => EdgeFlags::IS_TAGGED,
                 EdgeMeta::Dynamic { .. } => EdgeFlags::IS_DYNAMIC,
             };
@@ -307,12 +321,12 @@ impl ArrayGraphSerializable {
                 node_flags: vec![NodeFlags::empty(); node_count],
                 derived_state: ArrayGraphDerivedState::new(),
                 state: ArrayGraphState {
-                    traversal_config: self.traversal_config.clone(),
+                    traversal_config: data.traversal_config.clone(),
                     indexed_messages: Default::default(),
                     tiers,
                 },
             },
-            data: self,
+            data,
         })
     }
 
@@ -366,11 +380,47 @@ impl ArrayGraphSerializable {
     }
 }
 
-/// Converts an [`ArrayGraph`] into its serializable form.
-///
-/// Zero-cost: just moves `data` out. The runtime state is discarded.
-impl From<ArrayGraph> for ArrayGraphSerializable {
-    fn from(graph: ArrayGraph) -> Self {
-        graph.data
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use anyhow::Result;
+
+    use super::ArrayGraphSerializable;
+    use crate::GraphBuilder;
+
+    /// Fan-out: many `ArrayGraph`s built from one shared `Arc` share the payload
+    /// instead of deep-copying it (provable via the strong count), each carrying
+    /// its own runtime — and the shared data crosses a thread boundary.
+    #[test]
+    fn array_graph_from_shared_shares_without_copy() -> Result<()> {
+        let task = ll::Task::create_new("test");
+        let mut b = GraphBuilder::new();
+        b.add_edge("A", "B")?;
+        b.add_edge("B", "C")?;
+        let shared = Arc::new(b.build().to_array_graph(&task)?.into_serializable());
+
+        let graphs: Vec<_> = (0..8)
+            .map(|_| ArrayGraphSerializable::array_graph_from_shared(shared.clone(), &task))
+            .collect::<Result<_>>()?;
+
+        // No deep copy: strong count == the shared handles held by each graph
+        // plus our own `shared`.
+        assert_eq!(Arc::strong_count(&shared), graphs.len() + 1);
+        assert!(graphs.iter().all(|g| g.nodes_len() == 3));
+
+        // Send + Sync: the shared data moves into another thread.
+        let data = shared.clone();
+        let n = std::thread::spawn(move || {
+            let t = ll::Task::create_new("test");
+            ArrayGraphSerializable::array_graph_from_shared(data, &t)
+                .unwrap()
+                .nodes_len()
+        })
+        .join()
+        .unwrap();
+        assert_eq!(n, 3);
+
+        Ok(())
     }
 }

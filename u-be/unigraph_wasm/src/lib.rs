@@ -3,6 +3,7 @@
 #![allow(clippy::collapsible_if)]
 mod wasm_error;
 
+use std::sync::Arc;
 use std::vec;
 
 use anyhow::Context;
@@ -546,11 +547,13 @@ pub fn get_graph_settings(side: u32) -> Result<String, WasmJSError> {
 pub fn set_graph_settings(graph_settings_json: String, side: u32) -> Result<(), WasmJSError> {
     let graph_settings: unigraph_core::graph_settings::GraphSettings =
         serde_json::from_str(&graph_settings_json).context("Failed to parse graph settings")?;
-    GlobalGraphState::graph_state_mut()
-        .mode
-        .graph_mut(side)?
-        .data
-        .graph_settings = Some(graph_settings);
+    Arc::make_mut(
+        &mut GlobalGraphState::graph_state_mut()
+            .mode
+            .graph_mut(side)?
+            .data,
+    )
+    .graph_settings = Some(graph_settings);
     Ok(())
 }
 

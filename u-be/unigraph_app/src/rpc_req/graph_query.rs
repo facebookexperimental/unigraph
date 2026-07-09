@@ -48,12 +48,14 @@ impl RpcExec<Unigraph> for GraphQueryInput {
                 .map(|tc| unigraph_core::config_query::TraversalOverride::Inline(tc.clone())),
         };
 
-        let ag_ser = ag.to_serializable();
+        // Cheap refcount clone of the shared data — no deep copy. `pack` reads
+        // through the `Arc`, so the blocking task just needs a `'static` owner.
+        let ag_data = ag.data.clone();
         let package = task
             .spawn("pack", |task| async move {
                 tokio::task::spawn_blocking(move || {
                     let config = ArrayGraphSerializablePackageConfig::default();
-                    ag_ser.pack(&config, &task)
+                    ag_data.pack(&config, &task)
                 })
                 .await
                 .context("spawn_blocking panicked")?

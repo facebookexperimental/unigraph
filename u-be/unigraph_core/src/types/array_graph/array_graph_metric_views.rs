@@ -275,7 +275,7 @@ mod tests {
     }
 
     fn with_settings(mut ag: ArrayGraph, gs: GraphSettings) -> ArrayGraph {
-        ag.data.graph_settings = Some(gs);
+        std::sync::Arc::make_mut(&mut ag.data).graph_settings = Some(gs);
         ag
     }
 

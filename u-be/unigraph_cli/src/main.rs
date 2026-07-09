@@ -11,7 +11,6 @@ use clap::Subcommand;
 use commands::compact::Compact;
 use commands::graph::Graph;
 use commands::graph::GraphCommands;
-use commands::impact_analysis::ImpactAnalysisCmd;
 use commands::ingest::Ingest;
 use commands::serve::Serve;
 use commands::timelines::Timelines;
@@ -60,7 +59,6 @@ async fn run(args: Args) -> anyhow::Result<()> {
             GraphCommands::Explore(cmd) => cmd.run(&ctx, &task).await,
             GraphCommands::Upload(cmd) => cmd.run(&ctx, &task).await,
         },
-        Commands::ImpactAnalysis(cmd) => cmd.run(&ctx, &task).await,
     };
 
     ctx.flush_deferred();
@@ -86,8 +84,6 @@ enum Commands {
     Timelines(Timelines),
     Compact(Compact),
     Graph(Graph),
-    /// Run impact analysis on a graph JSON file
-    ImpactAnalysis(ImpactAnalysisCmd),
 }
 
 // ---------------------------------------------------------------------------

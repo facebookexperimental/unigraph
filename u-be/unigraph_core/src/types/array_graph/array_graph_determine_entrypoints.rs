@@ -100,7 +100,8 @@ mod tests {
 "#
         );
 
-        ag.data.entry_points = Some(vec!["K".to_string()].into_iter().collect());
+        std::sync::Arc::make_mut(&mut ag.data).entry_points =
+            Some(vec!["K".to_string()].into_iter().collect());
         let entrypoints = determine_entrypoints(&ag);
         snapshot!(
             idx_to_names(&ag, entrypoints),
@@ -111,7 +112,7 @@ mod tests {
 "#
         );
 
-        ag.data.entry_points = Some(BTreeSet::new());
+        std::sync::Arc::make_mut(&mut ag.data).entry_points = Some(BTreeSet::new());
         let entrypoints = determine_entrypoints(&ag);
         snapshot!(
             idx_to_names(&ag, entrypoints),

@@ -20,6 +20,7 @@ pub mod tiers;
 mod to_map_graph;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
+use std::sync::Arc;
 
 use anyhow::Context;
 use anyhow::Result;
@@ -67,7 +68,11 @@ use crate::types::map_graph::GraphNode;
 
 pub struct ArrayGraph {
     /// The persistent graph data — not modified at runtime.
-    pub data: ArrayGraphSerializable,
+    ///
+    /// Wrapped in an `Arc` so many `ArrayGraph`s can share one immutable copy
+    /// across threads via a cheap refcount clone. Rare mutations use
+    /// `Arc::make_mut` (copy-on-write: in place when uniquely owned).
+    pub data: Arc<ArrayGraphSerializable>,
 
     /// Runtime-only derived/mutable state.
     pub runtime: ArrayGraphRuntime,
@@ -154,13 +159,13 @@ impl ArrayGraph {
         ArrayGraphStats::from_array_graph(self)
     }
 
+    /// Converts this graph into its serializable form, consuming it and
+    /// discarding the runtime state.
+    ///
+    /// Moves the shared `data` out when this graph is the sole owner of the
+    /// `Arc`; otherwise deep-clones the (potentially tens-of-MB) payload once.
     pub fn into_serializable(self) -> ArrayGraphSerializable {
-        self.into()
-    }
-
-    /// Creates a serializable snapshot by cloning the data.
-    pub fn to_serializable(&self) -> ArrayGraphSerializable {
-        self.data.clone()
+        Arc::unwrap_or_clone(self.data)
     }
 
     pub fn append_super_root(self, force: bool) -> Result<ArrayGraph> {

@@ -1,6 +1,7 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 use std::collections::BTreeSet;
+use std::sync::Arc;
 
 use anyhow::Context;
 use anyhow::Result;
@@ -42,7 +43,11 @@ pub fn append_super_root(mut ag: ArrayGraph, force: bool) -> Result<ArrayGraph> 
 
     for attempt in 0..MAX_APPEND_ATTEMPTS {
         let name = make_super_root_name(attempt);
-        if ag.data.node_names_ordered.append_node_name(&name).is_ok() {
+        if Arc::make_mut(&mut ag.data)
+            .node_names_ordered
+            .append_node_name(&name)
+            .is_ok()
+        {
             return finish_append(ag, name, &entrypoints);
         }
     }
@@ -58,20 +63,21 @@ fn finish_append(
 ) -> Result<ArrayGraph> {
     ag.runtime.node_flags.push(NodeFlags::empty());
 
+    let data = Arc::make_mut(&mut ag.data);
     for &entrypoint in entrypoints {
-        ag.data.edges.edges.push(entrypoint);
+        data.edges.edges.push(entrypoint);
         ag.runtime.edge_flags.push(EdgeFlags::empty());
     }
-    ag.data.edges.edge_offsets.push(ag.data.edges.edges.len());
+    data.edges.edge_offsets.push(data.edges.edges.len());
 
-    ag.data
-        .node_metadata
+    data.node_metadata
         .metrics
         .values_mut()
         .for_each(|m| m.push(0.0));
 
+    data.entry_points = Some(BTreeSet::from([super_root_name]));
+
     ag.runtime.derived_state = ArrayGraphDerivedState::new();
-    ag.data.entry_points = Some(BTreeSet::from([super_root_name]));
 
     Ok(ag)
 }
@@ -88,21 +94,24 @@ fn insert_with_remap(
     super_root_name: &str,
     entrypoints: &[NodeIDX],
 ) -> Result<ArrayGraph> {
-    let mut names: Vec<String> = ag
-        .data
+    // Sole owner in the append path → moves the inner value out; falls back to
+    // a one-time deep clone only if the data is shared.
+    let data = Arc::unwrap_or_clone(ag.data);
+
+    let mut names: Vec<String> = data
         .node_names_ordered
         .node_names_iter()
         .map(|s| s.to_string())
         .collect();
     names.push(super_root_name.to_string());
 
-    let mut edges = ag.data.edges;
+    let mut edges = data.edges;
     for &ep in entrypoints {
         edges.edges.push(ep);
     }
     edges.edge_offsets.push(edges.edges.len());
 
-    let mut metadata = ag.data.node_metadata;
+    let mut metadata = data.node_metadata;
     for metrics in metadata.metrics.values_mut() {
         metrics.push(0.0);
     }
@@ -113,10 +122,10 @@ fn insert_with_remap(
         node_names_ordered: make_remapped_node_names_ordered(&names),
         edges: remap_edges(&edges, &ctx)?,
         node_metadata: remap_node_metadata(&metadata, &ctx)?,
-        graph_settings: ag.data.graph_settings,
-        traversal_config: ag.data.traversal_config,
+        graph_settings: data.graph_settings,
+        traversal_config: data.traversal_config,
         entry_points: Some(BTreeSet::from([super_root_name.to_string()])),
-        properties: ag.data.properties,
+        properties: data.properties,
     };
 
     new_sg

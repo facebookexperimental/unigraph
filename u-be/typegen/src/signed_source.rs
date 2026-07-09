@@ -92,7 +92,10 @@ mod tests {
         assert!(signed.contains(" * @generated SignedSource<<"));
         let hash = extract_md5(&signed);
         assert_eq!(hash.len(), 32);
-        assert!(hash.chars().all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()));
+        assert!(
+            hash.chars()
+                .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase())
+        );
     }
 
     #[test]
@@ -113,8 +116,8 @@ mod tests {
 
     #[test]
     fn test_already_signed_is_noop() {
-        let content = " * \x40generated SignedSource<<00000000000000000000000000000000>>\nbody\n"
-            .to_string();
+        let content =
+            " * \x40generated SignedSource<<00000000000000000000000000000000>>\nbody\n".to_string();
         assert_eq!(sign(content.clone()), content);
     }
 
