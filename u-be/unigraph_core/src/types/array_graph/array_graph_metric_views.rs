@@ -65,16 +65,12 @@ fn collect_tier_names(ag: &ArrayGraph) -> Vec<&str> {
 }
 
 fn metrics_config(ag: &ArrayGraph) -> Option<&MetricsConfig> {
-    ag.data
-        .graph_settings
-        .as_ref()
+    ag.graph_settings()
         .and_then(|gs| gs.metrics_config.as_ref())
 }
 
 fn metrics_visibility(ag: &ArrayGraph) -> Option<&BTreeMap<String, MetricViewVisibility>> {
-    ag.data
-        .graph_settings
-        .as_ref()
+    ag.graph_settings()
         .and_then(|gs| gs.metrics_visibility.as_ref())
 }
 
@@ -275,7 +271,7 @@ mod tests {
     }
 
     fn with_settings(mut ag: ArrayGraph, gs: GraphSettings) -> ArrayGraph {
-        std::sync::Arc::make_mut(&mut ag.data).graph_settings = Some(gs);
+        ag.set_graph_settings(gs);
         ag
     }
 

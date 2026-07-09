@@ -39,6 +39,7 @@ use crate::GraphBuilder;
 use crate::MapGraph;
 use crate::MetricView;
 use crate::TraversalType;
+use crate::graph_settings::GraphSettings;
 use crate::graph_settings::GraphStructure;
 use crate::traversal::TraversalConfig;
 use crate::traversal::apply_to_array_graph::apply_traversal_config_to_array_graph;
@@ -186,6 +187,19 @@ impl ArrayGraph {
 
     pub fn is_empty(&self) -> bool {
         self.data.node_names_ordered.len() == 0
+    }
+
+    /// The live graph settings — the runtime copy seeded from
+    /// `data.graph_settings` at construction and updated by
+    /// [`set_graph_settings`](Self::set_graph_settings).
+    pub fn graph_settings(&self) -> Option<&GraphSettings> {
+        self.runtime.state.graph_settings.as_ref()
+    }
+
+    /// Update the live graph settings in place. Runtime-only — does not touch
+    /// the shared `data` payload and is not persisted on re-serialization.
+    pub fn set_graph_settings(&mut self, graph_settings: GraphSettings) {
+        self.runtime.state.graph_settings = Some(graph_settings);
     }
 
     pub fn children(&self, node_idx: NodeIDX) -> impl Iterator<Item = (NodeIDX, EdgeFlags)> + '_ {

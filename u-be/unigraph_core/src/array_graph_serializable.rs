@@ -322,6 +322,7 @@ impl ArrayGraphSerializable {
                 derived_state: ArrayGraphDerivedState::new(),
                 state: ArrayGraphState {
                     traversal_config: data.traversal_config.clone(),
+                    graph_settings: data.graph_settings.clone(),
                     indexed_messages: Default::default(),
                     tiers,
                 },

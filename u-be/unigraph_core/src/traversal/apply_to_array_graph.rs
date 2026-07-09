@@ -105,9 +105,13 @@ pub fn apply_traversal_config_to_array_graph(
     apply_node_reachability(ag, entry_points);
 
     ag.runtime.derived_state = ArrayGraphDerivedState::new();
+    // Preserve the live graph settings — applying a traversal config replaces
+    // the rest of the runtime state but must not reset settings.
+    let graph_settings = ag.runtime.state.graph_settings.take();
     ag.runtime.state = ArrayGraphState {
         tiers: traversal_config.get_tiers(),
         traversal_config: Some(traversal_config),
+        graph_settings,
         indexed_messages: m,
     };
     Ok(())

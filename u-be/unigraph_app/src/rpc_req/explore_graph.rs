@@ -168,9 +168,7 @@ fn explore_node(ag: Arc<ArrayGraph>, input: &ExploreGraphInput) -> Result<Explor
     let include_ascii = input.include_ascii.unwrap_or(false);
     let sort_by_key = input.sort_by.as_ref().map(|m| m.to_string());
     let metrics_config = ag
-        .data
-        .graph_settings
-        .as_ref()
+        .graph_settings()
         .and_then(|gs| gs.metrics_config.as_ref());
     let ascii = if include_ascii {
         Some(render_ascii(

@@ -87,7 +87,7 @@ fn build_about(ag: &Arc<ArrayGraph>, handle: &str) -> Result<AboutGraphOutput> {
     let available = ag.available_metric_views();
     let metrics = collect_metric_infos(ag, &available);
     let metric_views: Vec<String> = available.iter().map(|v| v.to_string()).collect();
-    let graph_settings = ag.data.graph_settings.clone();
+    let graph_settings = ag.graph_settings().cloned();
     let properties = ag.data.properties.clone();
     let text = render_markdown(
         handle,
@@ -109,17 +109,12 @@ fn build_about(ag: &Arc<ArrayGraph>, handle: &str) -> Result<AboutGraphOutput> {
 }
 
 fn extract_description(ag: &ArrayGraph) -> Option<String> {
-    ag.data
-        .graph_settings
-        .as_ref()
-        .and_then(|gs| gs.description.clone())
+    ag.graph_settings().and_then(|gs| gs.description.clone())
 }
 
 fn collect_metric_infos(ag: &ArrayGraph, available: &[MetricView]) -> Vec<AboutGraphMetricInfo> {
     let metrics_config = ag
-        .data
-        .graph_settings
-        .as_ref()
+        .graph_settings()
         .and_then(|gs| gs.metrics_config.as_ref());
 
     let metric_names: Vec<&str> = ag

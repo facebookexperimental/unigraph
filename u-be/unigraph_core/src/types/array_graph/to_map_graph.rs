@@ -15,7 +15,7 @@ pub fn to_map_graph(graph: &ArrayGraph) -> Result<MapGraph> {
     let mut result = MapGraph {
         nodes: Default::default(),
         traversal_config: graph.runtime.state.traversal_config.clone(),
-        graph_settings: graph.data.graph_settings.clone(),
+        graph_settings: graph.graph_settings().cloned(),
         entry_points: graph.data.entry_points.clone(),
         properties: graph.data.properties.clone(),
     };
