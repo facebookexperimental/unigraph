@@ -28,14 +28,17 @@ use crate::types::array_graph::array_graph_derived_state::ArrayGraphDerivedState
 use crate::types::array_graph::array_graph_state::ArrayGraphState;
 use crate::types::array_graph::offset_graph::Edge;
 
-/// This function will take an `ArrayGraph` and a `TraversalConfig`, and apply the traversal configuration to the graph.
-/// which will include figuring out which edges/nodes to follow, which edges/nodes to exclude, assign tiers if
-/// it has a tiered traversal and add all node metadata
+/// Applies the *global*, entry-point-independent part of a `TraversalConfig` to the graph:
+/// figures out which edges/nodes to follow vs. exclude and stamps tier-*transition* flags on
+/// edges (which tag bumps a node to which tier). This is a pure function of the config plus the
+/// graph's tags/structure — it does NOT assign per-node tiers or compute node reachability.
+///
+/// For those entry-point-dependent outputs call [`apply_entry_point_state`] afterwards (or use
+/// the [`apply_traversal_config_and_entry_points`] wrapper for the common "do both" case).
 pub fn apply_traversal_config_to_array_graph(
     ag: &mut ArrayGraph,
     traversal_config: TraversalConfig,
 ) -> Result<()> {
-    let entry_points = ag.determine_entrypoints();
     let indexed_config = traversal_config.index(ag);
     let m = IndexedMessages::new_with_builtin(&indexed_config.messages);
 
@@ -100,10 +103,6 @@ pub fn apply_traversal_config_to_array_graph(
         }
     }
 
-    apply_tiers(ag, &indexed_config, &entry_points)?;
-
-    apply_node_reachability(ag, entry_points);
-
     ag.runtime.derived_state = ArrayGraphDerivedState::new();
     // Preserve the live graph settings — applying a traversal config replaces
     // the rest of the runtime state but must not reset settings.
@@ -115,6 +114,41 @@ pub fn apply_traversal_config_to_array_graph(
         indexed_messages: m,
     };
     Ok(())
+}
+
+/// Computes the entry-point-*dependent* graph state: per-node tier assignments and node
+/// reachability, both derived by walking from `entry_points`. Writes into `runtime.node_flags`.
+///
+/// Requires [`apply_traversal_config_to_array_graph`] to have run first: tier assignment walks the
+/// edge tier-transition flags and reachability walks the edge inclusion flags that it stamps, and
+/// the tiered config is read back from `runtime.state.traversal_config`.
+pub fn apply_entry_point_state(ag: &mut ArrayGraph, entry_points: &[NodeIDX]) -> Result<()> {
+    if let Some(traversal_config) = ag.runtime.state.traversal_config.clone() {
+        let indexed_config = traversal_config.index(ag);
+        apply_tiers(ag, &indexed_config, entry_points)?;
+    }
+
+    apply_node_reachability(ag, entry_points);
+
+    // Reachability just changed, so the SCC/dominator/reverse caches are stale — drop them.
+    ag.runtime.derived_state = ArrayGraphDerivedState::new();
+    Ok(())
+}
+
+/// Convenience wrapper for the common "apply the config and resolve entry-point state" case:
+/// applies the global config, then computes tiers + reachability from the graph's own entry points.
+///
+/// Entry points are determined *before* the config is applied so the result matches the pre-split
+/// behavior (they reflect the pre-apply edge flags). Callers that want to scope by explicit roots
+/// should instead call [`apply_traversal_config_to_array_graph`] then
+/// [`apply_entry_point_state`] with their own roots.
+pub fn apply_traversal_config_and_entry_points(
+    ag: &mut ArrayGraph,
+    traversal_config: TraversalConfig,
+) -> Result<()> {
+    let entry_points = ag.determine_entrypoints();
+    apply_traversal_config_to_array_graph(ag, traversal_config)?;
+    apply_entry_point_state(ag, &entry_points)
 }
 
 /// If we have `max_tier` set we can look at what tags these tiers use to transition to
@@ -147,7 +181,7 @@ fn exclude_tags_for_tier_above_the_max(
     None
 }
 
-fn apply_node_reachability(ag: &mut ArrayGraph, entry_points: Vec<NodeIDX>) {
+fn apply_node_reachability(ag: &mut ArrayGraph, entry_points: &[NodeIDX]) {
     use crate::types::array_graph::offset_graph::DFSConfigured;
 
     for node_idx in ag.node_idx_iter() {
@@ -161,7 +195,7 @@ fn apply_node_reachability(ag: &mut ArrayGraph, entry_points: Vec<NodeIDX>) {
         &ag.data.edges.edges,
         &ag.runtime.edge_flags,
         &ag.data.edges.edge_offsets,
-        &entry_points,
+        entry_points,
     )
     .collect();
 

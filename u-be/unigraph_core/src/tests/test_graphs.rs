@@ -44,8 +44,9 @@ pub fn make_twin_graph_with_tier_config() -> Result<TwinGraph> {
     tvc.with_tier_config();
 
     tg.graph_mut(GraphSide::Left)
-        .apply_traversal_config(tvc.clone())?;
-    tg.graph_mut(GraphSide::Right).apply_traversal_config(tvc)?;
+        .apply_traversal_config_and_entry_points(tvc.clone())?;
+    tg.graph_mut(GraphSide::Right)
+        .apply_traversal_config_and_entry_points(tvc)?;
     Ok(tg)
 }
 

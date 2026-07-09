@@ -510,7 +510,7 @@ mod tests {
         tvc.with_tier_config();
         tvc.set_force_node("F", false);
 
-        ag.apply_traversal_config(tvc)?;
+        ag.apply_traversal_config_and_entry_points(tvc)?;
 
         snapshot!(
             print_forward_edges(&ag),

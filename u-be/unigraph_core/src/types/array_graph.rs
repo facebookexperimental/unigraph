@@ -42,6 +42,8 @@ use crate::TraversalType;
 use crate::graph_settings::GraphSettings;
 use crate::graph_settings::GraphStructure;
 use crate::traversal::TraversalConfig;
+use crate::traversal::apply_to_array_graph::apply_entry_point_state;
+use crate::traversal::apply_to_array_graph::apply_traversal_config_and_entry_points;
 use crate::traversal::apply_to_array_graph::apply_traversal_config_to_array_graph;
 use crate::traversal::reachable_subgraph::get_reachable_subgraph_unconfigured;
 use crate::types::TierName;
@@ -325,9 +327,27 @@ impl ArrayGraph {
         get_reachable_subgraph_unconfigured(self, roots)
     }
 
+    /// Applies the global, entry-point-independent part of the config (edge flags + tier
+    /// transitions). Does NOT assign per-node tiers or reachability — see
+    /// [`ArrayGraph::apply_entry_point_state`] / [`ArrayGraph::apply_traversal_config_and_entry_points`].
     pub fn apply_traversal_config(&mut self, traversal_config: TraversalConfig) -> Result<()> {
         apply_traversal_config_to_array_graph(self, traversal_config)?;
         Ok(())
+    }
+
+    /// Computes entry-point-dependent state (per-node tiers + reachability) from `entry_points`.
+    /// Requires [`ArrayGraph::apply_traversal_config`] to have run first.
+    pub fn apply_entry_point_state(&mut self, entry_points: &[NodeIDX]) -> Result<()> {
+        apply_entry_point_state(self, entry_points)
+    }
+
+    /// Applies the config and resolves entry-point state (tiers + reachability) from the graph's
+    /// own entry points — the common "do both" path.
+    pub fn apply_traversal_config_and_entry_points(
+        &mut self,
+        traversal_config: TraversalConfig,
+    ) -> Result<()> {
+        apply_traversal_config_and_entry_points(self, traversal_config)
     }
 
     pub fn determine_entrypoints(&self) -> Vec<NodeIDX> {

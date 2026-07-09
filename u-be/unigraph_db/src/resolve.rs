@@ -137,7 +137,7 @@ fn extract_subgraph(
 fn apply_traversal(ag: &mut ArrayGraph, traversal: Option<&TraversalConfig>) -> Result<()> {
     let tvc = traversal.or(ag.runtime.state.traversal_config.as_ref());
     if let Some(tvc) = tvc {
-        ag.apply_traversal_config(tvc.clone())?;
+        ag.apply_traversal_config_and_entry_points(tvc.clone())?;
     }
     Ok(())
 }

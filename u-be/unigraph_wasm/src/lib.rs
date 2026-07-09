@@ -584,7 +584,7 @@ pub fn apply_traversal_config(traversal_config_json: String, side: u32) -> Resul
     GlobalGraphState::graph_state_mut()
         .mode
         .graph_mut(side)?
-        .apply_traversal_config(traversal_config)
+        .apply_traversal_config_and_entry_points(traversal_config)
         .context("Failed to apply traversal config")?;
     GlobalGraphState::graph_state_mut().sync_node_attributes()?;
     GlobalState::send_event_loop_event(UserEvent::GraphUpdated)?;

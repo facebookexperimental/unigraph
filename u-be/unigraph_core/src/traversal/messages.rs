@@ -250,7 +250,7 @@ mod tests {
     fn test_render_message() -> Result<()> {
         let mut g = make_test_array_graph_2()?;
 
-        g.apply_traversal_config(TraversalConfig {
+        g.apply_traversal_config_and_entry_points(TraversalConfig {
             force_nodes: Some(
                 btreemap! { "I".into() => Decision { include: false, message_id: None } },
             ),

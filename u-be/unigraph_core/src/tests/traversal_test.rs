@@ -15,7 +15,7 @@ fn test_force_children_of() -> Result<()> {
     let mut tvc = TraversalConfig::default();
 
     tvc.with_tier_config();
-    ag.apply_traversal_config(tvc.clone())?;
+    ag.apply_traversal_config_and_entry_points(tvc.clone())?;
 
     snapshot!(
         ag.print_nodes(),
@@ -91,7 +91,7 @@ O -> F
     );
 
     tvc.with_max_tier_idx(0 /* idx 0 = TIER 1 */);
-    ag.apply_traversal_config(tvc.clone())?;
+    ag.apply_traversal_config_and_entry_points(tvc.clone())?;
     snapshot!(
         ag.print_nodes(),
         "

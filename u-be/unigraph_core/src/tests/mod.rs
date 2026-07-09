@@ -215,7 +215,7 @@ F -> I: 0000_0000_0000_0010 (Some(Dynamic { type_key: "ddd", edge_name: "ddd_1",
 "#
     );
 
-    g.apply_traversal_config(TraversalConfig {
+    g.apply_traversal_config_and_entry_points(TraversalConfig {
         force_nodes: Some(
             btreemap! { "I".into() => Decision { include: false, message_id: None } },
         ),
@@ -237,7 +237,7 @@ F -> I: 0000_1100_0000_0110 (Some(Dynamic { type_key: "ddd", edge_name: "ddd_1",
 "#
     );
 
-    g.apply_traversal_config(TraversalConfig {
+    g.apply_traversal_config_and_entry_points(TraversalConfig {
         force_tagged: Some(
             btreemap! { "BL".into() => Decision { include: false, message_id: None } },
         ),
@@ -276,7 +276,7 @@ fn test_dfs_with_traversal_config() -> Result<()> {
 
     snapshot!(dfs_configured(&g), "A B C D E F G H I J");
 
-    g.apply_traversal_config(traversal_config)?;
+    g.apply_traversal_config_and_entry_points(traversal_config)?;
 
     snapshot!(dfs_configured(&g), "A B J");
     Ok(())
@@ -309,7 +309,7 @@ fn test_dfs_with_traversal_config_on_dynamic_edges() -> Result<()> {
     let mut g = make_test_array_graph_1()?;
     let mut traversal_config = TraversalConfig::default();
 
-    g.apply_traversal_config(traversal_config.clone())?;
+    g.apply_traversal_config_and_entry_points(traversal_config.clone())?;
     snapshot!(dfs_configured(&g), "A B C D E F G H I J");
 
     // Exclude b1 branch for ddd type:
@@ -320,7 +320,7 @@ fn test_dfs_with_traversal_config_on_dynamic_edges() -> Result<()> {
         }
     });
 
-    g.apply_traversal_config(traversal_config.clone())?;
+    g.apply_traversal_config_and_entry_points(traversal_config.clone())?;
     snapshot!(dfs_configured(&g), "A B C D E F I J");
 
     // Exclude b2 branch for ddd type:
@@ -331,7 +331,7 @@ fn test_dfs_with_traversal_config_on_dynamic_edges() -> Result<()> {
         }
     });
 
-    g.apply_traversal_config(traversal_config.clone())?;
+    g.apply_traversal_config_and_entry_points(traversal_config.clone())?;
     snapshot!(dfs_configured(&g), "A B C D E F G H J");
 
     // Include only b2 branch for ddd type:
@@ -342,7 +342,7 @@ fn test_dfs_with_traversal_config_on_dynamic_edges() -> Result<()> {
         }
     });
 
-    g.apply_traversal_config(traversal_config.clone())?;
+    g.apply_traversal_config_and_entry_points(traversal_config.clone())?;
     snapshot!(dfs_configured(&g), "A B C D E F I J");
 
     // Exclude all branches (empty include list):
@@ -353,7 +353,7 @@ fn test_dfs_with_traversal_config_on_dynamic_edges() -> Result<()> {
         }
     });
 
-    g.apply_traversal_config(traversal_config)?;
+    g.apply_traversal_config_and_entry_points(traversal_config)?;
     snapshot!(dfs_configured(&g), "A B C D E F J");
 
     Ok(())
@@ -406,15 +406,15 @@ fn test_dfs_with_traversal_config_tag_sets() -> Result<()> {
     };
 
     set_global_value(&mut traversal_config, "a");
-    g.apply_traversal_config(traversal_config.clone())?;
+    g.apply_traversal_config_and_entry_points(traversal_config.clone())?;
     snapshot!(dfs_configured(&g), "A B C D E F G H I J");
 
     set_global_value(&mut traversal_config, "b");
-    g.apply_traversal_config(traversal_config.clone())?;
+    g.apply_traversal_config_and_entry_points(traversal_config.clone())?;
     snapshot!(dfs_configured(&g), "A B D E F G H I J");
 
     set_global_value(&mut traversal_config, "c");
-    g.apply_traversal_config(traversal_config)?;
+    g.apply_traversal_config_and_entry_points(traversal_config)?;
     snapshot!(dfs_configured(&g), "A B D E F G H I");
     snapshot!(dfs_unconfigured(&g), "A B C D E F G H I J");
 
@@ -453,7 +453,7 @@ fn test_tiered_traversal() -> Result<()> {
     traversal_config.with_tier_config();
     let tiered_config = traversal_config.get_tier_config();
 
-    g.apply_traversal_config(traversal_config)?;
+    g.apply_traversal_config_and_entry_points(traversal_config)?;
 
     let mut result = String::new();
     for node_idx in g.node_idx_iter() {
@@ -584,7 +584,7 @@ fn test_edges_len() -> Result<()> {
 
     assert_equal!(g.parents_len_configured(node_k), 2);
 
-    g.apply_traversal_config(TraversalConfig {
+    g.apply_traversal_config_and_entry_points(TraversalConfig {
         force_nodes: Some(
             btreemap! { "D".into() => Decision { include: false, message_id: None } },
         ),
@@ -593,7 +593,7 @@ fn test_edges_len() -> Result<()> {
 
     assert_equal!(g.parents_len_configured(node_k), 1);
 
-    g.apply_traversal_config(TraversalConfig {
+    g.apply_traversal_config_and_entry_points(TraversalConfig {
         force_nodes: Some(btreemap! {
           "J".into() => Decision { include: false, message_id: None },
           "D".into() => Decision { include: false, message_id: None }
