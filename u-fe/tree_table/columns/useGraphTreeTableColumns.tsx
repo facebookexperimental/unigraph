@@ -33,11 +33,14 @@ import {
 } from "./counts";
 import {
   DominatedMetricColumn,
+  EnumMetricColumn,
   MetricColumn,
   MetricDeltaViewColumn,
   MetricRightInDeltaViewColumn,
   TieredDominatedMetricColumn,
   TransitiveMetricColumn,
+  TransitiveMetricDeltaColumn,
+  TransitiveMetricRightInDeltaViewColumn,
   TransitiveTieredMetricColumn,
   TransitiveTieredMetricDeltaColumn,
   TransitiveTieredMetricRightDeltaColumn,
@@ -182,6 +185,14 @@ export class ColumnsCtx {
     return this.graphSettings?.metrics_config?.metrics?.[metricName]?.format;
   }
 
+  /// An "enum metric" is a numeric metric whose value maps to a categorical
+  /// label. Its transitive/dominated/tiered aggregations (which sum values
+  /// over descendants) are meaningless, so it collapses to a single column.
+  isEnum(metricName: string): boolean {
+    const fmt = this.format(metricName);
+    return fmt != null && "Enum" in fmt;
+  }
+
   sort(): GraphTableSort | null {
     return this.graphSettings.ui_settings?.columns?.graph_table_sort ?? null;
   }
@@ -200,7 +211,7 @@ export class ColumnsCtx {
   }
 }
 
-class SingleGraphColumnsBuilder {
+export class SingleGraphColumnsBuilder {
   twinGraph: TwinGraph;
   graphSettings: GraphSettings;
   setGraphSettings: (gs: GraphSettings) => void;
@@ -239,6 +250,11 @@ class SingleGraphColumnsBuilder {
     ];
 
     for (const metric of g.metricNames) {
+      if (ctx.isEnum(metric)) {
+        columns.push(new EnumMetricColumn(ctx, this.twinGraph, metric));
+        continue;
+      }
+
       columns.push(new MetricColumn(ctx, g, metric));
       columns.push(new TransitiveMetricColumn(ctx, g, metric));
       columns.push(new DominatedMetricColumn(ctx, g, metric));
@@ -253,7 +269,7 @@ class SingleGraphColumnsBuilder {
   }
 }
 
-class DeltaGraphColumnsBuilder {
+export class DeltaGraphColumnsBuilder {
   twinGraph: TwinGraph;
   ctx: ColumnsCtx;
 
@@ -282,10 +298,25 @@ class DeltaGraphColumnsBuilder {
     ];
 
     for (const metric of g.metricNames) {
+      if (this.ctx.isEnum(metric)) {
+        columns.push(new EnumMetricColumn(this.ctx, this.twinGraph, metric));
+        continue;
+      }
+
       columns.push(
         new MetricRightInDeltaViewColumn(this.ctx, this.twinGraph, metric),
       );
       columns.push(new MetricDeltaViewColumn(this.ctx, this.twinGraph, metric));
+      columns.push(
+        new TransitiveMetricRightInDeltaViewColumn(
+          this.ctx,
+          this.twinGraph,
+          metric,
+        ),
+      );
+      columns.push(
+        new TransitiveMetricDeltaColumn(this.ctx, this.twinGraph, metric),
+      );
 
       for (const tier of g.stats().tier_names) {
         columns.push(

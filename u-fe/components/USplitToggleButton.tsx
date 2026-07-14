@@ -55,7 +55,7 @@ export default function USplitToggleButton({
         {open && popoverContent != null && (
           <PopoverPortal container={container?.current}>
             <PopoverContent
-              className="w-96 mx-6"
+              className="w-96 mx-6 max-h-[80vh] overflow-y-auto"
               onOpenAutoFocus={(e) => e.preventDefault()}
             >
               {popoverContent}

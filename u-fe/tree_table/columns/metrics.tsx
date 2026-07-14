@@ -4,6 +4,7 @@ import type { NodeIDX } from "../../__generated__/ts/NodeIDX";
 import type { SortOrder } from "../../__generated__/ts/SortOrder";
 import { ARROW_POINTS_FROM_NON_EXISTENT } from "../../ArrowUtils";
 import UHoverCard from "../../components/UHoverCard";
+import formatMetric from "../../lib/formatMetric";
 import type NativeGraph from "../../native/NativeGraph";
 import { GRAPH_SIDE, type GraphSide } from "../../native/NativeGraph";
 import type TwinGraph from "../../native/TwinGraph";
@@ -817,6 +818,252 @@ export class MetricDeltaViewColumn implements Column {
 
     return [columnID, definition];
   }
+}
+
+// ── Transitive metric right in delta view ──────────────────────
+
+export class TransitiveMetricRightInDeltaViewColumn implements Column {
+  ctx: ColumnsCtx;
+  twinGraph: TwinGraph;
+  metricName: string;
+
+  constructor(ctx: ColumnsCtx, twinGraph: TwinGraph, metricName: string) {
+    this.ctx = ctx;
+    this.twinGraph = twinGraph;
+    this.metricName = metricName;
+  }
+
+  isEnabled() {
+    if (this.twinGraph.l == null) {
+      return false;
+    }
+    return (
+      this.ctx.showMetrics && this.ctx.isVisible(MV.transitive(this.metricName))
+    );
+  }
+
+  getID(): string {
+    return `T(${this.metricName}) R`;
+  }
+
+  sortable() {
+    return sortableForView(this.ctx, MV.transitive(this.metricName));
+  }
+
+  definition(): [string, NumericValueColumnDefinition] {
+    const r = this.twinGraph.r;
+    const columnID = this.getID();
+    const getValuesL = (idxs: NodeIDX[]) =>
+      this.twinGraph
+        .leftGraphX()
+        .getTransitiveMetricsBatched(idxs, this.metricName);
+    const getValuesR = (idxs: NodeIDX[]) =>
+      r.getTransitiveMetricsBatched(idxs, this.metricName);
+    const format = this.ctx.format(this.metricName);
+
+    const definition: NumericValueColumnDefinition = {
+      t: "numeric_value_column",
+      label: columnID,
+      renderer: (row: Readonly<Row>) => {
+        if (r.isNodeReachable(row.twinArrow.points_to)) {
+          return (
+            <UHoverCard
+              triggerClassname="w-full"
+              asChild
+              content={
+                <MetricDeltaRightHovercard
+                  valueLeft={getValuesL([row.twinArrow.points_to])[0] ?? 0}
+                  valueRight={getValuesR([row.twinArrow.points_to])[0] ?? 0}
+                  format={format}
+                />
+              }
+            >
+              <MetricCell
+                value={getValuesR([row.twinArrow.points_to])[0] as number}
+                format={format}
+              />
+            </UHoverCard>
+          );
+        } else {
+          return <MissingMetric />;
+        }
+      },
+      getNumericValues: (idxs: NodeIDX[]) => getValuesR(idxs),
+      sortable: this.sortable(),
+      isHidden: false,
+    };
+
+    return [columnID, definition];
+  }
+}
+
+// ── Transitive metric delta ────────────────────────────────────
+
+export class TransitiveMetricDeltaColumn implements Column {
+  ctx: ColumnsCtx;
+  twinGraph: TwinGraph;
+  metricName: string;
+
+  constructor(ctx: ColumnsCtx, twinGraph: TwinGraph, metricName: string) {
+    this.ctx = ctx;
+    this.twinGraph = twinGraph;
+    this.metricName = metricName;
+  }
+
+  isEnabled() {
+    if (this.twinGraph.l == null) {
+      return false;
+    }
+    return (
+      this.ctx.showMetrics && this.ctx.isVisible(MV.transitive(this.metricName))
+    );
+  }
+
+  getID(): string {
+    return `∆T(${this.metricName})`;
+  }
+
+  sortable() {
+    return sortableForView(this.ctx, MV.delta(MV.transitive(this.metricName)));
+  }
+
+  getValuesFn(): (idxs: NodeIDX[]) => Float32Array {
+    const r = this.twinGraph.r;
+    const l = this.twinGraph.leftGraphX();
+    return (idxs: NodeIDX[]) => {
+      const valuesL = l.getTransitiveMetricsBatched(idxs, this.metricName);
+      const valuesR = r.getTransitiveMetricsBatched(idxs, this.metricName);
+
+      const deltas = new Float32Array(idxs.length);
+      for (let i = 0; i < idxs.length; i++) {
+        deltas[i] = (valuesR[i] ?? 0) - (valuesL[i] ?? 0);
+      }
+
+      return deltas;
+    };
+  }
+
+  getValuesFnForSorting(): (idxs: NodeIDX[]) => Float32Array {
+    return (idxs: NodeIDX[]) =>
+      this.getValuesFn()(idxs).map((n) => Math.abs(n));
+  }
+
+  definition(): [string, NumericValueColumnDefinition] {
+    const r = this.twinGraph.r;
+    const columnID = this.getID();
+    const format = this.ctx.format(this.metricName);
+    const getValues = this.getValuesFn();
+
+    const definition: NumericValueColumnDefinition = {
+      t: "numeric_value_column",
+      label: columnID,
+      renderer: (row: Readonly<Row>) => {
+        if (r.isNodeReachable(row.twinArrow.points_to)) {
+          return (
+            <DeltaMetricCell
+              value={getValues([row.twinArrow.points_to])[0] ?? 0}
+              format={format}
+            />
+          );
+        } else {
+          return <MissingMetric />;
+        }
+      },
+      getNumericValues: this.getValuesFnForSorting(),
+      sortable: this.sortable(),
+      isHidden: false,
+    };
+
+    return [columnID, definition];
+  }
+}
+
+// ── Enum metric ────────────────────────────────────────────────
+// A numeric metric formatted as an enum is categorical: summing it over
+// descendants (transitive/dominated/tiered) is meaningless. So it collapses
+// to a single column that shows the node's own label, mirroring NodeTierColumn.
+// In delta mode: same value on both sides → one label; different → `L ► R`.
+
+export class EnumMetricColumn implements Column {
+  ctx: ColumnsCtx;
+  twinGraph: TwinGraph;
+  metricName: string;
+
+  constructor(ctx: ColumnsCtx, twinGraph: TwinGraph, metricName: string) {
+    this.ctx = ctx;
+    this.twinGraph = twinGraph;
+    this.metricName = metricName;
+  }
+
+  isEnabled() {
+    return (
+      this.ctx.showMetrics && this.ctx.isVisible(MV.metric(this.metricName))
+    );
+  }
+
+  getID(): string {
+    return this.metricName;
+  }
+
+  sortable() {
+    return sortableForView(this.ctx, MV.metric(this.metricName));
+  }
+
+  definition(): [string, NumericValueColumnDefinition] {
+    const left = this.twinGraph.l;
+    const right = this.twinGraph.r;
+    const format = this.ctx.format(this.metricName);
+    const columnID = this.getID();
+
+    const labelFor = (g: NativeGraph, idx: NodeIDX): string | null =>
+      g.isNodeReachable(idx)
+        ? formatMetric(g.getNodeMetric(idx, this.metricName), format)
+        : null;
+
+    const definition: NumericValueColumnDefinition = {
+      t: "numeric_value_column",
+      label: columnID,
+      renderer: (row: Readonly<Row>) => {
+        const idx = row.twinArrow.points_to;
+        const labelR = labelFor(right, idx);
+
+        if (left == null || labelFor(left, idx) === labelR) {
+          return labelR == null ? (
+            <MissingMetric />
+          ) : (
+            <div className="flex justify-center w-full">
+              <EnumBadge label={labelR} />
+            </div>
+          );
+        }
+
+        const labelL = labelFor(left, idx);
+        return (
+          <div className="flex justify-center w-full">
+            <EnumBadge label={labelL ?? "-"} />
+            <span className="text-[10px] self-center px-1">►</span>
+            <EnumBadge label={labelR ?? "-"} />
+          </div>
+        );
+      },
+      // Sorts by the underlying numeric value (right graph in delta mode),
+      // even though the display is categorical.
+      getNumericValues: (idxs: NodeIDX[]) =>
+        right.getNodeMetricBatched(idxs, this.metricName),
+      sortable: this.sortable(),
+      isHidden: false,
+    };
+
+    return [columnID, definition];
+  }
+}
+
+function EnumBadge({ label }: { label: string }) {
+  return (
+    <span className="text-xs py-0.5 px-2 rounded-lg border border-accent-foreground/30 bg-graph-500/50">
+      {label}
+    </span>
+  );
 }
 
 // ── Helpers ────────────────────────────────────────────────────
