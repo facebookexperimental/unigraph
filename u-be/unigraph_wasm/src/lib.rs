@@ -41,6 +41,8 @@ use winit::event_loop::EventLoop;
 use winit::window::Window;
 use winit::window::WindowAttributes;
 
+const ENABLE_LL: bool = false;
+
 #[allow(dead_code)]
 fn get_canvas() -> Result<Option<web_sys::HtmlCanvasElement>> {
     web_sys::window()
@@ -103,7 +105,9 @@ async fn run(event_loop: EventLoop<UserEvent>) {
 pub fn this_will_run_automatically() -> Result<(), WasmJSError> {
     std::panic::set_hook(Box::new(console_error_panic_hook::hook));
     tracing_wasm::set_as_global_default();
-    ll::add_reporter(Arc::new(console_reporter::ConsoleReporter::new()));
+    if ENABLE_LL {
+        ll::add_reporter(Arc::new(console_reporter::ConsoleReporter::new()));
+    }
     console_log::init_with_level(log::Level::Trace).expect("Could't initialize logger");
     GlobalState::init();
     let task = ll::Task::create_new("unigraph_wasm");

@@ -1,7 +1,5 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-use std::collections::HashMap;
-use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::sync::OnceLock;
 
@@ -128,11 +126,13 @@ impl ChangedNodesGraphOneSide {
         merged_idx: NodeIDX,
         graph_structure: GraphStructure,
     ) -> Result<Vec<Arrow>> {
+        log::info!("Getting changed-nodes arrows for {}", merged_idx);
         let graph = match graph_structure {
             GraphStructure::Forward => self.forward(tg, side)?,
             GraphStructure::Reverse => self.reverse(tg, side)?,
             GraphStructure::Dominator => self.dominator(tg, side)?,
         };
+        log::info!("Got graph");
 
         let ag = tg.graph(side);
         let offset_graph = &graph.offset_graph;
@@ -189,169 +189,265 @@ impl ChangedNodesGraphOneSide {
     }
 
     fn forward(&self, tg: &TwinGraph, side: GraphSide) -> Result<&ChangedNodesOffsetGraph> {
+        log::info!("Building forward changed-nodes graph");
         self.forward
             .get_or_try_init(|| make_offset_graph(tg, side, GraphStructure::Forward))
     }
 
     fn reverse(&self, tg: &TwinGraph, side: GraphSide) -> Result<&ChangedNodesOffsetGraph> {
+        log::info!("Building reverse changed-nodes graph");
         self.reverse
             .get_or_try_init(|| make_offset_graph(tg, side, GraphStructure::Reverse))
     }
 
     fn dominator(&self, tg: &TwinGraph, side: GraphSide) -> Result<&ChangedNodesOffsetGraph> {
+        log::info!("Building dominator changed-nodes graph");
         self.dominator
             .get_or_try_init(|| make_offset_graph(tg, side, GraphStructure::Dominator))
     }
 }
 
 /// Build a changed-nodes offset graph in MERGED index space.
-/// Walks the local offset graph of the given side, translating IDXes to merged.
+///
+/// For every node `S` we want its "nearest changed descendants": the changed
+/// nodes reachable from `S` via a path whose intermediate nodes are all
+/// unchanged. Doing an independent forward BFS from each of the N nodes is
+/// O(N·(V+E)) — it re-walks the same unchanged regions once per source and
+/// freezes on large graphs.
+///
+/// Instead we run one **reverse** BFS from each *changed* node, walking
+/// backwards through unchanged predecessors only. A node reached at reverse
+/// depth `d` records the changed node as a descendant with `skipped = d`
+/// (= number of unchanged intermediates). This computes the same frontier for
+/// every source in ~O(Σ regions + E), and is naturally cycle-safe (BFS visited
+/// = shortest path). Cost scales with the number of changed nodes, which is
+/// exactly the common case (comparing two similar graphs).
+///
+/// Per-node edge *ordering* is irrelevant: `merge_arrows` re-sorts arrows by
+/// target index and `shortest_path` only cares about connectivity, so only the
+/// edge *set* (target, skipped, flags, metadata) must match the old build.
 fn make_offset_graph(
     tg: &TwinGraph,
     side: GraphSide,
     graph_structure: GraphStructure,
 ) -> Result<ChangedNodesOffsetGraph> {
-    let target_graph = tg.graph(side);
+    let view = tg.graph(side).edge_view(graph_structure);
 
-    let target_edge_view = target_graph.edge_view(graph_structure);
+    let is_changed = compute_changed_flags(tg);
+    let reverse_adjacency = build_reverse_adjacency(&view);
+    let frontier = collect_changed_frontiers(tg, side, &reverse_adjacency, &is_changed);
 
-    let merged_len = tg.merged_len();
+    Ok(assemble_offset_graph(tg, side, &view, frontier))
+}
 
-    let mut edges_map: HashMap<NodeIDX, Vec<(Edge, Option<EdgeMeta>, usize)>> = HashMap::new();
+/// Whether each merged node differs between the two sides (edges, metrics,
+/// existence, or reachability). Indexed by merged IDX. A property of the merged
+/// node, independent of which side we traverse.
+fn compute_changed_flags(tg: &TwinGraph) -> Vec<bool> {
+    tg.merged_node_idx_iter()
+        .map(|merged_idx| is_node_changed(tg, merged_idx))
+        .collect()
+}
 
-    for merged_idx in tg.merged_node_idx_iter() {
-        let local_idx = tg.to_local(side, merged_idx);
+fn is_node_changed(tg: &TwinGraph, merged_idx: NodeIDX) -> bool {
+    let diff = tg.node_diff[merged_idx];
 
-        let closest_changed_children = match local_idx {
-            Some(idx) => {
-                get_edges_changed_nodes_only(tg, side, merged_idx, idx, &target_edge_view)?
-            }
-            None => vec![],
-        };
+    let existence_changed =
+        diff.does_not_exist_in(GraphSide::Left) != diff.does_not_exist_in(GraphSide::Right);
 
-        edges_map.insert(merged_idx, closest_changed_children);
+    let reachability_changed = match (
+        tg.to_local(GraphSide::Left, merged_idx)
+            .map(|idx| tg.l.runtime.node_flags[idx].is_node_unreachable()),
+        tg.to_local(GraphSide::Right, merged_idx)
+            .map(|idx| tg.r.runtime.node_flags[idx].is_node_unreachable()),
+    ) {
+        (Some(l_unreach), Some(r_unreach)) => l_unreach != r_unreach,
+        _ => false,
+    };
+
+    diff.has_changed_edgses()
+        || diff.has_changed_metrics()
+        || reachability_changed
+        || existence_changed
+}
+
+/// Predecessor CSR (in LOCAL index space) over non-excluded edges of the given
+/// structure view. `preds_of(n)` yields the local nodes with an edge into `n`.
+struct ReverseAdjacency {
+    offsets: Vec<usize>,
+    preds: Vec<NodeIDX>,
+}
+
+impl ReverseAdjacency {
+    fn preds_of(&self, node: NodeIDX) -> &[NodeIDX] {
+        let n = usize::from(node);
+        &self.preds[self.offsets[n]..self.offsets[n + 1]]
+    }
+}
+
+fn build_reverse_adjacency(view: &EdgeGraphView<'_>) -> ReverseAdjacency {
+    let node_count = view.node_count();
+
+    let mut in_degrees = vec![0usize; node_count];
+    for node in 0..node_count {
+        for (target, _flags) in view.edges_configured(NodeIDX::from(node)) {
+            in_degrees[usize::from(target)] += 1;
+        }
     }
 
-    let mut targets = vec![];
-    let mut flags = vec![];
-    let mut edge_metadata_vec = vec![];
-    let mut skipped_vec = vec![];
-    let mut edge_offsets = Vec::with_capacity(merged_len);
+    let mut offsets = Vec::with_capacity(node_count + 1);
+    offsets.push(0);
+    for &degree in &in_degrees {
+        offsets.push(offsets.last().unwrap() + degree);
+    }
 
+    let mut preds = vec![NodeIDX::from(0usize); offsets[node_count]];
+    let mut cursor = offsets[..node_count].to_vec();
+    for node in 0..node_count {
+        for (target, _flags) in view.edges_configured(NodeIDX::from(node)) {
+            let slot = &mut cursor[usize::from(target)];
+            preds[*slot] = NodeIDX::from(node);
+            *slot += 1;
+        }
+    }
+
+    ReverseAdjacency { offsets, preds }
+}
+
+/// A changed descendant of some source node, in MERGED index space.
+struct FrontierEdge {
+    target: NodeIDX,
+    /// Number of unchanged intermediate nodes between the source and `target`.
+    skipped: usize,
+}
+
+/// For every merged node, its nearest changed descendants. Populated by one
+/// reverse BFS per changed node.
+fn collect_changed_frontiers(
+    tg: &TwinGraph,
+    side: GraphSide,
+    reverse_adjacency: &ReverseAdjacency,
+    is_changed: &[bool],
+) -> Vec<Vec<FrontierEdge>> {
+    let merged_len = tg.merged_len();
+    let node_count = reverse_adjacency.offsets.len() - 1;
+
+    let mut frontier: Vec<Vec<FrontierEdge>> = (0..merged_len).map(|_| Vec::new()).collect();
+
+    // Epoch-stamped visited set, reused across BFS runs. `stamp[n] == epoch`
+    // means `n` was visited in the current BFS; epochs start at 1 so 0 = unseen.
+    let mut stamp = vec![0u32; node_count];
+    let mut epoch: u32 = 0;
+    let mut queue: VecDeque<(NodeIDX, usize)> = VecDeque::new();
+
+    log::info!("Building changed-nodes graph ({side:?}): {merged_len} nodes");
+
+    for target_merged in tg.merged_node_idx_iter() {
+        if !is_changed[usize::from(target_merged)] {
+            continue;
+        }
+        let Some(target_local) = tg.to_local(side, target_merged) else {
+            continue;
+        };
+
+        epoch += 1;
+        stamp[usize::from(target_local)] = epoch;
+        queue.clear();
+        queue.push_back((target_local, 0));
+
+        while let Some((node_local, depth)) = queue.pop_front() {
+            for &pred_local in reverse_adjacency.preds_of(node_local) {
+                if stamp[usize::from(pred_local)] == epoch {
+                    continue;
+                }
+                stamp[usize::from(pred_local)] = epoch;
+
+                let pred_merged = tg.to_merged(side, pred_local);
+                frontier[usize::from(pred_merged)].push(FrontierEdge {
+                    target: target_merged,
+                    skipped: depth,
+                });
+
+                // Only walk further back through unchanged nodes — a changed
+                // node terminates the path (it is itself a frontier entry).
+                if !is_changed[usize::from(pred_merged)] {
+                    queue.push_back((pred_local, depth + 1));
+                }
+            }
+        }
+    }
+
+    frontier
+}
+
+/// Flatten the per-node frontiers into the merged-space CSR. Direct edges
+/// (`skipped == 0`) keep the original edge's flags + metadata; deeper edges are
+/// plain directed edges.
+fn assemble_offset_graph(
+    tg: &TwinGraph,
+    side: GraphSide,
+    view: &EdgeGraphView<'_>,
+    mut frontier: Vec<Vec<FrontierEdge>>,
+) -> ChangedNodesOffsetGraph {
+    let merged_len = tg.merged_len();
+
+    let mut targets = Vec::new();
+    let mut flags = Vec::new();
+    let mut edge_metadata = Vec::new();
+    let mut skipped = Vec::new();
+    let mut edge_offsets = Vec::with_capacity(merged_len + 1);
     edge_offsets.push(0);
 
     for merged_idx in tg.merged_node_idx_iter() {
-        if let Some(children) = edges_map.remove(&merged_idx) {
-            for (edge, metadata, skipped) in children {
-                targets.push(edge.points_to);
-                flags.push(edge.flags);
-                edge_metadata_vec.push(metadata);
-                skipped_vec.push(skipped);
-            }
+        for edge in std::mem::take(&mut frontier[usize::from(merged_idx)]) {
+            let (edge_flags, metadata) = if edge.skipped == 0 {
+                direct_edge_flags_and_meta(tg, side, view, merged_idx, edge.target)
+            } else {
+                (EdgeFlags::empty(), None)
+            };
+            targets.push(edge.target);
+            flags.push(edge_flags);
+            edge_metadata.push(metadata);
+            skipped.push(edge.skipped);
         }
         edge_offsets.push(targets.len());
     }
 
-    Ok(ChangedNodesOffsetGraph {
-        skipped: skipped_vec,
-        edge_metadata: edge_metadata_vec,
+    ChangedNodesOffsetGraph {
+        skipped,
+        edge_metadata,
         offset_graph: OffsetGraph {
             targets,
             flags,
             edge_offsets,
             edge_metadata_map: std::collections::BTreeMap::new(),
         },
-    })
+    }
 }
 
-/// BFS from merged_idx through the local offset graph to find the nearest
-/// changed nodes. Returns edges in MERGED index space.
-fn get_edges_changed_nodes_only(
+/// Flags + metadata of the first non-excluded edge `from -> to` in the structure
+/// view (both args in MERGED space). Mirrors the original BFS, which preserved
+/// the edge payload only for changed nodes that are *direct* children.
+fn direct_edge_flags_and_meta(
     tg: &TwinGraph,
     side: GraphSide,
-    _merged_start: NodeIDX,
-    local_start: NodeIDX,
-    target_edge_view: &EdgeGraphView<'_>,
-) -> Result<Vec<(Edge, Option<EdgeMeta>, usize)>> {
-    // Visited set uses LOCAL IDXes (since we walk the local graph)
-    let mut visited: HashSet<NodeIDX> = HashSet::from([]);
+    view: &EdgeGraphView<'_>,
+    from_merged: NodeIDX,
+    to_merged: NodeIDX,
+) -> (EdgeFlags, Option<EdgeMeta>) {
+    let (Some(from_local), Some(to_local)) =
+        (tg.to_local(side, from_merged), tg.to_local(side, to_merged))
+    else {
+        return (EdgeFlags::empty(), None);
+    };
 
-    let mut queue = VecDeque::from([(local_start, 0usize)]);
-    let mut needles: Vec<(Edge, Option<EdgeMeta>, usize)> = Vec::new();
-
-    while let Some((current_local_idx, current_depth)) = queue.pop_front() {
-        if !visited.insert(current_local_idx) {
-            continue;
-        }
-
-        for (edge, metadata) in target_edge_view.edges_with_metadata(current_local_idx) {
-            let child_local = edge.points_to;
-
-            if visited.contains(&child_local) {
-                continue;
-            }
-
-            if edge.is_excluded() {
-                continue;
-            }
-
-            // Translate child to merged IDX for diff lookup
-            let child_merged = tg.to_merged(side, child_local);
-            let child_diff = tg.node_diff[child_merged];
-
-            let edges_changed = child_diff.has_changed_edgses();
-            let metrics_changed = child_diff.has_changed_metrics();
-
-            let left_existence = child_diff.does_not_exist_in(GraphSide::Left);
-            let right_existence = child_diff.does_not_exist_in(GraphSide::Right);
-
-            // Also check reachability change across sides
-            let reachability_changed = if let (Some(l_unreach), Some(r_unreach)) = (
-                tg.to_local(GraphSide::Left, child_merged)
-                    .map(|idx| tg.l.runtime.node_flags[idx].is_node_unreachable()),
-                tg.to_local(GraphSide::Right, child_merged)
-                    .map(|idx| tg.r.runtime.node_flags[idx].is_node_unreachable()),
-            ) {
-                l_unreach != r_unreach
-            } else {
-                false
-            };
-
-            let node_changed = edges_changed
-                || metrics_changed
-                || reachability_changed
-                || (left_existence != right_existence);
-
-            if node_changed {
-                // Build edge in MERGED space
-                let merged_target = child_merged;
-                let needle = if current_local_idx == local_start {
-                    // Direct child: preserve edge metadata
-                    let merged_edge = Edge {
-                        points_to: merged_target,
-                        flags: edge.flags,
-                    };
-                    (merged_edge, metadata.cloned(), current_depth)
-                } else {
-                    // Intermediate: plain directed edge
-                    let merged_edge = Edge {
-                        points_to: merged_target,
-                        flags: EdgeFlags::empty(),
-                    };
-                    (merged_edge, None, current_depth)
-                };
-
-                needles.push(needle);
-                visited.insert(child_local);
-            } else {
-                if !visited.contains(&child_local) {
-                    queue.push_back((child_local, current_depth + 1));
-                }
-            }
+    for (edge, metadata) in view.edges_with_metadata(from_local) {
+        if !edge.is_excluded() && edge.points_to == to_local {
+            return (edge.flags, metadata.cloned());
         }
     }
 
-    Ok(needles)
+    (EdgeFlags::empty(), None)
 }
 
 #[cfg(test)]
@@ -361,6 +457,282 @@ mod tests {
     use super::*;
     use crate::tests::test_graphs::make_twin_graph;
     use crate::tests::test_utils::print_twin_arrows;
+
+    /// Characterization snapshot: dumps the full changed-nodes graph for every
+    /// merged node across all three structures. Locks the edge set (targets,
+    /// skipped counts, tags/branches) so the reverse-BFS build stays behavior
+    /// identical to the original per-node BFS. Exercises cycles / multi-parent
+    /// via `test_graph_2`.
+    #[test]
+    fn test_changed_nodes_graph_full_dump() -> Result<()> {
+        let tg = make_twin_graph()?;
+        snapshot!(
+            dump_all_changed_nodes(&tg)?,
+            r#"
+═══ Forward ═══
+── A ──
+L: A -> B
+
+R: A -> B
+
+--------
+
+L: A -> F
+   skipped: 1
+
+R: A -> F
+   skipped: 1
+
+--------
+
+L:
+
+R: A -> T
+── B ──
+L: B -> J
+   tag: RD
+
+R: B -> J
+   tag: RDFD
+── D ──
+L: D -> F
+
+R: D -> F
+── J ──
+L:
+
+R: J -> Q
+
+--------
+
+L:
+
+R: J -> R
+
+--------
+
+L:
+
+R: J -> S
+── L ──
+L: L -> F
+   skipped: 1
+
+R: L -> F
+   skipped: 1
+── M ──
+L: M -> F
+   skipped: 1
+
+R: M -> F
+   skipped: 1
+── N ──
+L: N -> F
+   skipped: 2
+
+R: N -> F
+   skipped: 2
+── O ──
+L: O -> F
+   tag: BL
+
+R: O -> F
+   tag: BL
+── T ──
+L:
+
+R: T -> F
+   skipped: 1
+── ~root~ ──
+L: Q -> A
+
+R: ~root~ -> A
+
+--------
+
+L: Q -> F
+   skipped: 2
+
+R: ~root~ -> F
+   skipped: 2
+
+═══ Reverse ═══
+── B ──
+L: B -> A
+
+R: B -> A
+── C ──
+L: C -> B
+   tag: BL
+
+R: C -> B
+   tag: BL
+── D ──
+L: D -> A
+
+R: D -> A
+
+--------
+
+L:
+
+R: D -> T
+── E ──
+L: E -> A
+   skipped: 1
+
+R: E -> A
+   skipped: 1
+
+--------
+
+L:
+
+R: E -> T
+   skipped: 1
+── F ──
+L: F -> A
+   skipped: 1
+
+R: F -> A
+   skipped: 1
+
+--------
+
+L:
+
+R: F -> T
+   skipped: 1
+── G ──
+L: G -> F
+   branch: b1
+   properties: {"type_key": "ddd", "edge_name": "ddd_1"}
+
+R: G -> F
+   branch: b1
+   properties: {"type_key": "ddd", "edge_name": "ddd_1"}
+── H ──
+L: H -> F
+   branch: b1
+   properties: {"type_key": "ddd", "edge_name": "ddd_1"}
+
+R: H -> F
+── I ──
+L: I -> F
+   branch: b2
+   properties: {"type_key": "ddd", "edge_name": "ddd_1"}
+
+R: I -> F
+   branch: b2
+   properties: {"type_key": "ddd", "edge_name": "ddd_1"}
+── J ──
+L: J -> B
+   tag: RD
+
+R: J -> B
+   tag: RDFD
+── K ──
+L: K -> A
+   skipped: 2
+
+R: K -> A
+   skipped: 2
+
+--------
+
+L: K -> J
+
+R: K -> J
+
+--------
+
+L:
+
+R: K -> T
+   skipped: 2
+── Q ──
+L:
+
+R: Q -> J
+── R ──
+L:
+
+R: R -> J
+── S ──
+L:
+
+R: S -> J
+── T ──
+L:
+
+R: T -> A
+
+═══ Dominator ═══
+── A ──
+L: A -> B
+
+R: A -> B
+
+--------
+
+L:
+
+R: A -> T
+── B ──
+L: B -> J
+
+R: B -> J
+── J ──
+L:
+
+R: J -> Q
+
+--------
+
+L:
+
+R: J -> R
+
+--------
+
+L:
+
+R: J -> S
+── ~root~ ──
+L: Q -> A
+
+R: ~root~ -> A
+
+--------
+
+L: Q -> F
+
+R: ~root~ -> F
+"#
+        );
+        Ok(())
+    }
+
+    fn dump_all_changed_nodes(tg: &TwinGraph) -> Result<String> {
+        let mut sections = Vec::new();
+        for structure in [
+            GraphStructure::Forward,
+            GraphStructure::Reverse,
+            GraphStructure::Dominator,
+        ] {
+            let mut lines = vec![format!("═══ {structure:?} ═══")];
+            for merged in tg.merged_node_idx_iter() {
+                let arrows = tg.get_twin_arrows(merged, structure, true)?;
+                if arrows.is_empty() {
+                    continue;
+                }
+                lines.push(format!("── {} ──", tg.merged_idx_to_name(merged)));
+                lines.push(print_twin_arrows(&tg.r, &arrows));
+            }
+            sections.push(lines.join("\n"));
+        }
+        Ok(sections.join("\n\n"))
+    }
 
     #[test]
     fn test_get_twin_arrows_changed_nodes_only() -> Result<()> {
