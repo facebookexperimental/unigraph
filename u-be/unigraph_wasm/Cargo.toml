@@ -12,6 +12,7 @@ anyhow = "1.0.98"
 base64 = "0.22.1"
 console_error_panic_hook = "0.1.7"
 console_log = "1"
+js-sys = "*"
 ll = "10.0.0"
 log = "0.4"
 serde = { version = "1.0.219", features = ["derive", "rc"] }
@@ -30,6 +31,7 @@ tracing-wasm = "0.2.1"
 
 [dependencies.web-sys]
 features = [
+    'console',
     'Document',
     'Element',
     'HtmlCanvasElement',

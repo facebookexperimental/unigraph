@@ -1,8 +1,10 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 #![allow(clippy::collapsible_if)]
+mod console_reporter;
 mod wasm_error;
 
+use std::sync::Arc;
 use std::vec;
 
 use anyhow::Context;
@@ -101,6 +103,7 @@ async fn run(event_loop: EventLoop<UserEvent>) {
 pub fn this_will_run_automatically() -> Result<(), WasmJSError> {
     std::panic::set_hook(Box::new(console_error_panic_hook::hook));
     tracing_wasm::set_as_global_default();
+    ll::add_reporter(Arc::new(console_reporter::ConsoleReporter::new()));
     console_log::init_with_level(log::Level::Trace).expect("Could't initialize logger");
     GlobalState::init();
     let task = ll::Task::create_new("unigraph_wasm");
