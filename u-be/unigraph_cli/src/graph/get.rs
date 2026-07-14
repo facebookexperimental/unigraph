@@ -1,18 +1,13 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-use std::collections::BTreeMap;
-use std::collections::BTreeSet;
 use std::io::BufWriter;
-use std::path::PathBuf;
 
 use anyhow::Context;
 use clap::Parser;
-use unigraph_core::GraphHandle;
-use unigraph_core::config_query::GraphQueryConfig;
-use unigraph_core::config_query::TraversalOverride;
 use unigraph_storage_core::GraphKey;
 
 use crate::UnigraphCLIContext;
+use crate::graph::SubgraphArgs;
 
 /// Fetch a graph and save it as JSON.
 ///
@@ -56,22 +51,8 @@ use crate::UnigraphCLIContext;
 /// ```
 #[derive(Parser, Debug)]
 pub struct GraphGet {
-    /// Graph handle: `gqc_{hash}`, `timeline_id~graph_id`, or `timeline_id`
-    handle: String,
-
-    /// Root node names for subgraph extraction (repeatable)
-    #[arg(long)]
-    roots: Option<Vec<String>>,
-
-    /// File containing root node names as JSON.
-    /// Accepts either a JSON array `["A", "B"]` or a JSON object
-    /// `{"A": ..., "B": ...}` (only keys are used). Merged with `--roots`.
-    #[arg(long)]
-    roots_json: Option<PathBuf>,
-
-    /// Traversal config key (`tvc_{hash}`) to override graph traversal
-    #[arg(long)]
-    traversal: Option<String>,
+    #[command(flatten)]
+    subgraph: SubgraphArgs,
 
     /// Print JSON to stdout instead of writing to a file
     #[arg(long)]
@@ -84,8 +65,7 @@ pub struct GraphGet {
 
 impl GraphGet {
     pub async fn run(&self, ctx: &UnigraphCLIContext, task: &ll::Task) -> anyhow::Result<()> {
-        let gqc = self.build_query_config()?;
-        let (key, ag) = ctx.db.resolve_graph_query_config(&gqc, false, task).await?;
+        let (key, ag) = self.subgraph.fetch(ctx, task).await?;
         task.data("graph_key", key.to_string());
 
         let graph_nodes = ag.nodes_len();
@@ -104,64 +84,6 @@ impl GraphGet {
 // -- Private helpers ----------------------------------------------------------
 
 impl GraphGet {
-    fn build_query_config(&self) -> anyhow::Result<GraphQueryConfig> {
-        let handle: GraphHandle = self
-            .handle
-            .parse()
-            .context("Failed to parse graph handle")?;
-
-        let roots = self.collect_roots()?;
-
-        let traversal = self
-            .traversal
-            .as_ref()
-            .map(|t| t.parse())
-            .transpose()
-            .context("Failed to parse traversal config key")?
-            .map(TraversalOverride::Key);
-
-        Ok(GraphQueryConfig {
-            handle,
-            roots,
-            traversal,
-        })
-    }
-
-    fn collect_roots(&self) -> anyhow::Result<Option<BTreeSet<String>>> {
-        let roots_from_file = self.parse_roots_json()?;
-
-        let all_roots: BTreeSet<String> = roots_from_file
-            .into_iter()
-            .chain(
-                self.roots
-                    .as_ref()
-                    .into_iter()
-                    .flat_map(|r| r.iter().cloned()),
-            )
-            .collect();
-
-        Ok(if all_roots.is_empty() {
-            None
-        } else {
-            Some(all_roots)
-        })
-    }
-
-    fn parse_roots_json(&self) -> anyhow::Result<Vec<String>> {
-        let path = match &self.roots_json {
-            Some(p) => p,
-            None => return Ok(vec![]),
-        };
-
-        let json = std::fs::read_to_string(path).context("Failed to read --roots-json file")?;
-
-        serde_json::from_str::<Vec<String>>(&json).or_else(|_| {
-            serde_json::from_str::<BTreeMap<String, serde_json::Value>>(&json)
-                .map(|map| map.into_keys().collect())
-                .context("--roots-json must be a JSON array or a JSON object")
-        })
-    }
-
     fn write_output(
         &self,
         ctx: &UnigraphCLIContext,

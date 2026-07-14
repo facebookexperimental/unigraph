@@ -58,6 +58,7 @@ async fn run(args: Args) -> anyhow::Result<()> {
             GraphCommands::GetError(cmd) => cmd.run(&ctx, &task).await,
             GraphCommands::Explore(cmd) => cmd.run(&ctx, &task).await,
             GraphCommands::Upload(cmd) => cmd.run(&ctx, &task).await,
+            GraphCommands::Cut(cmd) => cmd.run(&ctx, &task).await,
         },
     };
 
