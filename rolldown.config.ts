@@ -15,8 +15,30 @@ export default defineConfig({
     format: "esm",
     minify: false,
   },
-  plugins: [docblock(), dts()],
+  plugins: [docblock(), stripSignedSource(), dts()],
 });
+
+// SignedSource tokens from the bundled `__generated__/ts/*.ts` files no longer match
+// the merged bundle, so strip them to keep signature-verification tooling off the
+// build artifact. The bare `@generated` marker is left intact. Runs in
+// `generateBundle` (after `dts()` has inlined the declaration content) over every
+// emitted file, chunk or asset.
+const SIGNED_SOURCE_TOKEN = / SignedSource<<[0-9a-fA-F]+>>/g;
+
+function stripSignedSource() {
+  return {
+    name: "strip-signed-source",
+    generateBundle(_options: unknown, bundle: Record<string, any>) {
+      for (const file of Object.values(bundle)) {
+        if (file.type === "chunk") {
+          file.code = file.code.replace(SIGNED_SOURCE_TOKEN, "");
+        } else if (typeof file.source === "string") {
+          file.source = file.source.replace(SIGNED_SOURCE_TOKEN, "");
+        }
+      }
+    },
+  };
+}
 
 const DOCBLOCK = `/**
  * @oncall unigraph
