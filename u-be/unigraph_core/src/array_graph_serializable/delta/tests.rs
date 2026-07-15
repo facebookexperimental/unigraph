@@ -1858,19 +1858,22 @@ fn test_traversal_config_delta_comprehensive() -> Result<()> {
       "tiers": [
         {
           "name": "critical",
-          "tags_that_transition_to_this_tier": []
+          "tags_that_transition_to_this_tier": [],
+          "dynamic_type_keys_that_transition_to_this_tier": []
         },
         {
           "name": "deferred",
           "tags_that_transition_to_this_tier": [
             "DF"
-          ]
+          ],
+          "dynamic_type_keys_that_transition_to_this_tier": []
         },
         {
           "name": "background",
           "tags_that_transition_to_this_tier": [
             "BG"
-          ]
+          ],
+          "dynamic_type_keys_that_transition_to_this_tier": []
         }
       ],
       "max_tier": null

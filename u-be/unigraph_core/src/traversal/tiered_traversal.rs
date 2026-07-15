@@ -61,7 +61,7 @@ pub struct AscendingTier {
     /// its target node to this tier — the dynamic-edge analog of
     /// `tags_that_transition_to_this_tier`. Defaulted so older serialized graphs
     /// (which predate this field) still deserialize.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default)]
     pub dynamic_type_keys_that_transition_to_this_tier: Vec<DynamicTypeKey>,
 }
 
