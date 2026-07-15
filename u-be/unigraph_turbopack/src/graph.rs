@@ -645,10 +645,12 @@ fn traversal_config() -> TraversalConfig {
                     AscendingTier {
                         name: TIER_EAGER.to_string(),
                         tags_that_transition_to_this_tier: vec![],
+                        dynamic_type_keys_that_transition_to_this_tier: vec![],
                     },
                     AscendingTier {
                         name: TIER_LAZY.to_string(),
                         tags_that_transition_to_this_tier: vec![TAG_LAZY.to_string()],
+                        dynamic_type_keys_that_transition_to_this_tier: vec![],
                     },
                 ],
                 max_tier: None,

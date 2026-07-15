@@ -1617,10 +1617,12 @@ fn test_traversal_config_delta_comprehensive() -> Result<()> {
                     AscendingTier {
                         name: "initial".to_string(),
                         tags_that_transition_to_this_tier: vec![],
+                        dynamic_type_keys_that_transition_to_this_tier: vec![],
                     },
                     AscendingTier {
                         name: "lazy".to_string(),
                         tags_that_transition_to_this_tier: vec!["LL".to_string()],
+                        dynamic_type_keys_that_transition_to_this_tier: vec![],
                     },
                 ],
                 max_tier: Some(1),
@@ -1712,14 +1714,17 @@ fn test_traversal_config_delta_comprehensive() -> Result<()> {
                     AscendingTier {
                         name: "critical".to_string(),
                         tags_that_transition_to_this_tier: vec![],
+                        dynamic_type_keys_that_transition_to_this_tier: vec![],
                     },
                     AscendingTier {
                         name: "deferred".to_string(),
                         tags_that_transition_to_this_tier: vec!["DF".to_string()],
+                        dynamic_type_keys_that_transition_to_this_tier: vec![],
                     },
                     AscendingTier {
                         name: "background".to_string(),
                         tags_that_transition_to_this_tier: vec!["BG".to_string()],
+                        dynamic_type_keys_that_transition_to_this_tier: vec![],
                     },
                 ],
                 max_tier: None,

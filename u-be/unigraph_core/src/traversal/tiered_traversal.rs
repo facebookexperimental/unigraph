@@ -6,6 +6,7 @@ use anyhow::Context;
 use anyhow::Result;
 
 use crate::ArrayGraph;
+use crate::types::DynamicTypeKey;
 use crate::types::NodeIDX;
 use crate::types::Tag;
 use crate::types::TierIDX;
@@ -54,7 +55,14 @@ pub struct AscendingTiersConfig {
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
 pub struct AscendingTier {
     pub name: TierName,
+    /// A tagged edge with any of these tags bumps its target node to this tier.
     pub tags_that_transition_to_this_tier: Vec<Tag>,
+    /// A dynamic edge with any of these `DynamicTypeKey`s (e.g. `"rc:gk"`) bumps
+    /// its target node to this tier — the dynamic-edge analog of
+    /// `tags_that_transition_to_this_tier`. Defaulted so older serialized graphs
+    /// (which predate this field) still deserialize.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dynamic_type_keys_that_transition_to_this_tier: Vec<DynamicTypeKey>,
 }
 
 impl AscendingTiersConfig {
@@ -81,6 +89,17 @@ impl AscendingTiersConfig {
             }
         }
         tag_to_tier
+    }
+
+    pub fn make_dynamic_type_key_to_tier_idx_map(&self) -> BTreeMap<DynamicTypeKey, usize> {
+        let mut dynamic_type_key_to_tier = BTreeMap::new();
+
+        for (tier_idx, tier) in self.tiers.iter().enumerate() {
+            for dynamic_type_key in &tier.dynamic_type_keys_that_transition_to_this_tier {
+                dynamic_type_key_to_tier.insert(dynamic_type_key.clone(), tier_idx);
+            }
+        }
+        dynamic_type_key_to_tier
     }
 
     pub fn assign_tiers(

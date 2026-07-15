@@ -22,7 +22,6 @@ use crate::types::EdgeIDX;
 use crate::types::LabelName;
 use crate::types::LabelValue;
 use crate::types::Tag;
-use crate::types::TierName;
 use crate::types::array_graph::NodeFlags;
 use crate::types::array_graph::array_graph_derived_state::ArrayGraphDerivedState;
 use crate::types::array_graph::array_graph_state::ArrayGraphState;
@@ -45,6 +44,9 @@ pub fn apply_traversal_config_to_array_graph(
     let tag_to_tier = indexed_config
         .ascending_tiers()
         .map(|c| c.make_tag_to_tier_idx_map());
+    let dynamic_type_key_to_tier = indexed_config
+        .ascending_tiers()
+        .map(|c| c.make_dynamic_type_key_to_tier_idx_map());
 
     let TraversalConfigIDX {
         force_nodes,
@@ -56,7 +58,7 @@ pub fn apply_traversal_config_to_array_graph(
         messages: _,
     } = &indexed_config;
 
-    let exclude_tags = exclude_tags_for_tier_above_the_max(tiered_traversal);
+    let excluded_above_max = transitions_above_max_tier(tiered_traversal);
     let labels = &ag.data.node_metadata.labels;
 
     let node_count = ag.data.edges.edge_offsets.len() - 1;
@@ -82,10 +84,18 @@ pub fn apply_traversal_config_to_array_graph(
 
             let mut edge = Edge::new_with_flags(target, *edge_flags_ref);
 
-            match_dynamic_edges(force_dynamic, parent_idx, &mut edge, meta, &m)?;
+            match_dynamic_edges(
+                force_dynamic,
+                excluded_above_max.as_ref().map(|e| &e.dynamic_type_keys),
+                parent_idx,
+                &mut edge,
+                meta,
+                &dynamic_type_key_to_tier,
+                &m,
+            )?;
             match_tagged(
                 force_tagged,
-                &exclude_tags,
+                excluded_above_max.as_ref().map(|e| &e.tags),
                 &mut edge,
                 meta,
                 &tag_to_tier,
@@ -151,29 +161,37 @@ pub fn apply_traversal_config_and_entry_points(
     apply_entry_point_state(ag, &entry_points)
 }
 
-/// If we have `max_tier` set we can look at what tags these tiers use to transition to
-/// greater tiers and exclude those tags
-fn exclude_tags_for_tier_above_the_max(
+/// Tags and dynamic type keys whose transition target tier is above `max_tier`.
+/// The edges carrying them must be excluded so traversal stops at `max_tier`.
+#[derive(Default)]
+struct TransitionsAboveMaxTier {
+    tags: BTreeSet<Tag>,
+    dynamic_type_keys: BTreeSet<DynamicTypeKey>,
+}
+
+/// If `max_tier` is set, collect the tags and dynamic type keys that transition to
+/// tiers above it, so their edges can be excluded from traversal.
+fn transitions_above_max_tier(
     tiered_traversal: &Option<TieredTraversalConfig>,
-) -> Option<BTreeSet<TierName>> {
+) -> Option<TransitionsAboveMaxTier> {
     if let Some(TieredTraversalConfig::AscendingTiers(config)) = tiered_traversal {
         if let Some(max_tier) = config.max_tier {
-            let exclude_tags = config
-                .tiers
-                .iter()
-                .enumerate()
-                .filter_map(|(tier_idx, tier)| {
-                    if tier_idx > max_tier {
-                        Some(tier.tags_that_transition_to_this_tier.clone())
-                    } else {
-                        None
-                    }
-                })
-                .flatten()
-                .collect::<BTreeSet<_>>();
+            let mut excluded = TransitionsAboveMaxTier::default();
+            for (tier_idx, tier) in config.tiers.iter().enumerate() {
+                if tier_idx > max_tier {
+                    excluded
+                        .tags
+                        .extend(tier.tags_that_transition_to_this_tier.iter().cloned());
+                    excluded.dynamic_type_keys.extend(
+                        tier.dynamic_type_keys_that_transition_to_this_tier
+                            .iter()
+                            .cloned(),
+                    );
+                }
+            }
 
-            if !exclude_tags.is_empty() {
-                return Some(exclude_tags);
+            if !excluded.tags.is_empty() || !excluded.dynamic_type_keys.is_empty() {
+                return Some(excluded);
             }
         }
     }
@@ -322,9 +340,11 @@ fn match_label_predicates(
 ///   5. If nothing matched → edge stays included (default)
 fn match_dynamic_edges(
     force_dynamic: &BTreeMap<DynamicTypeKey, DynamicTypeConfig>,
+    exclude_dynamic_type_keys: Option<&BTreeSet<DynamicTypeKey>>,
     _parent_idx: crate::NodeIDX,
     edge: &mut Edge,
     metadata: Option<&EdgeMeta>,
+    dynamic_type_key_to_tier: &Option<BTreeMap<DynamicTypeKey, usize>>,
     indexed_messages: &IndexedMessages,
 ) -> Result<()> {
     if let Some(EdgeMeta::Dynamic {
@@ -334,6 +354,27 @@ fn match_dynamic_edges(
         ..
     }) = metadata
     {
+        // A dynamic edge whose type key transitions above `max_tier` is excluded
+        // outright, mirroring the tagged-edge behavior in `match_tagged`.
+        if let Some(exclude_dynamic_type_keys) = exclude_dynamic_type_keys {
+            if exclude_dynamic_type_keys.contains(type_key) {
+                edge.flags.exclude_with_message(
+                    indexed_messages
+                        .get(BuiltInMessages::EDGE_EXCLUDED_BECAUSE_GREATER_THAN_MAX_TIER_ID),
+                )?;
+                return Ok(());
+            }
+        }
+
+        // Stamp the tier-transition bit from the edge's type key. This is
+        // independent of the include/exclude decisions below (which touch
+        // separate flag bits), so it applies regardless of `force_dynamic`.
+        if let Some(dynamic_type_key_to_tier) = dynamic_type_key_to_tier {
+            if let Some(tier_idx) = dynamic_type_key_to_tier.get(type_key).copied() {
+                edge.flags.set_transitions_to_tier_idx(tier_idx)?;
+            }
+        }
+
         if let Some(type_config) = force_dynamic.get(type_key) {
             if let Some(overrides) = &type_config.overrides {
                 if let Some(edge_override) = overrides.get(edge_name) {
@@ -413,7 +454,7 @@ fn apply_branch_filter(
 
 fn match_tagged(
     force_tagged: &BTreeMap<Tag, Decision>,
-    exclude_tags: &Option<BTreeSet<Tag>>,
+    exclude_tags: Option<&BTreeSet<Tag>>,
     edge: &mut Edge,
     metadata: Option<&EdgeMeta>,
     tag_to_tier: &Option<BTreeMap<Tag, usize>>,

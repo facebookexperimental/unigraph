@@ -36,18 +36,22 @@ impl TraversalConfigTestTrait for TraversalConfig {
             AscendingTier {
                 name: "T1".into(),
                 tags_that_transition_to_this_tier: vec![],
+                dynamic_type_keys_that_transition_to_this_tier: vec![],
             },
             AscendingTier {
                 name: "T2".into(),
                 tags_that_transition_to_this_tier: vec!["RDFD".into()],
+                dynamic_type_keys_that_transition_to_this_tier: vec![],
             },
             AscendingTier {
                 name: "T3".into(),
                 tags_that_transition_to_this_tier: vec!["RD".into()],
+                dynamic_type_keys_that_transition_to_this_tier: vec![],
             },
             AscendingTier {
                 name: "T4".into(),
                 tags_that_transition_to_this_tier: vec!["BL".into()],
+                dynamic_type_keys_that_transition_to_this_tier: vec![],
             },
         ];
         let max_tier = None;
