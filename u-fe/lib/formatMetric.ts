@@ -44,6 +44,10 @@ export default function formatMetric(
   } else if ("Enum" in format) {
     const key = Math.round(value);
     return format.Enum.variants[key] ?? key.toString();
+  } else if ("TimespanStart" in format) {
+    // The bar is rendered by TimespanMetricColumn; text contexts (sorting
+    // tooltips, fallbacks) show the raw numeric value.
+    return formatNumber(value, 0, 2, true);
   } else {
     const _exhaustive: never = format;
     throw new Error(`Unhandled metric format: ${JSON.stringify(_exhaustive)}`);

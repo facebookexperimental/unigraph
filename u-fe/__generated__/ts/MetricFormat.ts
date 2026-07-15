@@ -1,11 +1,12 @@
 /**
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
- * @generated SignedSource<<101833b62a16a760c0fb3d35381a082a>>
+ * @generated SignedSource<<8a79917647d7d17df3d7458740694ecd>>
  */
 
 
 import type { SizeFormatConfig } from './SizeFormatConfig.ts';
+import type { TimespanUnits } from './TimespanUnits.ts';
 
 /**
  * Value that defines how to format metric values (in the UI or CLI output)
@@ -38,6 +39,13 @@ export type MetricFormat =
    * e.g. {0 => "root", 1 => "nested", 3 => "bootload"}
    * Values without a matching label fall back to the raw integer string.
    */
-  { "Enum": { variants: { [key: number]: string } } };
+  { "Enum": { variants: { [key: number]: string } } } |
+  /**
+   * Marks a metric as the START of a timespan (for a tracing/gantt bar).
+   * The paired END value lives in a separate metric named by
+   * `timespan_end_metric_name`. The UI renders a positioned bar spanning
+   * start→end; the CLI and any text context render the raw numeric value.
+   */
+  { "TimespanStart": { timespan_end_metric_name: string | undefined, units: TimespanUnits, ignore_zero: boolean | undefined } };
 
-export type MetricFormatVariants = "Percent" | "Size" | "NumericBoolean" | "NumberWithVariablePrecision" | "Enum";
+export type MetricFormatVariants = "Percent" | "Size" | "NumericBoolean" | "NumberWithVariablePrecision" | "Enum" | "TimespanStart";

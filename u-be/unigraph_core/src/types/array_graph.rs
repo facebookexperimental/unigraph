@@ -58,6 +58,7 @@ use crate::types::array_graph::array_graph_metrics::get_metrics_sums_for_nodes;
 use crate::types::array_graph::array_graph_metrics::get_metrics_sums_tiered_for_nodes;
 use crate::types::array_graph::array_graph_metrics::get_transitive_metric_value;
 pub use crate::types::array_graph::array_graph_metrics::get_transitive_tiered_metric_values;
+use crate::types::array_graph::array_graph_metrics::metric_min_max;
 use crate::types::array_graph::array_graph_metrics::parents_len_configured;
 use crate::types::array_graph::array_graph_state::ArrayGraphState;
 use crate::types::array_graph::array_graph_stats::ArrayGraphStats;
@@ -361,6 +362,13 @@ impl ArrayGraph {
         dominated: bool,
     ) -> Result<f32> {
         get_transitive_metric_value(self, node_idx, metric_name, dominated)
+    }
+
+    /// Min and max of a metric across all nodes (reachable or not). `None`
+    /// when the metric is absent or empty. When `ignore_zero` is set, `0.0`
+    /// values (the default for missing metrics) are excluded.
+    pub fn metric_min_max(&self, metric_name: &str, ignore_zero: bool) -> Option<(f32, f32)> {
+        metric_min_max(self, metric_name, ignore_zero)
     }
 
     pub fn get_transitive_tiered_metric_values(

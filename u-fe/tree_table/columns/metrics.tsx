@@ -1,5 +1,6 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
+import clsx from "clsx";
 import type { NodeIDX } from "../../__generated__/ts/NodeIDX";
 import type { SortOrder } from "../../__generated__/ts/SortOrder";
 import { ARROW_POINTS_FROM_NON_EXISTENT } from "../../ArrowUtils";
@@ -88,21 +89,19 @@ export class MetricColumn implements Column {
     const definition: NumericValueColumnDefinition = {
       t: "numeric_value_column",
       label: columnID,
-      renderer: (row: Readonly<Row>) => {
-        if (this.nativeGraph.isNodeReachable(row.twinArrow.points_to)) {
-          return (
-            <MetricCell
-              value={this.nativeGraph.getNodeMetric(
-                row.twinArrow.points_to,
-                this.metricName,
-              )}
-              format={format}
-            />
-          );
-        } else {
-          return <MissingMetric />;
-        }
-      },
+      // A node's own metric value is intrinsic to the node, so we render it
+      // even when the node is unreachable/excluded (unlike transitive/dominated
+      // views, which sum over reachable descendants and stay `-`).
+      renderer: (row: Readonly<Row>) => (
+        <MetricCell
+          value={this.nativeGraph.getNodeMetric(
+            row.twinArrow.points_to,
+            this.metricName,
+          )}
+          format={format}
+          muted={!this.nativeGraph.isNodeReachable(row.twinArrow.points_to)}
+        />
+      ),
       getNumericValues: (idxs: NodeIDX[]) =>
         this.nativeGraph.getNodeMetricBatched(idxs, this.metricName),
       sortable: this.sortable(),
@@ -1064,6 +1063,119 @@ function EnumBadge({ label }: { label: string }) {
       {label}
     </span>
   );
+}
+
+// ── Timespan metric ─────────────────────────────────────────────
+// A metric marked as a timespan START holds one end of a span; the paired END
+// value lives in another metric. Instead of a number we render a horizontal
+// bar positioned along a timeline shared by every row: the timeline spans
+// min(start) .. max(end) across ALL nodes. Aggregating a timestamp is
+// meaningless, so (like enum) this collapses to a single column. Single-graph
+// only — delta mode never instantiates this column.
+
+export class TimespanMetricColumn implements Column {
+  ctx: ColumnsCtx;
+  twinGraph: TwinGraph;
+  metricName: string;
+
+  constructor(ctx: ColumnsCtx, twinGraph: TwinGraph, metricName: string) {
+    this.ctx = ctx;
+    this.twinGraph = twinGraph;
+    this.metricName = metricName;
+  }
+
+  isEnabled() {
+    return (
+      this.ctx.showMetrics && this.ctx.isVisible(MV.metric(this.metricName))
+    );
+  }
+
+  getID(): string {
+    return this.metricName;
+  }
+
+  sortable() {
+    return sortableForView(this.ctx, MV.metric(this.metricName));
+  }
+
+  definition(): [string, NumericValueColumnDefinition] {
+    const g = this.twinGraph.r;
+    const columnID = this.getID();
+    const startMetric = this.metricName;
+    const startFormat = this.ctx.format(startMetric);
+    const tsConfig = this.ctx.timespanConfig(startMetric);
+    const endMetric = tsConfig?.endMetricName ?? null;
+    const ignoreZero = tsConfig?.ignoreZero ?? false;
+    const endFormat =
+      endMetric != null ? this.ctx.format(endMetric) : undefined;
+
+    // Shared timeline: earliest start .. latest end across ALL nodes.
+    // Memoized in NativeGraph, so this is computed once per column, not per row.
+    const startRange = g.getMetricMinMax(startMetric, ignoreZero);
+    const endRange =
+      endMetric != null ? g.getMetricMinMax(endMetric, ignoreZero) : null;
+    const min = startRange?.min ?? 0;
+    const max = endRange?.max ?? startRange?.max ?? 0;
+    const range = max - min;
+
+    const definition: NumericValueColumnDefinition = {
+      t: "numeric_value_column",
+      label: columnID,
+      // The span is intrinsic to the node, so render the bar even when the
+      // node is unreachable/excluded.
+      renderer: (row: Readonly<Row>) => {
+        const idx = row.twinArrow.points_to;
+        const start = g.getNodeMetric(idx, startMetric);
+        const end = endMetric != null ? g.getNodeMetric(idx, endMetric) : start;
+        const muted = !g.isNodeReachable(idx);
+
+        // With ignore_zero, a node whose start and end are both the default
+        // 0.0 has no real span — render only the timeline ruler, no bar.
+        const hasSpan = !(ignoreZero && start === 0 && end === 0);
+
+        const leftPct = range > 0 ? ((start - min) / range) * 100 : 0;
+        const widthPct = range > 0 ? ((end - start) / range) * 100 : 0;
+        const clampedLeft = Math.max(0, Math.min(100, leftPct));
+        const clampedWidth = Math.max(0, Math.min(100 - clampedLeft, widthPct));
+
+        const tooltip = `${formatMetric(start, startFormat)} → ${formatMetric(
+          end,
+          endFormat,
+        )}`;
+
+        return (
+          <div
+            className="relative w-full h-3"
+            title={hasSpan ? tooltip : undefined}
+          >
+            {/* Timeline edge ticks: left = earliest start, right = latest end. */}
+            <div className="absolute left-0 inset-y-0 w-px bg-border" />
+            <div className="absolute right-0 inset-y-0 w-px bg-border" />
+            {hasSpan && (
+              <div
+                className={clsx(
+                  "absolute top-1/2 -translate-y-1/2 bg-primary rounded-md h-2",
+                  muted && "opacity-40",
+                )}
+                style={{
+                  left: `${clampedLeft}%`,
+                  width: `${clampedWidth}%`,
+                  minWidth: "2px",
+                }}
+              />
+            )}
+          </div>
+        );
+      },
+      // Sort by the span's start value.
+      getNumericValues: (idxs: NodeIDX[]) =>
+        g.getNodeMetricBatched(idxs, startMetric),
+      sortable: this.sortable(),
+      isHidden: false,
+    };
+
+    return [columnID, definition];
+  }
 }
 
 // ── Helpers ────────────────────────────────────────────────────

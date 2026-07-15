@@ -503,15 +503,26 @@ function MetricCard({ metricName }: { metricName: string }) {
   const allTiers = nativeGraph.stats().tier_names;
   const hasTiers = allTiers.length > 0;
 
+  // A timespan metric renders as a single bar in single-graph mode; its
+  // transitive/dominated/tiered aggregations are meaningless, so hide those
+  // toggles and only keep the self (bar visibility) toggle. In delta mode it
+  // falls back to a normal numeric metric, so leave the toggles alone.
+  const fmt = resolver.format(metricName);
+  const isTimespanBar = singleGraph && fmt != null && "TimespanStart" in fmt;
+
   // Only show a toggle when its underlying view is actually available for this
   // metric. Dominated views additionally only make sense for a single graph.
   const selfAvailable = resolver.isAvailable(metricName, "self_view");
-  const transitiveAvailable = resolver.isAvailable(metricName, "transitive");
+  const transitiveAvailable =
+    !isTimespanBar && resolver.isAvailable(metricName, "transitive");
   const dominatedAvailable =
-    singleGraph && resolver.isAvailable(metricName, "dominated");
+    !isTimespanBar &&
+    singleGraph &&
+    resolver.isAvailable(metricName, "dominated");
   const tieredAvailable =
-    hasTiers && resolver.isAvailable(metricName, "tiered");
+    !isTimespanBar && hasTiers && resolver.isAvailable(metricName, "tiered");
   const tieredDominatedAvailable =
+    !isTimespanBar &&
     hasTiers &&
     singleGraph &&
     resolver.isAvailable(metricName, "tiered_dominated");

@@ -411,6 +411,35 @@ pub enum MetricFormat {
         /// Map from integer value to its display label.
         variants: BTreeMap<i64, String>,
     },
+    /// Marks a metric as the START of a timespan (for a tracing/gantt bar).
+    /// The paired END value lives in a separate metric named by
+    /// `timespan_end_metric_name`. The UI renders a positioned bar spanning
+    /// start→end; the CLI and any text context render the raw numeric value.
+    TimespanStart {
+        /// Name of the metric holding the span END value.
+        timespan_end_metric_name: Option<String>,
+        /// How the numeric start/end values should be interpreted.
+        units: TimespanUnits,
+        /// When true, treat `0.0` as "no value" (the default for missing
+        /// metrics): such nodes are excluded from the timeline min/max and
+        /// render no bar, so a metric-less row doesn't show a stray dot.
+        ignore_zero: Option<bool>,
+    },
+}
+
+/// How timespan metric values are interpreted. Only elapsed seconds today;
+/// wall-clock formats (e.g. `UnixTimestamp`) can be added later.
+#[derive(
+    Debug,
+    serde::Serialize,
+    serde::Deserialize,
+    typegen::TypeGen,
+    Clone,
+    Copy,
+    PartialEq
+)]
+pub enum TimespanUnits {
+    ElapsedSeconds,
 }
 
 #[derive(
@@ -509,6 +538,9 @@ impl MetricFormat {
                     .cloned()
                     .unwrap_or_else(|| format!("{key}"))
             }
+            // Timespan rendering (the bar) is UI-only; every text context
+            // (CLI, sorting tooltip) just shows the raw numeric value.
+            MetricFormat::TimespanStart { .. } => format_number(value, 0, 2, true),
         }
     }
 }
@@ -901,5 +933,19 @@ mod format_value_tests {
         // Values without a matching label fall back to the raw integer.
         assert_eq!(format.format_value(2.0), "2");
         assert_eq!(format.format_value(9.0), "9");
+    }
+
+    #[test]
+    fn test_timespan_start_format_value_is_numeric() {
+        let format = MetricFormat::TimespanStart {
+            timespan_end_metric_name: Some("event_end".to_string()),
+            units: TimespanUnits::ElapsedSeconds,
+            ignore_zero: Some(true),
+        };
+
+        // The bar is UI-only; text contexts render the raw number.
+        assert_eq!(format.format_value(0.0), "0");
+        assert_eq!(format.format_value(1.5), "1.5");
+        assert_eq!(format.format_value(1000.0), "1,000");
     }
 }

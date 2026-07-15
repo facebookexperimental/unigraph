@@ -308,7 +308,10 @@ export function TreeTable(props: {
         <div
           style={{ height: `${headerHeight}px` }}
           className={clsx(
-            "sticky top-0 border-b px-4 flex w-full items-center whitespace-nowrap",
+            // `z-10` keeps the sticky header above positioned body content
+            // (e.g. the absolutely-positioned timespan bars) so it stays
+            // visible and clickable while scrolling.
+            "sticky top-0 z-10 border-b px-4 flex w-full items-center whitespace-nowrap",
             SelectedSortOrder != null
               ? "bg-primary text-background"
               : "bg-accent",

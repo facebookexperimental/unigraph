@@ -163,3 +163,17 @@ test("Enum", () => {
   expect(formatMetric(2, format)).toBe("2");
   expect(formatMetric(9, format)).toBe("9");
 });
+
+test("TimespanStart renders raw number (bar is UI-only)", () => {
+  const format: MetricFormat = {
+    TimespanStart: {
+      timespan_end_metric_name: "event_end",
+      units: "ElapsedSeconds",
+      ignore_zero: false,
+    },
+  };
+
+  expect(formatMetric(0, format)).toBe("0");
+  expect(formatMetric(1.5, format)).toBe("1.5");
+  expect(formatMetric(1000, format)).toBe("1,000");
+});

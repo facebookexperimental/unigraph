@@ -24,12 +24,20 @@ export function MissingMetric() {
 export function MetricCell({
   value,
   format,
+  muted,
 }: {
   value: number;
   format?: MetricFormat;
+  // Dim the value when the node is unreachable/excluded from the graph.
+  muted?: boolean;
 }) {
   return (
-    <span className="px-4 text-right tabular-nums w-full whitespace-nowrap">
+    <span
+      className={clsx(
+        "px-4 text-right tabular-nums w-full whitespace-nowrap",
+        muted && "text-muted-foreground",
+      )}
+    >
       {formatMetric(value, format)}
     </span>
   );

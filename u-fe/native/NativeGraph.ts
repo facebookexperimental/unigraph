@@ -12,6 +12,7 @@ import {
   get_graph_node_count,
   get_graph_settings,
   get_graph_traversal_config,
+  get_metric_min_max,
   get_metric_names,
   get_node_flags,
   get_node_metrics,
@@ -91,6 +92,13 @@ export default class NativeGraph {
   private allReachableNodeIDXsCache: NodeIDXVecSet | null = null;
 
   private combinedMetricsCache: CombinedMetricsCache | null = null;
+
+  // Memoized min/max of a metric across ALL nodes, keyed by metric name.
+  // `null` means the metric is absent/empty.
+  private metricMinMaxCache = new Map<
+    string,
+    { min: number; max: number } | null
+  >();
 
   static fromSerialized(
     serialized: ExplorerComponentInputGraphs,
@@ -237,6 +245,27 @@ export default class NativeGraph {
 
   getNodeMetricBatched(nodeIDXs: NodeIDX[], metricName: string): Float32Array {
     return this.metricCaches.getOrInitForPlain(metricName).getForIDXs(nodeIDXs);
+  }
+
+  /// Min and max of a metric across ALL nodes (reachable or not), computed
+  /// once in Rust and memoized here. `null` when the metric is absent/empty.
+  /// When `ignoreZero` is set, `0.0` values (the default for missing metrics)
+  /// are excluded from the range. Memoized per (metric, ignoreZero) so we
+  /// never recompute it per row.
+  getMetricMinMax(
+    metricName: string,
+    ignoreZero: boolean = false,
+  ): { min: number; max: number } | null {
+    const cacheKey = `${metricName} ${ignoreZero}`;
+    const cached = this.metricMinMaxCache.get(cacheKey);
+    if (cached !== undefined) {
+      return cached;
+    }
+    const result = get_metric_min_max(metricName, ignoreZero, this.side);
+    const [min, max] = result;
+    const value = min !== undefined && max !== undefined ? { min, max } : null;
+    this.metricMinMaxCache.set(cacheKey, value);
+    return value;
   }
 
   getParentsCount(nodeIDX: NodeIDX[]): Float32Array {

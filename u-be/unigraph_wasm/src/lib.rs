@@ -255,6 +255,23 @@ pub fn get_node_metrics(
     }
 }
 
+/// Min and max of a metric across ALL nodes (reachable or not), computed in a
+/// single O(N) pass in Rust so we don't marshal every value across the boundary.
+/// Returns `[min, max]`, or an empty vec when the metric is absent/empty.
+#[wasm_bindgen]
+pub fn get_metric_min_max(
+    metric_name: &str,
+    ignore_zero: bool,
+    side: u32,
+) -> Result<Vec<f32>, WasmJSError> {
+    let gs = GlobalGraphState::graph_state().get();
+    let ag = gs.mode.graph(side)?;
+    Ok(match ag.metric_min_max(metric_name, ignore_zero) {
+        Some((min, max)) => vec![min, max],
+        None => vec![],
+    })
+}
+
 #[wasm_bindgen]
 pub fn get_transitive_metrics(
     node_idxs: Vec<u32>,

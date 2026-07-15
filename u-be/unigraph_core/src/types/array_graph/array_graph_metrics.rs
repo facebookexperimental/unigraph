@@ -285,6 +285,22 @@ pub fn get_transitive_metric_value(
     }
 }
 
+/// Min and max of a metric across ALL nodes (reachable or not), in a single
+/// O(N) walk. Used by the UI to position timespan bars on a shared timeline.
+/// When `ignore_zero` is set, `0.0` values (the default for missing metrics)
+/// are excluded so they don't drag the range to zero.
+/// Returns `None` when the metric is absent or has no qualifying values.
+pub fn metric_min_max(ag: &ArrayGraph, metric_name: &str, ignore_zero: bool) -> Option<(f32, f32)> {
+    let values = ag.data.node_metadata.metrics.get(metric_name)?;
+    values
+        .iter()
+        .filter(|&&v| !(ignore_zero && v == 0.0))
+        .fold(None, |acc, &v| match acc {
+            None => Some((v, v)),
+            Some((min, max)) => Some((min.min(v), max.max(v))),
+        })
+}
+
 pub fn get_metrics_sums_for_nodes(
     ag: &ArrayGraph,
     node_idxs: &[NodeIDX],
@@ -502,6 +518,29 @@ mod tests {
     use crate::tests::test_utils::name_to_idx;
     use crate::tests::test_utils::print_forward_edges;
     use crate::tests::test_utils::traversal_config_test_trait::TraversalConfigTestTrait;
+
+    #[test]
+    fn test_metric_min_max() -> Result<()> {
+        // Distinct values, and C is not reachable from A — min/max folds over
+        // ALL nodes regardless of reachability.
+        // D has no event_start metric, so it defaults to 0.0.
+        let json = r#"{
+          "nodes": {
+            "A": { "metrics": { "event_start": 10.0 }, "edges_directed": ["B", "D"] },
+            "B": { "metrics": { "event_start": 5.0 }, "edges_directed": [] },
+            "C": { "metrics": { "event_start": 25.0 }, "edges_directed": [] },
+            "D": { "metrics": { "size": 1.0 }, "edges_directed": [] }
+          }
+        }"#;
+        let ag = crate::MapGraph::from_json(json)?.to_array_graph(&ll::Task::create_new("test"))?;
+
+        // Without ignore_zero, D's default 0.0 drags the min down.
+        assert_eq!(ag.metric_min_max("event_start", false), Some((0.0, 25.0)));
+        // With ignore_zero, the missing-metric 0.0 is excluded.
+        assert_eq!(ag.metric_min_max("event_start", true), Some((5.0, 25.0)));
+        assert_eq!(ag.metric_min_max("missing", false), None);
+        Ok(())
+    }
 
     #[test]
     fn metrics_with_overrides() -> Result<()> {

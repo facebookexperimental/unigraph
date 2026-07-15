@@ -9,6 +9,7 @@ import type { SortOrder } from "../../__generated__/ts/SortOrder";
 import type { TraversalConfig } from "../../__generated__/ts/TraversalConfig";
 import { displayNodeName } from "../../lib/utils";
 import type { MetricFormat } from "../../__generated__/ts/MetricFormat";
+import type { TimespanUnits } from "../../__generated__/ts/TimespanUnits";
 import { useGraphSettings } from "../../context/GraphSettingsContext";
 import { useMetricViewState } from "../../context/MetricViewStateContext";
 import { useTwinGraph } from "../../context/NativeGraphContext";
@@ -38,6 +39,7 @@ import {
   MetricDeltaViewColumn,
   MetricRightInDeltaViewColumn,
   TieredDominatedMetricColumn,
+  TimespanMetricColumn,
   TransitiveMetricColumn,
   TransitiveMetricDeltaColumn,
   TransitiveMetricRightInDeltaViewColumn,
@@ -193,6 +195,30 @@ export class ColumnsCtx {
     return fmt != null && "Enum" in fmt;
   }
 
+  /// A "timespan" metric holds the START value of a span and references the
+  /// metric holding the END value. It renders as a single positioned bar, so
+  /// (like enum) it skips transitive/dominated/tiered aggregation columns.
+  isTimespan(metricName: string): boolean {
+    const fmt = this.format(metricName);
+    return fmt != null && "TimespanStart" in fmt;
+  }
+
+  timespanConfig(metricName: string): {
+    endMetricName: string | null;
+    units: TimespanUnits;
+    ignoreZero: boolean;
+  } | null {
+    const fmt = this.format(metricName);
+    if (fmt == null || !("TimespanStart" in fmt)) {
+      return null;
+    }
+    return {
+      endMetricName: fmt.TimespanStart.timespan_end_metric_name ?? null,
+      units: fmt.TimespanStart.units,
+      ignoreZero: fmt.TimespanStart.ignore_zero ?? false,
+    };
+  }
+
   sort(): GraphTableSort | null {
     return this.graphSettings.ui_settings?.columns?.graph_table_sort ?? null;
   }
@@ -250,6 +276,13 @@ export class SingleGraphColumnsBuilder {
     ];
 
     for (const metric of g.metricNames) {
+      // Timespan metrics render as a single bar (no aggregation columns).
+      // Only in single-graph mode — delta falls back to numeric columns.
+      if (ctx.isTimespan(metric)) {
+        columns.push(new TimespanMetricColumn(ctx, this.twinGraph, metric));
+        continue;
+      }
+
       if (ctx.isEnum(metric)) {
         columns.push(new EnumMetricColumn(ctx, this.twinGraph, metric));
         continue;
