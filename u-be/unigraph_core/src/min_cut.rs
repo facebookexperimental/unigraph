@@ -36,6 +36,8 @@
 //! hop" import edges pointing into the feature, which are the edges you'd
 //! actually delete.
 
+use std::collections::BTreeSet;
+
 use crate::NodeIDX;
 use crate::types::array_graph::ArrayGraph;
 use crate::types::array_graph::offset_graph::edge_flags::EdgeFlags;
@@ -51,14 +53,28 @@ pub struct MinCut {
     /// to delete the module itself. When set, `cut_edges` reflects only the
     /// cuttable sinks.
     pub has_uncuttable_sink: bool,
+    /// `true` when the sinks are reachable from the sources *only* through
+    /// protected edges, so no cut avoiding them exists. When set, `cut_edges`
+    /// is empty — the protection is too strict to sever the feature.
+    pub blocked_by_protected: bool,
 }
 
-/// Compute the minimum edge cut separating `sinks` from `sources`.
+/// Compute the minimum edge cut separating `sinks` from `sources`, never cutting
+/// any edge in `protected`.
 ///
 /// Operates purely in `NodeIDX` space. Callers resolve names to indices and
 /// pass the graph's entry points as `sources`. Only configured (non-excluded)
 /// edges are considered, matching the active traversal.
-pub fn min_cut(graph: &ArrayGraph, sources: &[NodeIDX], sinks: &[NodeIDX]) -> MinCut {
+///
+/// Protected edges are made uncuttable (infinite capacity), so the result is the
+/// smallest cut that avoids all of them — always the same size or larger than
+/// the unconstrained cut, never smaller. Pass an empty set for no protection.
+pub fn min_cut(
+    graph: &ArrayGraph,
+    sources: &[NodeIDX],
+    sinks: &[NodeIDX],
+    protected: &BTreeSet<(NodeIDX, NodeIDX)>,
+) -> MinCut {
     let uncuttable = sinks.iter().any(|s| sources.contains(s));
     let cuttable_sinks: Vec<NodeIDX> = sinks
         .iter()
@@ -70,16 +86,29 @@ pub fn min_cut(graph: &ArrayGraph, sources: &[NodeIDX], sinks: &[NodeIDX]) -> Mi
         return MinCut {
             cut_edges: Vec::new(),
             has_uncuttable_sink: uncuttable,
+            blocked_by_protected: false,
         };
     }
 
-    let mut network = FlowNetwork::build(graph, sources, &cuttable_sinks);
+    let mut network = FlowNetwork::build(graph, sources, &cuttable_sinks, protected);
+
+    // If sinks are reachable from sources through infinite-capacity edges alone,
+    // every cut must include a protected edge — there is no valid cut.
+    if network.sinks_reachable_via_protected() {
+        return MinCut {
+            cut_edges: Vec::new(),
+            has_uncuttable_sink: uncuttable,
+            blocked_by_protected: true,
+        };
+    }
+
     network.max_flow();
     let cut_edges = network.extract_cut_nearest_sinks();
 
     MinCut {
         cut_edges,
         has_uncuttable_sink: uncuttable,
+        blocked_by_protected: false,
     }
 }
 
@@ -109,7 +138,12 @@ struct FlowNetwork {
 }
 
 impl FlowNetwork {
-    fn build(graph: &ArrayGraph, sources: &[NodeIDX], sinks: &[NodeIDX]) -> Self {
+    fn build(
+        graph: &ArrayGraph,
+        sources: &[NodeIDX],
+        sinks: &[NodeIDX],
+        protected: &BTreeSet<(NodeIDX, NodeIDX)>,
+    ) -> Self {
         let node_count = graph.nodes_len();
         let source = node_count;
         let sink = node_count + 1;
@@ -132,14 +166,16 @@ impl FlowNetwork {
         for &sink_node in sinks {
             net.add_edge(usize::from(sink_node), sink, INF);
         }
-        net.add_graph_edges(graph);
+        net.add_graph_edges(graph, protected);
         net
     }
 
-    /// Add every configured (non-excluded) graph edge with unit capacity.
-    /// Unreachable source nodes carry no flow (flow only enters at entry
-    /// points and follows configured edges), so we skip them for memory.
-    fn add_graph_edges(&mut self, graph: &ArrayGraph) {
+    /// Add every configured (non-excluded) graph edge. Cuttable edges get unit
+    /// capacity; protected edges get infinite capacity so the cut never picks
+    /// them (and are excluded from `real_edges` since they can't be reported).
+    /// Unreachable source nodes carry no flow (flow only enters at entry points
+    /// and follows configured edges), so we skip them for memory.
+    fn add_graph_edges(&mut self, graph: &ArrayGraph, protected: &BTreeSet<(NodeIDX, NodeIDX)>) {
         for from in graph.node_idx_iter() {
             if graph.is_node_unreachable(from) {
                 continue;
@@ -148,10 +184,35 @@ impl FlowNetwork {
                 if flags.contains(EdgeFlags::EXCLUDED) {
                     continue;
                 }
-                self.real_edges.push((from, to));
-                self.add_edge(usize::from(from), usize::from(to), 1);
+                if protected.contains(&(from, to)) {
+                    self.add_edge(usize::from(from), usize::from(to), INF);
+                } else {
+                    self.real_edges.push((from, to));
+                    self.add_edge(usize::from(from), usize::from(to), 1);
+                }
             }
         }
+    }
+
+    /// BFS from the source over infinite-capacity edges only. If it reaches the
+    /// sink, the feature hangs off the sources purely through protected (and
+    /// artificial) edges, so no cut can avoid the protected set. Run before
+    /// `max_flow`, while capacities are pristine.
+    fn sinks_reachable_via_protected(&self) -> bool {
+        let mut visited = vec![false; self.adjacency.len()];
+        let mut queue = std::collections::VecDeque::new();
+        visited[self.source] = true;
+        queue.push_back(self.source);
+        while let Some(node) = queue.pop_front() {
+            for &edge in &self.adjacency[node] {
+                let next = self.edge_to[edge as usize] as usize;
+                if self.edge_cap[edge as usize] >= INF && !visited[next] {
+                    visited[next] = true;
+                    queue.push_back(next);
+                }
+            }
+        }
+        visited[self.sink]
     }
 
     fn add_edge(&mut self, from: usize, to: usize, cap: i64) {
@@ -305,8 +366,13 @@ mod tests {
     use crate::GraphBuilder;
 
     /// Build a graph, run a min cut, and format the result as one line per case:
-    /// `<sources> ⇢ <sinks> => [<cut edges>] (uncuttable=<bool>)`.
-    fn run_case(edges: &[(&str, &str)], sources: &[&str], sinks: &[&str]) -> Result<String> {
+    /// `<sources> ⇢ <sinks> [!<protected>] => [<cut edges>] (uncuttable, blocked)`.
+    fn run_case(
+        edges: &[(&str, &str)],
+        sources: &[&str],
+        sinks: &[&str],
+        protected: &[(&str, &str)],
+    ) -> Result<String> {
         let mut builder = GraphBuilder::new();
         for &(from, to) in edges {
             builder.add_edge(from, to)?;
@@ -318,71 +384,88 @@ mod tests {
         let idx = |name: &str| graph.data.node_names_ordered.name_to_idx_log(name).unwrap();
         let source_idxs: Vec<NodeIDX> = sources.iter().map(|n| idx(n)).collect();
         let sink_idxs: Vec<NodeIDX> = sinks.iter().map(|n| idx(n)).collect();
+        let protected_set: BTreeSet<(NodeIDX, NodeIDX)> =
+            protected.iter().map(|&(f, t)| (idx(f), idx(t))).collect();
 
-        let result = min_cut(&graph, &source_idxs, &sink_idxs);
+        let result = min_cut(&graph, &source_idxs, &sink_idxs, &protected_set);
         let cut: Vec<String> = result
             .cut_edges
             .iter()
             .map(|&(from, to)| format!("{}->{}", graph.idx_to_name(from), graph.idx_to_name(to)))
             .collect();
 
+        let protect_note = if protected.is_empty() {
+            String::new()
+        } else {
+            let list: Vec<String> = protected
+                .iter()
+                .map(|&(f, t)| format!("{f}->{t}"))
+                .collect();
+            format!(" !{{{}}}", list.join(","))
+        };
+
         Ok(format!(
-            "{} ⇢ {} => [{}] (uncuttable={})",
+            "{} ⇢ {}{} => [{}] (uncuttable={}, blocked={})",
             sources.join(","),
             sinks.join(","),
+            protect_note,
             cut.join(", "),
             result.has_uncuttable_sink,
+            result.blocked_by_protected,
         ))
     }
 
     #[test]
     fn min_cut_cases() -> Result<()> {
-        let mut out = Vec::new();
-
-        // Redundant diamond: feat reachable via m1 and m2. The min cut nearest
-        // the sink severs both incoming edges of feat.
-        out.push(run_case(
-            &[
-                ("root", "m1"),
-                ("root", "m2"),
-                ("m1", "feat"),
-                ("m2", "feat"),
-                ("feat", "leaf"),
-            ],
-            &["root"],
-            &["feat"],
-        )?);
-
-        // Single bottleneck: the whole feature hangs off one edge, so one cut
-        // suffices even though two feature nodes are reached.
-        out.push(run_case(
-            &[("root", "gate"), ("gate", "fa"), ("gate", "fb")],
-            &["root"],
-            &["fa", "fb"],
-        )?);
-
-        // A sink that is itself a source cannot be cut off — flagged, not cut.
-        out.push(run_case(
-            &[("root", "a"), ("a", "b")],
-            &["root"],
-            &["root"],
-        )?);
-
-        // A sink already unreachable from the sources needs no cut.
-        out.push(run_case(
-            &[("root", "a"), ("other", "orphan")],
-            &["root"],
-            &["orphan"],
-        )?);
+        let diamond = &[
+            ("root", "m1"),
+            ("root", "m2"),
+            ("m1", "feat"),
+            ("m2", "feat"),
+            ("feat", "leaf"),
+        ];
+        let bottleneck = &[("root", "gate"), ("gate", "fa"), ("gate", "fb")];
+        let out = [
+            // Redundant diamond: feat reachable via m1 and m2. The min cut
+            // nearest the sink severs both incoming edges of feat.
+            run_case(diamond, &["root"], &["feat"], &[])?,
+            // Protecting one incoming edge forces an equally small cut that
+            // routes around it (root->m1 instead of the protected m1->feat).
+            run_case(diamond, &["root"], &["feat"], &[("m1", "feat")])?,
+            // Single bottleneck: the whole feature hangs off one edge, so one
+            // cut suffices even though two feature nodes are reached.
+            run_case(bottleneck, &["root"], &["fa", "fb"], &[])?,
+            // Protecting the bottleneck pushes the cut down to the edges below.
+            run_case(bottleneck, &["root"], &["fa", "fb"], &[("root", "gate")])?,
+            // Protecting the only path to the feature makes the cut impossible.
+            run_case(
+                &[("root", "feat")],
+                &["root"],
+                &["feat"],
+                &[("root", "feat")],
+            )?,
+            // A sink that is itself a source cannot be cut off — flagged, not cut.
+            run_case(&[("root", "a"), ("a", "b")], &["root"], &["root"], &[])?,
+            // A sink already unreachable from the sources needs no cut.
+            run_case(
+                &[("root", "a"), ("other", "orphan")],
+                &["root"],
+                &["orphan"],
+                &[],
+            )?,
+        ];
 
         let table = out.join("\n");
         assert_eq!(
             table,
             "\
-root ⇢ feat => [m1->feat, m2->feat] (uncuttable=false)
-root ⇢ fa,fb => [root->gate] (uncuttable=false)
-root ⇢ root => [] (uncuttable=true)
-root ⇢ orphan => [] (uncuttable=false)"
+root ⇢ feat => [m1->feat, m2->feat] (uncuttable=false, blocked=false)
+root ⇢ feat !{m1->feat} => [m2->feat, root->m1] (uncuttable=false, blocked=false)
+root ⇢ fa,fb => [root->gate] (uncuttable=false, blocked=false)
+root ⇢ fa,fb !{root->gate} => [gate->fa, gate->fb] (uncuttable=false, blocked=false)
+root ⇢ feat !{root->feat} => [] (uncuttable=false, blocked=true)
+root ⇢ root => [] (uncuttable=true, blocked=false)
+root ⇢ orphan => [] (uncuttable=false, blocked=false)"
         );
         Ok(())
     }
@@ -404,7 +487,12 @@ root ⇢ orphan => [] (uncuttable=false)"
             .to_array_graph(&ll::Task::create_new("test"))?;
 
         let idx = |n: &str| graph.data.node_names_ordered.name_to_idx_log(n).unwrap();
-        let result = min_cut(&graph, &[idx(&name(0))], &[idx(&name(DEPTH))]);
+        let result = min_cut(
+            &graph,
+            &[idx(&name(0))],
+            &[idx(&name(DEPTH))],
+            &BTreeSet::new(),
+        );
 
         let cut: Vec<(String, String)> = result
             .cut_edges
