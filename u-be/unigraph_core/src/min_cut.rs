@@ -59,6 +59,37 @@ pub struct MinCut {
     pub blocked_by_protected: bool,
 }
 
+/// A single edge in a [`MinCutResult`], as node indices in the UI namespace.
+#[derive(serde::Serialize, typegen::TypeGen)]
+pub struct MinCutEdge {
+    pub from: NodeIDX,
+    pub to: NodeIDX,
+}
+
+/// Serialization-friendly form of [`MinCut`] for transport across the WASM
+/// boundary. Tuples don't survive TypeGen cleanly, so `cut_edges` uses a named
+/// [`MinCutEdge`] struct instead of `(NodeIDX, NodeIDX)`.
+#[derive(serde::Serialize, typegen::TypeGen)]
+pub struct MinCutResult {
+    pub cut_edges: Vec<MinCutEdge>,
+    pub has_uncuttable_sink: bool,
+    pub blocked_by_protected: bool,
+}
+
+impl From<MinCut> for MinCutResult {
+    fn from(cut: MinCut) -> Self {
+        MinCutResult {
+            cut_edges: cut
+                .cut_edges
+                .into_iter()
+                .map(|(from, to)| MinCutEdge { from, to })
+                .collect(),
+            has_uncuttable_sink: cut.has_uncuttable_sink,
+            blocked_by_protected: cut.blocked_by_protected,
+        }
+    }
+}
+
 /// Compute the minimum edge cut separating `sinks` from `sources`, never cutting
 /// any edge in `protected`.
 ///

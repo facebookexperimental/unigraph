@@ -7,7 +7,13 @@ import {
   useSuspenseQuery,
 } from "@tanstack/react-query";
 import { GraphLoadingAnimation } from "./components/GraphLoadingAnimation";
-import { Bug, Info, SlidersHorizontal, Waypoints } from "lucide-react";
+import {
+  Bug,
+  Info,
+  Scissors,
+  SlidersHorizontal,
+  Waypoints,
+} from "lucide-react";
 import {
   apply_gqc_delta,
   derive_gqc_delta,
@@ -63,6 +69,7 @@ export type BuiltinSidebarPanel =
   | "Simulation"
   | "GraphInfo"
   | "TraversalConfigEditor"
+  | "MinCut"
   | "DebugPanel";
 
 export interface PanelTabPlugin {
@@ -154,6 +161,7 @@ import Sidebar from "./Sidebar";
 import Simulation from "./Simulation";
 import GraphInfoPanel from "./sidebar_panels/GraphInfoPanel";
 import DebugPanel from "./sidebar_panels/DebugPanel";
+import MinCutPanel from "./sidebar_panels/MinCutPanel";
 import TraversalConfigEditorPanel from "./sidebar_panels/TraversalConfigEditorPanel";
 import GraphTreeTable from "./tree_table/GraphTreeTable";
 import type { NodeIDX } from "./types";
@@ -285,6 +293,12 @@ function ExplorerImpl(props: {
         render: () => <TraversalConfigEditorPanel />,
       },
       {
+        id: "MinCut",
+        icon: <Scissors />,
+        tooltip: "Min Cut",
+        render: () => <MinCutPanel />,
+      },
+      {
         id: "DebugPanel",
         icon: <Bug />,
         tooltip: "Debug",
@@ -296,11 +310,16 @@ function ExplorerImpl(props: {
 
   const resolvedPanels = useMemo(() => {
     const hiddenSet = new Set(hidden_panels ?? []);
+    // Min cut operates on a single index space, so it's meaningless when
+    // comparing two graphs — hide it whenever a left graph is present.
+    const isCompareMode = left.nativeGraph != null;
     const builtins = BUILTIN_PANELS.filter(
-      (p) => !hiddenSet.has(p.id as BuiltinSidebarPanel),
+      (p) =>
+        !hiddenSet.has(p.id as BuiltinSidebarPanel) &&
+        !(isCompareMode && p.id === "MinCut"),
     );
     return [...builtins, ...(customPanels ?? [])];
-  }, [BUILTIN_PANELS, customPanels, hidden_panels]);
+  }, [BUILTIN_PANELS, customPanels, hidden_panels, left.nativeGraph]);
 
   return (
     <div className="h-screen flex flex-col unigraph-explorer bg-background">

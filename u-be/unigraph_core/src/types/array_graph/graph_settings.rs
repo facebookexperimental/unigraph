@@ -674,6 +674,7 @@ pub enum SidebarPanel {
     Simulation,
     GraphInfo,
     TraversalConfigEditor,
+    MinCut,
     DebugPanel,
 }
 

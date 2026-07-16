@@ -62,6 +62,8 @@ pub use crate::identifiers::Timestamp;
 pub use crate::map_graph_builder::GraphBuilder;
 pub use crate::metric_view::MetricView;
 pub use crate::min_cut::MinCut;
+pub use crate::min_cut::MinCutEdge;
+pub use crate::min_cut::MinCutResult;
 pub use crate::min_cut::min_cut;
 pub use crate::test_graph::make_test_graph;
 pub use crate::traversal::Decision;

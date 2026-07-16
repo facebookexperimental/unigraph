@@ -21,6 +21,7 @@ import {
   get_transitive_count_dominated,
   get_transitive_metrics,
   get_transitive_tiered_metrics,
+  min_cut,
   node_idx_to_name,
   node_name_to_idx_log,
   set_graph_settings,
@@ -29,6 +30,7 @@ import {
 } from "../../.build/wasm/unigraph_wasm";
 import type { ArrayGraphStats } from "../__generated__/ts/ArrayGraphStats";
 import type { CombinedMetricsForNodes } from "../__generated__/ts/CombinedMetricsForNodes";
+import type { MinCutResult } from "../__generated__/ts/MinCutResult";
 import type { ExplorerComponentInputGraphs } from "../Explorer";
 import type { GraphSettings } from "../__generated__/ts/GraphSettings";
 import type { TraversalConfig } from "../__generated__/ts/TraversalConfig";
@@ -189,6 +191,14 @@ export default class NativeGraph {
   // pretty slow for very large lookups
   getNodeIDXByNameLog(name: string): NodeIDX | null {
     return node_name_to_idx_log(name) ?? null;
+  }
+
+  /// Minimum set of dependency edges to remove so that `sinkIDXs` become
+  /// unreachable from the graph's entry points. Sources (entry points) are
+  /// derived in Rust. Only valid for a single graph — the panel is hidden in
+  /// comparison mode, so this is never called with a twin graph.
+  minCut(sinkIDXs: NodeIDX[]): MinCutResult {
+    return JSON.parse(min_cut(new Uint32Array(sinkIDXs))) as MinCutResult;
   }
 
   determineEntrypoints(): NodeIDXVecSet {

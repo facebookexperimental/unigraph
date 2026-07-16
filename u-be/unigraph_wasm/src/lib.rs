@@ -16,6 +16,7 @@ use unigraph_core::ArrayGraphSerializablePackageBase64;
 use unigraph_core::EdgeOverrides;
 use unigraph_core::GraphQueryConfig;
 use unigraph_core::MapGraph;
+use unigraph_core::MinCutResult;
 use unigraph_core::TraversalConfig;
 use unigraph_core::TraversalType;
 use unigraph_core::TwinGraph;
@@ -462,6 +463,27 @@ pub fn get_shortest_path(
         Some(p) if !p.is_empty() => Ok(Some(p.into_iter().map(|idx| idx.0).collect())),
         _ => Ok(None),
     }
+}
+
+/// Minimum edge cut separating `sinks` from the graph's entry points. Only
+/// available for a single graph — comparison (twin) mode has no single index
+/// space to cut over and the UI hides the panel there. Entry points are derived
+/// from the graph itself; the caller only supplies the nodes to cut off.
+/// Returns a JSON-serialized [`MinCutResult`].
+#[wasm_bindgen]
+pub fn min_cut(sinks: &[u32]) -> Result<String, WasmJSError> {
+    let gs = GlobalGraphState::graph_state().get();
+    let ag = match &gs.mode {
+        GraphMode::Single(ag) => ag,
+        GraphMode::Twin(_) => {
+            return Err(anyhow::anyhow!("min_cut is not supported in comparison mode").into());
+        }
+    };
+    let sources = ag.determine_entrypoints();
+    let sinks: Vec<NodeIDX> = sinks.iter().map(|&idx| NodeIDX::from(idx)).collect();
+    let result = unigraph_core::min_cut(ag, &sources, &sinks, &std::collections::BTreeSet::new());
+    Ok(serde_json::to_string(&MinCutResult::from(result))
+        .context("Failed to serialize min cut result")?)
 }
 
 #[wasm_bindgen]

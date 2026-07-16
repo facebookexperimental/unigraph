@@ -715,7 +715,14 @@ function TieredTraversalEditor({ tvc, setTvc }: TvcEditorProps) {
     if (name === "") return;
     updateTiered({
       AscendingTiers: {
-        tiers: [...tiers, { name, tags_that_transition_to_this_tier: [] }],
+        tiers: [
+          ...tiers,
+          {
+            name,
+            tags_that_transition_to_this_tier: [],
+            dynamic_type_keys_that_transition_to_this_tier: [],
+          },
+        ],
         max_tier: maxTier,
       },
     });

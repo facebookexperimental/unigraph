@@ -1,10 +1,23 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 import { Separator } from "../components/ui/separator";
+import { cn } from "../lib/utils";
 import { H1 } from "../Typography";
 
-export function SidebarPanel({ children }: { children?: React.ReactNode }) {
+export function SidebarPanel({
+  children,
+  width,
+}: {
+  children?: React.ReactNode;
+  /** Tailwind width class (e.g. `w-[800px]`). Defaults to `w-[400px]`. */
+  width?: string;
+}) {
   return (
-    <div className="flex flex-col h-full w-[400px] bg-sidebar border-r overflow-y-auto p-4">
+    <div
+      className={cn(
+        "flex flex-col h-full bg-sidebar border-r overflow-y-auto p-4",
+        width ?? "w-[400px]",
+      )}
+    >
       {children}
     </div>
   );
