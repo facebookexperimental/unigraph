@@ -469,9 +469,18 @@ pub fn get_shortest_path(
 /// available for a single graph — comparison (twin) mode has no single index
 /// space to cut over and the UI hides the panel there. Entry points are derived
 /// from the graph itself; the caller only supplies the nodes to cut off.
+///
+/// `protected_from`/`protected_to` are parallel arrays of edges that must never
+/// be cut (made uncuttable), so the algorithm finds an alternative cut that
+/// routes around them. The two arrays must be the same length.
+///
 /// Returns a JSON-serialized [`MinCutResult`].
 #[wasm_bindgen]
-pub fn min_cut(sinks: &[u32]) -> Result<String, WasmJSError> {
+pub fn min_cut(
+    sinks: &[u32],
+    protected_from: &[u32],
+    protected_to: &[u32],
+) -> Result<String, WasmJSError> {
     let gs = GlobalGraphState::graph_state().get();
     let ag = match &gs.mode {
         GraphMode::Single(ag) => ag,
@@ -481,7 +490,12 @@ pub fn min_cut(sinks: &[u32]) -> Result<String, WasmJSError> {
     };
     let sources = ag.determine_entrypoints();
     let sinks: Vec<NodeIDX> = sinks.iter().map(|&idx| NodeIDX::from(idx)).collect();
-    let result = unigraph_core::min_cut(ag, &sources, &sinks, &std::collections::BTreeSet::new());
+    let protected: std::collections::BTreeSet<(NodeIDX, NodeIDX)> = protected_from
+        .iter()
+        .zip(protected_to.iter())
+        .map(|(&from, &to)| (NodeIDX::from(from), NodeIDX::from(to)))
+        .collect();
+    let result = unigraph_core::min_cut(ag, &sources, &sinks, &protected);
     Ok(serde_json::to_string(&MinCutResult::from(result))
         .context("Failed to serialize min cut result")?)
 }

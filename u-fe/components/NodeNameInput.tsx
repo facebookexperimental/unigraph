@@ -29,6 +29,9 @@ interface NodeNameInputProps {
   onSelect?: (nodeName: string) => void;
   placeholder?: string;
   className?: string;
+  /** Open the suggestion dropdown above the input instead of below. Use when
+   * the input sits near the bottom of its container. */
+  openUpward?: boolean;
 }
 
 export default function NodeNameInput({
@@ -37,6 +40,7 @@ export default function NodeNameInput({
   onSelect,
   placeholder = "Node name",
   className,
+  openUpward = false,
 }: NodeNameInputProps) {
   const twinGraph = useTwinGraph();
   const [isOpen, setIsOpen] = useState(false);
@@ -96,7 +100,12 @@ export default function NodeNameInput({
           )}
         />
         {isOpen && value.length > 0 && results.length > 0 && (
-          <CommandList className="absolute top-full mt-1 border bg-card z-10 min-w-full w-max max-w-[500px] rounded-md shadow-md">
+          <CommandList
+            className={cn(
+              "absolute border bg-card z-10 min-w-full w-max max-w-[500px] rounded-md shadow-md",
+              openUpward ? "bottom-full mb-1" : "top-full mt-1",
+            )}
+          >
             <CommandGroup>
               {results.map((name) => (
                 <CommandItem

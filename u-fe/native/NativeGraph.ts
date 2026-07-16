@@ -195,10 +195,18 @@ export default class NativeGraph {
 
   /// Minimum set of dependency edges to remove so that `sinkIDXs` become
   /// unreachable from the graph's entry points. Sources (entry points) are
-  /// derived in Rust. Only valid for a single graph — the panel is hidden in
-  /// comparison mode, so this is never called with a twin graph.
-  minCut(sinkIDXs: NodeIDX[]): MinCutResult {
-    return JSON.parse(min_cut(new Uint32Array(sinkIDXs))) as MinCutResult;
+  /// derived in Rust. `protectedEdges` are edges that must never be cut, so the
+  /// algorithm routes around them. Only valid for a single graph — the panel is
+  /// hidden in comparison mode, so this is never called with a twin graph.
+  minCut(
+    sinkIDXs: NodeIDX[],
+    protectedEdges: { from: NodeIDX; to: NodeIDX }[] = [],
+  ): MinCutResult {
+    const protectedFrom = new Uint32Array(protectedEdges.map((e) => e.from));
+    const protectedTo = new Uint32Array(protectedEdges.map((e) => e.to));
+    return JSON.parse(
+      min_cut(new Uint32Array(sinkIDXs), protectedFrom, protectedTo),
+    ) as MinCutResult;
   }
 
   determineEntrypoints(): NodeIDXVecSet {

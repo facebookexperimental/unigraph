@@ -139,6 +139,7 @@ import {
 import { useGlobalKeyboardShortcuts } from "./context/GlobalKeyboardShortcutsContext";
 import { useGraphSettings } from "./context/GraphSettingsContext";
 import { MetricViewStateProvider } from "./context/MetricViewStateContext";
+import { MinCutContextProvider } from "./context/MinCutContext";
 import {
   SearchParamsProvider,
   useSearchParamsContext,
@@ -341,11 +342,13 @@ function ExplorerImpl(props: {
                     <SelectedNodesContextProvider>
                       <MetricViewStateProvider nativeGraph={right.nativeGraph!}>
                         <SelectedPathContextProvider syncToURL={true}>
-                          <Page
-                            homeHref={home_href}
-                            panels={resolvedPanels}
-                            source={source}
-                          />
+                          <MinCutContextProvider>
+                            <Page
+                              homeHref={home_href}
+                              panels={resolvedPanels}
+                              source={source}
+                            />
+                          </MinCutContextProvider>
                         </SelectedPathContextProvider>
                       </MetricViewStateProvider>
                     </SelectedNodesContextProvider>

@@ -11,6 +11,9 @@ import {
   KEYBOARD_SHORTCUTS,
   KeyboardShortcutLabel,
 } from "../context/GlobalKeyboardShortcutsContext";
+import { useGraphSettings } from "../context/GraphSettingsContext";
+import { useMinCut } from "../context/MinCutContext";
+import { useNativeGraphR } from "../context/NativeGraphContext";
 import { useSelectedPath } from "../context/SelectedPathContext";
 import {
   useFlipForceEdgeL,
@@ -47,7 +50,33 @@ function Content({ row }: { row: Readonly<Row> }) {
     >
       <ForceEdgeItem arrow={arrow} row={row} />
       <ExcludeNodeItem arrow={arrow} row={row} />
+      <MinCutItem arrow={arrow} />
     </DropdownMenuContent>
+  );
+}
+
+function MinCutItem({ arrow }: { arrow: Arrow }) {
+  const { addSink } = useMinCut();
+  const nativeGraph = useNativeGraphR();
+  const [graphSettings, setGraphSettings] = useGraphSettings();
+
+  return (
+    <DropdownMenuItem
+      className="cursor-pointer"
+      onSelect={() => {
+        const idx = arrow.points_to;
+        addSink({ idx, name: nativeGraph.getNodeName(idx) });
+        setGraphSettings({
+          ...graphSettings,
+          ui_settings: {
+            ...graphSettings.ui_settings,
+            selected_sidebar_panel: "MinCut",
+          },
+        });
+      }}
+    >
+      Min Cut
+    </DropdownMenuItem>
   );
 }
 
