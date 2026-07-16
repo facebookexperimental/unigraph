@@ -26,7 +26,7 @@ typegen = { version = "0.1.1-alpha.0", path = "../typegen" }
 unigraph_delta = { version = "0.1.1-alpha.0", path = "../unigraph_delta" }
 unigraph_serialization = { version = "0.1.1-alpha.0", path = "../unigraph_serialization" }
 unigraph_timestamp = { version = "0.1.1-alpha.0", path = "../unigraph_timestamp" }
-xxhash-rust = { version = "0.8.16", features = ["xxh3", "xxh64"] }
+xxhash-rust = { version = "0.8.17", features = ["xxh3", "xxh64"] }
 
 [dev-dependencies]
 k9 = { version = "0.12.0", features = ["custom_comparison_formatters", "regex"] }
