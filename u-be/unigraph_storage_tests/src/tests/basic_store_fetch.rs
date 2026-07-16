@@ -488,7 +488,7 @@ graphs/test/1/traversal_config_9535545603450022154
     // Sweep with Duration::ZERO — should sweep everything
     let swept = db
         .blob_storage
-        .sweep(std::time::Duration::ZERO, &task)
+        .sweep(std::time::Duration::ZERO, None, &task)
         .await?;
     assert_eq!(swept, 12);
 
@@ -502,7 +502,7 @@ graphs/test/1/traversal_config_9535545603450022154
     // Sweeping again is a no-op
     let swept_again = db
         .blob_storage
-        .sweep(std::time::Duration::ZERO, &task)
+        .sweep(std::time::Duration::ZERO, None, &task)
         .await?;
     assert_eq!(swept_again, 0);
 
@@ -542,13 +542,111 @@ async fn sweep_respects_min_age() -> Result<()> {
     // Sweep with a large min_age (1 hour) — nothing should be old enough
     let swept = db
         .blob_storage
-        .sweep(std::time::Duration::from_secs(3600), &task)
+        .sweep(std::time::Duration::from_secs(3600), None, &task)
         .await?;
     assert_eq!(swept, 0);
 
     // Pending cleanup still has entries
     let pending = db.blob_storage.get_pending_cleanup(&task).await?;
     assert!(!pending.is_empty());
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn sweep_respects_limit() -> Result<()> {
+    let sqlite = Arc::new(SqliteStorage::new_in_memory().unwrap());
+    let db = UnigraphDb::new(sqlite.clone(), sqlite.clone());
+    let task = ll::Task::create_new("test");
+
+    // External blob storage so every blob lands in the cleanup queue on delete.
+    db.timelines
+        .create(
+            &TimelineID("test".to_string()),
+            &TimelineConfig {
+                schema: TimelineSchema::AdjacentDeltas(AdjacentDeltasConfig {}),
+                external_id_namespace: None,
+                blob_storage: BlobStorageMode::External,
+                store_metric_history: None,
+            },
+            &task,
+        )
+        .await
+        .unwrap();
+
+    let graph = TestGraphTimeline::get_nth(1);
+    let key = make_graph_time_key("test", 1, 1000);
+    let timeline_id = TimelineID("test".to_string());
+
+    // Store + delete one frame: registers its 12 external blobs for cleanup.
+    // (The delete's own piggybacked sweep uses a 2h min_age, so these
+    // freshly-registered blobs are left untouched — all 12 stay pending.)
+    db.graph.store(&key, &graph, None, &task).await?;
+    db.graph
+        .delete(&key.graph_key(), &timeline_id, &task)
+        .await?;
+    let pending = db.blob_storage.get_pending_cleanup(&task).await?;
+    snapshot!(
+        format_blob_keys(&pending),
+        "
+graphs/test/1/_manifest.json
+graphs/test/1/csr_edges_6081454111982381661
+graphs/test/1/csr_offsets_5554658389978294871
+graphs/test/1/edge_metadata_7494857868300892803
+graphs/test/1/edge_metadata_map_15850574455260760061
+graphs/test/1/entry_points_9535545603450022154
+graphs/test/1/labels_8004798928044272053
+graphs/test/1/metrics_10211407828568219209
+graphs/test/1/node_names_2944712204298532354
+graphs/test/1/node_names_offsets_14475185708095569284
+graphs/test/1/properties_4370653166743570923
+graphs/test/1/traversal_config_9535545603450022154
+"
+    );
+
+    // A limited sweep processes at most `limit` blobs; the rest stay pending.
+    let swept = db
+        .blob_storage
+        .sweep(std::time::Duration::ZERO, Some(5), &task)
+        .await?;
+    assert_eq!(swept, 5);
+    let pending = db.blob_storage.get_pending_cleanup(&task).await?;
+    snapshot!(
+        format_blob_keys(&pending),
+        "
+graphs/test/1/entry_points_9535545603450022154
+graphs/test/1/labels_8004798928044272053
+graphs/test/1/metrics_10211407828568219209
+graphs/test/1/node_names_2944712204298532354
+graphs/test/1/node_names_offsets_14475185708095569284
+graphs/test/1/properties_4370653166743570923
+graphs/test/1/traversal_config_9535545603450022154
+"
+    );
+
+    // Repeated limited sweeps drain the backlog incrementally.
+    let swept = db
+        .blob_storage
+        .sweep(std::time::Duration::ZERO, Some(5), &task)
+        .await?;
+    assert_eq!(swept, 5);
+    let pending = db.blob_storage.get_pending_cleanup(&task).await?;
+    snapshot!(
+        format_blob_keys(&pending),
+        "
+graphs/test/1/properties_4370653166743570923
+graphs/test/1/traversal_config_9535545603450022154
+"
+    );
+
+    // A limit larger than the remaining backlog sweeps only what's left.
+    let swept = db
+        .blob_storage
+        .sweep(std::time::Duration::ZERO, Some(5), &task)
+        .await?;
+    assert_eq!(swept, 2);
+    let pending = db.blob_storage.get_pending_cleanup(&task).await?;
+    snapshot!(format_blob_keys(&pending), "");
 
     Ok(())
 }

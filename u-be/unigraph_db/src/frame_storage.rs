@@ -192,13 +192,20 @@ impl UnigraphStorage {
     ///
     /// Steps:
     /// 1. Query `blobs_to_delete` for entries older than `now - min_age`
+    ///    (newest first, capped at `limit` if set)
     /// 2. Delete each blob from external blob storage
     /// 3. Unregister the blob keys from the cleanup table
+    ///
+    /// `limit` caps how many blobs a single sweep processes (`None` = no cap),
+    /// so a large backlog can be drained incrementally without unbounded work.
+    /// Draining newest-first means a persistently-failing old blob can't wedge
+    /// the batch and starve cleanup of newly-registered blobs under the cap.
     ///
     /// Returns the number of blobs swept.
     pub async fn sweep_blobs(
         &self,
         min_age: std::time::Duration,
+        limit: Option<i64>,
         task: &ll::Task,
     ) -> Result<usize> {
         let now = Timestamp::now().to_unix_timestamp();
@@ -206,7 +213,7 @@ impl UnigraphStorage {
 
         let mut conn = self.graph.conn().await?;
         let blob_keys = conn
-            .get_blobs_pending_cleanup_older_than(cutoff, task)
+            .get_blobs_pending_cleanup_older_than(cutoff, limit, task)
             .await?;
         drop(conn);
 

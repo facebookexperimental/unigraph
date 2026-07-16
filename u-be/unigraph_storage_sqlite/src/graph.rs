@@ -467,15 +467,21 @@ impl UnigraphGraphConnection for SqliteConnection {
     async fn get_blobs_pending_cleanup_older_than(
         &mut self,
         older_than: unigraph_storage_core::Timestamp,
+        limit: Option<i64>,
         _task: &ll::Task,
     ) -> Result<Vec<String>> {
         let cutoff = older_than.to_unix_timestamp();
         let conn = self.lock();
+        // `limit` is an internal, non-user-controlled i64 — safe to inline.
+        let limit_clause = match limit {
+            Some(n) => format!(" LIMIT {}", n),
+            None => String::new(),
+        };
         let sql = format!(
             "SELECT blob_key FROM {}
              WHERE created_at <= ?1
-             ORDER BY blob_key",
-            TABLE_BLOBS_TO_DELETE
+             ORDER BY created_at DESC, blob_key{}",
+            TABLE_BLOBS_TO_DELETE, limit_clause
         );
         let mut stmt = conn
             .prepare(&sql)

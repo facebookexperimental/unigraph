@@ -24,6 +24,16 @@ use crate::context::UnigraphDbContext;
 use crate::schemas::adjacent_deltas;
 use crate::schemas::full_or_delta;
 
+/// On every frame delete, opportunistically sweep external blobs that were
+/// registered for cleanup at least this long ago. The window is deliberately
+/// generous (well past any commit latency) so the piggybacked sweep never
+/// touches blobs from in-flight or not-yet-committed transactions.
+const SWEEP_ON_DELETE_MIN_AGE: std::time::Duration = std::time::Duration::from_secs(2 * 60 * 60);
+
+/// Cap for the piggybacked per-delete sweep, so a large cleanup backlog can't
+/// turn a single delete into an unbounded amount of external-storage work.
+const SWEEP_ON_DELETE_LIMIT: i64 = 200;
+
 /// Handle for graph domain operations.
 ///
 /// Obtained via [`UnigraphDb::graph`](crate::UnigraphDb).
@@ -168,7 +178,12 @@ impl Graph {
 
     /// Delete a frame and register its external blobs for cleanup.
     ///
-    /// Dispatches to the schema-specific delete implementation.
+    /// Dispatches to the schema-specific delete implementation, then
+    /// opportunistically sweeps a bounded batch of aged, pending-deletion blobs
+    /// (see [`sweep_pending_blobs_best_effort`]) so a separate sweeper job isn't
+    /// required. The sweep runs regardless of whether this frame existed or had
+    /// external blobs — most deletes register nothing, but the cleanup backlog
+    /// is shared, so any delete is a fine moment to drain a little of it.
     #[task(tags(l3))]
     pub async fn delete(
         &self,
@@ -177,11 +192,13 @@ impl Graph {
         task: &ll::Task,
     ) -> Result<bool> {
         let schema = self.get_timeline_schema(timeline_id, &task).await?;
-        match schema {
+        let deleted = match schema {
             TimelineSchema::AdjacentDeltas(_) | TimelineSchema::FullOrDelta(_) => {
-                self.delete_with_lock(key, timeline_id, &task).await
+                self.delete_with_lock(key, timeline_id, &task).await?
             }
-        }
+        };
+        self.sweep_pending_blobs_best_effort(&task).await;
+        Ok(deleted)
     }
 }
 
@@ -228,6 +245,31 @@ impl Graph {
         frames.pop().ok_or_else(|| {
             anyhow::anyhow!("No fetchable graph found in timeline '{}'", timeline_id)
         })
+    }
+
+    /// Opportunistically sweep a bounded batch of aged, pending-deletion blobs.
+    ///
+    /// Runs after every delete as a piggybacked GC pass, so `delete` callers
+    /// don't need a separate sweeper job. Best-effort by design: the blobs it
+    /// targets were registered long ago (not by this delete — those are well
+    /// under [`SWEEP_ON_DELETE_MIN_AGE`]), and a sweep failure is logged on the
+    /// task and swallowed so it can never fail the delete it rode in on.
+    ///
+    /// The underlying sweep drains newest-first: `sweep_blobs` deletes its whole
+    /// batch atomically, so a single blob that fails to delete fails the batch.
+    /// Newest-first keeps a persistently-failing *old* blob from blocking the
+    /// cleanup of freshly-registered ones under the [`SWEEP_ON_DELETE_LIMIT`]
+    /// cap (which would otherwise let new blobs pile up unbounded).
+    async fn sweep_pending_blobs_best_effort(&self, task: &ll::Task) {
+        match self
+            .ctx
+            .storage
+            .sweep_blobs(SWEEP_ON_DELETE_MIN_AGE, Some(SWEEP_ON_DELETE_LIMIT), task)
+            .await
+        {
+            Ok(swept) => task.data("blobs_swept_on_delete", swept),
+            Err(e) => task.data("blobs_swept_on_delete_error", format!("{e:#}")),
+        }
     }
 
     async fn delete_with_lock(

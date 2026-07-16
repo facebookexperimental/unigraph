@@ -22,10 +22,17 @@ impl BlobStorageOps {
     /// blobs from deleted frames. Use `Duration::ZERO` in tests to sweep
     /// immediately.
     ///
+    /// `limit` caps how many blobs a single sweep processes (`None` = no cap).
+    ///
     /// Returns the number of blobs swept.
     #[task(tags(l3))]
-    pub async fn sweep(&self, min_age: std::time::Duration, task: &ll::Task) -> Result<usize> {
-        self.ctx.storage.sweep_blobs(min_age, &task).await
+    pub async fn sweep(
+        &self,
+        min_age: std::time::Duration,
+        limit: Option<i64>,
+        task: &ll::Task,
+    ) -> Result<usize> {
+        self.ctx.storage.sweep_blobs(min_age, limit, &task).await
     }
 
     /// Get all blob keys that are pending cleanup.

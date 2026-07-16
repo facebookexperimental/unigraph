@@ -94,8 +94,9 @@ impl Utility {
             self.cleanup_expired_configs(&task),
         )?;
         // Blob sweep must come after cleanup (they register blobs for sweeping).
+        // No limit here — the maintenance job drains the full aged backlog.
         let min_age = sweep_min_age.unwrap_or(DEFAULT_SWEEP_MIN_AGE);
-        let blobs_swept = self.ctx.storage.sweep_blobs(min_age, &task).await?;
+        let blobs_swept = self.ctx.storage.sweep_blobs(min_age, None, &task).await?;
 
         Ok(CleanupResult {
             frames_deleted,

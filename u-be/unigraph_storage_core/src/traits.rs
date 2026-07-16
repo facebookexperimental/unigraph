@@ -143,9 +143,16 @@ pub trait UnigraphGraphConnection: Send {
     /// Only returns entries whose `created_at` is strictly before `older_than`.
     /// This ensures recently-registered blobs (from in-flight transactions)
     /// are not swept prematurely.
+    ///
+    /// Results are ordered newest-registered first. `limit` caps the number of
+    /// keys returned (`None` = no cap); a bounded batch lets callers drain a
+    /// large backlog incrementally without doing unbounded work at once.
+    /// Newest-first ensures that a persistently-failing old blob can't block
+    /// cleanup of freshly-registered ones when a limit is in effect.
     async fn get_blobs_pending_cleanup_older_than(
         &mut self,
         older_than: Timestamp,
+        limit: Option<i64>,
         task: &ll::Task,
     ) -> Result<Vec<String>>;
 
