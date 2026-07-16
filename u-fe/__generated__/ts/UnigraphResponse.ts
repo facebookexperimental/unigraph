@@ -1,7 +1,7 @@
 /**
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
- * @generated SignedSource<<d90481ca71329c040c7874270d980ce3>>
+ * @generated SignedSource<<dab8410f53dd842bda3983b38e35614f>>
  */
 
 
@@ -10,6 +10,7 @@ import type { ExploreGraphOutput } from './ExploreGraphOutput.ts';
 import type { FindAncestorsOutput } from './FindAncestorsOutput.ts';
 import type { FindPathOutput } from './FindPathOutput.ts';
 import type { GetConfigsOutput } from './GetConfigsOutput.ts';
+import type { GraphQueryMapGraphOutput } from './GraphQueryMapGraphOutput.ts';
 import type { GraphQueryOutput } from './GraphQueryOutput.ts';
 import type { ListTimelinesOutput } from './ListTimelinesOutput.ts';
 import type { PutConfigsOutput } from './PutConfigsOutput.ts';
@@ -21,6 +22,7 @@ export type UnigraphResponse =
   { "PutConfigs": PutConfigsOutput } |
   { "GetConfigs": GetConfigsOutput } |
   { "GraphQuery": GraphQueryOutput } |
+  { "GraphQueryMapGraph": GraphQueryMapGraphOutput } |
   { "ListTimelines": ListTimelinesOutput } |
   { "SelectFrames": SelectFramesOutput } |
   { "ExploreGraph": ExploreGraphOutput } |
@@ -30,4 +32,4 @@ export type UnigraphResponse =
   { "AboutGraph": AboutGraphOutput } |
   { "Error": RpcError };
 
-export type UnigraphResponseVariants = "PutConfigs" | "GetConfigs" | "GraphQuery" | "ListTimelines" | "SelectFrames" | "ExploreGraph" | "FindAncestors" | "FindPath" | "SearchNodes" | "AboutGraph" | "Error";
+export type UnigraphResponseVariants = "PutConfigs" | "GetConfigs" | "GraphQuery" | "GraphQueryMapGraph" | "ListTimelines" | "SelectFrames" | "ExploreGraph" | "FindAncestors" | "FindPath" | "SearchNodes" | "AboutGraph" | "Error";

@@ -7,9 +7,11 @@ use anyhow::Result;
 use serde::Deserialize;
 use serde::Serialize;
 use typegen::TypeGen;
+use unigraph_core::ArrayGraph;
 use unigraph_core::ArrayGraphSerializablePackageBase64;
 use unigraph_core::ArrayGraphSerializablePackageConfig;
 use unigraph_core::config_query::GraphQueryConfig;
+use unigraph_core::config_query::TraversalOverride;
 use unigraph_rpc::RpcExec;
 
 use crate::Unigraph;
@@ -37,16 +39,7 @@ impl RpcExec<Unigraph> for GraphQueryInput {
         let ttl = Duration::from_mins(5);
         let ag = ctx.graph_cache.get_explored(&self.query, task, ttl).await?;
 
-        let resolved_gqc = GraphQueryConfig {
-            handle: self.query.handle,
-            roots: self.query.roots,
-            traversal: ag
-                .runtime
-                .state
-                .traversal_config
-                .as_ref()
-                .map(|tc| unigraph_core::config_query::TraversalOverride::Inline(tc.clone())),
-        };
+        let resolved_gqc = resolve_query_config(self.query, &ag);
 
         // Cheap refcount clone of the shared data — no deep copy. `pack` reads
         // through the `Arc`, so the blocking task just needs a `'static` owner.
@@ -66,5 +59,22 @@ impl RpcExec<Unigraph> for GraphQueryInput {
             package: package.into_base_64(),
             graph_query_config: resolved_gqc,
         })
+    }
+}
+
+// ── Shared helpers ───────────────────────────────────────────
+
+/// Echo back the query with its traversal resolved to the config actually
+/// applied to `ag`. Shared by the `GraphQuery` and `GraphQueryMapGraph` RPCs.
+pub(crate) fn resolve_query_config(query: GraphQueryConfig, ag: &ArrayGraph) -> GraphQueryConfig {
+    GraphQueryConfig {
+        handle: query.handle,
+        roots: query.roots,
+        traversal: ag
+            .runtime
+            .state
+            .traversal_config
+            .as_ref()
+            .map(|tc| TraversalOverride::Inline(tc.clone())),
     }
 }

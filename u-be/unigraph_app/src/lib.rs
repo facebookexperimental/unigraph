@@ -49,6 +49,9 @@ impl Unigraph {
                 UnigraphRequest::GraphQuery(input) => {
                     Ok(UnigraphResponse::GraphQuery(input.exec(self, &task).await?))
                 }
+                UnigraphRequest::GraphQueryMapGraph(input) => Ok(
+                    UnigraphResponse::GraphQueryMapGraph(input.exec(self, &task).await?),
+                ),
                 UnigraphRequest::ListTimelines(input) => Ok(UnigraphResponse::ListTimelines(
                     input.exec(self, &task).await?,
                 )),
@@ -111,6 +114,7 @@ unigraph_rpc::define_rpc_for_exec! {
         PutConfigs(PutConfigsInput) -> PutConfigsOutput,
         GetConfigs(GetConfigsInput) -> GetConfigsOutput,
         GraphQuery(GraphQueryInput) -> GraphQueryOutput,
+        GraphQueryMapGraph(GraphQueryMapGraphInput) -> GraphQueryMapGraphOutput,
         ListTimelines(ListTimelinesInput) -> ListTimelinesOutput,
         SelectFrames(SelectFramesInput) -> SelectFramesOutput,
         ExploreGraph(ExploreGraphInput) -> ExploreGraphOutput,
