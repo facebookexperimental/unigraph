@@ -9,6 +9,7 @@ use unigraph_cli::graph::GraphExplore;
 use unigraph_cli::graph::GraphGet;
 use unigraph_cli::graph::GraphGetError;
 use unigraph_cli::graph::GraphPut;
+use unigraph_cli::graph::GraphScc;
 use unigraph_cli::graph::GraphUpload;
 
 #[derive(Parser)]
@@ -25,6 +26,7 @@ pub enum GraphCommands {
     Explore(GraphExplore),
     Upload(GraphUpload),
     Cut(GraphCut),
+    Scc(GraphScc),
 }
 
 impl UnigraphCLISubcommand for Graph {
@@ -36,6 +38,7 @@ impl UnigraphCLISubcommand for Graph {
             GraphCommands::Explore(cmd) => cmd.run(ctx, task).await,
             GraphCommands::Upload(cmd) => cmd.run(ctx, task).await,
             GraphCommands::Cut(cmd) => cmd.run(ctx, task).await,
+            GraphCommands::Scc(cmd) => cmd.run(ctx, task).await,
         }
     }
 }

@@ -18,6 +18,7 @@ mod super_root;
 mod tarjan_strongly_connected_components;
 pub mod tiers;
 mod to_map_graph;
+pub mod to_scc_graph;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::sync::Arc;
@@ -178,6 +179,12 @@ impl ArrayGraph {
 
     pub fn to_map_graph(&self) -> Result<MapGraph> {
         to_map_graph::to_map_graph(self)
+    }
+
+    /// Condense this graph into its DAG of strongly connected components.
+    /// See [`to_scc_graph`](crate::types::array_graph::to_scc_graph).
+    pub fn to_scc_graph(&self) -> Result<to_scc_graph::SccGraph> {
+        to_scc_graph::to_scc_graph(self)
     }
 
     pub fn get_map_node(&self, node_idx: NodeIDX) -> GraphNode {

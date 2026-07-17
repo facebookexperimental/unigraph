@@ -5,6 +5,7 @@ mod explore;
 mod get;
 mod get_error;
 pub mod put;
+mod scc;
 pub mod subgraph_args;
 mod upload;
 
@@ -13,5 +14,6 @@ pub use explore::GraphExplore;
 pub use get::GraphGet;
 pub use get_error::GraphGetError;
 pub use put::GraphPut;
+pub use scc::GraphScc;
 pub use subgraph_args::SubgraphArgs;
 pub use upload::GraphUpload;
