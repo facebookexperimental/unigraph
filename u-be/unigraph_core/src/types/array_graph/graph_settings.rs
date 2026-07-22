@@ -676,6 +676,7 @@ pub enum SidebarPanel {
     TraversalConfigEditor,
     MinCut,
     DebugPanel,
+    ExportGraph,
 }
 
 /// Enum that defines whether an option is enabled or not depending

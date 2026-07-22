@@ -9,6 +9,7 @@ import {
 import { GraphLoadingAnimation } from "./components/GraphLoadingAnimation";
 import {
   Bug,
+  Download,
   Info,
   Scissors,
   SlidersHorizontal,
@@ -70,7 +71,8 @@ export type BuiltinSidebarPanel =
   | "GraphInfo"
   | "TraversalConfigEditor"
   | "MinCut"
-  | "DebugPanel";
+  | "DebugPanel"
+  | "ExportGraph";
 
 export interface PanelTabPlugin {
   id: string;
@@ -162,6 +164,7 @@ import Sidebar from "./Sidebar";
 import Simulation from "./Simulation";
 import GraphInfoPanel from "./sidebar_panels/GraphInfoPanel";
 import DebugPanel from "./sidebar_panels/DebugPanel";
+import ExportGraphPanel from "./sidebar_panels/ExportGraphPanel";
 import MinCutPanel from "./sidebar_panels/MinCutPanel";
 import TraversalConfigEditorPanel from "./sidebar_panels/TraversalConfigEditorPanel";
 import GraphTreeTable from "./tree_table/GraphTreeTable";
@@ -304,6 +307,12 @@ function ExplorerImpl(props: {
         icon: <Bug />,
         tooltip: "Debug",
         render: () => <DebugPanel />,
+      },
+      {
+        id: "ExportGraph",
+        icon: <Download />,
+        tooltip: "Export Graph",
+        render: () => <ExportGraphPanel />,
       },
     ],
     [],

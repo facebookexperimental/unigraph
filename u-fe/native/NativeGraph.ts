@@ -6,6 +6,7 @@ import {
   apply_traversal_config,
   available_metric_views,
   determine_entrypoints,
+  export_graph,
   get_array_graph_stats,
   get_combined_metrics_for_entrypoints_with_force_include,
   get_combined_metrics_for_nodes,
@@ -30,6 +31,8 @@ import {
 } from "../../.build/wasm/unigraph_wasm";
 import type { ArrayGraphStats } from "../__generated__/ts/ArrayGraphStats";
 import type { CombinedMetricsForNodes } from "../__generated__/ts/CombinedMetricsForNodes";
+import type { ExportFormat } from "../__generated__/ts/ExportFormat";
+import type { ExportScope } from "../__generated__/ts/ExportScope";
 import type { MinCutResult } from "../__generated__/ts/MinCutResult";
 import type { ExplorerComponentInputGraphs } from "../Explorer";
 import type { GraphSettings } from "../__generated__/ts/GraphSettings";
@@ -148,6 +151,13 @@ export default class NativeGraph {
   stats(): ArrayGraphStats {
     this.statsCache ??= JSON.parse(get_array_graph_stats(this.side));
     return this.statsCache as ArrayGraphStats;
+  }
+
+  /// Serialize this graph to the given format + scope, returning the raw file
+  /// bytes. `Reachable` bakes in the current traversal config (excluded edges
+  /// and unreachable nodes are dropped); `Whole` exports everything.
+  exportGraph(scope: ExportScope, format: ExportFormat): Uint8Array {
+    return export_graph(this.side, scope, format);
   }
 
   /// Get the current traversal config that's set on the grpaph.

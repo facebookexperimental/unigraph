@@ -57,9 +57,15 @@ pub struct MapGraph {
 impl Drop for MapGraph {
     fn drop(&mut self) {
         let nodes = std::mem::take(&mut self.nodes);
+        // Thread spawning isn't supported on WASM — spawning there panics, and a
+        // panic while the global graph-state lock is held bricks the whole app.
+        // Small graphs, and all graphs on WASM, just drop inline.
+        #[cfg(not(target_arch = "wasm32"))]
         if nodes.len() > 1000 {
             std::thread::spawn(move || drop(nodes));
+            return;
         }
+        drop(nodes);
     }
 }
 

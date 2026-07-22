@@ -181,6 +181,12 @@ impl ArrayGraph {
         to_map_graph::to_map_graph(self)
     }
 
+    /// Like [`to_map_graph`](Self::to_map_graph) but honors the applied
+    /// traversal config: only reachable nodes and non-excluded edges are kept.
+    pub fn to_configured_map_graph(&self) -> Result<MapGraph> {
+        to_map_graph::to_configured_map_graph(self)
+    }
+
     /// Condense this graph into its DAG of strongly connected components.
     /// See [`to_scc_graph`](crate::types::array_graph::to_scc_graph).
     pub fn to_scc_graph(&self) -> Result<to_scc_graph::SccGraph> {

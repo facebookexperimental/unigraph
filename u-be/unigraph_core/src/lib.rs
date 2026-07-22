@@ -6,6 +6,7 @@
 mod array_graph_serializable;
 pub mod config_key;
 pub mod config_query;
+pub mod export;
 pub mod graph_handle;
 pub mod identifiers;
 pub mod map_graph_builder;
@@ -52,6 +53,9 @@ pub use crate::config_key::TraversalConfigKey;
 pub use crate::config_query::ExploreCacheKey;
 pub use crate::config_query::GraphQueryConfig;
 pub use crate::config_query::TraversalOverride;
+pub use crate::export::ExportFormat;
+pub use crate::export::ExportScope;
+pub use crate::export::export_graph_bytes;
 pub use crate::graph_handle::GraphHandle;
 pub use crate::identifiers::GraphID;
 pub use crate::identifiers::GraphKey;

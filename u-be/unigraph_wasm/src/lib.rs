@@ -4,6 +4,7 @@
 mod console_reporter;
 mod wasm_error;
 
+use std::str::FromStr;
 use std::sync::Arc;
 use std::vec;
 
@@ -14,12 +15,15 @@ use unigraph_core::ArrayGraphSerializable;
 use unigraph_core::ArrayGraphSerializablePackage;
 use unigraph_core::ArrayGraphSerializablePackageBase64;
 use unigraph_core::EdgeOverrides;
+use unigraph_core::ExportFormat;
+use unigraph_core::ExportScope;
 use unigraph_core::GraphQueryConfig;
 use unigraph_core::MapGraph;
 use unigraph_core::MinCutResult;
 use unigraph_core::TraversalConfig;
 use unigraph_core::TraversalType;
 use unigraph_core::TwinGraph;
+use unigraph_core::export_graph_bytes;
 use unigraph_core::graph_settings::GraphStructure;
 use unigraph_core::types::NodeIDX;
 use unigraph_core::ui_types::ExplorerComponentInputGraph;
@@ -673,6 +677,20 @@ pub fn get_array_graph_stats(side: u32) -> Result<String, WasmJSError> {
     let gs = GlobalGraphState::graph_state().get();
     let stats = gs.mode.graph(side)?.stats();
     Ok(serde_json::to_string(&stats).context("Failed to serialize graph stats")?)
+}
+
+/// Export the graph on `side` to `format` (`"MapGraphJson"` | `"Gephi"`),
+/// including only the nodes/edges selected by `scope` (`"Reachable"` |
+/// `"Whole"`). Returns the raw file bytes — the JS side wraps them in a Blob to
+/// trigger a download. Bytes (not a String) so we don't pay a UTF-16 copy for
+/// large graphs.
+#[wasm_bindgen]
+pub fn export_graph(side: u32, scope: &str, format: &str) -> Result<Vec<u8>, WasmJSError> {
+    let scope = ExportScope::from_str(scope)?;
+    let format = ExportFormat::from_str(format)?;
+    let gs = GlobalGraphState::graph_state().get();
+    let ag = gs.mode.graph(side)?;
+    Ok(export_graph_bytes(ag, scope, format)?)
 }
 
 #[wasm_bindgen]

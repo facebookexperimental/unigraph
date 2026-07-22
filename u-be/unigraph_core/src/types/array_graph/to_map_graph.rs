@@ -6,8 +6,10 @@ use std::collections::BTreeSet;
 use anyhow::Result;
 
 use crate::ArrayGraph;
+use crate::EdgeMeta;
 use crate::MapGraph;
 use crate::NodeIDX;
+use crate::types::EdgeIDX;
 use crate::types::map_graph::DynamicEdge;
 use crate::types::map_graph::GraphNode;
 
@@ -22,6 +24,31 @@ pub fn to_map_graph(graph: &ArrayGraph) -> Result<MapGraph> {
 
     for node_idx in graph.node_idx_iter() {
         let map_node = get_map_node(graph, node_idx);
+        result
+            .nodes
+            .insert(graph.idx_to_name(node_idx).to_string(), map_node);
+    }
+
+    Ok(result)
+}
+
+/// Like [`to_map_graph`], but reflects the applied traversal config: only
+/// reachable nodes are emitted, and each node's excluded edges (and edges to
+/// unreachable nodes) are dropped. This is the "what you see in the explorer"
+/// view — the basis for exporting a trimmed graph.
+pub fn to_configured_map_graph(graph: &ArrayGraph) -> Result<MapGraph> {
+    let mut result = MapGraph {
+        nodes: Default::default(),
+        // The config is already baked into the trimmed nodes/edges, so we don't
+        // re-embed it — the export is a clean, self-contained view.
+        traversal_config: None,
+        graph_settings: graph.graph_settings().cloned(),
+        entry_points: graph.data.entry_points.clone(),
+        properties: graph.data.properties.clone(),
+    };
+
+    for node_idx in graph.node_idx_iter_reachable() {
+        let map_node = get_configured_map_node(graph, node_idx);
         result
             .nodes
             .insert(graph.idx_to_name(node_idx).to_string(), map_node);
@@ -45,6 +72,66 @@ pub fn get_map_node(graph: &ArrayGraph, node_idx: NodeIDX) -> GraphNode {
         edges_directed: none_if_empty(directed),
         edges_tagged: tagged,
         edges_dynamic: dynamic,
+    }
+}
+
+/// Builds a [`GraphNode`] containing only edges that survive the current
+/// traversal config: excluded edges are skipped, and edges pointing at
+/// unreachable nodes are dropped. Node metadata (metrics/labels/properties) is
+/// copied as-is since the node itself is reachable.
+fn get_configured_map_node(graph: &ArrayGraph, node_idx: NodeIDX) -> GraphNode {
+    let mut directed: BTreeSet<String> = BTreeSet::new();
+    let mut tagged: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    let mut dynamic: BTreeMap<String, BTreeMap<String, DynamicEdge>> = BTreeMap::new();
+
+    for edge_idx in graph.data.edges.edge_range(node_idx) {
+        if graph.runtime.edge_flags[edge_idx].is_excluded() {
+            continue;
+        }
+        let target = graph.data.edges.edges[edge_idx];
+        if graph.is_node_unreachable(target) {
+            continue;
+        }
+        let target_name = graph.idx_to_name(target).to_string();
+        match graph.data.edges.edge_meta(EdgeIDX::from(edge_idx)) {
+            None => {
+                directed.insert(target_name);
+            }
+            Some(EdgeMeta::Tagged { tag }) => {
+                tagged
+                    .entry(tag.to_string())
+                    .or_default()
+                    .insert(target_name);
+            }
+            Some(EdgeMeta::Dynamic {
+                type_key,
+                edge_name,
+                branch,
+                metadata,
+            }) => {
+                dynamic
+                    .entry(type_key.to_string())
+                    .or_default()
+                    .entry(edge_name.to_string())
+                    .or_insert_with(|| DynamicEdge {
+                        branches: BTreeMap::new(),
+                        metadata: metadata.clone(),
+                    })
+                    .branches
+                    .entry(branch.to_string())
+                    .or_default()
+                    .insert(target_name);
+            }
+        }
+    }
+
+    GraphNode {
+        properties: none_if_empty(collect_properties(graph, node_idx)),
+        labels: none_if_empty(collect_labels(graph, node_idx)),
+        metrics: none_if_empty(collect_metrics(graph, node_idx)),
+        edges_directed: none_if_empty(directed),
+        edges_tagged: none_if_empty(tagged),
+        edges_dynamic: none_if_empty(dynamic),
     }
 }
 
