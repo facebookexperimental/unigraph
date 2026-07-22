@@ -14,7 +14,7 @@ export default function GraphInfoPanel() {
   const labelL = " (Left)";
 
   return (
-    <SidebarPanel>
+    <SidebarPanel storageKey="graph-info">
       <div className="flex flex-col gap-8">
         <StatsForNativeGraph nativeGraph={nativeGraphR} label={labelR} />
         {nativeGraphL != null && (

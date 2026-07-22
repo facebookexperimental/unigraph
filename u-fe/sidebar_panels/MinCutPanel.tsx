@@ -71,7 +71,7 @@ export default function MinCutPanel() {
   const hasState = sinks.length > 0 || protectedEdges.length > 0;
 
   return (
-    <SidebarPanel width="w-[800px]">
+    <SidebarPanel storageKey="min-cut" defaultWidth={800}>
       <div className="flex flex-col h-full min-h-0">
         <div className="flex items-center justify-between">
           <H1 text="Min Cut" />

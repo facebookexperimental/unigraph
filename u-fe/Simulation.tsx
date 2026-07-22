@@ -10,6 +10,7 @@ import {
 import type { SelectionType } from "./__generated__/ts/SelectionType.js";
 import type { TsVec2 } from "./__generated__/ts/TsVec2.js";
 import ErrorBoundary from "./components/ErrorBoundary.js";
+import { ResizeHandle, useResizableWidth } from "./components/ResizeHandle.js";
 import UButton from "./components/UButton.js";
 import UToggleButton from "./components/UToggleButton.js";
 import { Button } from "./components/ui/button.js";
@@ -29,6 +30,7 @@ const HIDE_IF_TOO_MANY_NODES_THRESHOLD = 50000;
 export default function Simulation() {
   const nativeGraph = useNativeGraphR();
   const [paramsVisible, setParamsVisible] = useState(false);
+  const { width, handleProps } = useResizableWidth("simulation", 600);
 
   const reachableCount =
     nativeGraph.stats().num_all_nodes -
@@ -42,7 +44,7 @@ export default function Simulation() {
     <div className="flex h-full border-r">
       {paramsVisible && <ParamsPanel />}
 
-      <div className="flex w-[600px] grow-1 shrink-0 relative">
+      <div className="flex shrink-0 relative" style={{ width }}>
         {isTooMany && !bypassTooMany ? (
           <TooManyNodesDialog
             setBypassTooMany={setBypassTooMany}
@@ -54,6 +56,7 @@ export default function Simulation() {
             paramsVisible={paramsVisible}
           />
         )}
+        <ResizeHandle {...handleProps} />
       </div>
     </div>
   );

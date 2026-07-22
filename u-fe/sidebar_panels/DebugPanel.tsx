@@ -14,7 +14,7 @@ export default function DebugPanel() {
   const [activeTab, setActiveTab] = useState<Tab>("tvc");
 
   return (
-    <SidebarPanel>
+    <SidebarPanel storageKey="debug">
       <SidebarPanelHeader text="Debug" />
       <TabBar activeTab={activeTab} setActiveTab={setActiveTab} />
       <div className="mt-4">

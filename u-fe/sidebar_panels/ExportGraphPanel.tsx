@@ -63,7 +63,7 @@ export default function ExportGraphPanel() {
   };
 
   return (
-    <SidebarPanel>
+    <SidebarPanel storageKey="export-graph">
       <SidebarPanelHeader text="Export Graph" />
       <div className="flex flex-col gap-6 pt-2">
         <Field label="Format">

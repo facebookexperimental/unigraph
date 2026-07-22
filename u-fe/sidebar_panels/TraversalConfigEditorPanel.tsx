@@ -31,7 +31,7 @@ export default function TraversalConfigEditorPanel() {
   const labelL = " (Left)";
 
   return (
-    <SidebarPanel>
+    <SidebarPanel storageKey="traversal-config">
       <div className="flex flex-col gap-6">
         <TraversalConfigEditor tvc={tvcR} setTvc={setTvcR} label={labelR} />
         {nativeGraphL != null && tvcL != null && (
