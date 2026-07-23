@@ -285,8 +285,11 @@ mod tests {
     use k9::snapshot;
 
     use super::*;
+    use crate::GraphBuilder;
+    use crate::TraversalConfig;
     use crate::tests::test_graphs::make_test_array_graph_1;
     use crate::tests::test_graphs::make_test_graph_1;
+    use crate::traversal::Decision;
 
     #[test]
     fn test_to_map_graph() -> Result<()> {
@@ -389,6 +392,145 @@ mod tests {
       }
     },
     "I": {
+      "metrics": {
+        "size": 1.0
+      }
+    },
+    "J": {
+      "labels": {
+        "assert_tags": [
+          "a",
+          "b"
+        ]
+      },
+      "metrics": {
+        "size": 1.0
+      }
+    }
+  },
+  "traversal_config": null,
+  "graph_settings": null,
+  "entry_points": null
+}
+"#
+        );
+        Ok(())
+    }
+
+    /// The configured view must drop edges that were *not followed* (excluded by
+    /// the traversal config), even when the edge's target is still reachable via
+    /// another path. Uses a diamond (A->B, A->C, B->C) so that excluding B->C
+    /// leaves C reachable from A — isolating the excluded-edge filter from the
+    /// unreachable-node filter.
+    #[test]
+    fn test_to_configured_map_graph_drops_unfollowed_edge() -> Result<()> {
+        let task = ll::Task::create_new("test");
+        let mut b = GraphBuilder::new();
+        b.add_edge("A", "B")?;
+        b.add_edge("A", "C")?;
+        b.add_edge("B", "C")?;
+        let mut graph = b.build().to_array_graph(&task)?;
+
+        // Unconfigured view keeps B->C.
+        let unconfigured = graph.to_map_graph()?;
+        assert_equal!(
+            unconfigured.nodes["B"].edges_directed,
+            Some(BTreeSet::from(["C".to_string()]))
+        );
+
+        // Exclude only the B->C edge; C stays reachable through A->C.
+        let mut b_edges = BTreeMap::new();
+        b_edges.insert("C".to_string(), Decision::exclude());
+        let mut force_edges = BTreeMap::new();
+        force_edges.insert("B".to_string(), b_edges);
+        let config = TraversalConfig {
+            force_nodes: None,
+            force_edges: Some(force_edges),
+            force_tagged: None,
+            label_predicates: None,
+            force_dynamic: None,
+            tiered_traversal: None,
+            messages: None,
+        };
+        graph.apply_traversal_config_and_entry_points(config)?;
+
+        let configured = graph.to_configured_map_graph()?;
+
+        // C survives (reachable via A->C), so it's not the unreachable filter.
+        assert!(configured.nodes.contains_key("C"));
+        // But B's only edge (B->C) was not followed, so it's dropped.
+        assert_equal!(configured.nodes["B"].edges_directed, None);
+        // A still points at both B and C.
+        assert_equal!(
+            configured.nodes["A"].edges_directed,
+            Some(BTreeSet::from(["B".to_string(), "C".to_string()]))
+        );
+
+        Ok(())
+    }
+
+    /// The trim applies uniformly to directed, tagged, and dynamic edges.
+    /// Force-excluding node F and edge B->C removes F/G/H/I (dynamic subtree
+    /// under F) and C (tagged BL target), and drops the directed D->F and tagged
+    /// B->(BL) C edges pointing at them.
+    #[test]
+    fn test_to_configured_map_graph_trims_all_edge_types() -> Result<()> {
+        let mut graph = make_test_array_graph_1()?;
+
+        let mut b_edges = BTreeMap::new();
+        b_edges.insert("C".to_string(), Decision::exclude());
+        let mut force_edges = BTreeMap::new();
+        force_edges.insert("B".to_string(), b_edges);
+        let mut force_nodes = BTreeMap::new();
+        force_nodes.insert("F".to_string(), Decision::exclude());
+        let config = TraversalConfig {
+            force_nodes: Some(force_nodes),
+            force_edges: Some(force_edges),
+            force_tagged: None,
+            label_predicates: None,
+            force_dynamic: None,
+            tiered_traversal: None,
+            messages: None,
+        };
+        graph.apply_traversal_config_and_entry_points(config)?;
+
+        let configured_json = serde_json::to_string_pretty(&graph.to_configured_map_graph()?)?;
+
+        snapshot!(
+            configured_json,
+            r#"
+{
+  "nodes": {
+    "A": {
+      "metrics": {
+        "size": 1.0
+      },
+      "edges_directed": [
+        "B",
+        "D"
+      ]
+    },
+    "B": {
+      "metrics": {
+        "size": 1.0
+      },
+      "edges_tagged": {
+        "RD": [
+          "J"
+        ]
+      }
+    },
+    "D": {
+      "metrics": {
+        "size": 1.0
+      },
+      "edges_tagged": {
+        "RDFD": [
+          "E"
+        ]
+      }
+    },
+    "E": {
       "metrics": {
         "size": 1.0
       }
