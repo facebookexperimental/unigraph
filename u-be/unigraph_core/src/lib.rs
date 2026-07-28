@@ -80,6 +80,7 @@ pub use crate::traversal::messages::Message;
 pub use crate::traversal::tiered_traversal::AscendingTier;
 pub use crate::traversal::tiered_traversal::AscendingTiersConfig;
 pub use crate::traversal::tiered_traversal::TieredTraversalConfig;
+pub use crate::traversal::tiered_traversal::TieredTraversalIter;
 pub use crate::types::EdgeIDX;
 pub use crate::types::EdgeMetaIDX;
 pub use crate::types::NodeIDX;
