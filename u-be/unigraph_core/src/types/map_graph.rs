@@ -275,7 +275,7 @@ impl MapGraph {
                 }
             } else {
                 edge_offsets.push(edges.len());
-                for (_metric_name, metric_values) in metrics.iter_mut() {
+                for metric_values in metrics.values_mut() {
                     metric_values.push(0.0);
                 }
             }
