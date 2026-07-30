@@ -39,11 +39,16 @@ use unigraph_core::ArrayGraph;
 use unigraph_core::ExploreCacheKey;
 use unigraph_core::config_query::GraphQueryConfig;
 use unigraph_db::UnigraphDb;
+use unigraph_storage_core::GraphKey;
 use unigraph_storage_core::TimelineID;
 
 /// A cached graph — the value stored in each LRU slot.
 struct ArrayGraphCacheEntry {
     graph: Arc<ArrayGraph>,
+    /// The resolved key identifying the concrete graph snapshot `graph` was
+    /// reconstructed from. Stored so it is available on cache **hits** too, not
+    /// just the miss that computed the graph.
+    graph_key: GraphKey,
 }
 
 type CacheSlot = Arc<Mutex<Option<ArrayGraphCacheEntry>>>;
@@ -100,6 +105,22 @@ impl GraphCache {
         task: &ll::Task,
         ttl: Duration,
     ) -> Result<Arc<ArrayGraph>> {
+        let (_graph_key, graph) = self.get_explored_with_key(gqc, task, ttl).await?;
+        Ok(graph)
+    }
+
+    /// Like [`get_explored`](Self::get_explored), but also returns the resolved
+    /// [`GraphKey`] identifying the concrete graph snapshot the query config
+    /// resolved to (e.g. `www-budget~223` for a bare `www-budget` handle).
+    ///
+    /// The resolved key is available on cache hits and misses alike, since it is
+    /// stored on the cache entry.
+    pub async fn get_explored_with_key(
+        &self,
+        gqc: &GraphQueryConfig,
+        task: &ll::Task,
+        ttl: Duration,
+    ) -> Result<(GraphKey, Arc<ArrayGraph>)> {
         let cache_key = gqc.cache_key();
         let this = self.clone();
         let gqc = gqc.clone();
@@ -110,22 +131,23 @@ impl GraphCache {
 
             if let Some(entry) = guard.as_ref() {
                 task.data("cache", "hit");
-                return Ok(Arc::clone(&entry.graph));
+                return Ok((entry.graph_key.clone(), Arc::clone(&entry.graph)));
             }
 
             task.data("cache", "miss");
-            let (_, graph) = this
+            let (graph_key, graph) = this
                 .db
                 .resolve_graph_query_config(&gqc, true, &task)
                 .await?;
             let graph = Arc::new(graph);
             *guard = Some(ArrayGraphCacheEntry {
                 graph: Arc::clone(&graph),
+                graph_key: graph_key.clone(),
             });
 
             schedule_eviction(&this.explore, cache_key, ttl);
 
-            Ok(graph)
+            Ok((graph_key, graph))
         })
         .await
     }
@@ -163,9 +185,11 @@ impl GraphCache {
             return Ok(Arc::clone(&entry.graph));
         }
 
-        let graph = Arc::new(self.fetch_latest_graph(timeline_id, task).await?);
+        let (graph_key, graph) = self.fetch_latest_graph(timeline_id, task).await?;
+        let graph = Arc::new(graph);
         *guard = Some(ArrayGraphCacheEntry {
             graph: Arc::clone(&graph),
+            graph_key,
         });
 
         schedule_eviction(&self.by_timeline_latest, timeline_id.clone(), ttl);
@@ -178,18 +202,22 @@ impl GraphCache {
 
 impl GraphCache {
     /// Fetch the latest graph for a timeline — raw, no roots/traversal applied.
+    ///
+    /// Also returns the [`GraphKey`] of the snapshot that was fetched.
     async fn fetch_latest_graph(
         &self,
         timeline_id: &TimelineID,
         task: &ll::Task,
-    ) -> Result<ArrayGraph> {
-        let (_key, ag_ser) = self.db.graph.fetch_latest(timeline_id, task).await?;
-        task.spawn("into_array_graph", |task| async move {
-            tokio::task::spawn_blocking(move || ag_ser.into_array_graph(&task))
-                .await
-                .context("spawn_blocking panicked")?
-        })
-        .await
+    ) -> Result<(GraphKey, ArrayGraph)> {
+        let (key, ag_ser) = self.db.graph.fetch_latest(timeline_id, task).await?;
+        let graph = task
+            .spawn("into_array_graph", |task| async move {
+                tokio::task::spawn_blocking(move || ag_ser.into_array_graph(&task))
+                    .await
+                    .context("spawn_blocking panicked")?
+            })
+            .await?;
+        Ok((key, graph))
     }
 }
 

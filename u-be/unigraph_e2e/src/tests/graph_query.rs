@@ -89,6 +89,41 @@ utils
 "
     );
 
+    // The resolved `graph_key` pins the concrete snapshot even though we sent a
+    // bare (latest) handle: the fixture stores graph_id 0 in `explore_test`.
+    assert_eq!(
+        out.graph_key, "explore_test~0",
+        "bare handle should resolve to the latest concrete graph key"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn graph_query_map_graph_pinned_handle_returns_same_graph_key() -> Result<()> {
+    let t = init_app();
+    let timeline = ingest_explore_graph(&t).await?;
+
+    // Pin directly to the concrete snapshot via a `<timeline>~<graph_id>` handle
+    // (parses to `GraphHandle::GraphKey`), bypassing the stored GQC.
+    let pinned = format!("{timeline}~0");
+    let out = call_rpc!(
+        t,
+        GraphQueryMapGraph(GraphQueryMapGraphInput {
+            query: GraphQueryConfig {
+                handle: pinned.parse().unwrap(),
+                roots: None,
+                traversal: None,
+            },
+        })
+    );
+
+    // A pinned handle resolves to exactly the key it names.
+    assert_eq!(
+        out.graph_key, "explore_test~0",
+        "pinned handle should echo back the same concrete graph key"
+    );
+
     Ok(())
 }
 
@@ -123,6 +158,10 @@ async fn packed_and_map_graph_variants_agree() -> Result<()> {
     assert_eq!(
         packed.graph_query_config, mapped.graph_query_config,
         "both variants should echo back the same resolved query config"
+    );
+    assert_eq!(
+        mapped.graph_key, "explore_test~0",
+        "map-graph variant should surface the resolved graph key"
     );
 
     Ok(())

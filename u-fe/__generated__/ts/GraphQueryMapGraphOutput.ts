@@ -1,7 +1,7 @@
 /**
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
- * @generated SignedSource<<d79212eb85953d51aeb8e4f129a3df37>>
+ * @generated SignedSource<<0f11f05a001c0e64ef8a169aa5563fd6>>
  */
 
 
@@ -19,4 +19,12 @@ import type { MapGraph } from './MapGraph.ts';
 export interface GraphQueryMapGraphOutput {
   map_graph: MapGraph;
   graph_query_config: GraphQueryConfig;
+  /**
+   * The resolved graph key of the snapshot this query landed on, formatted as
+   * `"{timeline}~{graph_id}"` (e.g. `"www-budget~223"`). Unlike
+   * `graph_query_config.handle` — which merely echoes the input handle — this
+   * always carries the concrete `graph_id`, even when a bare (latest) handle
+   * was sent. Lets clients pin follow-up links to the exact version rendered.
+   */
+  graph_key: string;
 }
