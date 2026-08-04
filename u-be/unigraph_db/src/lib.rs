@@ -15,6 +15,7 @@
 //! db.graph.fetch(...)                         // schema-dispatched graph operations
 //! db.graph.adjacent_deltas.store_range(...)   // batch range operations
 //! db.metric_history.fetch(...)                // metric history
+//! db.graph_history.ingest(...)                // plain-row metric history
 //! db.blob_storage.sweep(...)                  // blob lifecycle
 //! ```
 //!
@@ -23,6 +24,7 @@
 pub(crate) mod config_storage;
 pub(crate) mod context;
 mod frame_storage;
+pub mod graph_history;
 pub mod graph_range;
 pub mod metric_history;
 mod namespaces;
@@ -44,6 +46,13 @@ pub use namespaces::Configs;
 pub use namespaces::ExternalIds;
 pub use namespaces::Frames;
 pub use namespaces::Graph;
+pub use namespaces::GraphHistory;
+pub use namespaces::HistoryCompactOptions;
+pub use namespaces::HistoryCompactReport;
+pub use namespaces::HistoryDeleteReport;
+pub use namespaces::HistoryIngestOptions;
+pub use namespaces::HistoryIngestReport;
+pub use namespaces::HistorySeriesRow;
 pub use namespaces::MetricHistory;
 pub use namespaces::Timelines;
 pub use namespaces::Utility;
@@ -87,6 +96,8 @@ pub struct UnigraphDb {
     pub graph: Graph,
     pub configs: Configs,
     pub metric_history: MetricHistory,
+    /// Decoupled, after-the-fact per-node metric history (`unigraph history`).
+    pub graph_history: GraphHistory,
     pub blob_storage: BlobStorageOps,
     pub utility: Utility,
     ctx: UnigraphDbContext,
@@ -125,6 +136,7 @@ impl UnigraphDb {
             },
             configs: Configs { ctx: ctx.clone() },
             metric_history: MetricHistory { ctx: ctx.clone() },
+            graph_history: GraphHistory { ctx: ctx.clone() },
             blob_storage: BlobStorageOps { ctx: ctx.clone() },
             utility: Utility { ctx: ctx.clone() },
             ctx,

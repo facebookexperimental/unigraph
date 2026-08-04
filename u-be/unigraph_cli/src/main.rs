@@ -11,6 +11,7 @@ use clap::Subcommand;
 use commands::compact::Compact;
 use commands::graph::Graph;
 use commands::graph::GraphCommands;
+use commands::history::History;
 use commands::ingest::Ingest;
 use commands::serve::Serve;
 use commands::timelines::Timelines;
@@ -52,6 +53,7 @@ async fn run(args: Args) -> anyhow::Result<()> {
         Commands::Ingest(cmd) => cmd.run(&ctx, &task).await,
         Commands::Timelines(cmd) => cmd.run(&ctx, &task).await,
         Commands::Compact(cmd) => cmd.run(&ctx, &task).await,
+        Commands::History(cmd) => cmd.run(&ctx, &task).await,
         Commands::Graph(g) => match g.command {
             GraphCommands::Get(cmd) => cmd.run(&ctx, &task).await,
             GraphCommands::Put(cmd) => cmd.run(&ctx, &task).await,
@@ -85,6 +87,8 @@ enum Commands {
     /// Timeline operations: list, inspect frames, collect stats
     Timelines(Timelines),
     Compact(Compact),
+    /// Per-node metric history: ingest, compact, delete, show
+    History(History),
     Graph(Graph),
 }
 

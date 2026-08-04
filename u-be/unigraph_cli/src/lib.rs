@@ -1,6 +1,7 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 pub mod graph;
+pub mod history;
 pub mod stats;
 pub mod timelines;
 

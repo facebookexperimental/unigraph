@@ -8,6 +8,7 @@
 
 mod blob;
 mod graph;
+mod history;
 mod schema;
 
 use std::path::Path;

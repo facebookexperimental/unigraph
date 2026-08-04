@@ -137,6 +137,15 @@ impl Timestamp {
         Ok(Self(ts))
     }
 
+    pub fn subtract_hours(&self, hours: usize) -> Result<Self> {
+        let duration = chrono::Duration::hours(hours.try_into()?);
+        let ts = self
+            .0
+            .checked_sub_signed(duration)
+            .context("date subtraction failed")?;
+        Ok(Self(ts))
+    }
+
     pub fn add_days(&self, days: usize) -> Result<Self> {
         let duration = chrono::Duration::days(days.try_into()?);
         let ts = self
@@ -446,6 +455,32 @@ mod tests {
 
         let roundrip = Timestamp::from_unix_timestamp(unix);
         assert_equal!(ts, roundrip);
+        Ok(())
+    }
+
+    #[test]
+    fn subtract_hours() -> Result<()> {
+        let ts = Timestamp::from_rfc3339("2024-06-24T03:00:00.000Z")?;
+
+        assert_equal!(
+            ts.subtract_hours(1)?.to_comparable_rfc3339_str(),
+            "2024-06-24T02:00:00.000Z"
+        );
+
+        // Crosses a day boundary.
+        assert_equal!(
+            ts.subtract_hours(4)?.to_comparable_rfc3339_str(),
+            "2024-06-23T23:00:00.000Z"
+        );
+
+        assert_equal!(
+            ts.subtract_hours(0)?.to_comparable_rfc3339_str(),
+            "2024-06-24T03:00:00.000Z"
+        );
+
+        // A lookback far larger than the representable range must not panic.
+        assert!(ts.subtract_hours(usize::MAX).is_err());
+
         Ok(())
     }
 

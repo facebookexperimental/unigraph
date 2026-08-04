@@ -6,6 +6,8 @@
 //! [`UnigraphGraphConnection`]s. All data operations happen through connections.
 //! [`UnigraphBlobStorage`] handles external blob storage for large payloads.
 
+use std::collections::BTreeMap;
+
 use anyhow::Result;
 use async_trait::async_trait;
 use ll;
@@ -14,6 +16,9 @@ use unigraph_core::config_key::GraphQueryConfigKey;
 use unigraph_core::config_key::TraversalConfigKey;
 
 use crate::frame::FrameRow;
+use crate::history::HistoryEntryRow;
+use crate::history::HistoryRange;
+use crate::history::HistoryStatusRow;
 use crate::types::ExternalID;
 use crate::types::ExternalIDNamespace;
 use crate::types::FrameQuery;
@@ -24,6 +29,9 @@ use crate::types::GraphTimeKey;
 use crate::types::TimelineConfig;
 use crate::types::TimelineID;
 use crate::types::Timestamp;
+
+/// Inclusive `(lower, upper)` `GraphID` bounds; `None` on either side means unbounded.
+pub type GraphIDBounds = (Option<GraphID>, Option<GraphID>);
 
 /// A connection to the graph storage.
 ///
@@ -270,6 +278,192 @@ pub trait UnigraphGraphConnection: Send {
         end_week: &str,
         task: &ll::Task,
     ) -> Result<Vec<(String, String, Vec<u8>)>>;
+
+    // -- Graph history (plain rows) --
+    //
+    // Thin SQL wrappers over the `graph_history_*` tables. No locking, no
+    // transactions, no business logic — the `GraphHistory` namespace in
+    // `unigraph_db` owns all of that.
+
+    /// Intern metric names into the per-timeline dictionary and return the
+    /// timeline's full `name -> metric_id` mapping.
+    ///
+    /// Append-only: existing names keep their ids so previously written value
+    /// blobs stay decodable. New names get `MAX(metric_id) + 1` per timeline.
+    async fn intern_history_metrics(
+        &mut self,
+        timeline_id: &TimelineID,
+        names: &[String],
+        task: &ll::Task,
+    ) -> Result<BTreeMap<String, u32>>;
+
+    /// Read the per-timeline `metric_id -> name` dictionary (for labeling reads).
+    async fn get_history_metric_names(
+        &mut self,
+        timeline_id: &TimelineID,
+        task: &ll::Task,
+    ) -> Result<BTreeMap<u32, String>>;
+
+    /// Insert history entries with `INSERT OR REPLACE` semantics.
+    async fn insert_history_entries(
+        &mut self,
+        timeline_id: &TimelineID,
+        rows: &[HistoryEntryRow],
+        task: &ll::Task,
+    ) -> Result<()>;
+
+    /// For each requested node, the most recent *baseline* value blob strictly
+    /// before `before_graph_id`. Nodes with no earlier entry are omitted.
+    ///
+    /// Deferred rows are skipped: they are provisional and compaction will
+    /// remove them, so measuring a later sample against one would hide the
+    /// drift accumulated since the last surviving sample.
+    async fn get_last_history_entries_before(
+        &mut self,
+        timeline_id: &TimelineID,
+        before_graph_id: GraphID,
+        node_names: &[String],
+        task: &ll::Task,
+    ) -> Result<Vec<(String, Vec<u8>)>>;
+
+    /// One node's kept series within `range`, ordered by `graph_id` ascending.
+    async fn get_history_series(
+        &mut self,
+        timeline_id: &TimelineID,
+        node_name: &str,
+        range: &HistoryRange,
+        task: &ll::Task,
+    ) -> Result<Vec<(GraphID, Timestamp, Vec<u8>)>>;
+
+    /// Distinct node names that have history entries within `range`.
+    async fn list_history_node_names(
+        &mut self,
+        timeline_id: &TimelineID,
+        range: &HistoryRange,
+        task: &ll::Task,
+    ) -> Result<Vec<String>>;
+
+    /// Batch-read ingest checkpoints. Graph IDs with no row are omitted.
+    async fn get_history_status(
+        &mut self,
+        timeline_id: &TimelineID,
+        graph_ids: &[GraphID],
+        task: &ll::Task,
+    ) -> Result<Vec<HistoryStatusRow>>;
+
+    /// Batch-write ingest checkpoints with `INSERT OR REPLACE` semantics.
+    async fn upsert_history_status(
+        &mut self,
+        timeline_id: &TimelineID,
+        rows: &[HistoryStatusRow],
+        task: &ll::Task,
+    ) -> Result<()>;
+
+    /// Graph-ID span of the checkpoints still flagged `omission_deferred`, or
+    /// `None` when there are none. This is `history compact`'s work list — the
+    /// ranges ingested across a gap that still need their threshold re-applied.
+    async fn get_history_deferred_bounds(
+        &mut self,
+        timeline_id: &TimelineID,
+        task: &ll::Task,
+    ) -> Result<Option<GraphIDBounds>>;
+
+    /// Clear the `omission_deferred` flag within `bounds`. Returns the row count.
+    async fn clear_history_omission_deferred(
+        &mut self,
+        timeline_id: &TimelineID,
+        bounds: &GraphIDBounds,
+        task: &ll::Task,
+    ) -> Result<u64>;
+
+    /// Graph IDs still flagged `omission_deferred` within `bounds`, ascending.
+    ///
+    /// This is the per-frame work list. Ascending order is required: deciding
+    /// a frame's rows can delete them, which moves the baseline the next
+    /// frame's rows are measured against.
+    async fn list_history_deferred_graph_ids(
+        &mut self,
+        timeline_id: &TimelineID,
+        bounds: &GraphIDBounds,
+        task: &ll::Task,
+    ) -> Result<Vec<GraphID>>;
+
+    /// Every `(node_name, values)` row recorded at one graph ID.
+    ///
+    /// A flagged frame took *all* of its verdicts against an untrustworthy
+    /// baseline — it could keep a row the settled chain would drop just as
+    /// easily as the reverse — so compaction reconsiders the whole frame, not
+    /// only the rows it had to defer.
+    async fn get_history_entries_at(
+        &mut self,
+        timeline_id: &TimelineID,
+        graph_id: GraphID,
+        task: &ll::Task,
+    ) -> Result<Vec<(String, Vec<u8>)>>;
+
+    /// Delete the given nodes' entries at one graph ID. Returns the row count.
+    async fn delete_history_entries_at(
+        &mut self,
+        timeline_id: &TimelineID,
+        graph_id: GraphID,
+        node_names: &[String],
+        task: &ll::Task,
+    ) -> Result<u64>;
+
+    /// Clear the per-entry `deferred` flag within `bounds`. Returns the row count.
+    ///
+    /// Call only on a range that has just been compacted: every row still
+    /// present there survived the threshold, so it is a baseline row now and
+    /// must become visible to `get_last_history_entries_before`.
+    async fn clear_history_entries_deferred(
+        &mut self,
+        timeline_id: &TimelineID,
+        bounds: &GraphIDBounds,
+        task: &ll::Task,
+    ) -> Result<u64>;
+
+    /// Non-null `error_blob_key`s recorded within `bounds` (for cleanup registration).
+    async fn get_history_error_blob_keys(
+        &mut self,
+        timeline_id: &TimelineID,
+        bounds: &GraphIDBounds,
+        task: &ll::Task,
+    ) -> Result<Vec<String>>;
+
+    /// Delete all history entries within `bounds`. Returns the row count.
+    async fn delete_history_entries(
+        &mut self,
+        timeline_id: &TimelineID,
+        bounds: &GraphIDBounds,
+        task: &ll::Task,
+    ) -> Result<u64>;
+
+    /// Delete one node's history entries at the given graph IDs. Returns the row count.
+    async fn delete_history_entries_for_node(
+        &mut self,
+        timeline_id: &TimelineID,
+        node_name: &str,
+        graph_ids: &[GraphID],
+        task: &ll::Task,
+    ) -> Result<u64>;
+
+    /// Delete ingest checkpoints within `bounds`. Returns the row count.
+    async fn delete_history_status(
+        &mut self,
+        timeline_id: &TimelineID,
+        bounds: &GraphIDBounds,
+        task: &ll::Task,
+    ) -> Result<u64>;
+
+    /// Drop the timeline's metric-name dictionary. Returns the row count.
+    ///
+    /// Only safe once every entry for the timeline is gone — ids are never
+    /// reused, so a surviving blob would decode against the wrong names.
+    async fn delete_history_metrics(
+        &mut self,
+        timeline_id: &TimelineID,
+        task: &ll::Task,
+    ) -> Result<u64>;
 
     // -- Config storage --
 

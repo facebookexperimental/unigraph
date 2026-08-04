@@ -2,6 +2,7 @@
 
 //! [`UnigraphGraphStorage`] and [`UnigraphGraphConnection`] implementation for SQLite.
 
+use std::collections::BTreeMap;
 use std::sync::MutexGuard;
 
 use anyhow::Context;
@@ -15,8 +16,12 @@ use unigraph_storage_core::FrameQuery;
 use unigraph_storage_core::FrameRow;
 use unigraph_storage_core::FrameType;
 use unigraph_storage_core::GraphID;
+use unigraph_storage_core::GraphIDBounds;
 use unigraph_storage_core::GraphKey;
 use unigraph_storage_core::GraphTimeKey;
+use unigraph_storage_core::HistoryEntryRow;
+use unigraph_storage_core::HistoryRange;
+use unigraph_storage_core::HistoryStatusRow;
 use unigraph_storage_core::Order;
 use unigraph_storage_core::TimelineConfig;
 use unigraph_storage_core::TimelineID;
@@ -31,6 +36,7 @@ use unigraph_timestamp::Timestamp;
 
 use crate::SqliteConnection;
 use crate::SqliteStorage;
+use crate::history;
 use crate::schema::TABLE_BLOBS_TO_DELETE;
 use crate::schema::TABLE_CONFIGS;
 use crate::schema::TABLE_EXTERNAL_ID_MAPPINGS;
@@ -797,6 +803,181 @@ impl UnigraphGraphConnection for SqliteConnection {
             result.push((node_name, week_key, data));
         }
         Ok(result)
+    }
+
+    // -- Graph history (plain rows) --
+
+    async fn intern_history_metrics(
+        &mut self,
+        timeline_id: &TimelineID,
+        names: &[String],
+        _task: &ll::Task,
+    ) -> Result<BTreeMap<String, u32>> {
+        history::intern_metrics(&self.lock(), timeline_id, names)
+    }
+
+    async fn get_history_metric_names(
+        &mut self,
+        timeline_id: &TimelineID,
+        _task: &ll::Task,
+    ) -> Result<BTreeMap<u32, String>> {
+        history::metric_names(&self.lock(), timeline_id)
+    }
+
+    async fn insert_history_entries(
+        &mut self,
+        timeline_id: &TimelineID,
+        rows: &[HistoryEntryRow],
+        _task: &ll::Task,
+    ) -> Result<()> {
+        history::insert_entries(&self.lock(), timeline_id, rows)
+    }
+
+    async fn get_last_history_entries_before(
+        &mut self,
+        timeline_id: &TimelineID,
+        before_graph_id: GraphID,
+        node_names: &[String],
+        _task: &ll::Task,
+    ) -> Result<Vec<(String, Vec<u8>)>> {
+        history::last_entries_before(&self.lock(), timeline_id, before_graph_id, node_names)
+    }
+
+    async fn get_history_series(
+        &mut self,
+        timeline_id: &TimelineID,
+        node_name: &str,
+        range: &HistoryRange,
+        _task: &ll::Task,
+    ) -> Result<Vec<(GraphID, Timestamp, Vec<u8>)>> {
+        history::series(&self.lock(), timeline_id, node_name, range)
+    }
+
+    async fn list_history_node_names(
+        &mut self,
+        timeline_id: &TimelineID,
+        range: &HistoryRange,
+        _task: &ll::Task,
+    ) -> Result<Vec<String>> {
+        history::node_names(&self.lock(), timeline_id, range)
+    }
+
+    async fn get_history_status(
+        &mut self,
+        timeline_id: &TimelineID,
+        graph_ids: &[GraphID],
+        _task: &ll::Task,
+    ) -> Result<Vec<HistoryStatusRow>> {
+        history::get_status(&self.lock(), timeline_id, graph_ids)
+    }
+
+    async fn upsert_history_status(
+        &mut self,
+        timeline_id: &TimelineID,
+        rows: &[HistoryStatusRow],
+        _task: &ll::Task,
+    ) -> Result<()> {
+        history::upsert_status(&self.lock(), timeline_id, rows)
+    }
+
+    async fn get_history_deferred_bounds(
+        &mut self,
+        timeline_id: &TimelineID,
+        _task: &ll::Task,
+    ) -> Result<Option<GraphIDBounds>> {
+        Ok(history::deferred_bounds(&self.lock(), timeline_id)?
+            .map(|(min, max)| (Some(min), Some(max))))
+    }
+
+    async fn clear_history_omission_deferred(
+        &mut self,
+        timeline_id: &TimelineID,
+        bounds: &GraphIDBounds,
+        _task: &ll::Task,
+    ) -> Result<u64> {
+        history::clear_omission_deferred(&self.lock(), timeline_id, bounds)
+    }
+
+    async fn list_history_deferred_graph_ids(
+        &mut self,
+        timeline_id: &TimelineID,
+        bounds: &GraphIDBounds,
+        _task: &ll::Task,
+    ) -> Result<Vec<GraphID>> {
+        history::deferred_graph_ids(&self.lock(), timeline_id, bounds)
+    }
+
+    async fn get_history_entries_at(
+        &mut self,
+        timeline_id: &TimelineID,
+        graph_id: GraphID,
+        _task: &ll::Task,
+    ) -> Result<Vec<(String, Vec<u8>)>> {
+        history::entries_at(&self.lock(), timeline_id, graph_id)
+    }
+
+    async fn delete_history_entries_at(
+        &mut self,
+        timeline_id: &TimelineID,
+        graph_id: GraphID,
+        node_names: &[String],
+        _task: &ll::Task,
+    ) -> Result<u64> {
+        history::delete_entries_at(&self.lock(), timeline_id, graph_id, node_names)
+    }
+
+    async fn clear_history_entries_deferred(
+        &mut self,
+        timeline_id: &TimelineID,
+        bounds: &GraphIDBounds,
+        _task: &ll::Task,
+    ) -> Result<u64> {
+        history::clear_entries_deferred(&self.lock(), timeline_id, bounds)
+    }
+
+    async fn get_history_error_blob_keys(
+        &mut self,
+        timeline_id: &TimelineID,
+        bounds: &GraphIDBounds,
+        _task: &ll::Task,
+    ) -> Result<Vec<String>> {
+        history::error_blob_keys(&self.lock(), timeline_id, bounds)
+    }
+
+    async fn delete_history_entries(
+        &mut self,
+        timeline_id: &TimelineID,
+        bounds: &GraphIDBounds,
+        _task: &ll::Task,
+    ) -> Result<u64> {
+        history::delete_entries(&self.lock(), timeline_id, bounds)
+    }
+
+    async fn delete_history_entries_for_node(
+        &mut self,
+        timeline_id: &TimelineID,
+        node_name: &str,
+        graph_ids: &[GraphID],
+        _task: &ll::Task,
+    ) -> Result<u64> {
+        history::delete_entries_for_node(&self.lock(), timeline_id, node_name, graph_ids)
+    }
+
+    async fn delete_history_status(
+        &mut self,
+        timeline_id: &TimelineID,
+        bounds: &GraphIDBounds,
+        _task: &ll::Task,
+    ) -> Result<u64> {
+        history::delete_status(&self.lock(), timeline_id, bounds)
+    }
+
+    async fn delete_history_metrics(
+        &mut self,
+        timeline_id: &TimelineID,
+        _task: &ll::Task,
+    ) -> Result<u64> {
+        history::delete_metrics(&self.lock(), timeline_id)
     }
 
     // -- Config storage --

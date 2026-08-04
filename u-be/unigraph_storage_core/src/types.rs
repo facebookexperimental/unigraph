@@ -102,7 +102,7 @@ pub enum Order {
 }
 
 /// Optional lower/upper timestamp bounds (both inclusive).
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct TimestampBounds {
     pub start: Option<Timestamp>,
     pub end: Option<Timestamp>,

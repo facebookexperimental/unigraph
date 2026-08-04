@@ -24,3 +24,6 @@ unigraph_metric_history = { version = "0.1.1-alpha.0", path = "../unigraph_metri
 unigraph_serialization = { version = "0.1.1-alpha.0", path = "../unigraph_serialization" }
 unigraph_storage_core = { version = "0.1.1-alpha.0", path = "../unigraph_storage_core" }
 unigraph_timestamp = { version = "0.1.1-alpha.0", path = "../unigraph_timestamp" }
+
+[dev-dependencies]
+k9 = { version = "0.12.0", features = ["custom_comparison_formatters", "regex"] }

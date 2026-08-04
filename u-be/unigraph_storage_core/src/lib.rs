@@ -10,6 +10,7 @@
 //!
 //! - [`types`] — identifiers, keys, frame types, timeline configuration
 //! - [`frame`] — frame and frame-row structures
+//! - [`history`] — row structs for the plain-row graph metric history tables
 //! - [`traits`] — storage trait definitions ([`UnigraphGraphStorage`], [`UnigraphGraphConnection`], [`UnigraphBlobStorage`])
 
 pub mod config_key {
@@ -17,6 +18,7 @@ pub mod config_key {
     pub use unigraph_core::config_key::*;
 }
 pub mod frame;
+pub mod history;
 pub mod traits;
 pub mod types;
 
@@ -28,6 +30,10 @@ pub use frame::Frame;
 pub use frame::FrameData;
 pub use frame::FrameRow;
 pub use frame::format_frames_table;
+pub use history::HistoryEntryRow;
+pub use history::HistoryRange;
+pub use history::HistoryStatusRow;
+pub use traits::GraphIDBounds;
 pub use traits::UnigraphBlobStorage;
 pub use traits::UnigraphGraphConnection;
 pub use traits::UnigraphGraphStorage;
