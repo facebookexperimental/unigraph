@@ -391,7 +391,7 @@ mod tests {
                 expected_weekday,
                 expected_week_start,
             } = d;
-            let d_debug = format!("{:#?}", &d);
+            let d_debug = format!("{:#?}", d);
 
             let ts = Timestamp::from_rfc3339(ts)?;
             assert_equal!(
