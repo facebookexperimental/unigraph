@@ -16,8 +16,10 @@ export default defineConfig({
 		},
 	],
 	webServer: {
+		// `tasks/task.py` declares its deps inline (PEP 723) and must run under
+		// its `uv run --script` shebang — plain `python3` can't import typer.
 		command:
-			"python3 tasks/task.py build wasm && npx react-router build && cargo run -p unigraph -- serve --release -f e2e/fixtures/explore_graph.json",
+			"./tasks/task.py build wasm && npx react-router build && cargo run -p unigraph -- serve --release -f e2e/fixtures/explore_graph.json",
 		port: 3000,
 		reuseExistingServer: true,
 		timeout: 120_000,

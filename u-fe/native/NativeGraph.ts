@@ -15,6 +15,7 @@ import {
   get_graph_traversal_config,
   get_metric_min_max,
   get_metric_names,
+  get_map_node,
   get_node_flags,
   get_node_metrics,
   get_reverse_edges_len,
@@ -33,6 +34,7 @@ import type { ArrayGraphStats } from "../__generated__/ts/ArrayGraphStats";
 import type { CombinedMetricsForNodes } from "../__generated__/ts/CombinedMetricsForNodes";
 import type { ExportFormat } from "../__generated__/ts/ExportFormat";
 import type { ExportScope } from "../__generated__/ts/ExportScope";
+import type { GraphNode } from "../__generated__/ts/GraphNode";
 import type { MinCutResult } from "../__generated__/ts/MinCutResult";
 import type { ExplorerComponentInputGraphs } from "../Explorer";
 import type { GraphSettings } from "../__generated__/ts/GraphSettings";
@@ -262,6 +264,13 @@ export default class NativeGraph {
 
   isNodeReachable(nodeIDX: NodeIDX): boolean {
     return this.getAllReachableNodeIDXs().set.has(nodeIDX);
+  }
+
+  /// A single node in its MapGraph form — metrics, properties, labels and
+  /// every outgoing edge. Uncached and unbatched; rebuilds the node's whole
+  /// edge list, so only for sparse lookups like the debug hovercard.
+  getMapNode(nodeIDX: NodeIDX): GraphNode {
+    return JSON.parse(get_map_node(nodeIDX, this.side)) as GraphNode;
   }
 
   getNodeMetric(nodeIDX: NodeIDX, metricName: string): number {

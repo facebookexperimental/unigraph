@@ -14,6 +14,7 @@ import type { Arrow } from "../__generated__/ts/Arrow";
 import type { DynamicEdgeInfo } from "../__generated__/ts/DynamicEdgeInfo";
 import type { TwinArrow } from "../__generated__/ts/TwinArrow";
 import CopyToClipboard from "../components/CopyToClipboard";
+import UDialog from "../components/UDialog";
 import UHoverCard from "../components/UHoverCard";
 import { Badge } from "../components/ui/badge";
 import { useDebugMode } from "../context/DebugModeContext";
@@ -25,6 +26,7 @@ import { displayNodeName } from "../lib/utils";
 import { nodeEdgesChanged, nodeMetricsChanged } from "../native/NodeDiff";
 import type TwinGraph from "../native/TwinGraph";
 import { H2, P } from "../Typography";
+import NodeDebugDialog from "./NodeDebugDialog";
 import type { Row } from "./TreeTableRows";
 
 type Props = {
@@ -610,15 +612,19 @@ function RowBadge({ text, className }: { text: string; className?: string }) {
 
 function NodeDebugInfo({ twinArrow }: { twinArrow: TwinArrow }) {
   return (
-    <UHoverCard
-      content={
-        <div className="flex flex-col gap-2">
-          <H2 text="Debug Info" />
-          <P text={`Node ID: ${twinArrow.points_to}`} />
-        </div>
+    <UDialog
+      title="Debug Info"
+      className="sm:max-w-3xl max-h-[80vh] overflow-hidden"
+      trigger={
+        // Stop propagation so opening the dialog doesn't also select the row.
+        <Wrench
+          size={16}
+          className="cursor-pointer shrink-0"
+          onClick={(e) => e.stopPropagation()}
+        />
       }
     >
-      <Wrench size={16} />
-    </UHoverCard>
+      <NodeDebugDialog twinArrow={twinArrow} />
+    </UDialog>
   );
 }

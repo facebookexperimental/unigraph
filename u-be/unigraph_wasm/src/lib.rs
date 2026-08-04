@@ -17,6 +17,7 @@ use unigraph_core::ArrayGraphSerializablePackageBase64;
 use unigraph_core::EdgeOverrides;
 use unigraph_core::ExportFormat;
 use unigraph_core::ExportScope;
+use unigraph_core::GraphNode;
 use unigraph_core::GraphQueryConfig;
 use unigraph_core::MapGraph;
 use unigraph_core::MinCutResult;
@@ -258,6 +259,20 @@ pub fn get_node_metrics(
     } else {
         Ok(vec![0.0; node_idxs.len()])
     }
+}
+
+/// A single node in its [`GraphNode`] (MapGraph) form — metrics, properties,
+/// labels and every outgoing edge — as JSON. Sparse per-node lookup for the
+/// debug UI; it rebuilds the node's whole edge list, so never call it in bulk.
+#[wasm_bindgen]
+pub fn get_map_node(node_idx: u32, side: u32) -> Result<String, WasmJSError> {
+    let gs = GlobalGraphState::graph_state().get();
+    let ag = gs.mode.graph(side)?;
+    let node = match gs.mode.to_local(side, NodeIDX(node_idx))? {
+        Some(local) => ag.get_map_node(local),
+        None => GraphNode::default(),
+    };
+    Ok(serde_json::to_string(&node).context("Failed to serialize map node")?)
 }
 
 /// Min and max of a metric across ALL nodes (reachable or not), computed in a
