@@ -1,8 +1,9 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-import { ChevronRight, Plus, Trash2 } from "lucide-react";
-import { useCallback, useState } from "react";
+import { ChevronRight, Download, Plus, Trash2 } from "lucide-react";
+import { useCallback, useMemo, useState } from "react";
 import type { Decision } from "../__generated__/ts/Decision";
+import type { DynamicEdgeOverride } from "../__generated__/ts/DynamicEdgeOverride";
 import type { DynamicTypeConfig } from "../__generated__/ts/DynamicTypeConfig";
 import type { NodeLabelPredicate } from "../__generated__/ts/NodeLabelPredicate";
 import type { TieredTraversalConfig } from "../__generated__/ts/TieredTraversalConfig";
@@ -20,40 +21,63 @@ import { Label } from "../components/ui/label";
 import { Separator } from "../components/ui/separator";
 import { Switch } from "../components/ui/switch";
 import { useNativeGraphs } from "../context/NativeGraphContext";
-import { useTVC } from "../context/TraversalConfigContext";
+import {
+  countTvcChanges,
+  type TvcDraft,
+  useTVC,
+} from "../context/TraversalConfigContext";
+import { triggerDownload } from "../lib/utils";
 import { SidebarPanel, SidebarPanelHeader } from "./SidebarPanel";
+import VirtualEntryList from "./VirtualEntryList";
 
 export default function TraversalConfigEditorPanel() {
   const [nativeGraphL] = useNativeGraphs();
-  const { tvcL, setTvcL, tvcR, setTvcR } = useTVC();
+  const { tvcL, tvcR, draftL, draftR } = useTVC();
 
   const labelR = nativeGraphL == null ? "" : " (Right)";
   const labelL = " (Left)";
 
   return (
-    <SidebarPanel storageKey="traversal-config">
+    <SidebarPanel storageKey="traversal-config" defaultWidth={560}>
       <div className="flex flex-col gap-6">
-        <TraversalConfigEditor tvc={tvcR} setTvc={setTvcR} label={labelR} />
+        <TraversalConfigEditor
+          committed={tvcR}
+          draftState={draftR}
+          label={labelR}
+        />
         {nativeGraphL != null && tvcL != null && (
-          <TraversalConfigEditor tvc={tvcL} setTvc={setTvcL} label={labelL} />
+          <TraversalConfigEditor
+            committed={tvcL}
+            draftState={draftL}
+            label={labelL}
+          />
         )}
       </div>
     </SidebarPanel>
   );
 }
 
+/// Edits are staged in `draftState` and only reach the graph on Apply —
+/// committing re-serializes the config and re-runs the traversal, which is
+/// seconds of work on a config with hundreds of thousands of entries.
 function TraversalConfigEditor({
-  tvc,
-  setTvc,
+  committed,
+  draftState,
   label,
 }: {
-  tvc: TraversalConfig;
-  setTvc: (tvc: TraversalConfig) => void;
+  committed: TraversalConfig;
+  draftState: TvcDraft;
   label: string;
 }) {
+  const tvc = draftState.draft ?? committed;
+  const setTvc = draftState.setDraft;
+
   return (
     <div className="flex flex-col gap-2">
-      <SidebarPanelHeader text={`Traversal Config${label}`} />
+      <SidebarPanelHeader
+        text={`Traversal Config${label}`}
+        actions={<DownloadConfigButton tvc={tvc} label={label} />}
+      />
       <ForceNodesEditor tvc={tvc} setTvc={setTvc} />
       <ForceEdgesEditor tvc={tvc} setTvc={setTvc} />
       <ForceTaggedEditor tvc={tvc} setTvc={setTvc} />
@@ -61,6 +85,80 @@ function TraversalConfigEditor({
       <ForceDynamicEditor tvc={tvc} setTvc={setTvc} />
       <TieredTraversalEditor tvc={tvc} setTvc={setTvc} />
       <MessagesEditor tvc={tvc} setTvc={setTvc} />
+      <PendingChangesBar committed={committed} draftState={draftState} />
+    </div>
+  );
+}
+
+/// Downloads what the editor is currently showing — including unapplied
+/// edits, so the file matches the panel rather than the graph.
+function DownloadConfigButton({
+  tvc,
+  label,
+}: {
+  tvc: TraversalConfig;
+  label: string;
+}) {
+  const onDownload = useCallback(() => {
+    const blob = new Blob([JSON.stringify(tvc, null, 2)], {
+      type: "application/json",
+    });
+    const side = label.trim().replace(/[()]/g, "").toLowerCase();
+    triggerDownload(
+      blob,
+      side === "" ? "traversal-config.json" : `traversal-config-${side}.json`,
+    );
+  }, [tvc, label]);
+
+  return (
+    <Button size="sm" className="cursor-pointer shrink-0" onClick={onDownload}>
+      <Download className="size-3" />
+      Download JSON
+    </Button>
+  );
+}
+
+function PendingChangesBar({
+  committed,
+  draftState,
+}: {
+  committed: TraversalConfig;
+  draftState: TvcDraft;
+}) {
+  const { draft, apply, discard, isStale } = draftState;
+  const count = useMemo(
+    () => (draft == null ? 0 : countTvcChanges(draft, committed)),
+    [draft, committed],
+  );
+
+  if (draft == null) {
+    return null;
+  }
+
+  return (
+    <div className="sticky bottom-0 z-10 flex flex-col gap-1 border-t bg-sidebar pt-2 mt-2">
+      {isStale && (
+        <span className="text-xs text-destructive">
+          The config changed elsewhere since you started editing. Applying will
+          overwrite that change.
+        </span>
+      )}
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-muted-foreground flex-1">
+          {count.toLocaleString()} pending change{count === 1 ? "" : "s"}
+        </span>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="cursor-pointer"
+          onClick={discard}
+        >
+          Discard
+        </Button>
+        <Button size="sm" className="cursor-pointer" onClick={apply}>
+          Apply
+        </Button>
+      </div>
     </div>
   );
 }
@@ -74,6 +172,10 @@ type TvcEditorProps = {
   setTvc: (tvc: TraversalConfig) => void;
 };
 
+/// Content is a thunk, not JSX children, and is only called while the section
+/// is open. Passing children directly would build every row's React elements
+/// on each render even when collapsed — with sections in the hundreds of
+/// thousands of entries, that alone froze the panel on open.
 function Section({
   title,
   count,
@@ -81,19 +183,23 @@ function Section({
 }: {
   title: string;
   count: number;
-  children: React.ReactNode;
+  children: () => React.ReactNode;
 }) {
+  const [open, setOpen] = useState(false);
+
   return (
-    <Collapsible>
+    <Collapsible open={open} onOpenChange={setOpen}>
       <CollapsibleTrigger className="flex items-center gap-2 w-full cursor-pointer group">
         <ChevronRight className="size-4 transition-transform group-data-[state=open]:rotate-90" />
         <span className="text-sm font-medium">{title}</span>
         <Badge variant="secondary" className="text-xs">
-          {count}
+          {count.toLocaleString()}
         </Badge>
       </CollapsibleTrigger>
       <CollapsibleContent>
-        <div className="flex flex-col gap-2 pt-2 pl-6">{children}</div>
+        <div className="flex flex-col gap-2 pt-2 pl-6">
+          {open && children()}
+        </div>
       </CollapsibleContent>
     </Collapsible>
   );
@@ -157,7 +263,10 @@ function AddButton({ onClick }: { onClick: () => void }) {
 // ---------------------------------------------------------------------------
 
 function ForceNodesEditor({ tvc, setTvc }: TvcEditorProps) {
-  const entries = Object.entries(tvc.force_nodes ?? {});
+  const entries = useMemo(
+    () => Object.entries(tvc.force_nodes ?? {}),
+    [tvc.force_nodes],
+  );
   const [newName, setNewName] = useState("");
 
   const update = useCallback(
@@ -197,31 +306,41 @@ function ForceNodesEditor({ tvc, setTvc }: TvcEditorProps) {
 
   return (
     <Section title="Force Nodes" count={entries.length}>
-      {entries.map(([name, decision]) => (
-        <EntryRow key={name} onRemove={() => remove(name)}>
-          <span className="truncate" title={name}>
-            {name}
-          </span>
-          <IncludeSwitch
-            include={decision.include}
-            onChange={(v) => toggle(name, v)}
+      {() => (
+        <>
+          <VirtualEntryList
+            items={entries}
+            rowKey={([name]) => name}
+            searchKey={([name]) => name}
+            placeholder="Search nodes…"
+            renderRow={([name, decision]) => (
+              <EntryRow onRemove={() => remove(name)}>
+                <span className="truncate" title={name}>
+                  {name}
+                </span>
+                <IncludeSwitch
+                  include={decision.include}
+                  onChange={(v) => toggle(name, v)}
+                />
+              </EntryRow>
+            )}
           />
-        </EntryRow>
-      ))}
-      <div className="flex items-center gap-2">
-        <NodeNameInput
-          value={newName}
-          onChange={setNewName}
-          onSelect={(name) => {
-            update({
-              ...tvc.force_nodes,
-              [name]: { include: false },
-            });
-            setNewName("");
-          }}
-        />
-        <AddButton onClick={add} />
-      </div>
+          <div className="flex items-center gap-2">
+            <NodeNameInput
+              value={newName}
+              onChange={setNewName}
+              onSelect={(name) => {
+                update({
+                  ...tvc.force_nodes,
+                  [name]: { include: false },
+                });
+                setNewName("");
+              }}
+            />
+            <AddButton onClick={add} />
+          </div>
+        </>
+      )}
     </Section>
   );
 }
@@ -231,12 +350,15 @@ function ForceNodesEditor({ tvc, setTvc }: TvcEditorProps) {
 // ---------------------------------------------------------------------------
 
 function ForceEdgesEditor({ tvc, setTvc }: TvcEditorProps) {
-  const entries: [string, string, Decision][] = [];
-  for (const [from, tos] of Object.entries(tvc.force_edges ?? {})) {
-    for (const [to, decision] of Object.entries(tos)) {
-      entries.push([from, to, decision]);
+  const entries = useMemo(() => {
+    const flat: [string, string, Decision][] = [];
+    for (const [from, tos] of Object.entries(tvc.force_edges ?? {})) {
+      for (const [to, decision] of Object.entries(tos)) {
+        flat.push([from, to, decision]);
+      }
     }
-  }
+    return flat;
+  }, [tvc.force_edges]);
 
   const [newFrom, setNewFrom] = useState("");
   const [newTo, setNewTo] = useState("");
@@ -294,48 +416,58 @@ function ForceEdgesEditor({ tvc, setTvc }: TvcEditorProps) {
 
   return (
     <Section title="Force Edges" count={entries.length}>
-      {entries.map(([from, to, decision]) => (
-        <EntryRow key={`${from}->${to}`} onRemove={() => remove(from, to)}>
-          <span className="truncate" title={`${from} → ${to}`}>
-            {from} → {to}
-          </span>
-          <IncludeSwitch
-            include={decision.include}
-            onChange={(v) => toggle(from, to, v)}
+      {() => (
+        <>
+          <VirtualEntryList
+            items={entries}
+            rowKey={([from, to]) => `${from}->${to}`}
+            searchKey={([from, to]) => `${from} → ${to}`}
+            placeholder="Search edges…"
+            renderRow={([from, to, decision]) => (
+              <EntryRow onRemove={() => remove(from, to)}>
+                <span className="truncate" title={`${from} → ${to}`}>
+                  {from} → {to}
+                </span>
+                <IncludeSwitch
+                  include={decision.include}
+                  onChange={(v) => toggle(from, to, v)}
+                />
+              </EntryRow>
+            )}
           />
-        </EntryRow>
-      ))}
-      <div className="flex flex-col gap-1">
-        <div className="flex items-center gap-2">
-          <NodeNameInput
-            value={newFrom}
-            onChange={setNewFrom}
-            onSelect={setNewFrom}
-            placeholder="From node"
-          />
-          <span className="text-xs text-muted-foreground">→</span>
-          <NodeNameInput
-            value={newTo}
-            onChange={setNewTo}
-            onSelect={(name) => {
-              setNewTo(name);
-              if (newFrom.trim() !== "") {
-                update({
-                  ...tvc.force_edges,
-                  [newFrom.trim()]: {
-                    ...tvc.force_edges?.[newFrom.trim()],
-                    [name]: { include: false },
-                  },
-                });
-                setNewFrom("");
-                setNewTo("");
-              }
-            }}
-            placeholder="To node"
-          />
-          <AddButton onClick={add} />
-        </div>
-      </div>
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-2">
+              <NodeNameInput
+                value={newFrom}
+                onChange={setNewFrom}
+                onSelect={setNewFrom}
+                placeholder="From node"
+              />
+              <span className="text-xs text-muted-foreground">→</span>
+              <NodeNameInput
+                value={newTo}
+                onChange={setNewTo}
+                onSelect={(name) => {
+                  setNewTo(name);
+                  if (newFrom.trim() !== "") {
+                    update({
+                      ...tvc.force_edges,
+                      [newFrom.trim()]: {
+                        ...tvc.force_edges?.[newFrom.trim()],
+                        [name]: { include: false },
+                      },
+                    });
+                    setNewFrom("");
+                    setNewTo("");
+                  }
+                }}
+                placeholder="To node"
+              />
+              <AddButton onClick={add} />
+            </div>
+          </div>
+        </>
+      )}
     </Section>
   );
 }
@@ -345,7 +477,10 @@ function ForceEdgesEditor({ tvc, setTvc }: TvcEditorProps) {
 // ---------------------------------------------------------------------------
 
 function ForceTaggedEditor({ tvc, setTvc }: TvcEditorProps) {
-  const entries = Object.entries(tvc.force_tagged ?? {});
+  const entries = useMemo(
+    () => Object.entries(tvc.force_tagged ?? {}),
+    [tvc.force_tagged],
+  );
   const [newTag, setNewTag] = useState("");
 
   const update = useCallback(
@@ -385,27 +520,37 @@ function ForceTaggedEditor({ tvc, setTvc }: TvcEditorProps) {
 
   return (
     <Section title="Force Tagged" count={entries.length}>
-      {entries.map(([tag, decision]) => (
-        <EntryRow key={tag} onRemove={() => remove(tag)}>
-          <Badge variant="outline" className="text-xs">
-            {tag}
-          </Badge>
-          <IncludeSwitch
-            include={decision.include}
-            onChange={(v) => toggle(tag, v)}
+      {() => (
+        <>
+          <VirtualEntryList
+            items={entries}
+            rowKey={([tag]) => tag}
+            searchKey={([tag]) => tag}
+            placeholder="Search tags…"
+            renderRow={([tag, decision]) => (
+              <EntryRow onRemove={() => remove(tag)}>
+                <Badge variant="outline" className="text-xs">
+                  {tag}
+                </Badge>
+                <IncludeSwitch
+                  include={decision.include}
+                  onChange={(v) => toggle(tag, v)}
+                />
+              </EntryRow>
+            )}
           />
-        </EntryRow>
-      ))}
-      <div className="flex items-center gap-2">
-        <Input
-          placeholder="Tag name"
-          value={newTag}
-          onChange={(e) => setNewTag(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && add()}
-          className="h-7 text-xs"
-        />
-        <AddButton onClick={add} />
-      </div>
+          <div className="flex items-center gap-2">
+            <Input
+              placeholder="Tag name"
+              value={newTag}
+              onChange={(e) => setNewTag(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && add()}
+              className="h-7 text-xs"
+            />
+            <AddButton onClick={add} />
+          </div>
+        </>
+      )}
     </Section>
   );
 }
@@ -462,65 +607,71 @@ function LabelPredicatesEditor({ tvc, setTvc }: TvcEditorProps) {
 
   return (
     <Section title="Label Predicates" count={entries.length}>
-      {entries.map(([key, pred]) => (
-        <div key={key} className="flex flex-col gap-1.5 pb-2">
-          <EntryRow onRemove={() => remove(key)}>
-            <span className="font-medium text-xs">{key}</span>
-          </EntryRow>
-          <div className="pl-2 flex flex-col gap-1">
-            <div className="flex items-center gap-2">
-              <Label className="text-xs w-16 shrink-0">Name</Label>
-              <Input
-                value={pred.label_name}
-                onChange={(e) =>
-                  updatePredicate(key, { label_name: e.target.value })
-                }
-                className="h-7 text-xs"
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <Label className="text-xs w-16 shrink-0">Value</Label>
-              <Input
-                value={pred.label_value}
-                onChange={(e) =>
-                  updatePredicate(key, { label_value: e.target.value })
-                }
-                className="h-7 text-xs"
-              />
-            </div>
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-1.5">
-                <Switch
-                  checked={pred.contains}
-                  onCheckedChange={(v) => updatePredicate(key, { contains: v })}
-                />
-                <span className="text-xs text-muted-foreground">
-                  {pred.contains ? "Contains" : "Not contains"}
-                </span>
+      {() => (
+        <>
+          {entries.map(([key, pred]) => (
+            <div key={key} className="flex flex-col gap-1.5 pb-2">
+              <EntryRow onRemove={() => remove(key)}>
+                <span className="font-medium text-xs">{key}</span>
+              </EntryRow>
+              <div className="pl-2 flex flex-col gap-1">
+                <div className="flex items-center gap-2">
+                  <Label className="text-xs w-16 shrink-0">Name</Label>
+                  <Input
+                    value={pred.label_name}
+                    onChange={(e) =>
+                      updatePredicate(key, { label_name: e.target.value })
+                    }
+                    className="h-7 text-xs"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <Label className="text-xs w-16 shrink-0">Value</Label>
+                  <Input
+                    value={pred.label_value}
+                    onChange={(e) =>
+                      updatePredicate(key, { label_value: e.target.value })
+                    }
+                    className="h-7 text-xs"
+                  />
+                </div>
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-1.5">
+                    <Switch
+                      checked={pred.contains}
+                      onCheckedChange={(v) =>
+                        updatePredicate(key, { contains: v })
+                      }
+                    />
+                    <span className="text-xs text-muted-foreground">
+                      {pred.contains ? "Contains" : "Not contains"}
+                    </span>
+                  </div>
+                  <IncludeSwitch
+                    include={pred.decision.include}
+                    onChange={(include) =>
+                      updatePredicate(key, {
+                        decision: { ...pred.decision, include },
+                      })
+                    }
+                  />
+                </div>
               </div>
-              <IncludeSwitch
-                include={pred.decision.include}
-                onChange={(include) =>
-                  updatePredicate(key, {
-                    decision: { ...pred.decision, include },
-                  })
-                }
-              />
+              <Separator />
             </div>
+          ))}
+          <div className="flex items-center gap-2">
+            <Input
+              placeholder="Predicate key"
+              value={newKey}
+              onChange={(e) => setNewKey(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && add()}
+              className="h-7 text-xs"
+            />
+            <AddButton onClick={add} />
           </div>
-          <Separator />
-        </div>
-      ))}
-      <div className="flex items-center gap-2">
-        <Input
-          placeholder="Predicate key"
-          value={newKey}
-          onChange={(e) => setNewKey(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && add()}
-          className="h-7 text-xs"
-        />
-        <AddButton onClick={add} />
-      </div>
+        </>
+      )}
     </Section>
   );
 }
@@ -530,7 +681,10 @@ function LabelPredicatesEditor({ tvc, setTvc }: TvcEditorProps) {
 // ---------------------------------------------------------------------------
 
 function ForceDynamicEditor({ tvc, setTvc }: TvcEditorProps) {
-  const entries = Object.entries(tvc.force_dynamic ?? {});
+  const entries = useMemo(
+    () => Object.entries(tvc.force_dynamic ?? {}),
+    [tvc.force_dynamic],
+  );
   const [newKey, setNewKey] = useState("");
 
   const update = useCallback(
@@ -572,38 +726,118 @@ function ForceDynamicEditor({ tvc, setTvc }: TvcEditorProps) {
 
   return (
     <Section title="Force Dynamic" count={entries.length}>
-      {entries.map(([key, config]) => (
-        <div key={key} className="flex flex-col gap-1.5 pb-2">
-          <EntryRow onRemove={() => remove(key)}>
-            <span className="font-medium text-xs">{key}</span>
-          </EntryRow>
-          <div className="pl-2 flex flex-col gap-1">
-            <DynamicBranchesEditor
-              config={config}
-              onChange={(patch) => updateConfig(key, patch)}
+      {() => (
+        <>
+          {entries.map(([key, config]) => (
+            <div key={key} className="flex flex-col gap-1.5 pb-2">
+              <EntryRow onRemove={() => remove(key)}>
+                <span className="font-medium text-xs">{key}</span>
+              </EntryRow>
+              <div className="pl-2 flex flex-col gap-1">
+                <DynamicBranchesEditor
+                  config={config}
+                  onChange={(patch) => updateConfig(key, patch)}
+                />
+                <DynamicOverridesEditor
+                  config={config}
+                  onChange={(patch) => updateConfig(key, patch)}
+                />
+              </div>
+              <Separator />
+            </div>
+          ))}
+          <div className="flex items-center gap-2">
+            <Input
+              placeholder="Dynamic type key"
+              value={newKey}
+              onChange={(e) => setNewKey(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && add()}
+              className="h-7 text-xs"
             />
-            {config.overrides != null &&
-              Object.keys(config.overrides).length > 0 && (
-                <div className="text-xs text-muted-foreground">
-                  {Object.keys(config.overrides).length} override(s)
-                </div>
-              )}
+            <AddButton onClick={add} />
           </div>
-          <Separator />
-        </div>
-      ))}
-      <div className="flex items-center gap-2">
-        <Input
-          placeholder="Dynamic type key"
-          value={newKey}
-          onChange={(e) => setNewKey(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && add()}
-          className="h-7 text-xs"
-        />
-        <AddButton onClick={add} />
-      </div>
+        </>
+      )}
     </Section>
   );
+}
+
+/// Per-edge-name overrides. These are the other section that gets huge, so it
+/// reuses the same search + windowing as the top-level lists.
+function DynamicOverridesEditor({
+  config,
+  onChange,
+}: {
+  config: DynamicTypeConfig;
+  onChange: (patch: Partial<DynamicTypeConfig>) => void;
+}) {
+  const entries = useMemo(
+    () => Object.entries(config.overrides ?? {}),
+    [config.overrides],
+  );
+
+  const remove = useCallback(
+    (edgeName: string) => {
+      const { [edgeName]: _, ...rest } = config.overrides ?? {};
+      onChange({ overrides: Object.keys(rest).length > 0 ? rest : undefined });
+    },
+    [config.overrides, onChange],
+  );
+
+  const toggle = useCallback(
+    (edgeName: string, include: boolean) => {
+      const current = config.overrides?.[edgeName];
+      onChange({
+        overrides: {
+          ...config.overrides,
+          [edgeName]: {
+            ...current,
+            decision: { ...current?.decision, include },
+          },
+        },
+      });
+    },
+    [config.overrides, onChange],
+  );
+
+  if (entries.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="flex flex-col gap-1">
+      <Label className="text-xs">
+        Overrides ({entries.length.toLocaleString()})
+      </Label>
+      <VirtualEntryList
+        items={entries}
+        rowKey={([edgeName]) => edgeName}
+        searchKey={([edgeName]) => edgeName}
+        placeholder="Search edge names…"
+        renderRow={([edgeName, override]) => (
+          <EntryRow onRemove={() => remove(edgeName)}>
+            <span className="truncate text-xs" title={edgeName}>
+              {edgeName}
+            </span>
+            <span className="text-xs text-muted-foreground shrink-0">
+              {branchSummary(override)}
+            </span>
+            <IncludeSwitch
+              include={override.decision?.include ?? false}
+              onChange={(v) => toggle(edgeName, v)}
+            />
+          </EntryRow>
+        )}
+      />
+    </div>
+  );
+}
+
+function branchSummary(override: DynamicEdgeOverride): string {
+  const branches = override.branches;
+  if (branches == null) return "";
+  if ("Include" in branches) return `+${branches.Include.length}`;
+  return `-${branches.Exclude.length}`;
 }
 
 function DynamicBranchesEditor({
@@ -765,47 +999,51 @@ function TieredTraversalEditor({ tvc, setTvc }: TvcEditorProps) {
 
   return (
     <Section title="Tiered Traversal" count={tiers.length}>
-      {tiers.map((tier, i) => (
-        <div key={i} className="flex flex-col gap-1 pb-2">
-          <EntryRow onRemove={() => removeTier(i)}>
-            <span className="font-medium text-xs">
-              Tier {i}: {tier.name}
-            </span>
-          </EntryRow>
-          <div className="pl-2 flex flex-wrap gap-1">
-            {tier.tags_that_transition_to_this_tier.map((tag) => (
-              <Badge key={tag} variant="outline" className="text-xs">
-                {tag}
-              </Badge>
-            ))}
-            {tier.tags_that_transition_to_this_tier.length === 0 && (
-              <span className="text-xs text-muted-foreground">No tags</span>
-            )}
+      {() => (
+        <>
+          {tiers.map((tier, i) => (
+            <div key={i} className="flex flex-col gap-1 pb-2">
+              <EntryRow onRemove={() => removeTier(i)}>
+                <span className="font-medium text-xs">
+                  Tier {i}: {tier.name}
+                </span>
+              </EntryRow>
+              <div className="pl-2 flex flex-wrap gap-1">
+                {tier.tags_that_transition_to_this_tier.map((tag) => (
+                  <Badge key={tag} variant="outline" className="text-xs">
+                    {tag}
+                  </Badge>
+                ))}
+                {tier.tags_that_transition_to_this_tier.length === 0 && (
+                  <span className="text-xs text-muted-foreground">No tags</span>
+                )}
+              </div>
+            </div>
+          ))}
+          {tiers.length > 0 && (
+            <div className="flex items-center gap-2">
+              <Label className="text-xs shrink-0">Max tier</Label>
+              <Input
+                type="number"
+                value={maxTier ?? ""}
+                onChange={(e) => updateMaxTier(e.target.value)}
+                placeholder="None"
+                className="h-7 text-xs w-20"
+              />
+            </div>
+          )}
+          <div className="flex items-center gap-2">
+            <Input
+              placeholder="Tier name"
+              value={newTierName}
+              onChange={(e) => setNewTierName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && addTier()}
+              className="h-7 text-xs"
+            />
+            <AddButton onClick={addTier} />
           </div>
-        </div>
-      ))}
-      {tiers.length > 0 && (
-        <div className="flex items-center gap-2">
-          <Label className="text-xs shrink-0">Max tier</Label>
-          <Input
-            type="number"
-            value={maxTier ?? ""}
-            onChange={(e) => updateMaxTier(e.target.value)}
-            placeholder="None"
-            className="h-7 text-xs w-20"
-          />
-        </div>
+        </>
       )}
-      <div className="flex items-center gap-2">
-        <Input
-          placeholder="Tier name"
-          value={newTierName}
-          onChange={(e) => setNewTierName(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && addTier()}
-          className="h-7 text-xs"
-        />
-        <AddButton onClick={addTier} />
-      </div>
     </Section>
   );
 }
@@ -852,29 +1090,33 @@ function MessagesEditor({ tvc, setTvc }: TvcEditorProps) {
 
   return (
     <Section title="Messages" count={entries.length}>
-      {entries.map(([id, msg]) => (
-        <div key={id} className="flex flex-col gap-1 pb-2">
-          <EntryRow onRemove={() => remove(id)}>
-            <span className="font-medium text-xs">{id}</span>
-          </EntryRow>
-          <Input
-            value={msg}
-            onChange={(e) => updateMessage(id, e.target.value)}
-            placeholder="Message template (%points_from%, %points_to%)"
-            className="h-7 text-xs ml-2"
-          />
-        </div>
-      ))}
-      <div className="flex items-center gap-2">
-        <Input
-          placeholder="Message ID"
-          value={newId}
-          onChange={(e) => setNewId(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && add()}
-          className="h-7 text-xs"
-        />
-        <AddButton onClick={add} />
-      </div>
+      {() => (
+        <>
+          {entries.map(([id, msg]) => (
+            <div key={id} className="flex flex-col gap-1 pb-2">
+              <EntryRow onRemove={() => remove(id)}>
+                <span className="font-medium text-xs">{id}</span>
+              </EntryRow>
+              <Input
+                value={msg}
+                onChange={(e) => updateMessage(id, e.target.value)}
+                placeholder="Message template (%points_from%, %points_to%)"
+                className="h-7 text-xs ml-2"
+              />
+            </div>
+          ))}
+          <div className="flex items-center gap-2">
+            <Input
+              placeholder="Message ID"
+              value={newId}
+              onChange={(e) => setNewId(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && add()}
+              className="h-7 text-xs"
+            />
+            <AddButton onClick={add} />
+          </div>
+        </>
+      )}
     </Section>
   );
 }

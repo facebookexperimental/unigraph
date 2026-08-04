@@ -6,6 +6,7 @@ import type { ExportScope } from "../__generated__/ts/ExportScope";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { useNativeGraphs } from "../context/NativeGraphContext";
+import { triggerDownload } from "../lib/utils";
 import { SidebarPanel, SidebarPanelHeader } from "./SidebarPanel";
 
 // Everything client-side: WASM serializes the graph to bytes, we wrap them in a
@@ -153,15 +154,4 @@ function Field({
       {children}
     </div>
   );
-}
-
-function triggerDownload(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
 }

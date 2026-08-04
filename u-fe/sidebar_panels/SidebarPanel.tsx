@@ -27,10 +27,20 @@ export function SidebarPanel({
   );
 }
 
-export function SidebarPanelHeader({ text }: { text: string }) {
+export function SidebarPanelHeader({
+  text,
+  actions,
+}: {
+  text: string;
+  /// Optional controls pinned to the right of the title.
+  actions?: React.ReactNode;
+}) {
   return (
     <>
-      <H1 text={text} />
+      <div className="flex items-center justify-between gap-2">
+        <H1 text={text} />
+        {actions}
+      </div>
       <Separator className="my-4" />
     </>
   );
