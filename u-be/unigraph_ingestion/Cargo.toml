@@ -14,7 +14,7 @@ license = "MIT"
 anyhow = "1.0.103"
 ll = "10.0.0"
 serde = { version = "1.0.229", features = ["derive", "rc"] }
-serde_json = { version = "1.0.140", features = ["alloc", "float_roundtrip", "raw_value", "unbounded_depth"] }
+serde_json = { version = "1.0.151", features = ["alloc", "float_roundtrip", "raw_value", "unbounded_depth"] }
 unigraph_cargo = { version = "0.1.1-alpha.0", path = "../unigraph_cargo" }
 unigraph_core = { version = "0.1.1-alpha.0", path = "../unigraph_core" }
 unigraph_db = { version = "0.1.1-alpha.0", path = "../unigraph_db" }

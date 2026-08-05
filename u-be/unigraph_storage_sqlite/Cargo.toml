@@ -15,6 +15,6 @@ anyhow = "1.0.103"
 async-trait = "0.1.91"
 ll = "10.0.0"
 rusqlite = { version = "0.37.0", features = ["bundled"] }
-serde_json = { version = "1.0.140", features = ["alloc", "float_roundtrip", "raw_value", "unbounded_depth"] }
+serde_json = { version = "1.0.151", features = ["alloc", "float_roundtrip", "raw_value", "unbounded_depth"] }
 unigraph_storage_core = { version = "0.1.1-alpha.0", path = "../unigraph_storage_core" }
 unigraph_timestamp = { version = "0.1.1-alpha.0", path = "../unigraph_timestamp" }

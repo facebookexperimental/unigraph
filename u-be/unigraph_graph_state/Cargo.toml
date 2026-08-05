@@ -17,7 +17,7 @@ bytemuck = { version = "1.25", features = ["const_zeroed", "derive", "min_const_
 glam = { version = "0.30.10", features = ["bytemuck", "serde"] }
 ll = "10.0.0"
 serde = { version = "1.0.229", features = ["derive", "rc"] }
-serde_json = { version = "1.0.140", features = ["alloc", "float_roundtrip", "raw_value", "unbounded_depth"] }
+serde_json = { version = "1.0.151", features = ["alloc", "float_roundtrip", "raw_value", "unbounded_depth"] }
 typegen = { version = "0.1.1-alpha.0", path = "../typegen" }
 unigraph_core = { version = "0.1.1-alpha.0", path = "../unigraph_core" }
 

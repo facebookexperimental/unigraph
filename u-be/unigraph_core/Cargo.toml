@@ -21,7 +21,7 @@ rayon = "1.11.0"
 readonly = "0.2.14"
 regex = "1.13.1"
 serde = { version = "1.0.229", features = ["derive", "rc"] }
-serde_json = { version = "1.0.140", features = ["alloc", "float_roundtrip", "raw_value", "unbounded_depth"] }
+serde_json = { version = "1.0.151", features = ["alloc", "float_roundtrip", "raw_value", "unbounded_depth"] }
 typegen = { version = "0.1.1-alpha.0", path = "../typegen" }
 unigraph_delta = { version = "0.1.1-alpha.0", path = "../unigraph_delta" }
 unigraph_serialization = { version = "0.1.1-alpha.0", path = "../unigraph_serialization" }

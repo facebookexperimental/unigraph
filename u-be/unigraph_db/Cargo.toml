@@ -17,7 +17,7 @@ futures = { version = "0.3.31", features = ["async-await", "compat"] }
 ll = "10.0.0"
 rayon = "1.11.0"
 serde = { version = "1.0.229", features = ["derive", "rc"] }
-serde_json = { version = "1.0.140", features = ["alloc", "float_roundtrip", "raw_value", "unbounded_depth"] }
+serde_json = { version = "1.0.151", features = ["alloc", "float_roundtrip", "raw_value", "unbounded_depth"] }
 tokio = { version = "1.52.4", features = ["full", "test-util", "tracing"] }
 unigraph_core = { version = "0.1.1-alpha.0", path = "../unigraph_core" }
 unigraph_metric_history = { version = "0.1.1-alpha.0", path = "../unigraph_metric_history" }
