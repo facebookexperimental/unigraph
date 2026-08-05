@@ -1,18 +1,29 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 use anyhow::Result;
+use futures::StreamExt;
+use futures::TryStreamExt;
+use futures::stream;
 use serde::Deserialize;
 use serde::Serialize;
 use typegen::TypeGen;
 use unigraph_rpc::RpcExec;
 use unigraph_storage_core::FrameQuery;
 use unigraph_storage_core::FrameRow;
+use unigraph_storage_core::FrameType;
+use unigraph_storage_core::GraphKey;
 use unigraph_storage_core::Order;
 use unigraph_storage_core::TimelineID;
 use unigraph_storage_core::Timestamp;
 use unigraph_storage_core::TimestampBounds;
+use unigraph_storage_core::TimestampedError;
 
 use crate::Unigraph;
+
+/// Upper bound on how many error frames are resolved at once. Each resolution
+/// is a full-data row read plus blob resolution, so the fan-out is capped
+/// rather than spanning the whole result page.
+const ERROR_FETCH_CONCURRENCY: usize = 8;
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -31,6 +42,10 @@ pub struct SelectFramesInput {
     /// Inclusive upper bound on frame timestamp, RFC3339.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub timestamp_end: Option<String>,
+    /// Populate [`FrameInfo::error`] for `Error` frames. Off by default — each
+    /// error frame costs a full-data row read plus blob resolution.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub include_error_info: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TypeGen)]
@@ -45,6 +60,24 @@ pub struct FrameInfo {
     pub frame_type: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub base: Option<String>,
+    /// Resolved error content, only for `Error` frames and only when the
+    /// request set `include_error_info`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<FrameErrorInfo>,
+}
+
+/// The error payload stored on an `Error` frame.
+#[derive(Debug, Clone, Serialize, Deserialize, TypeGen)]
+pub struct FrameErrorInfo {
+    pub error_count: i64,
+    pub errors: Vec<FrameError>,
+}
+
+/// A single timestamped error message from a failed graph computation.
+#[derive(Debug, Clone, Serialize, Deserialize, TypeGen)]
+pub struct FrameError {
+    pub timestamp: String,
+    pub message: String,
 }
 
 // ── Handler ──────────────────────────────────────────────────
@@ -55,7 +88,12 @@ impl RpcExec<Unigraph> for SelectFramesInput {
     async fn exec(self, ctx: &Unigraph, task: &ll::Task) -> Result<SelectFramesOutput> {
         let query = to_frame_query(&self)?;
         let rows = ctx.db.frames.select(&query, task).await?;
-        let frames = rows.iter().map(to_frame_info).collect();
+        let mut frames: Vec<FrameInfo> = rows.iter().map(to_frame_info).collect();
+
+        if self.include_error_info == Some(true) {
+            attach_error_info(ctx, &rows, &mut frames, task).await?;
+        }
+
         Ok(SelectFramesOutput { frames })
     }
 }
@@ -120,6 +158,60 @@ fn to_frame_info(row: &FrameRow) -> FrameInfo {
             .base
             .as_ref()
             .map(|k| format!("{}~{}", k.timeline_id.0, k.graph_id.0)),
+        error: None,
+    }
+}
+
+/// Resolve and attach the error payload of every `Error` frame in `rows`.
+///
+/// `rows` and `frames` are positionally aligned — `frames` is built by mapping
+/// over `rows`, so index `i` refers to the same frame in both.
+async fn attach_error_info(
+    ctx: &Unigraph,
+    rows: &[FrameRow],
+    frames: &mut [FrameInfo],
+    task: &ll::Task,
+) -> Result<()> {
+    let error_frames: Vec<(usize, GraphKey)> = rows
+        .iter()
+        .enumerate()
+        .filter(|(_, row)| row.frame_type == FrameType::Error)
+        .map(|(idx, row)| (idx, to_graph_key(row)))
+        .collect();
+
+    let resolved: Vec<(usize, FrameErrorInfo)> = stream::iter(error_frames)
+        .map(|(idx, key)| async move {
+            let errors = ctx.db.graph.fetch_errors(&key, task).await?;
+            anyhow::Ok((idx, to_frame_error_info(&errors)))
+        })
+        .buffer_unordered(ERROR_FETCH_CONCURRENCY)
+        .try_collect()
+        .await?;
+
+    for (idx, info) in resolved {
+        frames[idx].error = Some(info);
+    }
+
+    Ok(())
+}
+
+fn to_graph_key(row: &FrameRow) -> GraphKey {
+    GraphKey {
+        timeline_id: row.timeline_id.clone(),
+        graph_id: row.frame.graph_id,
+    }
+}
+
+fn to_frame_error_info(errors: &[TimestampedError]) -> FrameErrorInfo {
+    FrameErrorInfo {
+        error_count: errors.len() as i64,
+        errors: errors
+            .iter()
+            .map(|e| FrameError {
+                timestamp: e.timestamp.to_rfc3339(),
+                message: e.message.clone(),
+            })
+            .collect(),
     }
 }
 
@@ -139,6 +231,7 @@ mod tests {
             order: None,
             timestamp_start: None,
             timestamp_end: None,
+            include_error_info: None,
         }
     }
 

@@ -39,6 +39,8 @@ pub use search_nodes::SearchMode;
 pub use search_nodes::SearchNodeMatch;
 pub use search_nodes::SearchNodesInput;
 pub use search_nodes::SearchNodesOutput;
+pub use select_frames::FrameError;
+pub use select_frames::FrameErrorInfo;
 pub use select_frames::FrameInfo;
 pub use select_frames::SelectFramesInput;
 pub use select_frames::SelectFramesOutput;

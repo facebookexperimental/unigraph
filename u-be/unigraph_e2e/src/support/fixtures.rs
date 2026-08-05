@@ -62,7 +62,9 @@ pub async fn ingest_map_graph_json(t: &TestApp, timeline_id: &str, json: &str) -
     Ok(())
 }
 
-fn default_timeline_config() -> TimelineConfig {
+/// The timeline config every fixture uses: `AdjacentDeltas`, inline blobs,
+/// no external ID namespace, no metric history.
+pub fn default_timeline_config() -> TimelineConfig {
     TimelineConfig {
         schema: TimelineSchema::AdjacentDeltas(AdjacentDeltasConfig {}),
         external_id_namespace: None,

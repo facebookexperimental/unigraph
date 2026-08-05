@@ -12,6 +12,7 @@ license = "MIT"
 
 [dependencies]
 anyhow = "1.0.104"
+futures = { version = "0.3.31", features = ["async-await", "compat"] }
 ll = "10.0.0"
 lru = { version = "0.16.4", default-features = false }
 paste = "1.0.14"
