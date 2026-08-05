@@ -1,7 +1,7 @@
 /**
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
- * @generated SignedSource<<ea3c5d37f3da3c4c1d65f3f4f42fb5dc>>
+ * @generated SignedSource<<0e338419a1ed97ed5ae8eefaae41e28e>>
  */
 
 
@@ -10,5 +10,10 @@
  * Otherwise we will use the determined entry points.
  * This is needed for things like: show as flat list, show selected nodes,
  * show reverse from a specific node, etc.
+ * 
+ * Every variant must stay a unit variant — the Hack typegen backend rejects
+ * enums that mix unit and data variants. Variants that need a payload store
+ * it in a sibling field on `ArrayGraphUISettings` (see `Specified` /
+ * `entry_points_specified` and `Filtered` / `entry_points_filter`).
  */
-export type ArrayGraphUISettingsTreeTableEntryPoints = "Determine" | "AllReachable" | "Specified";
+export type ArrayGraphUISettingsTreeTableEntryPoints = "Determine" | "AllReachable" | "Specified" | "Filtered";

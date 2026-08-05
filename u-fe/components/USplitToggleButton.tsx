@@ -3,6 +3,7 @@
 import { ChevronDown } from "lucide-react";
 import { useState } from "react";
 import { usePortalContainer } from "../context/GlobalElementRefs";
+import { cn } from "../lib/utils";
 import UTooltip from "./UTooltip";
 import { Button } from "./ui/button";
 import {
@@ -18,12 +19,15 @@ export default function USplitToggleButton({
   children,
   tooltip,
   popoverContent,
+  popoverClassName,
 }: {
   selected?: boolean;
   onSelectedChange?: (selected: boolean) => void;
   children: React.ReactNode;
   tooltip?: React.ReactNode;
   popoverContent: React.ReactNode;
+  /** Override the popover's size. Defaults to `w-96 max-h-[80vh]`. */
+  popoverClassName?: string;
 }) {
   const [open, setOpen] = useState(false);
   const container = usePortalContainer();
@@ -34,7 +38,9 @@ export default function USplitToggleButton({
       <UTooltip tooltip={tooltip}>
         <Button
           size="sm"
-          className="cursor-pointer rounded-r-none"
+          // `focus-visible:z-10` so the focus ring paints over the adjacent
+          // half instead of being clipped by it — the two halves overlap.
+          className="cursor-pointer rounded-r-none relative focus-visible:z-10"
           variant={variant}
           onClick={() => onSelectedChange?.(!selected)}
         >
@@ -45,7 +51,7 @@ export default function USplitToggleButton({
         <PopoverTrigger asChild>
           <Button
             size="sm"
-            className="cursor-pointer rounded-l-none border-l border-l-background/20 px-1"
+            className="cursor-pointer rounded-l-none border-l border-l-background/20 px-1 relative focus-visible:z-10"
             variant={variant}
             onClick={() => setOpen(!open)}
           >
@@ -55,7 +61,10 @@ export default function USplitToggleButton({
         {open && popoverContent != null && (
           <PopoverPortal container={container?.current}>
             <PopoverContent
-              className="w-96 mx-6 max-h-[80vh] overflow-y-auto"
+              className={cn(
+                "mx-6 overflow-y-auto",
+                popoverClassName ?? "w-96 max-h-[80vh]",
+              )}
               onOpenAutoFocus={(e) => e.preventDefault()}
             >
               {popoverContent}

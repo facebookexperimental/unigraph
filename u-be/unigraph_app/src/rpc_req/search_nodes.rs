@@ -12,6 +12,7 @@ use typegen::TypeGen;
 use unigraph_core::ArrayGraph;
 use unigraph_core::GraphNode;
 use unigraph_core::NodeIDX;
+use unigraph_core::PropertyIndices;
 use unigraph_rpc::RpcExec;
 use unigraph_storage_core::TimelineID;
 
@@ -97,12 +98,11 @@ fn search_nodes(
     match_properties: Option<&BTreeMap<String, String>>,
     task: &ll::Task,
 ) -> Result<Vec<SearchNodeMatch>> {
-    let property_indices = build_property_indices(&ag, match_properties);
     let has_properties = match_properties.is_some_and(|p| !p.is_empty());
 
-    if has_properties && property_indices.len() < match_properties.unwrap().len() {
+    let Some(property_indices) = bind_properties(&ag, match_properties) else {
         return Ok(Vec::new());
-    }
+    };
 
     match pattern {
         Some(pat) => search_with_pattern(&ag, pat, limit, mode, &property_indices, task),
@@ -123,7 +123,7 @@ fn search_with_pattern(
     pattern: &str,
     limit: usize,
     mode: &SearchMode,
-    property_indices: &[(&str, &BTreeMap<NodeIDX, String>)],
+    property_indices: &PropertyIndices<'_>,
     task: &ll::Task,
 ) -> Result<Vec<SearchNodeMatch>> {
     let candidates = match mode {
@@ -143,7 +143,7 @@ fn search_with_pattern(
 
     Ok(candidates
         .into_iter()
-        .filter(|(_, idx)| matches_properties(*idx, property_indices))
+        .filter(|(_, idx)| property_indices.matches(*idx))
         .take(limit)
         .map(|(name, idx)| to_match(ag, name, idx))
         .collect())
@@ -152,10 +152,10 @@ fn search_with_pattern(
 fn search_by_properties_only(
     ag: &ArrayGraph,
     limit: usize,
-    property_indices: &[(&str, &BTreeMap<NodeIDX, String>)],
+    property_indices: &PropertyIndices<'_>,
 ) -> Result<Vec<SearchNodeMatch>> {
-    let candidates = intersect_property_indices(property_indices);
-    Ok(candidates
+    Ok(property_indices
+        .intersect()
         .into_iter()
         .take(limit)
         .map(|idx| to_match(ag, ag.idx_to_name(idx), idx))
@@ -174,64 +174,17 @@ fn all_nodes(ag: &ArrayGraph, limit: usize) -> Result<Vec<SearchNodeMatch>> {
 
 // ── Property helpers ─────────────────────────────────────────
 
-fn build_property_indices<'a>(
+/// Bind the requested properties to the graph's inverted indices.
+///
+/// `None` means a requested property name doesn't exist in the graph at all,
+/// so no node can match every condition.
+fn bind_properties<'a>(
     ag: &'a ArrayGraph,
     match_properties: Option<&'a BTreeMap<String, String>>,
-) -> Vec<(&'a str, &'a BTreeMap<NodeIDX, String>)> {
-    let Some(properties) = match_properties else {
-        return Vec::new();
-    };
-    properties
-        .iter()
-        .filter_map(|(name, value)| {
-            ag.data
-                .node_metadata
-                .properties
-                .get(name)
-                .map(|index| (value.as_str(), index))
-        })
-        .collect()
-}
-
-fn matches_properties(
-    node_idx: NodeIDX,
-    property_indices: &[(&str, &BTreeMap<NodeIDX, String>)],
-) -> bool {
-    property_indices.iter().all(|&(expected_value, index)| {
-        index
-            .get(&node_idx)
-            .is_some_and(|v| v.as_str() == expected_value)
-    })
-}
-
-fn intersect_property_indices(
-    property_indices: &[(&str, &BTreeMap<NodeIDX, String>)],
-) -> Vec<NodeIDX> {
-    if property_indices.is_empty() {
-        return Vec::new();
-    }
-
-    let mut sorted: Vec<_> = property_indices.iter().enumerate().collect();
-    sorted.sort_by_key(|(_, (_, index))| index.len());
-
-    let (first_pos, (first_value, first_index)) = sorted[0];
-    let mut candidates: Vec<NodeIDX> = first_index
-        .iter()
-        .filter(|(_, v)| v.as_str() == *first_value)
-        .map(|(idx, _)| *idx)
-        .collect();
-
-    for &(i, (expected_value, index)) in &sorted[1..] {
-        if i == first_pos {
-            continue;
-        }
-        candidates.retain(|idx| {
-            index
-                .get(idx)
-                .is_some_and(|v| v.as_str() == *expected_value)
-        });
-    }
-
-    candidates.sort();
-    candidates
+) -> Option<PropertyIndices<'a>> {
+    let conditions = match_properties
+        .into_iter()
+        .flatten()
+        .map(|(name, value)| (name.as_str(), Some(value.as_str())));
+    PropertyIndices::bind(ag, conditions)
 }

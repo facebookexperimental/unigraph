@@ -31,6 +31,7 @@ import { useGraphSettings } from "./context/GraphSettingsContext";
 import { useNativeGraphR, useTwinGraph } from "./context/NativeGraphContext";
 import { useSelectedNodes } from "./context/SelectedNodesContext";
 import { useTVC } from "./context/TraversalConfigContext";
+import { FilterConditionCount, FlatListFilterContent } from "./FlatListFilter";
 import {
   useToggleDominatorTreeView,
   useToggleFlatListView,
@@ -149,6 +150,7 @@ function Toggles() {
   return (
     <div className="flex gap-4 items-center">
       <USplitToggleButton
+        tooltip="Show node count columns"
         selected={graphSettings.ui_settings?.columns?.show_counts === true}
         onSelectedChange={(checked) => {
           setGraphSettings({
@@ -169,6 +171,7 @@ function Toggles() {
 
       {hasMetrics && (
         <USplitToggleButton
+          tooltip="Show metric columns"
           selected={graphSettings.ui_settings?.columns?.hide_metrics !== true}
           onSelectedChange={(checked) => {
             setGraphSettings({
@@ -190,19 +193,21 @@ function Toggles() {
 
       <SeparatorVertical />
 
-      <UToggleButton
+      <USplitToggleButton
         tooltip={
           <span>
             Show as a flat list{" "}
             <KeyboardShortcutLabel shortcut={KEYBOARD_SHORTCUTS.FLAT_LIST} />
           </span>
         }
-        size="sm"
         selected={flatViewEnabled}
         onSelectedChange={toggleFlatListView}
+        popoverContent={<FlatListFilterContent />}
+        popoverClassName="w-[32rem] max-h-[85vh]"
       >
         <List />
-      </UToggleButton>
+        <FilterConditionCount />
+      </USplitToggleButton>
 
       <UToggleButton
         tooltip={

@@ -92,10 +92,15 @@ pub use crate::types::array_graph::array_graph_debug_utils::ArrayGraphDebugUtils
 pub use crate::types::array_graph::array_graph_metrics::CombinedMetricsForNodes;
 pub use crate::types::array_graph::array_graph_nodes::ArrayGraphNodes;
 pub use crate::types::array_graph::array_graph_stats::ArrayGraphStats;
+pub use crate::types::array_graph::filter_candidates::FilterCandidates;
+pub use crate::types::array_graph::filter_candidates::PropertyCandidates;
 pub use crate::types::array_graph::graph_settings;
+pub use crate::types::array_graph::graph_settings::EntryPointsFilter;
 pub use crate::types::array_graph::graph_settings::GraphSettings;
+pub use crate::types::array_graph::graph_settings::PropertyValueMatch;
 pub use crate::types::array_graph::offset_graph::EdgeOverrides;
 pub use crate::types::array_graph::offset_graph::TraversalType;
+pub use crate::types::array_graph::property_index::PropertyIndices;
 pub use crate::types::array_graph::remap_utils;
 pub use crate::types::array_graph::to_scc_graph::SccGraph;
 pub use crate::types::map_graph::GraphNode;

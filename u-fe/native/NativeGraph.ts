@@ -7,9 +7,11 @@ import {
   available_metric_views,
   determine_entrypoints,
   export_graph,
+  filtered_entry_points,
   get_array_graph_stats,
   get_combined_metrics_for_entrypoints_with_force_include,
   get_combined_metrics_for_nodes,
+  get_filter_candidates,
   get_graph_node_count,
   get_graph_settings,
   get_graph_traversal_config,
@@ -32,8 +34,10 @@ import {
 } from "../../.build/wasm/unigraph_wasm";
 import type { ArrayGraphStats } from "../__generated__/ts/ArrayGraphStats";
 import type { CombinedMetricsForNodes } from "../__generated__/ts/CombinedMetricsForNodes";
+import type { EntryPointsFilter } from "../__generated__/ts/EntryPointsFilter";
 import type { ExportFormat } from "../__generated__/ts/ExportFormat";
 import type { ExportScope } from "../__generated__/ts/ExportScope";
+import type { FilterCandidates } from "../__generated__/ts/FilterCandidates";
 import type { GraphNode } from "../__generated__/ts/GraphNode";
 import type { MinCutResult } from "../__generated__/ts/MinCutResult";
 import type { ExplorerComponentInputGraphs } from "../Explorer";
@@ -57,6 +61,21 @@ export type NodeIDXVecSet = Readonly<{
   vec: Readonly<NodeIDX[]>;
   set: Readonly<Set<NodeIDX>>;
 }>;
+
+/// Pair a node list with a membership set, building the set only if something
+/// actually reads it. Whole-graph lists run to millions of entries, where the
+/// set costs far more to build than the list itself — and most callers only
+/// ever touch `vec`.
+function vecSet(vec: NodeIDX[]): NodeIDXVecSet {
+  let set: Set<NodeIDX> | null = null;
+  return {
+    vec,
+    get set() {
+      set ??= new Set(vec);
+      return set;
+    },
+  };
+}
 
 type CombinedMetricsCache = {
   // metrics for the whole reachable graph from current entrypoints with
@@ -94,6 +113,15 @@ export default class NativeGraph {
   private transitiveCountDominatedCache: SingleMetricsCache;
 
   private entrypointsCache: NodeIDXVecSet | null = null;
+
+  // Single slot rather than a Map: the filter is edited interactively, and on
+  // a large graph every distinct filter would otherwise retain a full node list.
+  private filteredEntrypointsCache: {
+    key: string;
+    value: NodeIDXVecSet;
+  } | null = null;
+
+  private filterCandidatesCache: FilterCandidates | null = null;
 
   private nodeFlagsCache: Uint32Array | null = null;
   private allReachableNodeIDXsCache: NodeIDXVecSet | null = null;
@@ -223,16 +251,39 @@ export default class NativeGraph {
 
   determineEntrypoints(): NodeIDXVecSet {
     if (this.entrypointsCache == null) {
-      const result = determine_entrypoints(this.side);
-      this.entrypointsCache = { vec: Array.from(result), set: new Set(result) };
+      this.entrypointsCache = vecSet(
+        Array.from(determine_entrypoints(this.side)),
+      );
     }
     return this.entrypointsCache;
+  }
+
+  /// Reachable nodes matching `filter` — the roots for the `Filtered` entry
+  /// point mode. Memoized on the serialized filter so re-renders with an
+  /// unchanged filter never cross the WASM boundary. Traversal config changes
+  /// are covered for free: they rebuild this whole NativeGraph.
+  filteredEntrypoints(filter: EntryPointsFilter): NodeIDXVecSet {
+    const key = JSON.stringify(filter);
+    if (this.filteredEntrypointsCache?.key === key) {
+      return this.filteredEntrypointsCache.value;
+    }
+    const value = vecSet(Array.from(filtered_entry_points(key, this.side)));
+    this.filteredEntrypointsCache = { key, value };
+    return value;
+  }
+
+  /// Every property name, property value, edge tag and dynamic type key the
+  /// filter UI can offer. Computed lazily — a user who never opens the filter
+  /// popover never pays for the property index scan.
+  filterCandidates(): FilterCandidates {
+    this.filterCandidatesCache ??= JSON.parse(get_filter_candidates(this.side));
+    return this.filterCandidatesCache as FilterCandidates;
   }
 
   getAllReachableNodeIDXs(): NodeIDXVecSet {
     if (this.allReachableNodeIDXsCache == null) {
       const flags = this.getOrInitNodeFlagsCache();
-      const allReachable = [];
+      const allReachable: NodeIDX[] = [];
       for (let i = 0; i < flags.length; i++) {
         const bits = flags[i] as number;
         if (isNodeUnreachable(bits)) {
@@ -240,10 +291,7 @@ export default class NativeGraph {
         }
         allReachable.push(i as NodeIDX);
       }
-      this.allReachableNodeIDXsCache = {
-        vec: Array.from(allReachable),
-        set: new Set(allReachable),
-      };
+      this.allReachableNodeIDXsCache = vecSet(allReachable);
     }
     return this.allReachableNodeIDXsCache;
   }
@@ -262,8 +310,13 @@ export default class NativeGraph {
     return [tierName, tierIdx];
   }
 
+  /// Read the flag bit directly rather than going through
+  /// `getAllReachableNodeIDXs().set`. This is called per row per column, and
+  /// the set version forced a multi-million-entry `Set` to be built the first
+  /// time the flat list was opened.
   isNodeReachable(nodeIDX: NodeIDX): boolean {
-    return this.getAllReachableNodeIDXs().set.has(nodeIDX);
+    const flags = this.getOrInitNodeFlagsCache();
+    return !isNodeUnreachable(flags[nodeIDX] as number);
   }
 
   /// A single node in its MapGraph form — metrics, properties, labels and

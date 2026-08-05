@@ -15,6 +15,7 @@ use unigraph_core::ArrayGraphSerializable;
 use unigraph_core::ArrayGraphSerializablePackage;
 use unigraph_core::ArrayGraphSerializablePackageBase64;
 use unigraph_core::EdgeOverrides;
+use unigraph_core::EntryPointsFilter;
 use unigraph_core::ExportFormat;
 use unigraph_core::ExportScope;
 use unigraph_core::GraphNode;
@@ -685,6 +686,37 @@ pub fn determine_entrypoints(side: u32) -> Result<Vec<u32>, WasmJSError> {
         .map(|&idx| Ok(gs.mode.to_ui(side, idx)?.0))
         .collect::<Result<Vec<u32>>>()
         .map_err(Into::into)
+}
+
+/// Reachable nodes matching `entry_points_filter_json`, for the tree table's
+/// `Filtered` entry point mode.
+///
+/// Takes the filter as an argument rather than reading it out of graph settings
+/// so this stays a pure function of (graph, filter) — the result is memoized on
+/// the JS side, keyed on the filter.
+#[wasm_bindgen]
+pub fn filtered_entry_points(
+    entry_points_filter_json: String,
+    side: u32,
+) -> Result<Vec<u32>, WasmJSError> {
+    let filter: EntryPointsFilter = serde_json::from_str(&entry_points_filter_json)
+        .context("Failed to parse entry points filter")?;
+    let gs = GlobalGraphState::graph_state().get();
+    let ag = gs.mode.graph(side)?;
+    ag.filter_entry_points(&filter)
+        .iter()
+        .map(|&idx| Ok(gs.mode.to_ui(side, idx)?.0))
+        .collect::<Result<Vec<u32>>>()
+        .map_err(Into::into)
+}
+
+/// Every property name, property value, edge tag and dynamic type key the
+/// flat-list filter UI can offer as a choice.
+#[wasm_bindgen]
+pub fn get_filter_candidates(side: u32) -> Result<String, WasmJSError> {
+    let gs = GlobalGraphState::graph_state().get();
+    let candidates = gs.mode.graph(side)?.filter_candidates();
+    Ok(serde_json::to_string(&candidates).context("Failed to serialize filter candidates")?)
 }
 
 #[wasm_bindgen]

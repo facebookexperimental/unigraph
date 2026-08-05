@@ -1,12 +1,13 @@
 /**
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
- * @generated SignedSource<<fd880a7bb3e5f869814b00847c8bdef1>>
+ * @generated SignedSource<<9da8a62df9a83966c351b8411cf63d2b>>
  */
 
 
 import type { ArrayGraphUISettingsTreeTableEntryPoints } from './ArrayGraphUISettingsTreeTableEntryPoints.ts';
 import type { ColumnSettings } from './ColumnSettings.ts';
+import type { EntryPointsFilter } from './EntryPointsFilter.ts';
 import type { GraphStructure } from './GraphStructure.ts';
 import type { OptionEnabledDependingOnRightGraph } from './OptionEnabledDependingOnRightGraph.ts';
 import type { SidebarPanel } from './SidebarPanel.ts';
@@ -58,4 +59,12 @@ export interface ArrayGraphUISettings {
    * we keep the same selected entry point
    */
   entry_points_specified?: string[] | undefined;
+  /**
+   * Used in combination with `entry_points` settings.
+   * If entry_points is set to `Filtered`, these conditions narrow the flat
+   * list down to the nodes that match them. Stored separately from
+   * `entry_points` for the same reason as `entry_points_specified`: so the
+   * conditions survive switching to another entry point mode and back.
+   */
+  entry_points_filter?: EntryPointsFilter | undefined;
 }

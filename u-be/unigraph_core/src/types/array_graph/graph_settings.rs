@@ -1,11 +1,16 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 
 use anyhow::Result;
 use anyhow::bail;
 
+use crate::types::DynamicTypeKey;
 use crate::types::NodeName;
+use crate::types::PropertyName;
+use crate::types::PropertyValue;
+use crate::types::Tag;
 
 #[derive(
     Debug,
@@ -765,6 +770,14 @@ pub struct ArrayGraphUISettings {
     /// we keep the same selected entry point
     #[serde(skip_serializing_if = "Option::is_none")]
     pub entry_points_specified: Option<Vec<NodeName>>,
+
+    /// Used in combination with `entry_points` settings.
+    /// If entry_points is set to `Filtered`, these conditions narrow the flat
+    /// list down to the nodes that match them. Stored separately from
+    /// `entry_points` for the same reason as `entry_points_specified`: so the
+    /// conditions survive switching to another entry point mode and back.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub entry_points_filter: Option<EntryPointsFilter>,
 }
 
 /// Enum that defines how the graph structure is displayed in the UI.
@@ -808,6 +821,11 @@ impl GraphStructure {
 /// Otherwise we will use the determined entry points.
 /// This is needed for things like: show as flat list, show selected nodes,
 /// show reverse from a specific node, etc.
+///
+/// Every variant must stay a unit variant — the Hack typegen backend rejects
+/// enums that mix unit and data variants. Variants that need a payload store
+/// it in a sibling field on `ArrayGraphUISettings` (see `Specified` /
+/// `entry_points_specified` and `Filtered` / `entry_points_filter`).
 #[derive(
     Debug,
     serde::Serialize,
@@ -824,6 +842,75 @@ pub enum ArrayGraphUISettingsTreeTableEntryPoints {
     Determine,
     AllReachable,
     Specified,
+    /// All reachable nodes narrowed by `entry_points_filter`.
+    Filtered,
+}
+
+/// Conditions that narrow the flat list down to a subset of nodes.
+///
+/// Used in combination with `ArrayGraphUISettingsTreeTableEntryPoints::Filtered`.
+/// A node matches only when it satisfies every condition — this is an AND
+/// across the three fields and across the entries within each of them.
+#[derive(
+    Debug,
+    serde::Serialize,
+    serde::Deserialize,
+    typegen::TypeGen,
+    Clone,
+    Default,
+    PartialEq,
+    unigraph_delta::Deltable
+)]
+pub struct EntryPointsFilter {
+    /// Property name -> what the value has to look like.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub properties: BTreeMap<PropertyName, PropertyValueMatch>,
+
+    /// Node must have an incoming edge tagged with each of these.
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub incoming_tags: BTreeSet<Tag>,
+
+    /// Node must have an incoming dynamic edge with each of these type keys.
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub incoming_dynamic_type_keys: BTreeSet<DynamicTypeKey>,
+}
+
+/// What a property condition requires of a node's value for that property.
+///
+/// A struct rather than a bare `Option<PropertyValue>` because this is a map
+/// value: `JSON.stringify` drops `undefined`, so an optional-valued map entry
+/// would silently disappear on the way back from the UI. An empty object
+/// survives the round trip and leaves room for future match modes.
+#[derive(
+    Debug,
+    serde::Serialize,
+    serde::Deserialize,
+    typegen::TypeGen,
+    Clone,
+    Default,
+    PartialEq,
+    unigraph_delta::Deltable
+)]
+pub struct PropertyValueMatch {
+    /// Required exact value. Absent matches any node carrying the property,
+    /// whatever its value.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value: Option<PropertyValue>,
+}
+
+impl EntryPointsFilter {
+    /// No conditions set — every reachable node matches.
+    pub fn is_empty(&self) -> bool {
+        self.properties.is_empty()
+            && self.incoming_tags.is_empty()
+            && self.incoming_dynamic_type_keys.is_empty()
+    }
+
+    /// Whether any condition constrains a node's incoming edges. When false the
+    /// reverse graph is never touched.
+    pub fn has_incoming_edge_conditions(&self) -> bool {
+        !self.incoming_tags.is_empty() || !self.incoming_dynamic_type_keys.is_empty()
+    }
 }
 
 #[derive(

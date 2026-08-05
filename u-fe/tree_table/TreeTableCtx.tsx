@@ -3,6 +3,7 @@
 import type { NodeIDX } from "../__generated__/ts/NodeIDX";
 import type { SortOrder } from "../__generated__/ts/SortOrder";
 import { ARROW_POINTS_FROM_NON_EXISTENT } from "../ArrowUtils";
+import { isFlatListEntryPoints } from "../GraphStructureHooks";
 import type { ColumnInternal, NumericValueColumnDefinition } from "./columns";
 import type { TreeTableGraph } from "./TreeTable";
 import {
@@ -467,14 +468,15 @@ export class TreeTableCtx {
       return true;
     };
 
-    // If our entry points are set to "AllReachable", which is essentially a flat list,
+    // If our entry points are a flat list ("AllReachable", or "Filtered" for a
+    // narrowed-down flat list),
     // we normally don't want to navigate to a specific path. Most of the time you switch
     // into the flat list to see sorted values and then back to the tree table.
     // Expanding rows in a flat list make the sorting look weird and is generally not useful.
     // So for this case we will opt out of navigating to the set specific path and instead
     // skipp to finding the shortest path, which will be the path of the node itself, since
     // it's a flat list.
-    const shouldUseValidPath = treeTableEntryPoints !== "AllReachable";
+    const shouldUseValidPath = !isFlatListEntryPoints(treeTableEntryPoints);
 
     if (shouldUseValidPath && isPathValid()) {
       // If the path is valid we can just navigate to it

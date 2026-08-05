@@ -20,6 +20,7 @@ import {
   derive_gqc_delta,
 } from "../.build/wasm/unigraph_wasm";
 import type { ArrayGraphUISettingsTreeTableEntryPoints } from "./__generated__/ts/ArrayGraphUISettingsTreeTableEntryPoints";
+import type { EntryPointsFilter } from "./__generated__/ts/EntryPointsFilter";
 import type { GraphQueryConfig } from "./__generated__/ts/GraphQueryConfig";
 import type { GraphQueryOutput } from "./__generated__/ts/GraphQueryOutput";
 import type { TraversalConfig } from "./__generated__/ts/TraversalConfig";
@@ -399,32 +400,29 @@ function Page({
   const panelTab =
     visiblePanels.find((p) => p.id === selectedSidebarPanel)?.render() ?? null;
 
-  const roots = useMemo(() => {
-    const rootsR = getRoots(
-      nativeGraphR,
-      selectedNodes,
-      settings.ui_settings?.entry_points_specified ?? null,
+  const entryPointsConfig: EntryPointsConfig = useMemo(
+    () => ({
+      entryPoints: settings.ui_settings?.entry_points ?? "Determine",
+      specified: settings.ui_settings?.entry_points_specified ?? null,
+      filter: settings.ui_settings?.entry_points_filter ?? null,
+    }),
+    [
       settings.ui_settings?.entry_points,
-    );
+      settings.ui_settings?.entry_points_specified,
+      settings.ui_settings?.entry_points_filter,
+    ],
+  );
+
+  const roots = useMemo(() => {
+    const rootsR = getRoots(nativeGraphR, selectedNodes, entryPointsConfig);
 
     if (nativeGraphL == null) {
       return rootsR;
     } else {
-      const rootsL = getRoots(
-        nativeGraphL,
-        selectedNodes,
-        settings.ui_settings?.entry_points_specified ?? null,
-        settings.ui_settings?.entry_points,
-      );
+      const rootsL = getRoots(nativeGraphL, selectedNodes, entryPointsConfig);
       return Array.from(new Set([...rootsL, ...rootsR]));
     }
-  }, [
-    nativeGraphL,
-    nativeGraphR,
-    selectedNodes,
-    settings.ui_settings?.entry_points,
-    settings.ui_settings?.entry_points_specified,
-  ]);
+  }, [nativeGraphL, nativeGraphR, selectedNodes, entryPointsConfig]);
 
   return (
     <div
@@ -446,11 +444,16 @@ function Page({
   );
 }
 
+type EntryPointsConfig = {
+  entryPoints: ArrayGraphUISettingsTreeTableEntryPoints;
+  specified: string[] | null;
+  filter: EntryPointsFilter | null;
+};
+
 function getRoots(
   nativeGraph: NativeGraph,
   selectedNodes: NodeIDX[],
-  entryPointsSpecified: string[] | null,
-  entryPoints: ArrayGraphUISettingsTreeTableEntryPoints = "Determine",
+  { entryPoints, specified, filter }: EntryPointsConfig,
 ): readonly NodeIDX[] {
   if (selectedNodes.length > 0) {
     return selectedNodes;
@@ -461,12 +464,17 @@ function getRoots(
       return nativeGraph.determineEntrypoints().vec;
     case "AllReachable":
       return nativeGraph.getAllReachableNodeIDXs().vec;
+    case "Filtered":
+      if (filter == null) {
+        return nativeGraph.getAllReachableNodeIDXs().vec;
+      }
+      return nativeGraph.filteredEntrypoints(filter).vec;
     case "Specified":
-      if (entryPointsSpecified == null || entryPointsSpecified.length === 0) {
+      if (specified == null || specified.length === 0) {
         return nativeGraph.determineEntrypoints().vec;
       }
 
-      return entryPointsSpecified
+      return specified
         .map((idx) => nativeGraph.getNodeIDXByNameLog(idx))
         .filter((idx) => idx != null);
     default: {

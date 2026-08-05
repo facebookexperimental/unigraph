@@ -28,9 +28,12 @@ mod tests {
     use crate::array_graph_serializable::delta::package::unpack_delta;
     use crate::array_graph_serializable::package::ArrayGraphSerializablePackageConfig;
     use crate::graph_settings::ArrayGraphUISettings;
+    use crate::graph_settings::ArrayGraphUISettingsTreeTableEntryPoints;
     use crate::graph_settings::ColumnSettings;
+    use crate::graph_settings::EntryPointsFilter;
     use crate::graph_settings::GraphSettings;
     use crate::graph_settings::GraphStructure;
+    use crate::graph_settings::PropertyValueMatch;
     use crate::graph_settings::SidebarPanel;
     use crate::traversal::Decision;
 
@@ -281,12 +284,51 @@ mod tests {
                         None
                     },
                     show_changed_nodes_only: None,
-                    entry_points: None,
+                    entry_points: if rng.next_bool(40) {
+                        Some(match rng.next() % 4 {
+                            0 => ArrayGraphUISettingsTreeTableEntryPoints::Determine,
+                            1 => ArrayGraphUISettingsTreeTableEntryPoints::AllReachable,
+                            2 => ArrayGraphUISettingsTreeTableEntryPoints::Specified,
+                            _ => ArrayGraphUISettingsTreeTableEntryPoints::Filtered,
+                        })
+                    } else {
+                        None
+                    },
                     entry_points_specified: None,
+                    entry_points_filter: if rng.next_bool(30) {
+                        Some(random_entry_points_filter(rng))
+                    } else {
+                        None
+                    },
                 })
             } else {
                 None
             },
+        }
+    }
+
+    fn random_entry_points_filter(rng: &mut XorShift64) -> EntryPointsFilter {
+        let property_names = ["budget_type", "team", "oncall"];
+        let property_values = ["ROUTE", "PAGE", "ads"];
+        let tag_names = ["lazy", "async", "sync", "eager"];
+        let dynamic_type_keys = ["rc:gk", "ddd"];
+
+        EntryPointsFilter {
+            properties: (0..rng.next() % 3)
+                .map(|_| {
+                    let name = rng.pick(&property_names).to_string();
+                    let value = rng
+                        .next_bool(70)
+                        .then(|| rng.pick(&property_values).to_string());
+                    (name, PropertyValueMatch { value })
+                })
+                .collect(),
+            incoming_tags: (0..rng.next() % 3)
+                .map(|_| rng.pick(&tag_names).to_string())
+                .collect(),
+            incoming_dynamic_type_keys: (0..rng.next() % 2)
+                .map(|_| rng.pick(&dynamic_type_keys).to_string())
+                .collect(),
         }
     }
 
@@ -530,11 +572,11 @@ mod tests {
         k9::snapshot!(
             hashes.join("\n"),
             "
-pair_00: 41c61b7d86012725
+pair_00: 4dc3767772f0c1db
 pair_01: 9c229d465a595694
 pair_02: 02c7db2854a102fc
-pair_03: 8acc05ff083d6578
-pair_04: 1d449b7e40ad8e9b
+pair_03: 1cf01a1aeb5029c0
+pair_04: 798758ee055bbe41
 pair_05: 92245372e4878666
 pair_06: 9c012d55a738aa83
 pair_07: 540e7ca607fc602b

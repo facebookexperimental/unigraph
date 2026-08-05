@@ -11,8 +11,11 @@ mod array_graph_name_search;
 pub(crate) mod array_graph_nodes;
 pub mod array_graph_state;
 pub mod array_graph_stats;
+pub mod entry_points_filter;
+pub mod filter_candidates;
 pub mod graph_settings;
 pub(crate) mod offset_graph;
+pub mod property_index;
 pub mod remap_utils;
 mod super_root;
 mod tarjan_strongly_connected_components;
@@ -63,6 +66,10 @@ use crate::types::array_graph::array_graph_metrics::metric_min_max;
 use crate::types::array_graph::array_graph_metrics::parents_len_configured;
 use crate::types::array_graph::array_graph_state::ArrayGraphState;
 use crate::types::array_graph::array_graph_stats::ArrayGraphStats;
+use crate::types::array_graph::entry_points_filter::filter_entry_points;
+use crate::types::array_graph::filter_candidates::FilterCandidates;
+use crate::types::array_graph::filter_candidates::filter_candidates;
+use crate::types::array_graph::graph_settings::EntryPointsFilter;
 use crate::types::array_graph::offset_graph::DFSConfigured;
 use crate::types::array_graph::offset_graph::EdgeOverrides;
 use crate::types::array_graph::offset_graph::lengauer_tarjan_dominator_tree::make_dominator_tree;
@@ -366,6 +373,18 @@ impl ArrayGraph {
 
     pub fn determine_entrypoints(&self) -> Vec<NodeIDX> {
         determine_entrypoints(self)
+    }
+
+    /// Reachable nodes matching `filter`, ascending — the entry points behind
+    /// [`graph_settings::ArrayGraphUISettingsTreeTableEntryPoints::Filtered`].
+    pub fn filter_entry_points(&self, filter: &EntryPointsFilter) -> Vec<NodeIDX> {
+        filter_entry_points(self, filter)
+    }
+
+    /// Every property name, property value, edge tag and dynamic type key the
+    /// flat-list filter UI can offer as a choice.
+    pub fn filter_candidates(&self) -> FilterCandidates {
+        filter_candidates(self)
     }
 
     pub fn get_transitive_metric_value(

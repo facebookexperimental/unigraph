@@ -13,6 +13,7 @@ use serde::Serialize;
 use typegen::TypeGen;
 use unigraph_core::ArrayGraph;
 use unigraph_core::NodeIDX;
+use unigraph_core::PropertyIndices;
 use unigraph_rpc::RpcExec;
 
 use crate::Unigraph;
@@ -130,16 +131,11 @@ fn collect_matching_ancestors(
     start_idx: NodeIDX,
     input: &FindAncestorsInput,
 ) -> Result<Vec<String>> {
-    let property_indices = build_property_indices(ag, input);
-    let check_parentless = input.parentless.unwrap_or(false);
-
-    // If the caller requested properties but some don't exist in the graph,
-    // no node can possibly match all predicates — return early.
-    if let Some(props) = &input.properties
-        && property_indices.len() < props.len()
-    {
+    // A requested property that doesn't exist in the graph can't ever match.
+    let Some(property_indices) = bind_properties(ag, input) else {
         return Ok(Vec::new());
-    }
+    };
+    let check_parentless = input.parentless.unwrap_or(false);
 
     let reverse = ag.edges_reverse();
 
@@ -158,43 +154,32 @@ fn collect_matching_ancestors(
     Ok(matches)
 }
 
-/// Pre-fetch the property index for each requested property name.
-/// Returns a vec of (expected_value, index) pairs — only for properties that exist.
-fn build_property_indices<'a>(
+/// Bind the requested properties to the graph's inverted indices.
+///
+/// `None` means a requested property name doesn't exist in the graph at all,
+/// so no node can match every predicate.
+fn bind_properties<'a>(
     ag: &'a ArrayGraph,
     input: &'a FindAncestorsInput,
-) -> Vec<(&'a str, &'a BTreeMap<NodeIDX, String>)> {
-    let Some(properties) = &input.properties else {
-        return Vec::new();
-    };
-    properties
+) -> Option<PropertyIndices<'a>> {
+    let conditions = input
+        .properties
         .iter()
-        .filter_map(|(name, value)| {
-            ag.data
-                .node_metadata
-                .properties
-                .get(name)
-                .map(|index| (value.as_str(), index))
-        })
-        .collect()
+        .flatten()
+        .map(|(name, value)| (name.as_str(), Some(value.as_str())));
+    PropertyIndices::bind(ag, conditions)
 }
 
 fn matches_predicates(
     ag: &ArrayGraph,
     node_idx: NodeIDX,
-    property_indices: &[(&str, &BTreeMap<NodeIDX, String>)],
+    property_indices: &PropertyIndices<'_>,
     check_parentless: bool,
 ) -> bool {
     if check_parentless && ag.edges_reverse().edges(node_idx).next().is_some() {
         return false;
     }
-    for &(expected_value, index) in property_indices {
-        match index.get(&node_idx) {
-            Some(actual) if actual == expected_value => {}
-            _ => return false,
-        }
-    }
-    true
+    property_indices.matches(node_idx)
 }
 
 fn paginate(all: &[String], offset: usize, limit: usize) -> Vec<String> {
