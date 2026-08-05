@@ -1,7 +1,7 @@
 /**
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
- * @generated SignedSource<<74998f8ee29892535cafe10a10ce814e>>
+ * @generated SignedSource<<dfd0ed9aa614d7d906e360ccff4f444f>>
  */
 
 
@@ -12,4 +12,8 @@ export interface SelectFramesInput {
   limit?: number | undefined;
   frame_types?: string[] | undefined;
   order?: string | undefined;
+  /** Inclusive lower bound on frame timestamp, RFC3339 (e.g. `2026-08-05T16:00:00Z`). */
+  timestamp_start?: string | undefined;
+  /** Inclusive upper bound on frame timestamp, RFC3339. */
+  timestamp_end?: string | undefined;
 }
