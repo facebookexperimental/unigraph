@@ -14,6 +14,6 @@ license = "MIT"
 anyhow = "1.0.103"
 async-trait = "0.1.91"
 ll = "10.0.0"
-serde = { version = "1.0.219", features = ["derive", "rc"] }
+serde = { version = "1.0.229", features = ["derive", "rc"] }
 typegen = { version = "0.1.1-alpha.0", path = "../typegen" }
 unigraph_core = { version = "0.1.1-alpha.0", path = "../unigraph_core" }
