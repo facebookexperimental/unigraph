@@ -12,7 +12,7 @@ license = "MIT"
 
 [dependencies]
 anyhow = "1.0.103"
-async-trait = "0.1.86"
+async-trait = "0.1.91"
 ll = "10.0.0"
 rusqlite = { version = "0.37.0", features = ["bundled"] }
 serde_json = { version = "1.0.140", features = ["alloc", "float_roundtrip", "raw_value", "unbounded_depth"] }
