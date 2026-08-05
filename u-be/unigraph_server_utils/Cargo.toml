@@ -11,7 +11,7 @@ repository = "https://github.com/facebookexperimental/unigraph"
 license = "MIT"
 
 [dependencies]
-anyhow = "1.0.103"
+anyhow = "1.0.104"
 lru = { version = "0.16.4", default-features = false }
 tokio = { version = "1.52.4", features = ["full", "test-util", "tracing"] }
 

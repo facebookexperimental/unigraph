@@ -11,7 +11,7 @@ repository = "https://github.com/facebookexperimental/unigraph"
 license = "MIT"
 
 [dependencies]
-anyhow = "1.0.103"
+anyhow = "1.0.104"
 serde = { version = "1.0.229", features = ["derive", "rc"] }
 serde_json = { version = "1.0.151", features = ["alloc", "float_roundtrip", "raw_value", "unbounded_depth"] }
 unigraph_delta_derive = { version = "0.1.1-alpha.0", path = "../unigraph_delta_derive" }

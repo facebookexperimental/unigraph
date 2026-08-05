@@ -11,7 +11,7 @@ repository = "https://github.com/facebookexperimental/unigraph"
 license = "MIT"
 
 [dependencies]
-anyhow = "1.0.103"
+anyhow = "1.0.104"
 async-trait = "0.1.91"
 ll = "10.0.0"
 rusqlite = { version = "0.37.0", features = ["bundled"] }
