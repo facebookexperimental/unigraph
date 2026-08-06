@@ -4,10 +4,13 @@ use std::sync::LazyLock;
 
 use anyhow::Result;
 use k9::snapshot;
+use unigraph_app::DecodedSample;
 use unigraph_app::GetHistoryInput;
 use unigraph_app::GetHistoryOutput;
+use unigraph_app::SAMPLE_HEADER_LEN;
 use unigraph_app::UnigraphRequest;
 use unigraph_app::call_rpc;
+use unigraph_app::decode_series;
 use unigraph_core::GraphID;
 use unigraph_core::GraphTimeKey;
 use unigraph_core::MapGraph;
@@ -22,7 +25,7 @@ use crate::support::fixtures::default_timeline_config;
 // ── Tests ────────────────────────────────────────────────────────
 
 #[tokio::test]
-async fn returns_columnar_history_for_multiple_nodes() -> Result<()> {
+async fn returns_decodable_history_for_multiple_nodes() -> Result<()> {
     let t = init_app();
     let timeline_id = ingest_history(&t).await?;
 
@@ -35,27 +38,28 @@ async fn returns_columnar_history_for_multiple_nodes() -> Result<()> {
     );
 
     snapshot!(
-        format_history(&out),
+        format_history(&out)?,
         "
 metrics: lines, size
-frames:  #0 graph_id=0 t+0s | #1 graph_id=1 t+10s | #2 graph_id=2 t+20s
 
 app
-  #0  lines=10  size=100
-  #1  lines=20  size=300
-  #2  lines=20  size=900
+  t+0s   g0  lines=10  size=100
+  t+10s  g1  lines=20  size=300
+  t+20s  g2  lines=20  size=900
 util
-  #0  lines=1  size=5
-  #1  lines=-  size=-
-  #2  lines=4  size=50
+  t+0s   g0  lines=1  size=5
+  t+10s  g1  lines=-  size=-
+  t+20s  g2  lines=4  size=50
 "
     );
 
     Ok(())
 }
 
+/// The wire shape itself, since it is what the frontend has to parse and the
+/// whole reason this RPC has a custom format.
 #[tokio::test]
-async fn frame_table_is_shared_across_nodes() -> Result<()> {
+async fn samples_go_over_the_wire_as_deltas() -> Result<()> {
     let t = init_app();
     let timeline_id = ingest_history(&t).await?;
 
@@ -67,23 +71,49 @@ async fn frame_table_is_shared_across_nodes() -> Result<()> {
         })
     );
 
-    let sample_count: usize = out.series.iter().map(|s| s.samples.len()).sum();
-    assert_eq!(
-        sample_count, 6,
-        "Both nodes have a sample at all 3 frames — util's middle one is the \
-         all-null marker recording that it vanished from that frame"
+    snapshot!(
+        format_wire(&out),
+        "
+stride 4 = 2 header + 2 metrics
+
+app   T0, 0, 10, 100  |  10, 1, 10, 200  |  10, 1, 0, 600
+util  T0, 0, 1, 5  |  10, 1, null, null  |  10, 1, 3, 45
+"
     );
-    assert_eq!(
-        out.frames.len(),
-        3,
-        "The 6 samples span only 3 distinct frames, which must be sent once each"
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn every_node_carries_its_own_frame_coordinates() -> Result<()> {
+    let t = init_app();
+    let timeline_id = ingest_history(&t).await?;
+
+    let out = call_rpc!(
+        t,
+        GetHistory(GetHistoryInput {
+            node_names: vec!["app".to_owned(), "util".to_owned()],
+            ..history_input(&timeline_id)
+        })
     );
-    assert!(
-        out.frames
-            .windows(2)
-            .all(|w| w[0].timestamp <= w[1].timestamp),
-        "Frame table must be sorted by timestamp"
-    );
+
+    let stride = SAMPLE_HEADER_LEN + out.metrics.len();
+    for node in &out.series {
+        assert_eq!(
+            node.deltas.len(),
+            stride * 3,
+            "'{}' has a sample at all 3 frames — util's middle one is the \
+             all-null marker recording that it vanished from that frame",
+            node.node_name
+        );
+
+        let samples = decode_series(&out.metrics, node)?;
+        assert!(
+            samples.windows(2).all(|w| w[0].timestamp <= w[1].timestamp),
+            "Deltas only reconstruct in time order, so '{}' must be ascending",
+            node.node_name
+        );
+    }
 
     Ok(())
 }
@@ -104,15 +134,14 @@ async fn time_bounds_narrow_the_result() -> Result<()> {
     );
 
     snapshot!(
-        format_history(&out),
+        format_history(&out)?,
         "
 metrics: lines, size
-frames:  #0 graph_id=1 t+0s
 
 app
-  #0  lines=20  size=300
+  t+0s  g1  lines=20  size=300
 util
-  #0  lines=-  size=-
+  t+0s  g1  lines=-  size=-
 "
     );
 
@@ -133,10 +162,9 @@ async fn unknown_node_yields_an_empty_series() -> Result<()> {
     );
 
     snapshot!(
-        format_history(&out),
+        format_history(&out)?,
         "
 metrics: (none)
-frames:  (none)
 
 nope
   (no samples)
@@ -181,60 +209,106 @@ fn history_input(timeline_id: &str) -> GetHistoryInput {
     }
 }
 
-/// Renders the columnar output back into something readable, with absolute
-/// timestamps normalized to an offset from the first frame so the snapshot
-/// doesn't depend on the wall clock the fixture ingested against.
-fn format_history(out: &GetHistoryOutput) -> String {
+/// Decode the response and render it, with timestamps normalized to an offset
+/// from the earliest sample so the snapshot doesn't depend on the wall clock
+/// the fixture ingested against.
+fn format_history(out: &GetHistoryOutput) -> Result<String> {
     let metrics = match out.metrics.is_empty() {
         true => "(none)".to_owned(),
         false => out.metrics.join(", "),
     };
-    let mut lines = vec![
-        format!("metrics: {metrics}"),
-        format!("frames:  {}", format_frames(out)),
-        String::new(),
-    ];
+    let decoded = out
+        .series
+        .iter()
+        .map(|node| Ok((node.node_name.as_str(), decode_series(&out.metrics, node)?)))
+        .collect::<Result<Vec<_>>>()?;
+    let base = decoded
+        .iter()
+        .flat_map(|(_, samples)| samples.first())
+        .map(|sample| sample.timestamp)
+        .min()
+        .unwrap_or(0);
 
-    for node in &out.series {
-        lines.push(node.node_name.clone());
-        if node.samples.is_empty() {
+    let mut lines = vec![format!("metrics: {metrics}"), String::new()];
+    for (node_name, samples) in &decoded {
+        lines.push((*node_name).to_owned());
+        if samples.is_empty() {
             lines.push("  (no samples)".to_owned());
             continue;
         }
-        for sample in &node.samples {
-            let values = out
-                .metrics
+        lines.extend(format_samples(&out.metrics, samples, base));
+    }
+    Ok(lines.join("\n"))
+}
+
+fn format_samples(metrics: &[String], samples: &[DecodedSample], base: i64) -> Vec<String> {
+    let offsets = samples
+        .iter()
+        .map(|sample| format!("t+{}s", sample.timestamp - base))
+        .collect::<Vec<_>>();
+    let width = offsets.iter().map(String::len).max().unwrap_or(0);
+
+    samples
+        .iter()
+        .zip(&offsets)
+        .map(|(sample, offset)| {
+            let values = metrics
                 .iter()
                 .zip(&sample.values)
                 .map(|(name, value)| match value {
-                    Some(v) => format!("{name}={v}"),
+                    Some(value) => format!("{name}={value}"),
                     None => format!("{name}=-"),
                 })
                 .collect::<Vec<_>>()
                 .join("  ");
-            lines.push(format!("  #{}  {}", sample.frame, values));
-        }
-    }
+            format!("  {offset:<width$}  g{}  {values}", sample.graph_id)
+        })
+        .collect()
+}
 
+/// The raw stream, chunked at the stride. The leading absolute timestamp is
+/// masked as `T0` — it is the one value that tracks the wall clock; every
+/// delta after it is stable.
+fn format_wire(out: &GetHistoryOutput) -> String {
+    let stride = SAMPLE_HEADER_LEN + out.metrics.len();
+    let width = out
+        .series
+        .iter()
+        .map(|node| node.node_name.len())
+        .max()
+        .unwrap_or(0);
+
+    let mut lines = vec![
+        format!(
+            "stride {stride} = {SAMPLE_HEADER_LEN} header + {} metrics",
+            out.metrics.len()
+        ),
+        String::new(),
+    ];
+    for node in &out.series {
+        let chunks = node
+            .deltas
+            .chunks(stride)
+            .enumerate()
+            .map(|(index, chunk)| format_chunk(index, chunk))
+            .collect::<Vec<_>>()
+            .join("  |  ");
+        lines.push(format!("{:<width$}  {chunks}", node.node_name));
+    }
     lines.join("\n")
 }
 
-fn format_frames(out: &GetHistoryOutput) -> String {
-    let Some(first) = out.frames.first() else {
-        return "(none)".to_owned();
-    };
-    let base = Timestamp::from_rfc3339(&first.timestamp).expect("RPC emits RFC3339 timestamps");
-
-    out.frames
+fn format_chunk(index: usize, chunk: &[Option<f64>]) -> String {
+    chunk
         .iter()
         .enumerate()
-        .map(|(idx, frame)| {
-            let ts = Timestamp::from_rfc3339(&frame.timestamp).expect("RPC emits RFC3339");
-            let offset = ts.to_unix_timestamp() - base.to_unix_timestamp();
-            format!("#{idx} graph_id={} t+{offset}s", frame.graph_id)
+        .map(|(column, value)| match (index, column, value) {
+            (0, 0, _) => "T0".to_owned(),
+            (_, _, Some(value)) => format!("{value}"),
+            (_, _, None) => "null".to_owned(),
         })
         .collect::<Vec<_>>()
-        .join(" | ")
+        .join(", ")
 }
 
 // ── Fixtures ─────────────────────────────────────────────────────

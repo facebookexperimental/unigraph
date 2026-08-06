@@ -1,24 +1,22 @@
 /**
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
- * @generated SignedSource<<19136d3b92a584ab69ada446a3ca1257>>
+ * @generated SignedSource<<0c29658f6548269e2bbe4ad30b9efec3>>
  */
 
 
-import type { HistoryFrame } from './HistoryFrame.ts';
 import type { NodeHistory } from './NodeHistory.ts';
 
 export interface GetHistoryOutput {
-  /** Metric names in the order every `HistorySample::values` is aligned to. */
+  /**
+   * Metric names in the order every sample chunk's value slots follow the
+   * two header slots. Also fixes the chunk stride at
+   * `2 + metrics.len()`.
+   */
   metrics: string[];
   /**
-   * Every frame referenced by `series`, deduplicated across nodes and
-   * sorted by `(timestamp, graph_id)`.
-   */
-  frames: HistoryFrame[];
-  /**
    * One entry per requested node, sorted by name. A node with no recorded
-   * history still gets an entry, with no samples.
+   * history still gets an entry, with an empty stream.
    */
   series: NodeHistory[];
 }

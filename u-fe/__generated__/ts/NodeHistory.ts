@@ -1,13 +1,19 @@
 /**
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
- * @generated SignedSource<<8271e01ab7b0d63cda63647a755c6d4e>>
+ * @generated SignedSource<<0b3b656445ba01a5ab7ba80457234209>>
  */
 
 
-import type { HistorySample } from './HistorySample.ts';
-
 export interface NodeHistory {
   node_name: string;
-  samples: HistorySample[];
+  /**
+   * The node's whole series, delta-encoded and flattened into
+   * `2 + metrics.len()`-sized chunks in ascending time order. See the
+   * module docs for the layout, and [`decode_series`] for how to read it.
+   * 
+   * Not indexable on its own: slot `n` means nothing without the stride,
+   * and no slot after a column's first is an absolute value.
+   */
+  deltas: (number | undefined)[];
 }
