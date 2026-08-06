@@ -30,6 +30,7 @@ import {
   node_name_to_idx_log,
   set_graph_settings,
   set_graphs,
+  validate_name_match,
   visible_metric_views,
 } from "../../.build/wasm/unigraph_wasm";
 import type { ArrayGraphStats } from "../__generated__/ts/ArrayGraphStats";
@@ -40,6 +41,7 @@ import type { ExportScope } from "../__generated__/ts/ExportScope";
 import type { FilterCandidates } from "../__generated__/ts/FilterCandidates";
 import type { GraphNode } from "../__generated__/ts/GraphNode";
 import type { MinCutResult } from "../__generated__/ts/MinCutResult";
+import type { NameMatch } from "../__generated__/ts/NameMatch";
 import type { ExplorerComponentInputGraphs } from "../Explorer";
 import type { GraphSettings } from "../__generated__/ts/GraphSettings";
 import type { TraversalConfig } from "../__generated__/ts/TraversalConfig";
@@ -99,6 +101,24 @@ export const TRAVERSAL_TYPE = {
   CONFIGURED: 0 as const,
   UNCONFIGURED: 1 as const,
 };
+
+/// Compile-check a node name pattern, returning the parser's complaint or
+/// `null` if it's fine.
+///
+/// Graph-free and cheap, so it's safe to call on every keystroke — unlike
+/// actually running the filter, which scans every reachable node.
+///
+/// Has to cross into WASM rather than using `new RegExp`: Rust's `regex` crate
+/// rejects patterns JS accepts (backreferences, lookaround), so validating in
+/// JS would wave through patterns that then fail for real.
+export function validateNameMatch(nameMatch: NameMatch): string | null {
+  try {
+    validate_name_match(JSON.stringify(nameMatch));
+    return null;
+  } catch (e) {
+    return e instanceof Error ? e.message : String(e);
+  }
+}
 
 // It serves as a bridge/cache layer between JS and WASM.
 export default class NativeGraph {
@@ -275,6 +295,9 @@ export default class NativeGraph {
   /// Every property name, property value, edge tag and dynamic type key the
   /// filter UI can offer. Computed lazily — a user who never opens the filter
   /// popover never pays for the property index scan.
+  //
+  // `validateNameMatch` is deliberately NOT a method here: it never touches a
+  // graph, so binding it to a side would imply a cost it doesn't have.
   filterCandidates(): FilterCandidates {
     this.filterCandidatesCache ??= JSON.parse(get_filter_candidates(this.side));
     return this.filterCandidatesCache as FilterCandidates;

@@ -1,10 +1,11 @@
 /**
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
- * @generated SignedSource<<5b99fcf70ce88cdcf53432a89d3f9e94>>
+ * @generated SignedSource<<906f84ed7c1765cfb365de134373ab76>>
  */
 
 
+import type { NameMatch } from './NameMatch.ts';
 import type { PropertyValueMatch } from './PropertyValueMatch.ts';
 
 /**
@@ -15,6 +16,8 @@ import type { PropertyValueMatch } from './PropertyValueMatch.ts';
  * across all the fields and across the entries within each of them.
  */
 export interface EntryPointsFilter {
+  /** Node name must match this. Absent — or blank — matches every name. */
+  name?: NameMatch | undefined;
   /** Property name -> what the value has to look like. */
   properties: { [key: string]: PropertyValueMatch };
   /** Node must have an incoming edge tagged with each of these. */

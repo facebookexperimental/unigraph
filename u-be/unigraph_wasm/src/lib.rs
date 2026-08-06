@@ -22,6 +22,7 @@ use unigraph_core::GraphNode;
 use unigraph_core::GraphQueryConfig;
 use unigraph_core::MapGraph;
 use unigraph_core::MinCutResult;
+use unigraph_core::NameMatch;
 use unigraph_core::TraversalConfig;
 use unigraph_core::TraversalType;
 use unigraph_core::TwinGraph;
@@ -30,6 +31,7 @@ use unigraph_core::graph_settings::GraphStructure;
 use unigraph_core::types::NodeIDX;
 use unigraph_core::ui_types::ExplorerComponentInputGraph;
 use unigraph_core::ui_types::ExplorerComponentInputGraphs;
+use unigraph_core::validate_name_match as validate_name_match_core;
 use unigraph_delta::Deltable;
 use unigraph_graph_state::GlobalGraphState;
 use unigraph_graph_state::global_graph_state;
@@ -703,11 +705,22 @@ pub fn filtered_entry_points(
         .context("Failed to parse entry points filter")?;
     let gs = GlobalGraphState::graph_state().get();
     let ag = gs.mode.graph(side)?;
-    ag.filter_entry_points(&filter)
+    ag.filter_entry_points(&filter)?
         .iter()
         .map(|&idx| Ok(gs.mode.to_ui(side, idx)?.0))
         .collect::<Result<Vec<u32>>>()
         .map_err(Into::into)
+}
+
+/// Compile-check a node name pattern, erroring with what the regex parser said.
+///
+/// Deliberately graph-free: this runs on every keystroke so the UI can flag a
+/// half-typed regex, and it must not touch the node list to do it.
+#[wasm_bindgen]
+pub fn validate_name_match(name_match_json: String) -> Result<(), WasmJSError> {
+    let name_match: NameMatch =
+        serde_json::from_str(&name_match_json).context("Failed to parse name match")?;
+    Ok(validate_name_match_core(&name_match)?)
 }
 
 /// Every property name, property value, edge tag and dynamic type key the

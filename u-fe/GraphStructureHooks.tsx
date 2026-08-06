@@ -36,12 +36,20 @@ export function countEntryPointsFilterConditions(
   filter: EntryPointsFilter,
 ): number {
   return (
+    (hasNameCondition(filter) ? 1 : 0) +
     Object.keys(filter.properties).length +
     filter.incoming_tags.length +
     filter.incoming_dynamic_type_keys.length +
     filter.outgoing_tags.length +
     filter.outgoing_dynamic_type_keys.length
   );
+}
+
+/// Mirrors `EntryPointsFilter::name_condition` on the Rust side: a blank
+/// pattern is a condition the user started and abandoned, not one that matches
+/// nothing, so it must not count or keep you in `Filtered`.
+export function hasNameCondition(filter: EntryPointsFilter): boolean {
+  return (filter.name?.pattern ?? "").trim().length > 0;
 }
 
 /// The unfiltered flat list. Mutually exclusive with [`useToggleFilteredFlatList`]

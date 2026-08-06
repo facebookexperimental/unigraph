@@ -377,7 +377,7 @@ impl ArrayGraph {
 
     /// Reachable nodes matching `filter`, ascending — the entry points behind
     /// [`graph_settings::ArrayGraphUISettingsTreeTableEntryPoints::Filtered`].
-    pub fn filter_entry_points(&self, filter: &EntryPointsFilter) -> Vec<NodeIDX> {
+    pub fn filter_entry_points(&self, filter: &EntryPointsFilter) -> Result<Vec<NodeIDX>> {
         filter_entry_points(self, filter)
     }
 

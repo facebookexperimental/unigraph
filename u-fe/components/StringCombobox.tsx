@@ -28,6 +28,12 @@ const DROPDOWN_CLASS_NAME =
  * This is a controlled component — the parent owns `value`. `onChange` fires on
  * every keystroke; `onSelect` fires only when the user commits (picks an item,
  * or presses Enter on freeform text).
+ *
+ * The list opens on click and on typing, deliberately not on focus. Picking an
+ * item closes it and puts the caret back, and a refocus fires `onFocus` — so
+ * opening there meant the list you just chose from immediately reopened.
+ * Clicking also fires on an already-focused field, which `onFocus` doesn't, so
+ * this reopens in the one case that actually asks for it.
  */
 export default function StringCombobox({
   value,
@@ -36,6 +42,8 @@ export default function StringCombobox({
   onSelect,
   placeholder,
   className,
+  autoFocus,
+  refocusOnSelect = true,
 }: {
   value: string;
   options: readonly string[];
@@ -43,8 +51,18 @@ export default function StringCombobox({
   onSelect?: (value: string) => void;
   placeholder?: string;
   className?: string;
+  /**
+   * Take the caret on mount, with the list already open — for a field the
+   * caller just created for you, where showing the choices is the point.
+   */
+  autoFocus?: boolean;
+  /**
+   * Keep the caret here after picking an item. Set false when the caller moves
+   * focus somewhere else on select, or this will snatch it straight back.
+   */
+  refocusOnSelect?: boolean;
 }) {
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(autoFocus === true);
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -80,12 +98,13 @@ export default function StringCombobox({
       >
         <CommandPrimitive.Input
           ref={inputRef}
+          autoFocus={autoFocus}
           value={value}
           onValueChange={(v) => {
             onChange(v);
             setIsOpen(true);
           }}
-          onFocus={() => setIsOpen(true)}
+          onClick={() => setIsOpen(true)}
           onKeyDown={(e) => {
             if (e.key === "Escape") {
               setIsOpen(false);
@@ -115,7 +134,9 @@ export default function StringCombobox({
                     onChange(option);
                     onSelect?.(option);
                     setIsOpen(false);
-                    inputRef.current?.focus();
+                    if (refocusOnSelect) {
+                      inputRef.current?.focus();
+                    }
                   }}
                   className="cursor-pointer text-xs"
                 >

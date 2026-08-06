@@ -33,6 +33,8 @@ mod tests {
     use crate::graph_settings::EntryPointsFilter;
     use crate::graph_settings::GraphSettings;
     use crate::graph_settings::GraphStructure;
+    use crate::graph_settings::NameMatch;
+    use crate::graph_settings::NameMatchMode;
     use crate::graph_settings::PropertyValueMatch;
     use crate::graph_settings::SidebarPanel;
     use crate::traversal::Decision;
@@ -314,6 +316,14 @@ mod tests {
         let dynamic_type_keys = ["rc:gk", "ddd"];
 
         EntryPointsFilter {
+            name: rng.next_bool(40).then(|| NameMatch {
+                pattern: rng.pick(&["n_0", "^n_00", "0[12]$"]).to_string(),
+                mode: if rng.next_bool(50) {
+                    NameMatchMode::Substring
+                } else {
+                    NameMatchMode::Regex
+                },
+            }),
             properties: (0..rng.next() % 3)
                 .map(|_| {
                     let name = rng.pick(&property_names).to_string();
@@ -581,7 +591,7 @@ mod tests {
 pair_00: 4dc3767772f0c1db
 pair_01: 9c229d465a595694
 pair_02: 02c7db2854a102fc
-pair_03: 3c58dc64a985bd07
+pair_03: 59d23f53dc9dc4f0
 pair_04: 798758ee055bbe41
 pair_05: 92245372e4878666
 pair_06: 9c012d55a738aa83

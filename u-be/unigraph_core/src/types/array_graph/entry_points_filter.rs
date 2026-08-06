@@ -3,7 +3,7 @@
 //! Narrowing the tree table's flat list down to the nodes matching a filter.
 //!
 //! Backs [`ArrayGraphUISettingsTreeTableEntryPoints::Filtered`]. A node has to
-//! satisfy every condition in the filter — properties, incoming edges and
+//! satisfy every condition in the filter — name, properties, incoming edges and
 //! outgoing edges are ANDed together, as are the entries within each.
 //!
 //! The passes are ordered so the expensive ones run on the smallest set:
@@ -15,6 +15,9 @@
 //!   reachable   ->  drop nodes the traversal config pruned
 //!        |
 //!        v
+//!   name        ->  one compiled regex, tested against each candidate's name
+//!        |
+//!        v
 //!   incoming    ->  O(in-degree) scan of the reverse graph per candidate
 //!   edges
 //!        |
@@ -23,39 +26,61 @@
 //!   edges
 //! ```
 //!
-//! Each edge pass is skipped entirely when that direction has no conditions, so
-//! a properties-only filter never builds the reverse graph.
+//! Name goes before the edge passes because it needs no graph structure at all,
+//! so it shrinks the candidate set for the cost of one string test per node.
+//! Every pass is skipped when its condition is absent, so a properties-only
+//! filter never builds the reverse graph and never compiles a regex.
+//!
+//! On a multi-million-node graph the name pass is a full scan, which is why the
+//! UI debounces the pattern instead of committing it per keystroke.
 //!
 //! Nothing is cached here. The result is memoized on the frontend, keyed on the
 //! filter, which also covers traversal-config changes — see the module docs on
 //! graph settings for why a cache on this side would go stale.
+
+use anyhow::Context;
+use anyhow::Result;
+use regex::Regex;
+use regex::RegexBuilder;
 
 use crate::EdgeMeta;
 use crate::NodeIDX;
 use crate::graph_settings::EdgeConditions;
 use crate::graph_settings::EntryPointsFilter;
 use crate::graph_settings::GraphStructure;
+use crate::graph_settings::NameMatch;
+use crate::graph_settings::NameMatchMode;
 use crate::types::array_graph::ArrayGraph;
 use crate::types::array_graph::offset_graph::EdgeGraphView;
 use crate::types::array_graph::property_index::PropertyIndices;
 
 /// Every reachable node matching `filter`, ascending.
-pub fn filter_entry_points(ag: &ArrayGraph, filter: &EntryPointsFilter) -> Vec<NodeIDX> {
+///
+/// Fails only on an unparseable name regex — the UI validates the pattern as
+/// it's typed, so reaching here with a bad one means something skipped that.
+pub fn filter_entry_points(ag: &ArrayGraph, filter: &EntryPointsFilter) -> Result<Vec<NodeIDX>> {
     let Some(candidates) = reachable_candidates_from_properties(ag, filter) else {
-        return Vec::new();
+        return Ok(Vec::new());
     };
+    let candidates = retain_by_name(ag, candidates, filter)?;
     let candidates = retain_by_edges(
         ag,
         candidates,
         GraphStructure::Reverse,
         filter.incoming_edges(),
     );
-    retain_by_edges(
+    Ok(retain_by_edges(
         ag,
         candidates,
         GraphStructure::Forward,
         filter.outgoing_edges(),
-    )
+    ))
+}
+
+/// Compile a name pattern without running it, so the UI can tell the user their
+/// regex is broken while they're still typing it.
+pub fn validate_name_match(name_match: &NameMatch) -> Result<()> {
+    compile_name_match(name_match).map(|_| ())
 }
 
 /// Reachable nodes matching every property condition, ascending.
@@ -83,6 +108,38 @@ fn reachable_candidates_from_properties(
             .filter(|&node_idx| !ag.is_node_unreachable(node_idx))
             .collect(),
     )
+}
+
+/// Drop candidates whose name doesn't match, compiling the pattern once.
+fn retain_by_name(
+    ag: &ArrayGraph,
+    mut candidates: Vec<NodeIDX>,
+    filter: &EntryPointsFilter,
+) -> Result<Vec<NodeIDX>> {
+    let Some(name_match) = filter.name_condition() else {
+        return Ok(candidates);
+    };
+
+    let regex = compile_name_match(name_match)?;
+    candidates.retain(|&node_idx| regex.is_match(ag.idx_to_name(node_idx)));
+    Ok(candidates)
+}
+
+/// Both modes come out as one unanchored regex.
+///
+/// Substring escapes the pattern and folds case, which beats
+/// `name.to_lowercase().contains(..)` — that allocates a `String` per node, and
+/// this pass runs over every reachable node.
+fn compile_name_match(name_match: &NameMatch) -> Result<Regex> {
+    let pattern = match name_match.mode {
+        NameMatchMode::Substring => regex::escape(&name_match.pattern),
+        NameMatchMode::Regex => name_match.pattern.clone(),
+    };
+
+    RegexBuilder::new(&pattern)
+        .case_insensitive(name_match.mode == NameMatchMode::Substring)
+        .build()
+        .context("failed to compile the node name pattern")
 }
 
 /// Drop candidates whose edges in `structure` don't carry every requested tag
@@ -245,6 +302,22 @@ mod tests {
             self.outgoing_dynamic_type_keys.insert(type_key.to_string());
             self
         }
+
+        fn substr(self, pattern: &str) -> Self {
+            self.name_match(pattern, NameMatchMode::Substring)
+        }
+
+        fn re(self, pattern: &str) -> Self {
+            self.name_match(pattern, NameMatchMode::Regex)
+        }
+
+        fn name_match(mut self, pattern: &str, mode: NameMatchMode) -> Self {
+            self.name = Some(NameMatch {
+                pattern: pattern.to_string(),
+                mode,
+            });
+            self
+        }
     }
 
     fn filter() -> EntryPointsFilter {
@@ -329,6 +402,28 @@ mod tests {
             ),
             ("unknown outgoing tag", filter().out_tag("nope")),
             ("unknown outgoing dynamic type", filter().out_dyn("nope")),
+            // Name: substring folds case and treats the pattern as literal
+            // text; regex is case-sensitive and unanchored unless told
+            // otherwise. The `a.` pair is the same string read both ways.
+            ("substring eta", filter().substr("eta")),
+            ("substring ETA (folds case)", filter().substr("ETA")),
+            ("substring a. (escaped)", filter().substr("a.")),
+            ("substring blank (no condition)", filter().substr("   ")),
+            ("substring nope", filter().substr("nope")),
+            ("regex a. (metachar)", filter().re("a.")),
+            ("regex ^a (anchored)", filter().re("^a")),
+            ("regex a$ (anchored)", filter().re("a$")),
+            ("regex ^(alpha|zeta)$", filter().re("^(alpha|zeta)$")),
+            ("regex ALPHA (case-sensitive)", filter().re("ALPHA")),
+            ("regex (?i)ALPHA", filter().re("(?i)ALPHA")),
+            (
+                "substring et + budget_type=PAGE",
+                filter().substr("et").prop("budget_type", Some("PAGE")),
+            ),
+            (
+                "regex ^.e + incoming tag lazy",
+                filter().re("^.e").in_tag("lazy"),
+            ),
         ]
     }
 
@@ -336,8 +431,10 @@ mod tests {
         let rows: Vec<(&str, String)> = cases
             .iter()
             .map(|(label, filter)| {
-                let matches = filter_entry_points(ag, filter);
-                let names = ag.idxs_to_names(&matches).join(", ");
+                let names = match filter_entry_points(ag, filter) {
+                    Ok(matches) => ag.idxs_to_names(&matches).join(", "),
+                    Err(e) => format!("ERROR: {e}"),
+                };
                 (
                     *label,
                     if names.is_empty() {
@@ -391,6 +488,19 @@ unknown dynamic type                             |  (none)
 known property + unknown tag                     |  (none)
 unknown outgoing tag                             |  (none)
 unknown outgoing dynamic type                    |  (none)
+substring eta                                    |  beta, zeta
+substring ETA (folds case)                       |  beta, zeta
+substring a. (escaped)                           |  (none)
+substring blank (no condition)                   |  alpha, beta, delta, epsilon, gamma, root, zeta
+substring nope                                   |  (none)
+regex a. (metachar)                              |  alpha, gamma
+regex ^a (anchored)                              |  alpha
+regex a$ (anchored)                              |  alpha, beta, delta, gamma, zeta
+regex ^(alpha|zeta)$                             |  alpha, zeta
+regex ALPHA (case-sensitive)                     |  (none)
+regex (?i)ALPHA                                  |  alpha
+substring et + budget_type=PAGE                  |  zeta
+regex ^.e + incoming tag lazy                    |  beta, delta
 "
         );
         Ok(())
@@ -455,6 +565,65 @@ outgoing tag lazy   |  beta, root
 team=core           |  epsilon
 "
         );
+        Ok(())
+    }
+
+    /// A broken regex has to surface as an error the UI can show, not as a
+    /// silent empty result that reads like "nothing matched".
+    #[test]
+    fn test_invalid_regex_is_an_error() -> Result<()> {
+        let ag = test_graph()?;
+
+        let cases = [
+            ("unclosed class", filter().re("foo[")),
+            ("dangling repeat", filter().re("*bar")),
+            ("unmatched paren", filter().re("(a")),
+            // Rust's regex crate rejects backreferences, so a pattern that is
+            // valid in JS can still fail here — the reason validation is a
+            // WASM round trip rather than `new RegExp` on the frontend.
+            ("backreference", filter().re(r"(a)\1")),
+        ];
+
+        let errors: Vec<String> = cases
+            .iter()
+            .map(|(label, f)| {
+                let outcome = match filter_entry_points(&ag, f) {
+                    Ok(_) => "accepted".to_string(),
+                    Err(e) => format!("rejected: {e}"),
+                };
+                format!("{label:<16}|  {outcome}")
+            })
+            .collect();
+
+        snapshot!(
+            errors.join("\n"),
+            "
+unclosed class  |  rejected: failed to compile the node name pattern
+dangling repeat |  rejected: failed to compile the node name pattern
+unmatched paren |  rejected: failed to compile the node name pattern
+backreference   |  rejected: failed to compile the node name pattern
+"
+        );
+
+        // The same patterns are what `validate_name_match` guards against, so
+        // the UI never has to run the filter to find out.
+        assert!(
+            validate_name_match(&NameMatch {
+                pattern: "foo[".to_string(),
+                mode: NameMatchMode::Regex,
+            })
+            .is_err(),
+            "an unclosed character class should fail validation"
+        );
+        assert!(
+            validate_name_match(&NameMatch {
+                pattern: "foo[".to_string(),
+                mode: NameMatchMode::Substring,
+            })
+            .is_ok(),
+            "the same text is a literal in substring mode, so it must validate"
+        );
+
         Ok(())
     }
 

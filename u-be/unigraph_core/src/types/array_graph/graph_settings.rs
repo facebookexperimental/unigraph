@@ -862,6 +862,10 @@ pub enum ArrayGraphUISettingsTreeTableEntryPoints {
     unigraph_delta::Deltable
 )]
 pub struct EntryPointsFilter {
+    /// Node name must match this. Absent — or blank — matches every name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<NameMatch>,
+
     /// Property name -> what the value has to look like.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub properties: BTreeMap<PropertyName, PropertyValueMatch>,
@@ -881,6 +885,56 @@ pub struct EntryPointsFilter {
     /// Node must have an outgoing dynamic edge with each of these type keys.
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub outgoing_dynamic_type_keys: BTreeSet<DynamicTypeKey>,
+}
+
+/// How a node-name pattern is read.
+///
+/// Distinct from `unigraph_app`'s `SearchMode`, which drives the typeahead:
+/// that one is subsequence-fuzzy and top-K, where a filter needs every match
+/// and a predicate the user can reason about exactly.
+#[derive(
+    Debug,
+    serde::Serialize,
+    serde::Deserialize,
+    typegen::TypeGen,
+    Clone,
+    Copy,
+    Default,
+    PartialEq,
+    unigraph_delta::Deltable
+)]
+#[deltable(replace)]
+pub enum NameMatchMode {
+    /// Plain text, matched case-insensitively anywhere in the name.
+    #[default]
+    Substring,
+    /// Rust `regex` syntax, unanchored and case-sensitive — prefix with `(?i)`
+    /// to fold case, `^`/`$` to anchor.
+    Regex,
+}
+
+/// What a node's name has to look like.
+#[derive(
+    Debug,
+    serde::Serialize,
+    serde::Deserialize,
+    typegen::TypeGen,
+    Clone,
+    Default,
+    PartialEq,
+    unigraph_delta::Deltable
+)]
+pub struct NameMatch {
+    pub pattern: String,
+    pub mode: NameMatchMode,
+}
+
+impl NameMatch {
+    /// A blank pattern is a condition the user started and abandoned, not one
+    /// that matches nothing — treat it as absent everywhere.
+    pub fn is_blank(&self) -> bool {
+        self.pattern.trim().is_empty()
+    }
 }
 
 /// What a property condition requires of a node's value for that property.
@@ -923,9 +977,15 @@ impl EdgeConditions<'_> {
 impl EntryPointsFilter {
     /// No conditions set — every reachable node matches.
     pub fn is_empty(&self) -> bool {
-        self.properties.is_empty()
+        self.name_condition().is_none()
+            && self.properties.is_empty()
             && self.incoming_edges().is_empty()
             && self.outgoing_edges().is_empty()
+    }
+
+    /// The name condition, if there is one worth applying.
+    pub fn name_condition(&self) -> Option<&NameMatch> {
+        self.name.as_ref().filter(|name| !name.is_blank())
     }
 
     /// Conditions on the edges pointing at a node.
