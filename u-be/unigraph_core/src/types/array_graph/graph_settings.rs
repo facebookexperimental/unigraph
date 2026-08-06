@@ -850,7 +850,7 @@ pub enum ArrayGraphUISettingsTreeTableEntryPoints {
 ///
 /// Used in combination with `ArrayGraphUISettingsTreeTableEntryPoints::Filtered`.
 /// A node matches only when it satisfies every condition — this is an AND
-/// across the three fields and across the entries within each of them.
+/// across all the fields and across the entries within each of them.
 #[derive(
     Debug,
     serde::Serialize,
@@ -873,6 +873,14 @@ pub struct EntryPointsFilter {
     /// Node must have an incoming dynamic edge with each of these type keys.
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub incoming_dynamic_type_keys: BTreeSet<DynamicTypeKey>,
+
+    /// Node must have an outgoing edge tagged with each of these.
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub outgoing_tags: BTreeSet<Tag>,
+
+    /// Node must have an outgoing dynamic edge with each of these type keys.
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub outgoing_dynamic_type_keys: BTreeSet<DynamicTypeKey>,
 }
 
 /// What a property condition requires of a node's value for that property.
@@ -898,18 +906,42 @@ pub struct PropertyValueMatch {
     pub value: Option<PropertyValue>,
 }
 
+/// One direction's worth of edge conditions, so the matching logic can be
+/// written once and run over the reverse graph and then the forward one.
+pub struct EdgeConditions<'a> {
+    pub tags: &'a BTreeSet<Tag>,
+    pub dynamic_type_keys: &'a BTreeSet<DynamicTypeKey>,
+}
+
+impl EdgeConditions<'_> {
+    /// Nothing to check — the corresponding edge view is never built.
+    pub fn is_empty(&self) -> bool {
+        self.tags.is_empty() && self.dynamic_type_keys.is_empty()
+    }
+}
+
 impl EntryPointsFilter {
     /// No conditions set — every reachable node matches.
     pub fn is_empty(&self) -> bool {
         self.properties.is_empty()
-            && self.incoming_tags.is_empty()
-            && self.incoming_dynamic_type_keys.is_empty()
+            && self.incoming_edges().is_empty()
+            && self.outgoing_edges().is_empty()
     }
 
-    /// Whether any condition constrains a node's incoming edges. When false the
-    /// reverse graph is never touched.
-    pub fn has_incoming_edge_conditions(&self) -> bool {
-        !self.incoming_tags.is_empty() || !self.incoming_dynamic_type_keys.is_empty()
+    /// Conditions on the edges pointing at a node.
+    pub fn incoming_edges(&self) -> EdgeConditions<'_> {
+        EdgeConditions {
+            tags: &self.incoming_tags,
+            dynamic_type_keys: &self.incoming_dynamic_type_keys,
+        }
+    }
+
+    /// Conditions on the edges leaving a node.
+    pub fn outgoing_edges(&self) -> EdgeConditions<'_> {
+        EdgeConditions {
+            tags: &self.outgoing_tags,
+            dynamic_type_keys: &self.outgoing_dynamic_type_keys,
+        }
     }
 }
 

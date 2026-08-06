@@ -1,7 +1,7 @@
 /**
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
- * @generated SignedSource<<0bffba2c1cb0e5cd79832c84caf42dc2>>
+ * @generated SignedSource<<5b99fcf70ce88cdcf53432a89d3f9e94>>
  */
 
 
@@ -12,7 +12,7 @@ import type { PropertyValueMatch } from './PropertyValueMatch.ts';
  * 
  * Used in combination with `ArrayGraphUISettingsTreeTableEntryPoints::Filtered`.
  * A node matches only when it satisfies every condition — this is an AND
- * across the three fields and across the entries within each of them.
+ * across all the fields and across the entries within each of them.
  */
 export interface EntryPointsFilter {
   /** Property name -> what the value has to look like. */
@@ -21,4 +21,8 @@ export interface EntryPointsFilter {
   incoming_tags: string[];
   /** Node must have an incoming dynamic edge with each of these type keys. */
   incoming_dynamic_type_keys: string[];
+  /** Node must have an outgoing edge tagged with each of these. */
+  outgoing_tags: string[];
+  /** Node must have an outgoing dynamic edge with each of these type keys. */
+  outgoing_dynamic_type_keys: string[];
 }

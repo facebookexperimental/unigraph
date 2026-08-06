@@ -31,7 +31,7 @@ import { useGraphSettings } from "./context/GraphSettingsContext";
 import { useNativeGraphR, useTwinGraph } from "./context/NativeGraphContext";
 import { useSelectedNodes } from "./context/SelectedNodesContext";
 import { useTVC } from "./context/TraversalConfigContext";
-import { FilterConditionCount, FlatListFilterContent } from "./FlatListFilter";
+import { FlatListFilterButton } from "./FlatListFilter";
 import {
   useToggleDominatorTreeView,
   useToggleFlatListView,
@@ -193,22 +193,6 @@ function Toggles() {
 
       <SeparatorVertical />
 
-      <USplitToggleButton
-        tooltip={
-          <span>
-            Show as a flat list{" "}
-            <KeyboardShortcutLabel shortcut={KEYBOARD_SHORTCUTS.FLAT_LIST} />
-          </span>
-        }
-        selected={flatViewEnabled}
-        onSelectedChange={toggleFlatListView}
-        popoverContent={<FlatListFilterContent />}
-        popoverClassName="w-[32rem] max-h-[85vh]"
-      >
-        <List />
-        <FilterConditionCount />
-      </USplitToggleButton>
-
       <UToggleButton
         tooltip={
           <span>
@@ -239,6 +223,23 @@ function Toggles() {
       >
         <TreePalm />
       </UToggleButton>
+
+      <UToggleButton
+        tooltip={
+          <span>
+            Show as a flat list{" "}
+            <KeyboardShortcutLabel shortcut={KEYBOARD_SHORTCUTS.FLAT_LIST} />
+          </span>
+        }
+        size="sm"
+        selected={flatViewEnabled}
+        onSelectedChange={toggleFlatListView}
+      >
+        <List />
+      </UToggleButton>
+
+      <FlatListFilterButton />
+
       <ChangedNodesOnlyToggle />
     </div>
   );

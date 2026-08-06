@@ -1,50 +1,87 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-// Filter UI for the footer's "show as a flat list" split button.
+// The footer's flat-list filter: a split button plus the popover that edits it.
 //
 // Narrows the flat list to nodes matching a set of conditions: node properties,
-// and the tags / dynamic edge types on a node's incoming edges. Everything is
-// ANDed. Setting any condition switches the tree table's entry points to
-// `Filtered`; Reset clears them and returns to `Determine`.
+// and the tags / dynamic edge types on a node's incoming and outgoing edges.
+// Everything is ANDed.
+//
+// The two halves split "is the filter applied?" from "what is the filter?". The
+// toggle half flips the tree table between `AllReachable` and `Filtered` and is
+// inert until conditions exist, since both positions would otherwise render the
+// same rows. The popover half is always live — it's the only way to get those
+// conditions in the first place.
 //
 // Every input is a typeahead over choices enumerated from the graph. The one
 // exception is a property with more distinct values than the backend will
 // collect (`high_cardinality`), which has no options and takes freeform text.
 
-import { Trash2, X } from "lucide-react";
+import { Filter, Trash2, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { EntryPointsFilter } from "./__generated__/ts/EntryPointsFilter";
+import type { FilterCandidates } from "./__generated__/ts/FilterCandidates";
 import type { PropertyCandidates } from "./__generated__/ts/PropertyCandidates";
 import StringCombobox from "./components/StringCombobox";
+import USplitToggleButton from "./components/USplitToggleButton";
 import { Badge } from "./components/ui/badge";
 import { Button } from "./components/ui/button";
 import { Label } from "./components/ui/label";
 import { useNativeGraphR } from "./context/NativeGraphContext";
 import {
+  countEntryPointsFilterConditions,
   EMPTY_ENTRY_POINTS_FILTER,
   isEntryPointsFilterEmpty,
   useEntryPointsFilter,
   useSetEntryPointsFilter,
+  useToggleFilteredFlatList,
 } from "./GraphStructureHooks";
 import formatNumber from "./lib/formatNumber";
 import { H3 } from "./Typography";
 
-/// Badge for the flat-list button showing how many conditions are active, so
-/// the filter isn't invisible once the popover is closed.
-export function FilterConditionCount() {
-  const filter = useEntryPointsFilter();
-  const count =
-    Object.keys(filter.properties).length +
-    filter.incoming_tags.length +
-    filter.incoming_dynamic_type_keys.length;
+export function FlatListFilterButton() {
+  const conditionCount = countEntryPointsFilterConditions(
+    useEntryPointsFilter(),
+  );
+  const [filtering, toggleFiltering] = useToggleFilteredFlatList();
 
-  if (count === 0) {
-    return null;
-  }
-  return <span className="text-xs tabular-nums">{count}</span>;
+  return (
+    <USplitToggleButton
+      tooltip={filterTooltip(conditionCount, filtering)}
+      selected={filtering}
+      onSelectedChange={toggleFiltering}
+      // Disabled exactly when pressing it would be a no-op. Turning filtering
+      // off never is — a graph can ship `Filtered` with no conditions, and that
+      // must not be a state you're locked into.
+      toggleDisabled={conditionCount === 0 && !filtering}
+      popoverContent={<FlatListFilterContent />}
+      popoverClassName="w-[32rem] max-h-[85vh]"
+    >
+      <Filter />
+      {conditionCount > 0 && (
+        <span className="text-xs tabular-nums">{conditionCount}</span>
+      )}
+    </USplitToggleButton>
+  );
 }
 
-export function FlatListFilterContent() {
+/// The disabled state has to say what to do about it — an unexplained dead
+/// button is the whole reason this spells each case out.
+function filterTooltip(conditionCount: number, filtering: boolean) {
+  const conditions = `${conditionCount} ${conditionCount === 1 ? "condition" : "conditions"}`;
+
+  if (filtering) {
+    const what =
+      conditionCount === 0
+        ? "Filtering with no conditions"
+        : `Filtered by ${conditions}`;
+    return `${what} — click to show the whole flat list`;
+  }
+  return conditionCount === 0
+    ? "Filter the flat list — open the dropdown to add conditions"
+    : `Narrow the flat list to the nodes matching ${conditions}`;
+}
+
+function FlatListFilterContent() {
   const filter = useEntryPointsFilter();
   const setFilter = useSetEntryPointsFilter();
   const nativeGraph = useNativeGraphR();
@@ -87,21 +124,29 @@ export function FlatListFilterContent() {
         onChange={setFilter}
       />
 
-      <StringListEditor
-        label="Incoming edge tags"
-        values={filter.incoming_tags}
-        options={candidates.tags}
-        placeholder="Tag"
-        onChange={(incoming_tags) => setFilter({ ...filter, incoming_tags })}
+      <EdgeFilterEditor
+        direction="Incoming"
+        tags={filter.incoming_tags}
+        dynamicTypeKeys={filter.incoming_dynamic_type_keys}
+        candidates={candidates}
+        onChangeTags={(incoming_tags) =>
+          setFilter({ ...filter, incoming_tags })
+        }
+        onChangeDynamicTypeKeys={(incoming_dynamic_type_keys) =>
+          setFilter({ ...filter, incoming_dynamic_type_keys })
+        }
       />
 
-      <StringListEditor
-        label="Incoming dynamic edge types"
-        values={filter.incoming_dynamic_type_keys}
-        options={candidates.dynamic_type_keys}
-        placeholder="Dynamic type key"
-        onChange={(incoming_dynamic_type_keys) =>
-          setFilter({ ...filter, incoming_dynamic_type_keys })
+      <EdgeFilterEditor
+        direction="Outgoing"
+        tags={filter.outgoing_tags}
+        dynamicTypeKeys={filter.outgoing_dynamic_type_keys}
+        candidates={candidates}
+        onChangeTags={(outgoing_tags) =>
+          setFilter({ ...filter, outgoing_tags })
+        }
+        onChangeDynamicTypeKeys={(outgoing_dynamic_type_keys) =>
+          setFilter({ ...filter, outgoing_dynamic_type_keys })
         }
       />
 
@@ -214,6 +259,45 @@ function PropertyFilterEditor({
         />
       )}
     </div>
+  );
+}
+
+/// Conditions on one direction's edges. The candidate lists are graph-wide
+/// rather than per-direction, so a choice here can legitimately match nothing —
+/// a tag that only ever appears on root's outgoing edges, say.
+function EdgeFilterEditor({
+  direction,
+  tags,
+  dynamicTypeKeys,
+  candidates,
+  onChangeTags,
+  onChangeDynamicTypeKeys,
+}: {
+  direction: "Incoming" | "Outgoing";
+  tags: string[];
+  dynamicTypeKeys: string[];
+  candidates: FilterCandidates;
+  onChangeTags: (tags: string[]) => void;
+  onChangeDynamicTypeKeys: (dynamicTypeKeys: string[]) => void;
+}) {
+  return (
+    <>
+      <StringListEditor
+        label={`${direction} edge tags`}
+        values={tags}
+        options={candidates.tags}
+        placeholder="Tag"
+        onChange={onChangeTags}
+      />
+
+      <StringListEditor
+        label={`${direction} dynamic edge types`}
+        values={dynamicTypeKeys}
+        options={candidates.dynamic_type_keys}
+        placeholder="Dynamic type key"
+        onChange={onChangeDynamicTypeKeys}
+      />
+    </>
   );
 }
 

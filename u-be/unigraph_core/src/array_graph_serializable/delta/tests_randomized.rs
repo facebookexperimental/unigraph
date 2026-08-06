@@ -329,6 +329,12 @@ mod tests {
             incoming_dynamic_type_keys: (0..rng.next() % 2)
                 .map(|_| rng.pick(&dynamic_type_keys).to_string())
                 .collect(),
+            outgoing_tags: (0..rng.next() % 3)
+                .map(|_| rng.pick(&tag_names).to_string())
+                .collect(),
+            outgoing_dynamic_type_keys: (0..rng.next() % 2)
+                .map(|_| rng.pick(&dynamic_type_keys).to_string())
+                .collect(),
         }
     }
 
@@ -575,7 +581,7 @@ mod tests {
 pair_00: 4dc3767772f0c1db
 pair_01: 9c229d465a595694
 pair_02: 02c7db2854a102fc
-pair_03: 1cf01a1aeb5029c0
+pair_03: 3c58dc64a985bd07
 pair_04: 798758ee055bbe41
 pair_05: 92245372e4878666
 pair_06: 9c012d55a738aa83

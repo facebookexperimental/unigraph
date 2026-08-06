@@ -12,10 +12,16 @@ export const EMPTY_ENTRY_POINTS_FILTER: EntryPointsFilter = {
   properties: {},
   incoming_tags: [],
   incoming_dynamic_type_keys: [],
+  outgoing_tags: [],
+  outgoing_dynamic_type_keys: [],
 };
 
-/// Both modes render every matching node as its own root, so anything that
-/// asks "are we in a flat list?" has to accept `Filtered` too.
+/// Whether the tree table renders every matching node as its own root, which
+/// both flat-list modes do — so structural questions ("can a path be valid?",
+/// "do entry points survive a reverse toggle?") have to accept `Filtered` too.
+///
+/// Not the same question as which footer button lights up: `AllReachable` and
+/// `Filtered` are distinct modes and their toggles are mutually exclusive.
 export function isFlatListEntryPoints(
   entryPoints: ArrayGraphUISettingsTreeTableEntryPoints,
 ): boolean {
@@ -23,17 +29,28 @@ export function isFlatListEntryPoints(
 }
 
 export function isEntryPointsFilterEmpty(filter: EntryPointsFilter): boolean {
+  return countEntryPointsFilterConditions(filter) === 0;
+}
+
+export function countEntryPointsFilterConditions(
+  filter: EntryPointsFilter,
+): number {
   return (
-    Object.keys(filter.properties).length === 0 &&
-    filter.incoming_tags.length === 0 &&
-    filter.incoming_dynamic_type_keys.length === 0
+    Object.keys(filter.properties).length +
+    filter.incoming_tags.length +
+    filter.incoming_dynamic_type_keys.length +
+    filter.outgoing_tags.length +
+    filter.outgoing_dynamic_type_keys.length
   );
 }
 
+/// The unfiltered flat list. Mutually exclusive with [`useToggleFilteredFlatList`]
+/// — `AllReachable` and `Filtered` are different modes, so only one of the two
+/// footer buttons is ever lit. Pressing this one while filtering drops the
+/// filter and shows everything.
 export function useToggleFlatListView(): [boolean, () => void] {
   const [graphSettings, setGraphSettings] = useGraphSettings();
-  const entryPoints = useGraphEntryPoints();
-  const checked = isFlatListEntryPoints(entryPoints);
+  const checked = useGraphEntryPoints() === "AllReachable";
 
   const toggle = useCallback(() => {
     setGraphSettings({
@@ -55,10 +72,37 @@ export function useEntryPointsFilter(): EntryPointsFilter {
   );
 }
 
-/// Commit a new filter. Setting any condition switches the tree table into
-/// `Filtered`; clearing the last one drops back to the default entry points.
+/// The filtered flat list. Mutually exclusive with [`useToggleFlatListView`]:
+/// turning this on takes you from "show all" to "show only matching", so the
+/// plain flat-list button goes dark.
+///
+/// Turning it on from outside a flat list moves you into one — filtering only
+/// has meaning over the flat list. Turning it off leaves you in the flat list
+/// rather than the determined tree, and leaves `entry_points_filter` in place,
+/// so the conditions are still there when you toggle back.
+export function useToggleFilteredFlatList(): [boolean, () => void] {
+  const [graphSettings, setGraphSettings] = useGraphSettings();
+  const checked = useGraphEntryPoints() === "Filtered";
+
+  const toggle = useCallback(() => {
+    setGraphSettings({
+      ...graphSettings,
+      ui_settings: {
+        ...graphSettings.ui_settings,
+        entry_points: checked ? "AllReachable" : "Filtered",
+      },
+    });
+  }, [graphSettings, setGraphSettings, checked]);
+
+  return [checked, toggle];
+}
+
+/// Commit a new filter. Setting the first condition switches the tree table
+/// into `Filtered` so the effect is immediate; clearing the last one drops back
+/// to the plain flat list, which is where the filter toggle would leave you.
 export function useSetEntryPointsFilter(): (filter: EntryPointsFilter) => void {
   const [graphSettings, setGraphSettings] = useGraphSettings();
+  const entryPoints = useGraphEntryPoints();
 
   return useCallback(
     (filter: EntryPointsFilter) => {
@@ -67,13 +111,26 @@ export function useSetEntryPointsFilter(): (filter: EntryPointsFilter) => void {
         ...graphSettings,
         ui_settings: {
           ...graphSettings.ui_settings,
-          entry_points: hasConditions ? "Filtered" : "Determine",
+          entry_points: nextEntryPoints(entryPoints, hasConditions),
           entry_points_filter: hasConditions ? filter : undefined,
         },
       });
     },
-    [graphSettings, setGraphSettings],
+    [graphSettings, setGraphSettings, entryPoints],
   );
+}
+
+/// Emptying the filter only moves you when the filter is what you're looking
+/// at. Editing conditions from outside `Filtered` — with the popover open over
+/// a tree, say — must not yank the tree table somewhere else.
+function nextEntryPoints(
+  entryPoints: ArrayGraphUISettingsTreeTableEntryPoints,
+  hasConditions: boolean,
+): ArrayGraphUISettingsTreeTableEntryPoints {
+  if (hasConditions) {
+    return "Filtered";
+  }
+  return entryPoints === "Filtered" ? "AllReachable" : entryPoints;
 }
 
 export function useToggleReverseView(): [boolean, () => void] {
