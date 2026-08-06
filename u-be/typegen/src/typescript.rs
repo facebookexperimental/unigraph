@@ -312,7 +312,7 @@ impl TypeScriptGenerator {
                 )
             }
             TypeRef::Vec(inner) | TypeRef::Set(inner) => {
-                format!("{}[]", Self::resolve_typescript_type(inner, imports))
+                format!("{}[]", Self::resolve_array_element(inner, imports))
             }
             TypeRef::Array { element_type, size } => {
                 let element_ts = Self::resolve_typescript_type(element_type, imports);
@@ -327,6 +327,24 @@ impl TypeScriptGenerator {
                     Self::resolve_typescript_type(value, imports)
                 )
             }
+        }
+    }
+
+    /// Resolve an element type for the postfix array position (`T[]`).
+    ///
+    /// `[]` binds tighter than `|`, so a union element has to be parenthesized:
+    /// `Vec<Option<f64>>` is `(number | undefined)[]`, and the unbracketed
+    /// `number | undefined[]` would silently mean `number | (undefined[])`.
+    /// `Option` is the only variant that renders as a bare top-level union —
+    /// maps, tuples and names are all self-delimiting.
+    fn resolve_array_element(
+        type_ref: &TypeRef,
+        imports: &mut std::collections::HashSet<String>,
+    ) -> String {
+        let rendered = Self::resolve_typescript_type(type_ref, imports);
+        match type_ref {
+            TypeRef::Option(_) => format!("({rendered})"),
+            _ => rendered,
         }
     }
 

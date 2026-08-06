@@ -5,6 +5,7 @@ mod config_storage;
 mod dynamic_tier_transitions;
 mod explore_graph;
 mod find_ancestors_and_paths;
+mod get_history;
 mod graph_caching;
 mod graph_query;
 mod search_nodes;

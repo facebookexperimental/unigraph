@@ -1,7 +1,7 @@
 /**
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
- * @generated SignedSource<<2393b57e5df0cd987a609aa444f716c4>>
+ * @generated SignedSource<<845615c7d4bc91e1ea030f73b717787a>>
  */
 
 
@@ -10,6 +10,7 @@ import type { ExploreGraphInput } from './ExploreGraphInput.ts';
 import type { FindAncestorsInput } from './FindAncestorsInput.ts';
 import type { FindPathInput } from './FindPathInput.ts';
 import type { GetConfigsInput } from './GetConfigsInput.ts';
+import type { GetHistoryInput } from './GetHistoryInput.ts';
 import type { GraphQueryInput } from './GraphQueryInput.ts';
 import type { GraphQueryMapGraphInput } from './GraphQueryMapGraphInput.ts';
 import type { ListTimelinesInput } from './ListTimelinesInput.ts';
@@ -28,6 +29,7 @@ export type UnigraphRequest =
   { "FindAncestors": FindAncestorsInput } |
   { "FindPath": FindPathInput } |
   { "SearchNodes": SearchNodesInput } |
-  { "AboutGraph": AboutGraphInput };
+  { "AboutGraph": AboutGraphInput } |
+  { "GetHistory": GetHistoryInput };
 
-export type UnigraphRequestVariants = "PutConfigs" | "GetConfigs" | "GraphQuery" | "GraphQueryMapGraph" | "ListTimelines" | "SelectFrames" | "ExploreGraph" | "FindAncestors" | "FindPath" | "SearchNodes" | "AboutGraph";
+export type UnigraphRequestVariants = "PutConfigs" | "GetConfigs" | "GraphQuery" | "GraphQueryMapGraph" | "ListTimelines" | "SelectFrames" | "ExploreGraph" | "FindAncestors" | "FindPath" | "SearchNodes" | "AboutGraph" | "GetHistory";

@@ -263,28 +263,52 @@ impl GraphHistory {
         bounds: &TimestampBounds,
         task: &ll::Task,
     ) -> Result<Vec<HistorySeriesRow>> {
+        let node_names = [node_name.to_owned()];
+        Ok(self
+            .series_many(timeline_id, &node_names, bounds, &task)
+            .await?
+            .remove(node_name)
+            .unwrap_or_default())
+    }
+
+    /// Read several nodes' series in one pass, keyed by node name.
+    ///
+    /// The metric-name dictionary and the connection are read once for the
+    /// whole batch rather than once per node. Duplicate names in `node_names`
+    /// collapse to a single entry.
+    #[task(tags(l3))]
+    pub async fn series_many(
+        &self,
+        timeline_id: &TimelineID,
+        node_names: &[String],
+        bounds: &TimestampBounds,
+        task: &ll::Task,
+    ) -> Result<BTreeMap<String, Vec<HistorySeriesRow>>> {
         let mut conn = self.ctx.storage.graph.conn().await?;
         let metric_names = conn.get_history_metric_names(timeline_id, &task).await?;
-        let rows = conn
-            .get_history_series(
-                timeline_id,
-                node_name,
-                &HistoryRange {
-                    timestamps: bounds.clone(),
-                    graph_ids: (None, None),
-                },
-                &task,
-            )
-            .await?;
-        rows.into_iter()
-            .map(|(graph_id, timestamp, values)| {
-                Ok(HistorySeriesRow {
-                    graph_id,
-                    timestamp,
-                    values: decode_named_values(&metric_names, &values)?,
+        let range = HistoryRange {
+            timestamps: bounds.clone(),
+            graph_ids: (None, None),
+        };
+
+        let mut out = BTreeMap::new();
+        for node_name in node_names {
+            let rows = conn
+                .get_history_series(timeline_id, node_name, &range, &task)
+                .await?;
+            let series = rows
+                .into_iter()
+                .map(|(graph_id, timestamp, values)| {
+                    Ok(HistorySeriesRow {
+                        graph_id,
+                        timestamp,
+                        values: decode_named_values(&metric_names, &values)?,
+                    })
                 })
-            })
-            .collect()
+                .collect::<Result<Vec<_>>>()?;
+            out.insert(node_name.clone(), series);
+        }
+        Ok(out)
     }
 }
 

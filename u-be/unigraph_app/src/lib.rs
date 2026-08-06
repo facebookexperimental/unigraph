@@ -73,6 +73,9 @@ impl Unigraph {
                 UnigraphRequest::AboutGraph(input) => {
                     Ok(UnigraphResponse::AboutGraph(input.exec(self, &task).await?))
                 }
+                UnigraphRequest::GetHistory(input) => {
+                    Ok(UnigraphResponse::GetHistory(input.exec(self, &task).await?))
+                }
             }
         })
         .await
@@ -122,5 +125,6 @@ unigraph_rpc::define_rpc_for_exec! {
         FindPath(FindPathInput) -> FindPathOutput,
         SearchNodes(SearchNodesInput) -> SearchNodesOutput,
         AboutGraph(AboutGraphInput) -> AboutGraphOutput,
+        GetHistory(GetHistoryInput) -> GetHistoryOutput,
     }
 }
