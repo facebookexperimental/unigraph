@@ -3,24 +3,33 @@
 //! CAS (Compare-And-Swap) store for [`GraphRange`].
 //!
 //! Stores a [`GraphRange`] atomically with CAS semantics: verifies all
-//! target frames are Empty in a transaction, then replaces them with the
-//! range's Full and Delta entries. Fails if any target frame is not Empty.
+//! target frames are unbuilt (Empty or Error) in a transaction, then replaces
+//! them with the range's Full and Delta entries. Fails if any target frame is
+//! already built (Full or Delta).
 //!
 //! ```text
-//!   Before:  [Empty]  [Empty]  [Empty]  [Empty]  [Empty]
+//!   Before:  [Empty]  [Error]  [Empty]  [Empty]  [Empty]
 //!                0        1        2        3        4
 //!
 //!   After:   [Full]   [Delta]  [Delta]  [Full]   [Delta]
 //!               0     base=0   base=1      3     base=3
 //! ```
 //!
+//! Error targets are accepted because an Error frame means "we tried to build
+//! this and failed" — overwriting it is exactly what a retry does. Unlike
+//! Empty frames, Error frames carry data, so they are deleted via
+//! [`UnigraphStorage::delete_frame_on_conn`], which registers their external
+//! blobs in the cleanup table inside this transaction. Rolling back therefore
+//! leaves both the frame and its blobs intact.
+//!
 //! # Transaction boundary
 //!
 //! Expensive work (packing, metric history preparation, blob uploads) happens
 //! **before** the transaction. The transaction itself is short: CAS check,
-//! delete Empties, insert new frames, store metric history, commit.
+//! delete targets, insert new frames, store metric history, commit.
 
 use std::collections::BTreeMap;
+use std::collections::HashSet;
 
 use anyhow::Context;
 use anyhow::Result;
@@ -207,7 +216,7 @@ pub async fn store_range(
     conn.get_timeline_config_and_lock(&timeline_id, task)
         .await?;
 
-    // CAS check: verify all target frames exist and are Empty.
+    // CAS check: verify all target frames exist and are unbuilt.
     let graph_ids: Vec<_> = packed_entries.iter().map(|e| e.key.graph_id).collect();
     let existing = conn
         .select_frames(
@@ -232,15 +241,22 @@ pub async fn store_range(
         );
     }
 
+    // Error targets are retries and get overwritten; they need blob cleanup
+    // on delete, so remember which ones they are.
+    let mut error_graph_ids: HashSet<GraphID> = HashSet::new();
     for row in &existing {
-        if row.frame_type != FrameType::Empty {
-            anyhow::bail!(
-                "CAS check failed: frame graph_id={} is {:?}, expected Empty \
+        match &row.frame_type {
+            FrameType::Empty => {}
+            FrameType::Error => {
+                error_graph_ids.insert(row.frame.graph_id);
+            }
+            built => anyhow::bail!(
+                "CAS check failed: frame graph_id={} is {:?}, expected Empty or Error \
                  in timeline '{}'",
                 row.frame.graph_id.0,
-                row.frame_type,
+                built,
                 timeline_id.0,
-            );
+            ),
         }
     }
 
@@ -249,13 +265,19 @@ pub async fn store_range(
     // the range's span (single query, metadata only) and verify.
     validate_adjacency(&mut *conn, &timeline_id, &packed_entries, task).await?;
 
-    // Delete all Empty frames.
+    // Delete the target frames. Error frames carry data, so they go through
+    // `delete_frame_on_conn`, which registers their external blobs for cleanup
+    // inside this transaction. Empty frames have no data — skip the extra read.
     for graph_id in &graph_ids {
         let key = GraphKey {
             timeline_id: timeline_id.clone(),
             graph_id: *graph_id,
         };
-        conn.delete_frame(&key, task).await?;
+        if error_graph_ids.contains(graph_id) {
+            storage.delete_frame_on_conn(&mut *conn, &key, task).await?;
+        } else {
+            conn.delete_frame(&key, task).await?;
+        }
     }
 
     // Store each entry.

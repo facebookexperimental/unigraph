@@ -249,6 +249,226 @@ async fn flush_on_error_with_take() -> Result<()> {
     Ok(())
 }
 
+/// A previously-failed frame is retried: `store_range` accepts the Error frame
+/// as a CAS target and overwrites it, and the retry can carry its Empty
+/// neighbour along in the same range.
+#[tokio::test]
+async fn retry_overwrites_error_frame() -> Result<()> {
+    let db = make_db();
+    let task = ll::Task::create_new("test");
+    let tl = "retry";
+    setup_timeline(&db, tl, &task).await;
+
+    let empty_frames: Vec<Frame> = (0..3)
+        .map(|i| Frame {
+            timestamp: unigraph_timestamp::Timestamp::from_unix_timestamp(1000 + i),
+            graph_id: GraphID(i),
+        })
+        .collect();
+    db.graph
+        .adjacent_deltas
+        .put_new_empty_frames(&TimelineID(tl.to_string()), empty_frames, false, &task)
+        .await?;
+
+    // Frame 0 builds fine.
+    let mut builder = GraphRangeBuilder::new(TimelineID(tl.to_string()));
+    builder.add(
+        make_graph_time_key(tl, 0, 1000),
+        TestGraphTimeline::get_nth(0),
+    )?;
+    db.graph
+        .adjacent_deltas
+        .store_range(builder.finalize(), &task)
+        .await?;
+
+    // Frame 1 fails.
+    db.graph
+        .store_error(
+            &make_graph_time_key(tl, 1, 1001),
+            &[TimestampedError {
+                timestamp: unigraph_timestamp::Timestamp::from_unix_timestamp(2000),
+                message: "attempt 1 failed".to_string(),
+            }],
+            &task,
+        )
+        .await?;
+    let frames = db.frames.list(&TimelineID(tl.to_string()), &task).await?;
+    assert_eq!(frames[1].frame_type, FrameType::Error);
+
+    // Retry frame 1 and pick up its still-Empty neighbour 2 in the same range.
+    let mut builder = GraphRangeBuilder::new(TimelineID(tl.to_string()));
+    builder.add(
+        make_graph_time_key(tl, 1, 1001),
+        TestGraphTimeline::get_nth(1),
+    )?;
+    builder.add(
+        make_graph_time_key(tl, 2, 1002),
+        TestGraphTimeline::get_nth(2),
+    )?;
+    db.graph
+        .adjacent_deltas
+        .store_range(builder.finalize(), &task)
+        .await?;
+
+    // The Error frame is gone and both graphs read back correctly.
+    let frames = db.frames.list(&TimelineID(tl.to_string()), &task).await?;
+    assert_eq!(frames.len(), 3);
+    assert_eq!(frames[1].frame_type, FrameType::Full);
+    assert_eq!(frames[2].frame_type, FrameType::Delta);
+    for i in 0..3 {
+        let fetched = db.graph.fetch(&make_graph_key(tl, i), &task).await?;
+        assert_graphs_equal(&TestGraphTimeline::get_nth(i as u64), &fetched);
+    }
+
+    Ok(())
+}
+
+/// Overwriting an Error frame hands its external blobs to the cleanup sweeper,
+/// so a retry doesn't orphan the failed attempt's storage.
+#[tokio::test]
+async fn retry_registers_error_blobs_for_cleanup() -> Result<()> {
+    let sqlite = Arc::new(SqliteStorage::new_in_memory().unwrap());
+    let db = UnigraphDb::new(sqlite.clone(), sqlite);
+    let task = ll::Task::create_new("test");
+    let tl = "retryblobs";
+
+    // External mode forces every blob out of the row and into blob storage.
+    db.timelines
+        .create(
+            &TimelineID(tl.to_string()),
+            &TimelineConfig {
+                schema: TimelineSchema::AdjacentDeltas(AdjacentDeltasConfig {}),
+                external_id_namespace: None,
+                blob_storage: BlobStorageMode::External,
+                store_metric_history: None,
+            },
+            &task,
+        )
+        .await?;
+
+    db.graph
+        .adjacent_deltas
+        .put_new_empty_frames(
+            &TimelineID(tl.to_string()),
+            vec![Frame {
+                timestamp: unigraph_timestamp::Timestamp::from_unix_timestamp(1000),
+                graph_id: GraphID(0),
+            }],
+            false,
+            &task,
+        )
+        .await?;
+
+    db.graph
+        .store_error(
+            &make_graph_time_key(tl, 0, 1000),
+            &[TimestampedError {
+                timestamp: unigraph_timestamp::Timestamp::from_unix_timestamp(2000),
+                message: "attempt 1 failed".to_string(),
+            }],
+            &task,
+        )
+        .await?;
+
+    // A successful store unregisters its own blobs, so nothing is pending yet.
+    let pending = db.blob_storage.get_pending_cleanup(&task).await?;
+    assert!(
+        pending.is_empty(),
+        "store_error should leave nothing pending, got {:?}",
+        pending,
+    );
+
+    let mut builder = GraphRangeBuilder::new(TimelineID(tl.to_string()));
+    builder.add(
+        make_graph_time_key(tl, 0, 1000),
+        TestGraphTimeline::get_nth(0),
+    )?;
+    db.graph
+        .adjacent_deltas
+        .store_range(builder.finalize(), &task)
+        .await?;
+
+    // Exactly the overwritten Error frame's blobs are now awaiting the sweeper.
+    let pending = db.blob_storage.get_pending_cleanup(&task).await?;
+    let prefix = format!("graphs/{}/0/", tl);
+    assert!(
+        pending.iter().any(|k| k.ends_with("_error_manifest.json")),
+        "error manifest blob should be pending cleanup, got {:?}",
+        pending,
+    );
+    assert!(
+        pending.iter().all(|k| k.starts_with(&prefix)),
+        "only frame 0's blobs should be pending cleanup, got {:?}",
+        pending,
+    );
+    // The retry's own Full-frame blobs must NOT be queued for deletion.
+    let manifest = format!("{}_manifest.json", prefix);
+    assert!(
+        !pending.contains(&manifest),
+        "the new Full frame's manifest must stay live, got {:?}",
+        pending,
+    );
+
+    Ok(())
+}
+
+/// CAS still refuses to clobber a frame that was already built successfully —
+/// only Empty and Error are overwritable.
+#[tokio::test]
+async fn cas_rejects_already_built_frame() -> Result<()> {
+    let db = make_db();
+    let task = ll::Task::create_new("test");
+    let tl = "built";
+    setup_timeline(&db, tl, &task).await;
+
+    db.graph
+        .adjacent_deltas
+        .put_new_empty_frames(
+            &TimelineID(tl.to_string()),
+            vec![Frame {
+                timestamp: unigraph_timestamp::Timestamp::from_unix_timestamp(1000),
+                graph_id: GraphID(0),
+            }],
+            false,
+            &task,
+        )
+        .await?;
+
+    let mut builder = GraphRangeBuilder::new(TimelineID(tl.to_string()));
+    builder.add(
+        make_graph_time_key(tl, 0, 1000),
+        TestGraphTimeline::get_nth(0),
+    )?;
+    db.graph
+        .adjacent_deltas
+        .store_range(builder.finalize(), &task)
+        .await?;
+
+    let mut builder = GraphRangeBuilder::new(TimelineID(tl.to_string()));
+    builder.add(
+        make_graph_time_key(tl, 0, 1000),
+        TestGraphTimeline::get_nth(1),
+    )?;
+    let err = db
+        .graph
+        .adjacent_deltas
+        .store_range(builder.finalize(), &task)
+        .await
+        .expect_err("storing over a Full frame should fail the CAS check");
+    let msg = format!("{:#}", err);
+    assert!(
+        msg.contains("expected Empty or Error"),
+        "unexpected error: {}",
+        msg,
+    );
+
+    // The original graph is untouched.
+    let fetched = db.graph.fetch(&make_graph_key(tl, 0), &task).await?;
+    assert_graphs_equal(&TestGraphTimeline::get_nth(0), &fetched);
+
+    Ok(())
+}
+
 /// Load a partial range (subrange of a timeline).
 ///
 /// Stores graphs in multiple ranges so there are multiple Full frames,
