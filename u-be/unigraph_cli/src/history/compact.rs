@@ -93,9 +93,11 @@ impl HistoryCompact {
         // causes — no settled frames, no flagged frames, or a request sitting
         // entirely above the frontier. The task log says which.
         ctx.println_after_done(&format!(
-            "checked {} node(s), dropped {} history row(s), compacted through {}.",
+            "checked {} node(s), dropped {} history row(s), kept {} as anchor(s), \
+             compacted through {}.",
             report.nodes,
             report.dropped,
+            report.anchored,
             report
                 .compacted_through
                 .map_or_else(|| "nothing".to_string(), |id| id.0.to_string()),

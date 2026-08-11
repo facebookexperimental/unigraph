@@ -74,10 +74,43 @@ async fn samples_go_over_the_wire_as_deltas() -> Result<()> {
     snapshot!(
         format_wire(&out),
         "
-stride 4 = 2 header + 2 metrics
+stride 5 = 3 header + 2 metrics
 
-app   T0, 0, 10, 100  |  10, 1, 10, 200  |  10, 1, 0, 600
-util  T0, 0, 1, 5  |  10, 1, null, null  |  10, 1, 3, 45
+app   T0, 0, 0, 10, 100  |  10, 1, 0, 10, 200  |  10, 1, 0, 0, 600
+util  T0, 0, 0, 1, 5  |  10, 1, 0, null, null  |  10, 1, 0, 3, 45
+"
+    );
+
+    Ok(())
+}
+
+/// The attribution case the anchor exists for, end to end.
+///
+/// The threshold folds frame 1 away, so on its own the sample at frame 2 reads
+/// as +50 — everything that drifted since frame 0. The anchor puts frame 1 back
+/// on the wire, and the step actually attributable to frame 2's graph is +5.
+#[tokio::test]
+async fn a_kept_sample_arrives_with_the_frame_before_it() -> Result<()> {
+    let t = init_app();
+    let timeline_id = ingest_sparse_history(&t).await?;
+
+    let out = call_rpc!(
+        t,
+        GetHistory(GetHistoryInput {
+            node_names: vec!["app".to_owned()],
+            ..history_input(&timeline_id)
+        })
+    );
+
+    snapshot!(
+        format_history(&out)?,
+        "
+metrics: lines, size
+
+app
+  t+0s   g0  lines=10  size=100
+  t+10s  g1  lines=10  size=145  (anchor)
+  t+20s  g2  lines=10  size=150
 "
     );
 
@@ -261,7 +294,8 @@ fn format_samples(metrics: &[String], samples: &[DecodedSample], base: i64) -> V
                 })
                 .collect::<Vec<_>>()
                 .join("  ");
-            format!("  {offset:<width$}  g{}  {values}", sample.graph_id)
+            let anchor = if sample.anchor { "  (anchor)" } else { "" };
+            format!("  {offset:<width$}  g{}  {values}{anchor}", sample.graph_id)
         })
         .collect()
 }
@@ -347,6 +381,39 @@ async fn ingest_history(t: &TestApp) -> Result<String> {
                 lookback_hours: 1,
                 settle_hours: 0,
                 threshold: 1.0,
+                graph_id_bounds: (None, None),
+            },
+            &t.task,
+        )
+        .await?;
+
+    Ok(timeline_id.to_owned())
+}
+
+/// Three frames whose middle one falls under the threshold, so history keeps it
+/// only as the anchor for the sample that follows.
+async fn ingest_sparse_history(t: &TestApp) -> Result<String> {
+    let timeline_id = "history_sparse_test";
+    let tid = TimelineID(timeline_id.to_owned());
+    t.app
+        .db
+        .timelines
+        .create(&tid, &default_timeline_config(), &t.task)
+        .await?;
+
+    store_frame(t, &tid, 0, 0, &[("app", 10.0, 100.0)]).await?;
+    store_frame(t, &tid, 1, 10, &[("app", 10.0, 145.0)]).await?;
+    store_frame(t, &tid, 2, 20, &[("app", 10.0, 150.0)]).await?;
+
+    t.app
+        .db
+        .graph_history
+        .ingest(
+            &tid,
+            &HistoryIngestOptions {
+                lookback_hours: 1,
+                settle_hours: 0,
+                threshold: 50.0,
                 graph_id_bounds: (None, None),
             },
             &t.task,

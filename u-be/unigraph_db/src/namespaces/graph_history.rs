@@ -32,10 +32,37 @@
 //! is as irreversible as never writing it) but gets it more cheaply: it clamps
 //! its range to the settled frontier, so every frame it considers is final by
 //! construction.
+//!
+//! # Anchors: what the threshold throws away
+//!
+//! A kept sample's absolute values say nothing about which graph moved them.
+//! The row before it in the series can be hundreds of frames back, so the
+//! obvious reading — "this diff added 99" — actually credits one graph with
+//! everything the threshold folded away since the last kept row.
+//!
+//! ```text
+//! ingested   1: 1   2: 2   ...   998: 94   999: 95   1000: 100
+//! kept       1: 1                                    1000: 100   "+99"?
+//! anchored   1: 1                          999: 95   1000: 100   "+5"
+//! ```
+//!
+//! So keeping a sample also writes the row for the built frame immediately
+//! before it, flagged `anchor`. That row is not a threshold crossing and must
+//! never be treated as one: it is excluded from baseline lookups (as deferred
+//! rows are, and for the same reason — it sits within a threshold of the sample
+//! after it, so measuring against it would hide the earlier drift and omit a
+//! sample that deserved a row), and compaction neither judges it nor drops it
+//! while the sample it explains survives.
+//!
+//! One consequence worth knowing: a frame checkpointed `Omitted` can still end
+//! up with rows, written later by the frame after it. The checkpoint records
+//! what that frame's *own* verdict was, not whether the table holds a row for
+//! it.
 
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
+use std::collections::HashSet;
 
 use anyhow::Context;
 use anyhow::Result;
@@ -58,6 +85,7 @@ use unigraph_storage_core::TimestampBounds;
 
 use crate::context::UnigraphDbContext;
 use crate::graph_history::CompactInput;
+use crate::graph_history::CompactRow;
 use crate::graph_history::ErrorPayload;
 use crate::graph_history::HistoryStatus;
 use crate::graph_history::MAX_ATTEMPTS;
@@ -87,11 +115,20 @@ const REPLAY_CHUNK_FRAMES: usize = 200;
 /// One frame's per-node metrics, as `extract_node_metrics` returns them.
 type NodeMetrics = BTreeMap<String, BTreeMap<String, f64>>;
 
+/// Per-node packed metric values at one frame.
+type NodeValues = BTreeMap<String, BTreeMap<u32, f64>>;
+
 /// Mutable state carried across the frames of a single ingest run.
 struct RunState {
     /// Per node, the last *surviving* sample the threshold measures against.
     /// Deferred rows never enter this — see [`GraphHistory::process_frame`].
     last_kept: HashMap<String, BTreeMap<u32, f64>>,
+    /// The previous built frame, as far as this run knows it.
+    ///
+    /// `None` means its metrics are not in hand — the run has not reached a
+    /// frame it processed yet, or it skipped over one — and anchors cannot be
+    /// minted until [`GraphHistory::seed_prev_frame`] recovers it.
+    prev_frame: Option<PrevFrame>,
     /// The timeline's `metric name -> id` dictionary.
     ///
     /// Held across the run because interning takes the timeline's exclusive
@@ -99,6 +136,31 @@ struct RunState {
     /// is a handful of names that never change. Re-interning per frame cost a
     /// write transaction per frame and contended with graph ingestion.
     metric_ids: BTreeMap<String, u32>,
+}
+
+/// Everything the next frame needs to mint anchors against its predecessor.
+///
+/// Costs about what `last_kept` costs: one packed value map per node. That is
+/// the price of being able to write the predecessor's row after the fact —
+/// nothing else in the system remembers what a below-threshold frame held.
+struct PrevFrame {
+    graph_id: GraphID,
+    timestamp: Timestamp,
+    values: NodeValues,
+    /// Nodes that already have a row at this frame, and so need no anchor.
+    has_row: HashSet<String>,
+}
+
+/// The rows one processed frame contributes, and what they are.
+struct FrameEntries {
+    rows: Vec<HistoryEntryRow>,
+    /// Rows recorded *at this frame* — kept plus deferred, excluding anchors,
+    /// which belong to the frame before.
+    samples: usize,
+    /// How many of `samples` were below the threshold and kept anyway.
+    deferred_rows: usize,
+    /// Rows minted at the previous frame to explain a sample kept at this one.
+    anchors: usize,
 }
 
 /// What `ingest` should look at, and how strictly it may filter.
@@ -148,15 +210,30 @@ pub struct HistoryIngestReport {
     /// over the run. This is the storage `compact` is expected to reclaim, and
     /// the number to watch if write amplification becomes a concern.
     pub deferred_rows: usize,
+    /// Rows written at a frame the threshold had already folded away, so that
+    /// the sample after it reads as its own graph's contribution. Bounded above
+    /// by the number of kept rows, and the other number to watch for write
+    /// amplification — unlike `deferred_rows`, compaction will not reclaim it.
+    pub anchors: usize,
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct HistoryCompactReport {
     pub nodes: usize,
     pub dropped: usize,
+    /// Redundant rows kept as anchors instead of being deleted, because the
+    /// frame right after them holds a surviving sample.
+    pub anchored: usize,
     /// Highest graph ID considered. Compaction stops at the settled frontier,
     /// so this trails the timeline head by roughly `settle_hours`.
     pub compacted_through: Option<GraphID>,
+}
+
+/// What compacting one node's series actually changed.
+#[derive(Debug, Clone, Default)]
+struct CompactCounts {
+    dropped: usize,
+    anchored: usize,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -172,6 +249,11 @@ pub struct HistorySeriesRow {
     pub graph_id: GraphID,
     pub timestamp: Timestamp,
     pub values: BTreeMap<String, f64>,
+    /// The row is not a threshold crossing in its own right — it is the built
+    /// frame immediately before the next row in the series, kept so that row's
+    /// step can be attributed to its own graph. See
+    /// [`unigraph_storage_core::HistoryEntryRow::anchor`].
+    pub anchor: bool,
 }
 
 struct CommitSummary {
@@ -179,6 +261,8 @@ struct CommitSummary {
     entries: usize,
     /// How many of `entries` were below the threshold and kept anyway.
     deferred_rows: usize,
+    /// Rows written at the *previous* frame to explain a sample kept here.
+    anchors: usize,
     /// The frame's verdicts were taken against a baseline that could still
     /// change, because an earlier frame was unfilled. Every row here — kept or
     /// omitted — is provisional until `compact` revisits the frame.
@@ -298,11 +382,12 @@ impl GraphHistory {
                 .await?;
             let series = rows
                 .into_iter()
-                .map(|(graph_id, timestamp, values)| {
+                .map(|row| {
                     Ok(HistorySeriesRow {
-                        graph_id,
-                        timestamp,
-                        values: decode_named_values(&metric_names, &values)?,
+                        graph_id: row.graph_id,
+                        timestamp: row.timestamp,
+                        values: decode_named_values(&metric_names, &row.values)?,
+                        anchor: row.anchor,
                     })
                 })
                 .collect::<Result<Vec<_>>>()?;
@@ -536,6 +621,7 @@ impl GraphHistory {
             .await?;
         let mut run = RunState {
             last_kept: HashMap::new(),
+            prev_frame: None,
             metric_ids: BTreeMap::new(),
         };
 
@@ -556,6 +642,13 @@ impl GraphHistory {
                 let stored_status = match frame_action(frame, existing_status) {
                     FrameAction::Skip => {
                         report.skipped += 1;
+                        // Skipping a built frame loses its metrics, so the next
+                        // frame has no predecessor to anchor against until it
+                        // re-seeds. Empty and Error frames carry none to begin
+                        // with — the last built frame is still the predecessor.
+                        if matches!(frame.frame_type, FrameType::Full | FrameType::Delta) {
+                            run.prev_frame = None;
+                        }
                         existing_status.cloned()
                     }
                     FrameAction::Process => {
@@ -788,6 +881,11 @@ impl GraphHistory {
         run: &mut RunState,
         task: &ll::Task,
     ) -> Result<CommitSummary> {
+        // Taken before anything can fail, so an early return leaves it cleared:
+        // a frame we could not read is still the next frame's predecessor, and
+        // we no longer know what it held.
+        let carried = run.prev_frame.take();
+
         let extracted = match extracted {
             Some(extracted) => extracted,
             None => {
@@ -799,58 +897,182 @@ impl GraphHistory {
             .await?;
         let mut current_rows = metric_snapshots_to_ids(&extracted, &run.metric_ids)?;
 
-        let last_kept = &mut run.last_kept;
+        let prev_frame = match carried {
+            Some(prev) => Some(prev),
+            None => self.seed_prev_frame(timeline_id, frame, run, task).await,
+        };
+
         self.prime_last_kept(
             timeline_id,
             frame.frame.graph_id,
             &current_rows,
-            last_kept,
+            &mut run.last_kept,
             task,
         )
         .await?;
 
-        let mut entries = Vec::new();
-        let mut deferred_rows = 0usize;
         // Every node the run has seen gets an entry so a node that vanished
         // from the graph records a zeroed sample rather than dangling.
-        for node_name in last_kept.keys() {
+        for node_name in run.last_kept.keys() {
             current_rows.entry(node_name.clone()).or_default();
         }
-        for (node_name, current) in current_rows {
-            let above_threshold = keep_row(last_kept.get(&node_name), &current, threshold);
-            if !above_threshold && omissible {
-                continue;
-            }
-            entries.push(HistoryEntryRow {
-                node_name: node_name.clone(),
-                graph_id: frame.frame.graph_id,
-                timestamp: frame.frame.timestamp,
-                values: encode_values(&current),
-                deferred: !above_threshold,
-            });
 
-            // A deferred row is provisional — compaction will delete it — so it
-            // must not become the baseline. Advancing to it would measure the
-            // next sample against a value that is about to disappear, hiding
-            // the drift accumulated since the last *surviving* sample. That
-            // next sample would then be omitted, and omission is permanent.
-            if above_threshold {
-                last_kept.insert(node_name, current);
-            } else {
-                deferred_rows += 1;
-            }
-        }
+        let entries = threshold_frame(
+            frame,
+            &current_rows,
+            prev_frame.as_ref(),
+            &mut run.last_kept,
+            threshold,
+            omissible,
+        );
+        let written = entries
+            .rows
+            .iter()
+            .filter(|row| row.graph_id == frame.frame.graph_id)
+            .map(|row| row.node_name.clone())
+            .collect();
+        run.prev_frame = Some(PrevFrame {
+            graph_id: frame.frame.graph_id,
+            timestamp: frame.frame.timestamp,
+            values: current_rows,
+            has_row: written,
+        });
 
         self.commit_processed_frame(
             timeline_id,
             frame,
             entries,
-            deferred_rows,
             !omissible,
             existing_status,
             task,
         )
         .await
+    }
+
+    /// Reconstruct the previous built frame so anchors can be minted at a run
+    /// boundary.
+    ///
+    /// A scheduled run's window is a prefix of already-ingested frames followed
+    /// by the new ones, and skipping that prefix leaves `prev_frame` empty at
+    /// exactly the frame that matters. Without this a job ingesting one frame
+    /// per pass — which is the normal shape — would never mint an anchor.
+    ///
+    /// Best-effort: one graph reconstruction, and a failure costs the anchor,
+    /// not the ingest.
+    async fn seed_prev_frame(
+        &self,
+        timeline_id: &TimelineID,
+        frame: &FrameRow,
+        run: &mut RunState,
+        task: &ll::Task,
+    ) -> Option<PrevFrame> {
+        match self.load_prev_frame(timeline_id, frame, run, task).await {
+            Ok(prev) => prev,
+            Err(error) => {
+                task.data("history_anchor_seed_failed", format!("{error:#}"));
+                None
+            }
+        }
+    }
+
+    async fn load_prev_frame(
+        &self,
+        timeline_id: &TimelineID,
+        frame: &FrameRow,
+        run: &mut RunState,
+        task: &ll::Task,
+    ) -> Result<Option<PrevFrame>> {
+        let Some(preceding) = self
+            .preceding_built_frame(timeline_id, frame.frame.graph_id, task)
+            .await?
+        else {
+            return Ok(None);
+        };
+        task.data("history_anchor_seed", preceding.frame.graph_id.0);
+
+        let extracted = self
+            .fetch_and_extract(timeline_id, preceding.frame.graph_id, task)
+            .await?;
+        self.refresh_metric_ids(timeline_id, &extracted, run, task)
+            .await?;
+
+        let mut conn = self.ctx.storage.graph.conn().await?;
+        let has_row = conn
+            .get_history_entries_at(timeline_id, preceding.frame.graph_id, task)
+            .await?
+            .into_iter()
+            .map(|sample| sample.node_name)
+            .collect();
+
+        Ok(Some(PrevFrame {
+            graph_id: preceding.frame.graph_id,
+            timestamp: preceding.frame.timestamp,
+            values: metric_snapshots_to_ids(&extracted, &run.metric_ids)?,
+            has_row,
+        }))
+    }
+
+    /// The nearest `Full`/`Delta` frame before `graph_id`.
+    ///
+    /// Empty and Error frames are skipped: "the graph immediately before" means
+    /// the last one that actually carried metrics.
+    async fn preceding_built_frame(
+        &self,
+        timeline_id: &TimelineID,
+        graph_id: GraphID,
+        task: &ll::Task,
+    ) -> Result<Option<FrameRow>> {
+        self.nearest_built_frame(
+            timeline_id,
+            (None, Some(GraphID(graph_id.0 - 1))),
+            Order::Desc,
+            task,
+        )
+        .await
+    }
+
+    /// The nearest `Full`/`Delta` frame after `graph_id`.
+    async fn next_built_frame(
+        &self,
+        timeline_id: &TimelineID,
+        graph_id: GraphID,
+        task: &ll::Task,
+    ) -> Result<Option<FrameRow>> {
+        self.nearest_built_frame(
+            timeline_id,
+            (Some(GraphID(graph_id.0 + 1)), None),
+            Order::Asc,
+            task,
+        )
+        .await
+    }
+
+    async fn nearest_built_frame(
+        &self,
+        timeline_id: &TimelineID,
+        graph_id_bounds: GraphIDBounds,
+        order: Order,
+        task: &ll::Task,
+    ) -> Result<Option<FrameRow>> {
+        let mut conn = self.ctx.storage.graph.conn().await?;
+        let mut rows = conn
+            .select_frames(
+                &FrameQuery {
+                    timeline_id: timeline_id.clone(),
+                    limit: Some(1),
+                    frame_types: Some(vec![FrameType::Full, FrameType::Delta]),
+                    order: Some(order),
+                    timestamp_bounds: None,
+                    graph_id_bounds: Some(graph_id_bounds),
+                    graph_ids: None,
+                    with_data: Some(false),
+                    before: None,
+                    expires_before: None,
+                },
+                task,
+            )
+            .await?;
+        Ok(rows.pop())
     }
 
     /// Fall back to reconstructing one frame on its own.
@@ -1046,26 +1268,25 @@ impl GraphHistory {
         Ok(())
     }
 
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "a params struct here would just re-list the same borrows with a name"
-    )]
+    /// Write one frame's rows and its checkpoint in a single transaction.
+    ///
+    /// Anchors ride along with the frame that needed them, at the *previous*
+    /// frame's graph ID. Committing them together is what guarantees a sample
+    /// is never left without the row that explains it.
     async fn commit_processed_frame(
         &self,
         timeline_id: &TimelineID,
         frame: &FrameRow,
-        entries: Vec<HistoryEntryRow>,
-        deferred_rows: usize,
+        entries: FrameEntries,
         deferred: bool,
         existing_status: Option<&HistoryStatusRow>,
         task: &ll::Task,
     ) -> Result<CommitSummary> {
-        let status = if entries.is_empty() {
+        let status = if entries.samples == 0 {
             HistoryStatus::Omitted
         } else {
             HistoryStatus::Processed
         };
-        let entries_len = entries.len();
         let old_error_key = existing_status
             .and_then(|status| status.error_blob_key.clone())
             .into_iter()
@@ -1077,7 +1298,7 @@ impl GraphHistory {
         conn.get_timeline_config_and_lock(timeline_id, task)
             .await?
             .ok_or_else(|| anyhow::anyhow!("Timeline not found: {}", timeline_id))?;
-        conn.insert_history_entries(timeline_id, &entries, task)
+        conn.insert_history_entries(timeline_id, &entries.rows, task)
             .await?;
         conn.upsert_history_status(
             timeline_id,
@@ -1097,8 +1318,9 @@ impl GraphHistory {
 
         Ok(CommitSummary {
             status,
-            entries: entries_len,
-            deferred_rows,
+            entries: entries.samples,
+            deferred_rows: entries.deferred_rows,
+            anchors: entries.anchors,
             deferred,
         })
     }
@@ -1163,8 +1385,9 @@ impl GraphHistory {
         node_name: &str,
         threshold: f64,
         range: &HistoryRange,
+        frames: &[GraphID],
         task: &ll::Task,
-    ) -> Result<usize> {
+    ) -> Result<CompactCounts> {
         let mut conn = self.ctx.storage.graph.conn_analytics().await?;
         let rows = conn
             .get_history_series(timeline_id, node_name, range, task)
@@ -1173,18 +1396,25 @@ impl GraphHistory {
 
         let series = rows
             .into_iter()
-            .map(|(graph_id, _timestamp, values)| Ok((graph_id, decode_values(&values)?)))
+            .map(|row| {
+                Ok(CompactRow {
+                    graph_id: row.graph_id,
+                    values: decode_values(&row.values)?,
+                    anchor: row.anchor,
+                })
+            })
             .collect::<Result<Vec<_>>>()?;
         let seed = self
             .seed_before(timeline_id, node_name, range, task)
             .await?;
-        let dropped = compact_series(&CompactInput {
+        let plan = compact_series(&CompactInput {
             series: &series,
             seed: seed.as_ref(),
+            frames,
             threshold,
         });
-        if dropped.is_empty() {
-            return Ok(0);
+        if plan.dropped.is_empty() && plan.anchored.is_empty() {
+            return Ok(CompactCounts::default());
         }
 
         let mut conn = self.ctx.storage.graph.conn_write().await?;
@@ -1192,10 +1422,56 @@ impl GraphHistory {
         conn.get_timeline_config_and_lock(timeline_id, task)
             .await?
             .ok_or_else(|| anyhow::anyhow!("Timeline not found: {}", timeline_id))?;
-        conn.delete_history_entries_for_node(timeline_id, node_name, &dropped, task)
+        conn.delete_history_entries_for_node(timeline_id, node_name, &plan.dropped, task)
             .await?;
+        // One statement per promoted row: they are keyed by graph ID, and a
+        // node has at most one per surviving sample.
+        let node = [node_name.to_owned()];
+        for graph_id in &plan.anchored {
+            conn.set_history_entries_anchor_at(timeline_id, *graph_id, &node, task)
+                .await?;
+        }
         conn.commit_transaction(task).await?;
-        Ok(dropped.len())
+        Ok(CompactCounts {
+            dropped: plan.dropped.len(),
+            anchored: plan.anchored.len(),
+        })
+    }
+
+    /// The range's built frames, ascending.
+    ///
+    /// Compaction needs frame adjacency, not row adjacency: the row before a
+    /// sample in the series can be thousands of frames back, and only the
+    /// immediately preceding *frame* can anchor it. Read once per range and
+    /// shared across every node in it.
+    async fn built_frames_in_range(
+        &self,
+        timeline_id: &TimelineID,
+        range: &HistoryRange,
+        task: &ll::Task,
+    ) -> Result<Vec<GraphID>> {
+        let mut conn = self.ctx.storage.graph.conn().await?;
+        let rows = conn
+            .select_frames(
+                &FrameQuery {
+                    timeline_id: timeline_id.clone(),
+                    limit: None,
+                    frame_types: Some(vec![FrameType::Full, FrameType::Delta]),
+                    order: Some(Order::Asc),
+                    timestamp_bounds: Some(range.timestamps.clone()),
+                    graph_id_bounds: Some(range.graph_ids),
+                    graph_ids: None,
+                    with_data: Some(false),
+                    before: None,
+                    expires_before: None,
+                },
+                task,
+            )
+            .await?;
+        Ok(rows
+            .into_iter()
+            .map(|row| row.frame.graph_id)
+            .collect::<Vec<_>>())
     }
 
     /// Reconsider just the rows ingest could not judge, one flagged frame at a
@@ -1224,6 +1500,7 @@ impl GraphHistory {
         let mut report = HistoryCompactReport {
             nodes: 0,
             dropped: 0,
+            anchored: 0,
             compacted_through: range.graph_ids.1,
         };
         let total = i64::try_from(graph_ids.len())?;
@@ -1236,6 +1513,7 @@ impl GraphHistory {
                 .await?;
             report.nodes += frame.nodes;
             report.dropped += frame.dropped;
+            report.anchored += frame.anchored;
             task.progress(i64::try_from(index)? + 1, total);
         }
         Ok(report)
@@ -1246,6 +1524,10 @@ impl GraphHistory {
     /// The baseline is whatever survives before this frame — which is exactly
     /// what may have changed since ingest deferred these rows, because the
     /// frame that filled the hole has landed in the meantime.
+    ///
+    /// A row that loses is not always deleted: if the next built frame kept a
+    /// row for the same node, this one stays as that sample's anchor. Anchors
+    /// already here are left alone entirely — judging one would always drop it.
     async fn compact_deferred_frame(
         &self,
         timeline_id: &TimelineID,
@@ -1259,7 +1541,7 @@ impl GraphHistory {
             .await?;
         let node_names = candidates
             .iter()
-            .map(|(node_name, _values)| node_name.clone())
+            .map(|candidate| candidate.node_name.clone())
             .collect::<Vec<_>>();
         let baselines = conn
             .get_last_history_entries_before(timeline_id, graph_id, &node_names, task)
@@ -1269,32 +1551,83 @@ impl GraphHistory {
             .collect::<Result<HashMap<_, _>>>()?;
         drop(conn);
 
+        let successors = self
+            .rows_at_next_built_frame(timeline_id, graph_id, task)
+            .await?;
+
         let mut dropped = Vec::new();
-        for (node_name, values) in &candidates {
-            if !keep_row(baselines.get(node_name), &decode_values(values)?, threshold) {
-                dropped.push(node_name.clone());
+        let mut anchored = Vec::new();
+        for candidate in &candidates {
+            if candidate.anchor {
+                continue;
+            }
+            let baseline = baselines.get(&candidate.node_name);
+            let values = decode_values(&candidate.values)?;
+            if keep_row(baseline, &values, threshold) {
+                continue;
+            }
+            // Redundant. It only earns its keep if the frame right after it
+            // holds a sample that *survives* — judged against this same
+            // baseline, since neither a dropped row nor an anchor becomes one.
+            match successors.get(&candidate.node_name) {
+                Some(next) if keep_row(baseline, next, threshold) => {
+                    anchored.push(candidate.node_name.clone());
+                }
+                _ => dropped.push(candidate.node_name.clone()),
             }
         }
 
-        self.commit_compacted_frame(timeline_id, graph_id, &dropped, task)
+        self.commit_compacted_frame(timeline_id, graph_id, &dropped, &anchored, task)
             .await?;
         Ok(HistoryCompactReport {
             nodes: candidates.len(),
             dropped: dropped.len(),
+            anchored: anchored.len(),
             compacted_through: Some(graph_id),
         })
     }
 
-    /// Delete the frame's redundant rows and retire its deferral bookkeeping.
+    /// Per node, the values recorded at the built frame right after `graph_id`.
     ///
-    /// Whatever deferred rows remain after the delete survived the threshold,
-    /// so clearing the flag on the frame promotes them to baselines — which
-    /// later frames in this same walk will then measure against.
+    /// What a redundant row at `graph_id` might be kept to explain. Frames are
+    /// compacted in ascending order, so the successor has not been judged yet —
+    /// hence the values rather than just the node names: whether it survives is
+    /// something the caller has to work out for itself, and getting that wrong
+    /// means anchoring every row in a run of redundant frames.
+    ///
+    /// Existing anchors are excluded. An anchor is not a sample, so it is not
+    /// something another row needs to explain.
+    async fn rows_at_next_built_frame(
+        &self,
+        timeline_id: &TimelineID,
+        graph_id: GraphID,
+        task: &ll::Task,
+    ) -> Result<HashMap<String, BTreeMap<u32, f64>>> {
+        let Some(next) = self.next_built_frame(timeline_id, graph_id, task).await? else {
+            return Ok(HashMap::new());
+        };
+        let mut conn = self.ctx.storage.graph.conn().await?;
+        conn.get_history_entries_at(timeline_id, next.frame.graph_id, task)
+            .await?
+            .into_iter()
+            .filter(|sample| !sample.anchor)
+            .map(|sample| Ok((sample.node_name, decode_values(&sample.values)?)))
+            .collect()
+    }
+
+    /// Delete the frame's redundant rows, keep the ones still explaining
+    /// something, and retire its deferral bookkeeping.
+    ///
+    /// Whatever deferred rows remain after this survived the threshold, so
+    /// clearing the flag on the frame promotes them to baselines — which later
+    /// frames in this same walk will then measure against. Anchors keep their
+    /// own flag and stay out of baseline lookups.
     async fn commit_compacted_frame(
         &self,
         timeline_id: &TimelineID,
         graph_id: GraphID,
         dropped: &[String],
+        anchored: &[String],
         task: &ll::Task,
     ) -> Result<()> {
         let bounds = (Some(graph_id), Some(graph_id));
@@ -1304,6 +1637,8 @@ impl GraphHistory {
             .await?
             .ok_or_else(|| anyhow::anyhow!("Timeline not found: {}", timeline_id))?;
         conn.delete_history_entries_at(timeline_id, graph_id, dropped, task)
+            .await?;
+        conn.set_history_entries_anchor_at(timeline_id, graph_id, anchored, task)
             .await?;
         conn.clear_history_entries_deferred(timeline_id, &bounds, task)
             .await?;
@@ -1330,9 +1665,12 @@ impl GraphHistory {
             .await?;
         drop(conn);
 
+        let frames = self.built_frames_in_range(timeline_id, range, task).await?;
+
         let mut report = HistoryCompactReport {
             nodes: node_names.len(),
             dropped: 0,
+            anchored: 0,
             compacted_through: range.graph_ids.1,
         };
         let total = i64::try_from(node_names.len())?;
@@ -1340,9 +1678,11 @@ impl GraphHistory {
         task.progress(0, total);
 
         for (index, node_name) in node_names.into_iter().enumerate() {
-            report.dropped += self
-                .compact_node(timeline_id, &node_name, threshold, range, task)
+            let counts = self
+                .compact_node(timeline_id, &node_name, threshold, range, &frames, task)
                 .await?;
+            report.dropped += counts.dropped;
+            report.anchored += counts.anchored;
             task.progress(i64::try_from(index)? + 1, total);
         }
 
@@ -1582,9 +1922,95 @@ fn settle_cutoff(settle_hours: usize) -> Result<Timestamp> {
         .context("settle_hours is too large")
 }
 
+/// Decide which of a frame's rows to write, and mint the anchors they need.
+///
+/// Advances `last_kept` for every row that cleared the threshold — and only
+/// those. A deferred row is provisional (compaction will delete it) and an
+/// anchor never cleared the bar to begin with, so letting either become the
+/// baseline would measure the next sample against a value that hides the drift
+/// accumulated since the last *surviving* sample. That next sample would then
+/// be omitted, and omission is permanent.
+fn threshold_frame(
+    frame: &FrameRow,
+    current_rows: &NodeValues,
+    prev_frame: Option<&PrevFrame>,
+    last_kept: &mut HashMap<String, BTreeMap<u32, f64>>,
+    threshold: f64,
+    omissible: bool,
+) -> FrameEntries {
+    let mut rows = Vec::new();
+    let mut kept = Vec::new();
+    let mut deferred_rows = 0usize;
+
+    for (node_name, current) in current_rows {
+        let above_threshold = keep_row(last_kept.get(node_name), current, threshold);
+        if !above_threshold && omissible {
+            continue;
+        }
+        rows.push(HistoryEntryRow {
+            node_name: node_name.clone(),
+            graph_id: frame.frame.graph_id,
+            timestamp: frame.frame.timestamp,
+            values: encode_values(current),
+            deferred: !above_threshold,
+            anchor: false,
+        });
+
+        if above_threshold {
+            last_kept.insert(node_name.clone(), current.clone());
+            kept.push(node_name);
+        } else {
+            deferred_rows += 1;
+        }
+    }
+
+    let samples = rows.len();
+    let anchors = mint_anchors(prev_frame, &kept);
+    let anchor_count = anchors.len();
+    rows.extend(anchors);
+
+    FrameEntries {
+        rows,
+        samples,
+        deferred_rows,
+        anchors: anchor_count,
+    }
+}
+
+/// Rows recording what the previous frame held for the nodes kept at this one.
+///
+/// Without them a kept sample's step reads as all the drift since the node's
+/// last kept row — hundreds of folded-away diffs — rather than the contribution
+/// of the one graph that crossed the threshold.
+///
+/// Nodes the previous frame knew nothing about are skipped: their sample here
+/// is the node's first, which already reads correctly, and an anchor of zeros
+/// for every newly appearing node would double the cost of a growing graph for
+/// nothing.
+fn mint_anchors(prev_frame: Option<&PrevFrame>, kept: &[&String]) -> Vec<HistoryEntryRow> {
+    let Some(prev) = prev_frame else {
+        return Vec::new();
+    };
+    kept.iter()
+        .filter(|node_name| !prev.has_row.contains(**node_name))
+        .filter_map(|node_name| {
+            let values = prev.values.get(*node_name)?;
+            Some(HistoryEntryRow {
+                node_name: (*node_name).clone(),
+                graph_id: prev.graph_id,
+                timestamp: prev.timestamp,
+                values: encode_values(values),
+                deferred: false,
+                anchor: true,
+            })
+        })
+        .collect()
+}
+
 fn apply_commit_summary(report: &mut HistoryIngestReport, summary: CommitSummary) {
     report.entries += summary.entries;
     report.deferred_rows += summary.deferred_rows;
+    report.anchors += summary.anchors;
     if summary.deferred {
         report.deferred += 1;
     }

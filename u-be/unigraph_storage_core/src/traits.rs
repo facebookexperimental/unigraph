@@ -17,7 +17,9 @@ use unigraph_core::config_key::TraversalConfigKey;
 
 use crate::frame::FrameRow;
 use crate::history::HistoryEntryRow;
+use crate::history::HistoryNodeSample;
 use crate::history::HistoryRange;
+use crate::history::HistorySampleRow;
 use crate::history::HistoryStatusRow;
 use crate::types::ExternalID;
 use crate::types::ExternalIDNamespace;
@@ -315,9 +317,10 @@ pub trait UnigraphGraphConnection: Send {
     /// For each requested node, the most recent *baseline* value blob strictly
     /// before `before_graph_id`. Nodes with no earlier entry are omitted.
     ///
-    /// Deferred rows are skipped: they are provisional and compaction will
-    /// remove them, so measuring a later sample against one would hide the
-    /// drift accumulated since the last surviving sample.
+    /// Deferred and anchor rows are both skipped. Neither cleared the
+    /// threshold, so measuring a later sample against one would hide the drift
+    /// accumulated since the last surviving sample — and omission is
+    /// permanent. Implementations must filter on both flags.
     async fn get_last_history_entries_before(
         &mut self,
         timeline_id: &TimelineID,
@@ -333,7 +336,7 @@ pub trait UnigraphGraphConnection: Send {
         node_name: &str,
         range: &HistoryRange,
         task: &ll::Task,
-    ) -> Result<Vec<(GraphID, Timestamp, Vec<u8>)>>;
+    ) -> Result<Vec<HistorySampleRow>>;
 
     /// Distinct node names that have history entries within `range`.
     async fn list_history_node_names(
@@ -388,7 +391,7 @@ pub trait UnigraphGraphConnection: Send {
         task: &ll::Task,
     ) -> Result<Vec<GraphID>>;
 
-    /// Every `(node_name, values)` row recorded at one graph ID.
+    /// Every node's row recorded at one graph ID.
     ///
     /// A flagged frame took *all* of its verdicts against an untrustworthy
     /// baseline — it could keep a row the settled chain would drop just as
@@ -399,10 +402,26 @@ pub trait UnigraphGraphConnection: Send {
         timeline_id: &TimelineID,
         graph_id: GraphID,
         task: &ll::Task,
-    ) -> Result<Vec<(String, Vec<u8>)>>;
+    ) -> Result<Vec<HistoryNodeSample>>;
 
     /// Delete the given nodes' entries at one graph ID. Returns the row count.
     async fn delete_history_entries_at(
+        &mut self,
+        timeline_id: &TimelineID,
+        graph_id: GraphID,
+        node_names: &[String],
+        task: &ll::Task,
+    ) -> Result<u64>;
+
+    /// Flag the given nodes' rows at one graph ID as anchors. Returns the row
+    /// count.
+    ///
+    /// Compaction's alternative to deleting a row: the sample is redundant on
+    /// its own, but the frame after it kept a row, so it stays to make that
+    /// sample's frame-over-frame delta readable. Flagging also takes it out of
+    /// baseline lookups, which is what keeps it from swallowing the sample it
+    /// explains on the next pass.
+    async fn set_history_entries_anchor_at(
         &mut self,
         timeline_id: &TimelineID,
         graph_id: GraphID,

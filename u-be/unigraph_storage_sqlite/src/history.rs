@@ -22,7 +22,9 @@ use rusqlite::Connection;
 use unigraph_storage_core::GraphID;
 use unigraph_storage_core::GraphIDBounds;
 use unigraph_storage_core::HistoryEntryRow;
+use unigraph_storage_core::HistoryNodeSample;
 use unigraph_storage_core::HistoryRange;
+use unigraph_storage_core::HistorySampleRow;
 use unigraph_storage_core::HistoryStatusRow;
 use unigraph_storage_core::TimelineID;
 use unigraph_timestamp::Timestamp;
@@ -114,8 +116,8 @@ pub(crate) fn insert_entries(
 
     let sql = format!(
         "INSERT OR REPLACE INTO {TABLE_GRAPH_HISTORY_ENTRIES}
-         (timeline_id, node_name, graph_id, timestamp, metric_values, deferred)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)"
+         (timeline_id, node_name, graph_id, timestamp, metric_values, deferred, anchor)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)"
     );
     let mut stmt = conn
         .prepare(&sql)
@@ -128,13 +130,15 @@ pub(crate) fn insert_entries(
             row.timestamp.to_unix_timestamp(),
             row.values,
             i64::from(row.deferred),
+            i64::from(row.anchor),
         ])
         .context("failed to insert history entry")?;
     }
     Ok(())
 }
 
-/// Most recent value blob strictly before `before_graph_id`, per node.
+/// Most recent *baseline* value blob strictly before `before_graph_id`, per
+/// node. Deferred and anchor rows are excluded — neither cleared the threshold.
 ///
 /// One query per chunk rather than one per node: this runs for every frame
 /// that introduces new nodes, so a per-node `LIMIT 1` would cost O(nodes)
@@ -159,7 +163,7 @@ pub(crate) fn last_entries_before(
         let placeholders = numbered_placeholders(chunk.len(), 3);
         let sql = format!(
             "SELECT node_name, MAX(graph_id), metric_values FROM {TABLE_GRAPH_HISTORY_ENTRIES}
-             WHERE timeline_id = ?1 AND graph_id < ?2 AND deferred = 0
+             WHERE timeline_id = ?1 AND graph_id < ?2 AND deferred = 0 AND anchor = 0
              AND node_name IN ({placeholders})
              GROUP BY node_name"
         );
@@ -191,7 +195,7 @@ pub(crate) fn series(
     timeline_id: &TimelineID,
     node_name: &str,
     range: &HistoryRange,
-) -> Result<Vec<(GraphID, Timestamp, Vec<u8>)>> {
+) -> Result<Vec<HistorySampleRow>> {
     let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![
         Box::new(timeline_id.0.clone()),
         Box::new(node_name.to_string()),
@@ -199,7 +203,7 @@ pub(crate) fn series(
     let where_clause = history_range_clause(range, &mut params);
 
     let sql = format!(
-        "SELECT graph_id, timestamp, metric_values FROM {TABLE_GRAPH_HISTORY_ENTRIES}
+        "SELECT graph_id, timestamp, metric_values, anchor FROM {TABLE_GRAPH_HISTORY_ENTRIES}
          WHERE timeline_id = ?1 AND node_name = ?2{where_clause}
          ORDER BY graph_id ASC"
     );
@@ -213,11 +217,12 @@ pub(crate) fn series(
         .context("failed to query history series")?;
     let mut result = Vec::new();
     while let Some(row) = rows.next().context("failed to read history series row")? {
-        result.push((
-            GraphID(row.get(0)?),
-            Timestamp::from_unix_timestamp(row.get(1)?),
-            row.get::<_, Vec<u8>>(2)?,
-        ));
+        result.push(HistorySampleRow {
+            graph_id: GraphID(row.get(0)?),
+            timestamp: Timestamp::from_unix_timestamp(row.get(1)?),
+            values: row.get::<_, Vec<u8>>(2)?,
+            anchor: row.get::<_, i64>(3)? != 0,
+        });
     }
     Ok(result)
 }
@@ -399,9 +404,9 @@ pub(crate) fn entries_at(
     conn: &MutexGuard<'_, Connection>,
     timeline_id: &TimelineID,
     graph_id: GraphID,
-) -> Result<Vec<(String, Vec<u8>)>> {
+) -> Result<Vec<HistoryNodeSample>> {
     let sql = format!(
-        "SELECT node_name, metric_values FROM {TABLE_GRAPH_HISTORY_ENTRIES}
+        "SELECT node_name, metric_values, anchor FROM {TABLE_GRAPH_HISTORY_ENTRIES}
          WHERE timeline_id = ?1 AND graph_id = ?2
          ORDER BY node_name"
     );
@@ -414,7 +419,11 @@ pub(crate) fn entries_at(
 
     let mut result = Vec::new();
     while let Some(row) = rows.next().context("failed to read history entry")? {
-        result.push((row.get::<_, String>(0)?, row.get::<_, Vec<u8>>(1)?));
+        result.push(HistoryNodeSample {
+            node_name: row.get::<_, String>(0)?,
+            values: row.get::<_, Vec<u8>>(1)?,
+            anchor: row.get::<_, i64>(2)? != 0,
+        });
     }
     Ok(result)
 }
@@ -446,6 +455,40 @@ pub(crate) fn delete_entries_at(
             .context("failed to delete history entries at graph id")? as u64;
     }
     Ok(deleted)
+}
+
+/// Flag the given nodes' rows at one graph ID as anchors.
+///
+/// Compaction's alternative to deleting a redundant row whose successor
+/// survived. Setting the flag also removes the row from baseline lookups,
+/// which is what stops it from swallowing that successor on a later pass.
+pub(crate) fn set_entries_anchor_at(
+    conn: &MutexGuard<'_, Connection>,
+    timeline_id: &TimelineID,
+    graph_id: GraphID,
+    node_names: &[String],
+) -> Result<u64> {
+    let mut updated = 0u64;
+    for chunk in node_names.chunks(PARAM_CHUNK) {
+        let placeholders = numbered_placeholders(chunk.len(), 3);
+        let sql = format!(
+            "UPDATE {TABLE_GRAPH_HISTORY_ENTRIES} SET anchor = 1, deferred = 0
+             WHERE timeline_id = ?1 AND graph_id = ?2 AND node_name IN ({placeholders})"
+        );
+        let mut params: Vec<Box<dyn rusqlite::types::ToSql>> =
+            vec![Box::new(timeline_id.0.clone()), Box::new(graph_id.0)];
+        params.extend(
+            chunk
+                .iter()
+                .map(|name| Box::new(name.clone()) as Box<dyn rusqlite::types::ToSql>),
+        );
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> =
+            params.iter().map(|p| p.as_ref()).collect();
+        updated += conn
+            .execute(&sql, param_refs.as_slice())
+            .context("failed to flag history entries as anchors")? as u64;
+    }
+    Ok(updated)
 }
 
 pub(crate) fn clear_entries_deferred(

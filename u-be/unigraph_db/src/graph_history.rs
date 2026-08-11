@@ -25,6 +25,15 @@
 //! that arrives later — so [`settle`] gates omission, and anything it can't
 //! vouch for is kept and flagged `omission_deferred` for `compact` to revisit.
 //!
+//! # The other thing omission destroys
+//!
+//! A surviving sample is an absolute, and the row before it may be hundreds of
+//! frames back, so its step reads as all the drift since the last kept row
+//! rather than what its own graph contributed. Ingest therefore also keeps the
+//! row at the frame immediately before each surviving sample — an *anchor*.
+//! Anchors are never baselines and are never judged by the threshold; see
+//! [`crate::namespaces::GraphHistory`] for the full rules.
+//!
 //! Kept separate from [`crate::metric_history`], which is the older
 //! blob-per-node-per-week subsystem written inside the graph store
 //! transaction.
@@ -36,6 +45,8 @@ pub mod status;
 pub mod threshold;
 
 pub use compact::CompactInput;
+pub use compact::CompactPlan;
+pub use compact::CompactRow;
 pub use compact::compact_series;
 pub use pack::decode_values;
 pub use pack::encode_values;

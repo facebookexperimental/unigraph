@@ -121,6 +121,12 @@ CREATE INDEX IF NOT EXISTS idx_graph_history_status_deferred
 -- `deferred` marks a below-threshold row that was only written because an
 -- earlier frame was still unfilled. Baseline lookups skip these, so a later
 -- sample is never measured against a row compaction is about to delete.
+--
+-- `anchor` marks a below-threshold row kept on purpose: it is the built frame
+-- immediately before a surviving sample, and without it that sample's step
+-- reads as the whole drift since the last kept row rather than what its own
+-- graph contributed. Baseline lookups skip these too — an anchor never cleared
+-- the threshold, so measuring against one would hide the accumulated drift.
 CREATE TABLE IF NOT EXISTS graph_history_entries (
     timeline_id   TEXT    NOT NULL,
     node_name     TEXT    NOT NULL,
@@ -128,6 +134,7 @@ CREATE TABLE IF NOT EXISTS graph_history_entries (
     timestamp     INTEGER NOT NULL,
     metric_values BLOB    NOT NULL,
     deferred      INTEGER NOT NULL DEFAULT 0,
+    anchor        INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (timeline_id, node_name, graph_id)
 ) WITHOUT ROWID;
 

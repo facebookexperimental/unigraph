@@ -20,7 +20,9 @@ use unigraph_storage_core::GraphIDBounds;
 use unigraph_storage_core::GraphKey;
 use unigraph_storage_core::GraphTimeKey;
 use unigraph_storage_core::HistoryEntryRow;
+use unigraph_storage_core::HistoryNodeSample;
 use unigraph_storage_core::HistoryRange;
+use unigraph_storage_core::HistorySampleRow;
 use unigraph_storage_core::HistoryStatusRow;
 use unigraph_storage_core::Order;
 use unigraph_storage_core::TimelineConfig;
@@ -849,7 +851,7 @@ impl UnigraphGraphConnection for SqliteConnection {
         node_name: &str,
         range: &HistoryRange,
         _task: &ll::Task,
-    ) -> Result<Vec<(GraphID, Timestamp, Vec<u8>)>> {
+    ) -> Result<Vec<HistorySampleRow>> {
         history::series(&self.lock(), timeline_id, node_name, range)
     }
 
@@ -912,7 +914,7 @@ impl UnigraphGraphConnection for SqliteConnection {
         timeline_id: &TimelineID,
         graph_id: GraphID,
         _task: &ll::Task,
-    ) -> Result<Vec<(String, Vec<u8>)>> {
+    ) -> Result<Vec<HistoryNodeSample>> {
         history::entries_at(&self.lock(), timeline_id, graph_id)
     }
 
@@ -924,6 +926,16 @@ impl UnigraphGraphConnection for SqliteConnection {
         _task: &ll::Task,
     ) -> Result<u64> {
         history::delete_entries_at(&self.lock(), timeline_id, graph_id, node_names)
+    }
+
+    async fn set_history_entries_anchor_at(
+        &mut self,
+        timeline_id: &TimelineID,
+        graph_id: GraphID,
+        node_names: &[String],
+        _task: &ll::Task,
+    ) -> Result<u64> {
+        history::set_entries_anchor_at(&self.lock(), timeline_id, graph_id, node_names)
     }
 
     async fn clear_history_entries_deferred(

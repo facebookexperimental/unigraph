@@ -25,6 +25,12 @@ use crate::UnigraphCLIContext;
 /// compact` to re-threshold once the hole closes. `--settle-hours` decides how
 /// long to wait before giving up on a hole ever closing.
 ///
+/// Keeping a sample also writes an *anchor*: the row for the built frame
+/// immediately before it, which the threshold had folded away. Without it the
+/// sample's step reads as all the drift since the node's last kept row —
+/// hundreds of diffs' worth — instead of what the one graph that crossed the
+/// threshold actually contributed.
+///
 /// Already-ingested frames are skipped, so re-running with a different
 /// `--threshold` does nothing to them — use `history compact` for that.
 ///
@@ -80,7 +86,7 @@ impl HistoryIngest {
             .await?;
         ctx.println_after_done(&format!(
             "processed={} omitted={} empty={} skipped={} errors={} entries={} \
-             deferred={} deferred_rows={}",
+             deferred={} deferred_rows={} anchors={}",
             report.processed,
             report.omitted,
             report.empty,
@@ -89,6 +95,7 @@ impl HistoryIngest {
             report.entries,
             report.deferred,
             report.deferred_rows,
+            report.anchors,
         ))?;
         Ok(())
     }

@@ -232,6 +232,35 @@ async fn kept_graph_ids(
         .collect())
 }
 
+/// One node's whole series as `graph_id:value`, anchors marked.
+///
+/// Both what was kept and which rows are anchors matter to every test here, and
+/// one line per series reads better than two parallel `Vec` assertions.
+async fn series_summary(
+    db: &UnigraphDb,
+    timeline_id: &TimelineID,
+    node_name: &str,
+    task: &ll::Task,
+) -> Result<String> {
+    Ok(db
+        .graph_history
+        .series(timeline_id, node_name, &UNBOUNDED, task)
+        .await?
+        .iter()
+        .map(|row| {
+            let values = row
+                .values
+                .values()
+                .map(|value| value.to_string())
+                .collect::<Vec<_>>()
+                .join("/");
+            let anchor = if row.anchor { " (anchor)" } else { "" };
+            format!("{}:{values}{anchor}", row.graph_id.0)
+        })
+        .collect::<Vec<_>>()
+        .join("  "))
+}
+
 #[tokio::test]
 async fn graph_history_ingest_respects_threshold() -> Result<()> {
     let db = make_db();
@@ -272,23 +301,17 @@ async fn graph_history_ingest_respects_threshold() -> Result<()> {
         .await?;
     assert_eq!(report.processed, 2);
     assert_eq!(report.omitted, 1);
-    assert_eq!(report.entries, 2);
-
-    let series = db
-        .graph_history
-        .series(
-            &timeline_id,
-            "app",
-            &TimestampBounds {
-                start: None,
-                end: None,
-            },
-            &task,
-        )
-        .await?;
     assert_eq!(
-        series.iter().map(|row| row.graph_id.0).collect::<Vec<_>>(),
-        vec![1, 3]
+        report.entries, 2,
+        "anchors are not samples of their own frame"
+    );
+    assert_eq!(report.anchors, 1);
+
+    // Graph 3 crossed the threshold against graph 1, but only +6 of that +11
+    // is its own doing — which is exactly what the anchor at graph 2 records.
+    k9::snapshot!(
+        series_summary(&db, &timeline_id, "app", &task).await?,
+        "1:100  2:105 (anchor)  3:111"
     );
     Ok(())
 }
@@ -376,8 +399,58 @@ async fn graph_history_compact_is_idempotent() -> Result<()> {
         .compact(&timeline_id, &compact_opts(10.0), &task)
         .await?;
 
-    assert_eq!(first.dropped, 1);
-    assert_eq!(second.dropped, 0);
+    // Graph 2 is redundant at this threshold, but it is graph 3's immediate
+    // predecessor, so it is demoted to an anchor rather than deleted.
+    assert_eq!((first.dropped, first.anchored), (0, 1));
+    assert_eq!(
+        (second.dropped, second.anchored),
+        (0, 0),
+        "a second pass at the same threshold must change nothing"
+    );
+    k9::snapshot!(
+        series_summary(&db, &timeline_id, "app", &task).await?,
+        "1:100  2:105 (anchor)  3:111"
+    );
+    Ok(())
+}
+
+/// An anchor whose sample stops surviving is reclaimed rather than left behind.
+#[tokio::test]
+async fn graph_history_compact_reclaims_orphaned_anchors() -> Result<()> {
+    let db = make_db();
+    let task = ll::Task::create_new("test");
+    let timeline_id = setup_timeline(&db, "history_anchor_orphan", &task).await?;
+
+    for (graph_id, size) in [(1, 100.0), (2, 105.0), (3, 111.0)] {
+        store_metric_graph(
+            &db,
+            &timeline_id,
+            graph_id,
+            recent_timestamp(u64::try_from(graph_id)?)?,
+            &[("size", size)],
+            &task,
+        )
+        .await?;
+    }
+    db.graph_history
+        .ingest(&timeline_id, &ingest_opts(1, 10.0), &task)
+        .await?;
+    k9::snapshot!(
+        series_summary(&db, &timeline_id, "app", &task).await?,
+        "1:100  2:105 (anchor)  3:111"
+    );
+
+    // At this threshold graph 3 no longer clears the bar, so nothing needs the
+    // anchor at graph 2 any more and both go.
+    let report = db
+        .graph_history
+        .compact(&timeline_id, &compact_opts(1000.0), &task)
+        .await?;
+    assert_eq!((report.dropped, report.anchored), (2, 0));
+    k9::snapshot!(
+        series_summary(&db, &timeline_id, "app", &task).await?,
+        "1:100"
+    );
     Ok(())
 }
 
@@ -427,6 +500,12 @@ async fn graph_history_delete_removes_rows() -> Result<()> {
 /// Frames outside the lookback window are left completely alone, and the
 /// in-window run primes its last-kept values from the DB rather than treating
 /// the first in-window frame as a brand-new node.
+///
+/// Also the anchor path a scheduled job actually hits: each run's window opens
+/// on a frame whose predecessor was ingested by an earlier run, so the
+/// predecessor's values have to be recovered from storage rather than carried
+/// in memory. A production job ingesting one frame per pass would otherwise
+/// never write an anchor at all.
 #[tokio::test]
 async fn graph_history_lookback_window_primes_from_earlier_entries() -> Result<()> {
     let db = make_db();
@@ -476,11 +555,20 @@ async fn graph_history_lookback_window_primes_from_earlier_entries() -> Result<(
         &task,
     )
     .await?;
-    db.graph_history
+    let report = db
+        .graph_history
         .ingest(&timeline_id, &ingest_opts(1, 10.0), &task)
         .await?;
 
-    assert_eq!(kept_graph_ids(&db, &timeline_id, &task).await?, vec![1, 3]);
+    assert_eq!(
+        report.anchors, 1,
+        "frame 2 was ingested by an earlier run, so its values had to be \
+         recovered from its graph to anchor frame 3"
+    );
+    k9::snapshot!(
+        series_summary(&db, &timeline_id, "app", &task).await?,
+        "1:100  2:105 (anchor)  3:120"
+    );
     Ok(())
 }
 
@@ -996,6 +1084,134 @@ async fn graph_history_compact_reclaims_deferred_rows_once_the_gap_closes() -> R
     Ok(())
 }
 
+/// An anchor must never be mistaken for a baseline.
+///
+/// An anchor sits within a threshold of the sample that follows it by
+/// construction, so measuring that sample against the anchor instead of the
+/// last *surviving* row makes it look far smaller than it is. Compaction would
+/// then delete the very sample the anchor exists to explain — and deleting a
+/// row is as irreversible as never writing it.
+///
+/// Reaching that state takes a real out-of-order fixture: the anchor has to
+/// land at a frame the earlier run omitted, and the sample it explains has to
+/// be flagged, so that per-frame compaction resolves a baseline across it.
+#[tokio::test]
+async fn graph_history_anchor_is_never_a_baseline() -> Result<()> {
+    let db = make_db();
+    let task = ll::Task::create_new("test");
+    let timeline_id = setup_timeline(&db, "history_anchor_baseline", &task).await?;
+
+    // First run, nothing unsettled: frame 2 is +5 and gets omitted outright.
+    register_empty_frames(&db, &timeline_id, &[1, 2, 3, 4], &task).await?;
+    fill_frame(&db, &timeline_id, 1, 100.0, &task).await?;
+    fill_frame(&db, &timeline_id, 2, 105.0, &task).await?;
+    db.graph_history
+        .ingest(&timeline_id, &ingest_opts(1, 10.0), &task)
+        .await?;
+    k9::snapshot!(
+        series_summary(&db, &timeline_id, "app", &task).await?,
+        "1:100"
+    );
+
+    // Frame 4 lands behind the still-unbuilt frame 3, so it is kept and
+    // flagged. It is +12 on the baseline at frame 1, and minting its anchor
+    // brings frame 2 back — three graph IDs earlier than that baseline.
+    fill_frame(&db, &timeline_id, 4, 112.0, &task).await?;
+    let report = db
+        .graph_history
+        .ingest(&timeline_id, &deferred_ingest_opts(10.0), &task)
+        .await?;
+    assert_eq!(report.anchors, 1);
+    assert!(
+        history_status(&db, &timeline_id, 4, &task)
+            .await?
+            .omission_deferred
+    );
+
+    // Frame 4 must still be judged against frame 1 (+12, kept), not against
+    // its own anchor at frame 2 (+7, which would delete it).
+    let compacted = db
+        .graph_history
+        .compact(
+            &timeline_id,
+            &HistoryCompactOptions {
+                threshold: 10.0,
+                settle_hours: 0,
+                range: HistoryRange::unbounded(),
+                deferred_only: true,
+            },
+            &task,
+        )
+        .await?;
+    assert_eq!(compacted.dropped, 0);
+    k9::snapshot!(
+        series_summary(&db, &timeline_id, "app", &task).await?,
+        "1:100  2:105 (anchor)  4:112"
+    );
+    Ok(())
+}
+
+/// The per-frame compaction path must keep a redundant row that is still the
+/// immediate predecessor of a surviving sample, rather than deleting it.
+///
+/// This is the incremental path a scheduled job runs, and it sees one frame at
+/// a time — so it has to look forward to the next built frame to know whether
+/// anything still needs the row it is about to drop.
+#[tokio::test]
+async fn graph_history_deferred_compaction_keeps_a_surviving_samples_predecessor() -> Result<()> {
+    let db = make_db();
+    let task = ll::Task::create_new("test");
+    let timeline_id = setup_timeline(&db, "history_deferred_anchor", &task).await?;
+
+    // Frame 2 is left unbuilt, so frames 3 and 4 are judged across a hole and
+    // every row is kept unconditionally.
+    register_empty_frames(&db, &timeline_id, &[1, 2, 3, 4], &task).await?;
+    fill_frame(&db, &timeline_id, 1, 100.0, &task).await?;
+    fill_frame(&db, &timeline_id, 3, 105.0, &task).await?;
+    fill_frame(&db, &timeline_id, 4, 150.0, &task).await?;
+    db.graph_history
+        .ingest(&timeline_id, &deferred_ingest_opts(10.0), &task)
+        .await?;
+    k9::snapshot!(
+        series_summary(&db, &timeline_id, "app", &task).await?,
+        "1:100  3:105  4:150"
+    );
+
+    // The hole closes and the flagged range is re-thresholded. Frame 3 is
+    // redundant against frame 1 on its own, but frame 4 survives and frame 3 is
+    // the frame right before it, so it stays as frame 4's anchor.
+    fill_frame(&db, &timeline_id, 2, 101.0, &task).await?;
+    db.graph_history
+        .ingest(&timeline_id, &deferred_ingest_opts(10.0), &task)
+        .await?;
+    let report = db
+        .graph_history
+        .compact(
+            &timeline_id,
+            &HistoryCompactOptions {
+                threshold: 10.0,
+                settle_hours: 0,
+                range: HistoryRange::unbounded(),
+                deferred_only: true,
+            },
+            &task,
+        )
+        .await?;
+
+    assert_eq!((report.dropped, report.anchored), (0, 1));
+    k9::snapshot!(
+        series_summary(&db, &timeline_id, "app", &task).await?,
+        "1:100  3:105 (anchor)  4:150"
+    );
+    assert!(
+        !history_status(&db, &timeline_id, 4, &task)
+            .await?
+            .omission_deferred,
+        "compaction should clear the flag it just acted on"
+    );
+    Ok(())
+}
+
 /// Dropping a row is as irreversible as never writing it, so compaction must
 /// stop at the first frame that could still change — even when rows beyond it
 /// look redundant.
@@ -1135,7 +1351,7 @@ wave 2     FFF....FFF.FFF Pooeeee!!!e!!! 3        1,8,9,10,12,13,14
 wave 3     FFFFFF.FFF.FFF Poooooe!!!e!!! 0        1,8,9,10,12,13,14
 wave 4     FFFFFF.FFFFFFF Poooooe!!!!!!! 1        1,8,9,10,11,12,13,14
 aged out   FFFFFF.FFFFFFF Poooooe!!!!!!! 0        1,8,9,10,11,12,13,14
-compacted  FFFFFF.FFFFFFF PoooooePPPPPPP 0        1,10
+compacted  FFFFFF.FFFFFFF PoooooePPPPPPP 0        1,9*,10
 "
     );
 
@@ -1278,6 +1494,7 @@ fn snapshot_header() -> String {
 /// frames   F Full   D Delta   X Error   . Empty (unbuilt)
 /// history  P Processed   ! Processed-but-deferred   o Omitted
 ///          e Empty stamp   X Error   . no checkpoint yet
+/// kept     N a stored sample   N* an anchor for the sample after it
 /// ```
 async fn timeline_state(
     db: &UnigraphDb,
@@ -1318,10 +1535,15 @@ async fn timeline_state(
         .iter()
         .map(|id| status_char(statuses.get(id)))
         .collect::<String>();
-    let kept = kept_graph_ids(db, timeline_id, task)
+    let kept = db
+        .graph_history
+        .series(timeline_id, "app", &UNBOUNDED, task)
         .await?
         .iter()
-        .map(|id| id.to_string())
+        .map(|row| match row.anchor {
+            true => format!("{}*", row.graph_id.0),
+            false => row.graph_id.0.to_string(),
+        })
         .collect::<Vec<_>>()
         .join(",");
 
@@ -1434,9 +1656,10 @@ async fn graph_history_deferred_rows_do_not_shift_the_threshold_baseline() -> Re
         .compact(&timeline_id, &compact_opts(threshold), &task)
         .await?;
 
+    // Frames 1 and 4 are the samples; 3 rides along as frame 4's anchor.
     let oracle =
         in_order_kept_ids_for(&values, threshold, "history_baseline_oracle", &task).await?;
-    k9::snapshot!(format!("{oracle:?}"), "[1, 4]");
+    k9::snapshot!(format!("{oracle:?}"), "[1, 3, 4]");
     assert_eq!(
         kept_graph_ids(&db, &timeline_id, &task).await?,
         oracle,
@@ -1544,14 +1767,14 @@ async fn graph_history_any_fill_order_converges_on_the_in_order_result() -> Resu
         table.join("\n"),
         "
 fill order / compaction      frames         history        kept rows
-sequential/deferred          FFFFFF.FFFFFFF PoooooePPPPPPP 1,10
-sequential/every node        FFFFFF.FFFFFFF PoooooePPPPPPP 1,10
-back-to-front/deferred       FFFFFF.FFFFFFF PooPPPePPPPPPP 1,10
-back-to-front/every node     FFFFFF.FFFFFFF PooPPPePPPPPPP 1,10
-interleaved/deferred         FFFFFF.FFFFFFF PooPPPePPPPPPP 1,10
-interleaved/every node       FFFFFF.FFFFFFF PooPPPePPPPPPP 1,10
-one at a time/deferred       FFFFFF.FFFFFFF PPPPPPePPPPPPP 1,10
-one at a time/every node     FFFFFF.FFFFFFF PPPPPPePPPPPPP 1,10
+sequential/deferred          FFFFFF.FFFFFFF PoooooePPPPPPP 1,9*,10
+sequential/every node        FFFFFF.FFFFFFF PoooooePPPPPPP 1,9*,10
+back-to-front/deferred       FFFFFF.FFFFFFF PooPPPePPPPPPP 1,9*,10
+back-to-front/every node     FFFFFF.FFFFFFF PooPPPePPPPPPP 1,9*,10
+interleaved/deferred         FFFFFF.FFFFFFF PooPPPePPPPPPP 1,9*,10
+interleaved/every node       FFFFFF.FFFFFFF PooPPPePPPPPPP 1,9*,10
+one at a time/deferred       FFFFFF.FFFFFFF PPPPPPePPPPPPP 1,9*,10
+one at a time/every node     FFFFFF.FFFFFFF PPPPPPePPPPPPP 1,9*,10
 "
     );
     Ok(())
