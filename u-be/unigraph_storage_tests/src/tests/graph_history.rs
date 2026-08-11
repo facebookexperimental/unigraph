@@ -497,6 +497,134 @@ async fn graph_history_delete_removes_rows() -> Result<()> {
     Ok(())
 }
 
+/// Wiping one timeline's history must not touch another's.
+///
+/// Graph IDs are allocated per timeline, so two timelines' histories overlap
+/// completely in the `graph_id` space that `history delete` chunks over — the
+/// only thing separating them is the `timeline_id` predicate on every
+/// statement. Both timelines here are ingested at the same IDs on purpose, so
+/// a missing predicate anywhere in the delete path takes the bystander with it.
+#[tokio::test]
+async fn graph_history_delete_is_scoped_to_one_timeline() -> Result<()> {
+    let db = make_db();
+    let task = ll::Task::create_new("test");
+    let doomed = setup_timeline(&db, "history_delete_target", &task).await?;
+    let bystander = setup_timeline(&db, "history_delete_bystander", &task).await?;
+
+    for timeline_id in [&doomed, &bystander] {
+        for (graph_id, size) in [(1, 100.0), (2, 150.0), (3, 400.0)] {
+            store_metric_graph(
+                &db,
+                timeline_id,
+                graph_id,
+                recent_timestamp(u64::try_from(graph_id)?)?,
+                &[("size", size)],
+                &task,
+            )
+            .await?;
+        }
+        db.graph_history
+            .ingest(timeline_id, &ingest_opts(1, 10.0), &task)
+            .await?;
+    }
+    let before = series_summary(&db, &bystander, "app", &task).await?;
+
+    let report = db
+        .graph_history
+        .delete(&doomed, &(None, None), &task)
+        .await?;
+    assert_eq!(
+        (report.entries_deleted, report.statuses_deleted),
+        (3, 3),
+        "only the target timeline's rows are counted"
+    );
+
+    assert_eq!(series_summary(&db, &doomed, "app", &task).await?, "");
+    assert_eq!(
+        series_summary(&db, &bystander, "app", &task).await?,
+        before,
+        "the other timeline's series must be untouched, anchors included"
+    );
+
+    // The metric-name dictionary is per timeline and dropped wholesale by an
+    // unbounded delete. Losing the bystander's would leave its surviving rows
+    // decoding against nothing.
+    let mut conn = db.graph_conn().await?;
+    assert!(
+        conn.get_history_metric_names(&doomed, &task)
+            .await?
+            .is_empty(),
+        "the target's dictionary goes with its rows"
+    );
+    assert_eq!(
+        conn.get_history_metric_names(&bystander, &task)
+            .await?
+            .len(),
+        1,
+        "the bystander keeps the dictionary its rows decode against"
+    );
+    assert_eq!(
+        conn.get_history_status(&bystander, &[GraphID(1), GraphID(2), GraphID(3)], &task)
+            .await?
+            .len(),
+        3,
+        "the bystander keeps its ingest checkpoints, so it is not re-ingested"
+    );
+    Ok(())
+}
+
+/// An unbounded delete must leave nothing behind, including rows whose frame
+/// is already gone.
+///
+/// The chunk bounds come from the timeline's frames, so an entry outside that
+/// span is never visited. Deleting a frame while its history rows remain is
+/// enough to produce one — and it would survive the wipe with its metric
+/// dictionary deleted out from under it, leaving a row that cannot be decoded.
+#[tokio::test]
+async fn graph_history_delete_removes_rows_whose_frame_is_already_gone() -> Result<()> {
+    let db = make_db();
+    let task = ll::Task::create_new("test");
+    let timeline_id = setup_timeline(&db, "history_delete_orphan", &task).await?;
+
+    for (graph_id, size) in [(1, 100.0), (2, 150.0), (3, 400.0)] {
+        store_metric_graph(
+            &db,
+            &timeline_id,
+            graph_id,
+            recent_timestamp(u64::try_from(graph_id)?)?,
+            &[("size", size)],
+            &task,
+        )
+        .await?;
+    }
+    db.graph_history
+        .ingest(&timeline_id, &ingest_opts(1, 10.0), &task)
+        .await?;
+
+    // Drop the last frame, which is what shrinks the span the delete chunks
+    // over. Its history row stays behind.
+    db.graph
+        .delete(
+            &GraphKey {
+                timeline_id: timeline_id.clone(),
+                graph_id: GraphID(3),
+            },
+            &timeline_id,
+            &task,
+        )
+        .await?;
+
+    db.graph_history
+        .delete(&timeline_id, &(None, None), &task)
+        .await?;
+    assert_eq!(
+        series_summary(&db, &timeline_id, "app", &task).await?,
+        "",
+        "an unbounded delete claims to wipe the timeline, so it must"
+    );
+    Ok(())
+}
+
 /// Frames outside the lookback window are left completely alone, and the
 /// in-window run primes its last-kept values from the DB rather than treating
 /// the first in-window frame as a brand-new node.
