@@ -53,6 +53,7 @@ pub async fn load_range(
 
     // Validate chain before unpacking.
     validate_loaded_rows(&rows, timeline_id)?;
+    report_loaded_stats(&rows, &task);
 
     // Unpack each frame into domain data in parallel.
     let unpack_futs: Vec<_> =
@@ -90,6 +91,27 @@ pub async fn load_range(
     let entries = futures::future::try_join_all(unpack_futs).await?;
 
     Ok(GraphRange::from_entries(timeline_id.clone(), entries))
+}
+
+/// Record the shape of the chain that was loaded.
+///
+/// The cost of a load tracks the number of Fulls far more than the number of
+/// frames — each one is a separate blob fetch and decompress — so both are
+/// worth having next to the duration.
+fn report_loaded_stats(rows: &[unigraph_storage_core::FrameRow], task: &ll::Task) {
+    let Some((first, last)) = rows.first().zip(rows.last()) else {
+        return;
+    };
+    let fulls = rows
+        .iter()
+        .filter(|row| row.frame_type == FrameType::Full)
+        .count();
+
+    task.data("frames", rows.len());
+    task.data("from_graph_id", first.frame.graph_id.0);
+    task.data("to_graph_id", last.frame.graph_id.0);
+    task.data("fulls", fulls);
+    task.data("deltas", rows.len() - fulls);
 }
 
 /// Validate that loaded rows form a valid chain.

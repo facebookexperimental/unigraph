@@ -9,10 +9,13 @@ use anyhow::Result;
 use unigraph_db::UnigraphDb;
 pub use unigraph_rpc::RpcExec;
 
+mod config_cache;
 mod graph_cache;
 mod graph_handle;
 mod rpc_req;
 
+pub use config_cache::ConfigCache;
+pub use config_cache::DEFAULT_CONFIG_CACHE_CAPACITY;
 pub use graph_cache::GraphCache;
 pub use graph_handle::GraphHandle;
 pub use rpc_req::*;
@@ -24,12 +27,18 @@ pub use rpc_req::*;
 pub struct Unigraph {
     pub db: UnigraphDb,
     pub graph_cache: GraphCache,
+    pub config_cache: ConfigCache,
 }
 
 impl Unigraph {
     pub fn new(db: UnigraphDb) -> Self {
         let graph_cache = GraphCache::new(db.clone(), 64);
-        Self { db, graph_cache }
+        let config_cache = ConfigCache::new(db.clone(), DEFAULT_CONFIG_CACHE_CAPACITY);
+        Self {
+            db,
+            graph_cache,
+            config_cache,
+        }
     }
 
     pub async fn exec_rpc(

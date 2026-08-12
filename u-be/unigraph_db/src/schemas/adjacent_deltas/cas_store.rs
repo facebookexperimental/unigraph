@@ -57,6 +57,33 @@ struct PackedEntry {
     blobs: BTreeMap<BlobID, Vec<u8>>,
 }
 
+/// Record what a range actually contains, so an expensive store is legible
+/// from the task log without having to correlate it against the caller.
+///
+/// `packed_bytes` is measured after compression, which is what the transaction
+/// and the blob store will actually carry.
+fn report_packed_stats(entries: &[PackedEntry], task: &ll::Task) {
+    let Some((first, last)) = entries.first().zip(entries.last()) else {
+        return;
+    };
+    let fulls = entries
+        .iter()
+        .filter(|entry| entry.frame_type == FrameType::Full)
+        .count();
+    let packed_bytes: usize = entries
+        .iter()
+        .flat_map(|entry| entry.blobs.values())
+        .map(Vec::len)
+        .sum();
+
+    task.data("frames", entries.len());
+    task.data("from_graph_id", first.key.graph_id.0);
+    task.data("to_graph_id", last.key.graph_id.0);
+    task.data("fulls", fulls);
+    task.data("deltas", entries.len() - fulls);
+    task.data("packed_bytes", packed_bytes);
+}
+
 /// Store a [`GraphRange`] atomically with CAS semantics.
 ///
 /// Consumes the range. Packs each entry (Full → `graph.pack()`, Delta →
@@ -94,6 +121,11 @@ pub async fn store_range(
         .map(|(key, _)| ctx.pack_config_for_key(key))
         .collect();
 
+    // Cloned rather than borrowed so the packing tasks below still hang off the
+    // caller's task once this closure moves onto a blocking thread. Cloning is
+    // a refcount bump on the shared handle, so it does not end the task early.
+    let pack_task = task.clone();
+
     let (packed_entries, merged_history) = tokio::task::spawn_blocking(move || {
         let mut packed_entries: Vec<PackedEntry> = Vec::with_capacity(entries.len());
         let mut merged_history: Option<crate::metric_history::PreparedHistoryEntries> = None;
@@ -103,9 +135,8 @@ pub async fn store_range(
         for ((key, frame), config) in entries.into_iter().zip(pack_configs) {
             match frame {
                 GraphRangeFrame::Full(graph) => {
-                    let pack_task = ll::Task::create_new("");
-                    let package = graph
-                        .pack(&config, &pack_task)
+                    let package = pack_task
+                        .spawn_sync("pack_full #l2", |task| graph.pack(&config, &task))
                         .context("Failed to pack graph")?;
                     let manifest_json = serde_json::to_string(&package.manifest)
                         .context("Failed to serialize manifest")?;
@@ -132,7 +163,9 @@ pub async fn store_range(
                     current_graph = Some(graph);
                 }
                 GraphRangeFrame::Delta(delta) => {
-                    let package = pack_delta(&delta, &config).context("Failed to pack delta")?;
+                    let package = pack_task
+                        .spawn_sync("pack_delta #l2", |_| pack_delta(&delta, &config))
+                        .context("Failed to pack delta")?;
                     let manifest_json = serde_json::to_string(&package.manifest)
                         .context("Failed to serialize delta manifest")?;
 
@@ -186,6 +219,8 @@ pub async fn store_range(
     })
     .await
     .context("spawn_blocking panicked")??;
+
+    report_packed_stats(&packed_entries, task);
 
     // Dedup node names and ensure partitions (before transaction).
     let prepared_history = if let Some(mut prepared) = merged_history {

@@ -25,6 +25,8 @@
 //! It belongs in the storage layer (`cas_store.rs` for store, `load_range.rs`
 //! for load).
 
+use std::future::Future;
+
 use anyhow::Context;
 use anyhow::Result;
 use unigraph_core::ArrayGraphSerializable;
@@ -263,5 +265,65 @@ impl GraphRange {
         }
 
         Ok(())
+    }
+
+    /// Replay the range, awaiting `f` for each reconstructed graph.
+    ///
+    /// The async sibling of [`replay`](Self::replay), for callers that need to
+    /// do I/O between graphs. `f` is handed each graph **by value** and must
+    /// hand it back alongside its result:
+    ///
+    /// ```ignore
+    /// let outcomes = range
+    ///     .replay_async(|key, graph| async move {
+    ///         let out = do_something(&graph).await;
+    ///         Ok((out, graph))
+    ///     })
+    ///     .await?;
+    /// ```
+    ///
+    /// Giving the graph back is what keeps replay O(L) with no deep copies:
+    /// `apply_delta` consumes its base, so the folded graph is the only copy
+    /// that exists and the next delta needs it. A borrowing signature would
+    /// force `f` to clone (tens to hundreds of MB per frame), and an owning one
+    /// would force the range to.
+    ///
+    /// Results are collected in range order, so `f` should return something
+    /// small — a summary or a derived graph, not the source graph.
+    pub async fn replay_async<F, Fut, T>(self, mut f: F) -> Result<Vec<(GraphTimeKey, T)>>
+    where
+        F: FnMut(GraphTimeKey, ArrayGraphSerializable) -> Fut,
+        Fut: Future<Output = Result<(T, ArrayGraphSerializable)>>,
+    {
+        let mut out = Vec::with_capacity(self.entries.len());
+        let mut current: Option<ArrayGraphSerializable> = None;
+
+        for (key, frame) in self.entries {
+            let graph = match frame {
+                GraphRangeFrame::Full(graph) => graph,
+                GraphRangeFrame::Delta(delta) => {
+                    let base = current.take().with_context(|| {
+                        format!(
+                            "delta frame graph_id={} has no preceding full",
+                            key.graph_id.0,
+                        )
+                    })?;
+                    // Off the runtime: applying a delta to a graph this size is
+                    // tens of milliseconds of pure CPU, and a long chain does it
+                    // once per frame. The blocking fetch path does the same.
+                    let graph_id = key.graph_id.0;
+                    tokio::task::spawn_blocking(move || apply_delta(base, &delta))
+                        .await
+                        .context("apply_delta panicked")?
+                        .with_context(|| format!("failed to apply delta at graph_id={graph_id}"))?
+                }
+            };
+
+            let (value, graph) = f(key.clone(), graph).await?;
+            out.push((key, value));
+            current = Some(graph);
+        }
+
+        Ok(out)
     }
 }

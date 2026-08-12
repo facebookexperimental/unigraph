@@ -941,7 +941,7 @@ pub(crate) fn from_blobs<T: BlobCodec + Default + Send>(
         }
 
         // Decompress all chunks in parallel.
-        let decompressed: Vec<Vec<u8>> = task.spawn_sync("decompress", |_| {
+        let decompressed: Vec<Vec<u8>> = task.spawn_sync("decompress #l3", |_| {
             blob_ids
                 .par_iter()
                 .map(|blob_id| {
@@ -954,7 +954,7 @@ pub(crate) fn from_blobs<T: BlobCodec + Default + Send>(
         })?;
 
         // Concatenate in order, decode via BlobCodec.
-        task.spawn_sync("deserialize", |_| {
+        task.spawn_sync("deserialize #l3", |_| {
             let total_len: usize = decompressed.iter().map(|d| d.len()).sum();
             let mut bytes = Vec::with_capacity(total_len);
             for chunk in decompressed {

@@ -51,7 +51,8 @@ async fn fetch_traversal_configs(
 ) -> Result<Vec<TraversalConfig>> {
     let mut configs = Vec::with_capacity(keys.len());
     for key in &keys {
-        configs.push(ctx.db.configs.fetch_traversal_config(key, task).await?);
+        let config = ctx.config_cache.get_traversal_config(key, task).await?;
+        configs.push((*config).clone());
     }
     Ok(configs)
 }
@@ -63,7 +64,8 @@ async fn fetch_graph_query_configs(
 ) -> Result<Vec<GraphQueryConfig>> {
     let mut configs = Vec::with_capacity(keys.len());
     for key in &keys {
-        configs.push(ctx.db.configs.fetch_graph_query_config(key, task).await?);
+        let config = ctx.config_cache.get_graph_query_config(key, task).await?;
+        configs.push((*config).clone());
     }
     Ok(configs)
 }
