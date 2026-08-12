@@ -10,6 +10,7 @@
 use std::sync::Arc;
 
 use anyhow::Result;
+use unigraph_db::GraphRange;
 use unigraph_db::GraphRangeBuilder;
 use unigraph_db::UnigraphDb;
 use unigraph_storage_core::*;
@@ -532,6 +533,177 @@ async fn load_partial_range() -> Result<()> {
     })?;
     assert_eq!(replay_idx, 20);
 
+    Ok(())
+}
+
+// -- Mid-chain loads ----------------------------------------------------------
+//
+// Production never asks for a range that happens to start at a Full: history
+// ingest slices the timeline into fixed-size chunks and hands `load_range` the
+// first frame it wants. `load_range` widens that lower bound back to the Full
+// its chain hangs off, and the tests below pin down where that widening stops.
+
+/// Register Empty placeholders for `ids` so ranges can be CAS-stored into them.
+async fn register_empty_frames(
+    db: &UnigraphDb,
+    tl: &str,
+    ids: std::ops::Range<u64>,
+    task: &ll::Task,
+) -> Result<()> {
+    let frames = ids
+        .map(|i| Frame {
+            timestamp: unigraph_timestamp::Timestamp::from_unix_timestamp(1000 + i as i64),
+            graph_id: GraphID(i as i64),
+        })
+        .collect();
+    db.graph
+        .adjacent_deltas
+        .put_new_empty_frames(&TimelineID(tl.to_string()), frames, false, task)
+        .await?;
+    Ok(())
+}
+
+/// Build and store `ids` as one range — one Full followed by Deltas.
+async fn store_chain(
+    db: &UnigraphDb,
+    tl: &str,
+    ids: std::ops::Range<u64>,
+    task: &ll::Task,
+) -> Result<()> {
+    let mut builder = GraphRangeBuilder::new(TimelineID(tl.to_string()));
+    for i in ids {
+        let key = make_graph_time_key(tl, i as i64, 1000 + i as i64);
+        builder.add(key, TestGraphTimeline::get_nth(i))?;
+    }
+    db.graph
+        .adjacent_deltas
+        .store_range(builder.finalize(), task)
+        .await
+}
+
+/// Replay a loaded range, checking every graph against its generator, and
+/// return the graph IDs the range actually covered.
+///
+/// The IDs are what these tests are about: the widened lower bound means the
+/// range legitimately starts *before* what the caller asked for, and how far
+/// before is the thing worth asserting.
+fn replayed_ids(range: GraphRange) -> Result<Vec<i64>> {
+    let mut ids = Vec::with_capacity(range.len());
+    range.replay(|key, graph| {
+        assert_graphs_equal(&TestGraphTimeline::get_nth(key.graph_id.0 as u64), graph);
+        ids.push(key.graph_id.0);
+        Ok(())
+    })?;
+    Ok(ids)
+}
+
+/// A lower bound that lands on a Delta loads anyway, by reaching back to the
+/// Full that Delta folds out of.
+#[tokio::test]
+async fn load_range_starting_mid_chain() -> Result<()> {
+    let db = make_db();
+    let task = ll::Task::create_new("test");
+    let tl = "mid_chain";
+    setup_timeline(&db, tl, &task).await;
+
+    register_empty_frames(&db, tl, 0..30, &task).await?;
+    for chunk_start in [0, 10, 20] {
+        store_chain(&db, tl, chunk_start..chunk_start + 10, &task).await?;
+    }
+
+    // 14 is a Delta; its chain's Full is at 10.
+    let loaded = db
+        .graph
+        .adjacent_deltas
+        .load_range(
+            &TimelineID(tl.to_string()),
+            Some(GraphID(14)),
+            Some(GraphID(18)),
+            &task,
+        )
+        .await?;
+
+    assert_eq!(
+        replayed_ids(loaded)?,
+        (10..=18).collect::<Vec<_>>(),
+        "the range must start at the Full at 10 and still cover all of [14, 18]"
+    );
+    Ok(())
+}
+
+/// The reach-back stops at the nearest Full, not the first one in the
+/// timeline — a hole opens a new chain, so there is nothing to gain (and a
+/// whole timeline to load) by going further.
+#[tokio::test]
+async fn load_range_mid_chain_across_a_hole() -> Result<()> {
+    let db = make_db();
+    let task = ll::Task::create_new("test");
+    let tl = "mid_chain_hole";
+    setup_timeline(&db, tl, &task).await;
+
+    // Frames 10..20 are registered but never built — they stay Empty.
+    register_empty_frames(&db, tl, 0..30, &task).await?;
+    store_chain(&db, tl, 0..10, &task).await?;
+    store_chain(&db, tl, 20..30, &task).await?;
+
+    let loaded = db
+        .graph
+        .adjacent_deltas
+        .load_range(
+            &TimelineID(tl.to_string()),
+            Some(GraphID(24)),
+            Some(GraphID(27)),
+            &task,
+        )
+        .await?;
+
+    assert_eq!(
+        replayed_ids(loaded)?,
+        (20..=27).collect::<Vec<_>>(),
+        "the range must snap to the post-hole Full at 20, not back to 0"
+    );
+    Ok(())
+}
+
+/// Same, for the other thing that breaks a chain: an Error frame. The next
+/// built frame after one is a Full, and that is where the reach-back lands.
+#[tokio::test]
+async fn load_range_after_error_frame() -> Result<()> {
+    let db = make_db();
+    let task = ll::Task::create_new("test");
+    let tl = "mid_chain_error";
+    setup_timeline(&db, tl, &task).await;
+
+    register_empty_frames(&db, tl, 0..10, &task).await?;
+    store_chain(&db, tl, 0..5, &task).await?;
+    db.graph
+        .store_error(
+            &make_graph_time_key(tl, 5, 1005),
+            &[TimestampedError {
+                timestamp: unigraph_timestamp::Timestamp::from_unix_timestamp(1005),
+                message: "graph computation failed".to_string(),
+            }],
+            &task,
+        )
+        .await?;
+    store_chain(&db, tl, 6..10, &task).await?;
+
+    let loaded = db
+        .graph
+        .adjacent_deltas
+        .load_range(
+            &TimelineID(tl.to_string()),
+            Some(GraphID(8)),
+            Some(GraphID(9)),
+            &task,
+        )
+        .await?;
+
+    assert_eq!(
+        replayed_ids(loaded)?,
+        vec![6, 7, 8, 9],
+        "the range must snap to the post-error Full at 6, not across the error to 0"
+    );
     Ok(())
 }
 

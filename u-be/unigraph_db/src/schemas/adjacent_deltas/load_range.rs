@@ -18,12 +18,18 @@ use unigraph_storage_core::TimelineID;
 use crate::context::UnigraphDbContext;
 use crate::graph_range::GraphRange;
 use crate::graph_range::GraphRangeFrame;
+use crate::storage::UnigraphStorage;
 
 /// Load a range of frames from storage into a [`GraphRange`].
 ///
 /// Only Full and Delta frames are loaded (Empty and Error are skipped).
-/// The range must start with a Full frame. Each frame is unpacked into
-/// domain data: Full → `ArrayGraphSerializable`, Delta → `GraphDelta`.
+/// Each frame is unpacked into domain data: Full → `ArrayGraphSerializable`,
+/// Delta → `GraphDelta`.
+///
+/// `from` is widened back to the Full its chain hangs off, so **the returned
+/// range may start before `from`** — callers that asked for a specific set of
+/// graphs must filter what they replay. `to` is taken as given; a Delta upper
+/// bound just ends the chain there.
 #[ll::task]
 pub async fn load_range(
     timeline_id: &TimelineID,
@@ -33,6 +39,8 @@ pub async fn load_range(
     task: &ll::Task,
 ) -> Result<GraphRange> {
     let storage = &ctx.storage;
+    let from = widen_to_chain_head(storage, timeline_id, from, &task).await?;
+
     let mut conn = storage.graph.conn().await?;
     let rows = conn
         .select_frames(
@@ -91,6 +99,30 @@ pub async fn load_range(
     let entries = futures::future::try_join_all(unpack_futs).await?;
 
     Ok(GraphRange::from_entries(timeline_id.clone(), entries))
+}
+
+/// Widen a lower bound back to the Full frame its chain hangs off.
+///
+/// A Delta is meaningless without the Full it folds out of, and a caller
+/// picking a `from` — a chunk boundary, a repair range — has no cheap way to
+/// know where that Full sits. Every maximal run of built frames starts with
+/// one (a hole or an Error frame forces the next build to open a fresh chain),
+/// so this only ever reaches back within `from`'s own chain.
+///
+/// Leaves `from` alone when no Full precedes it, so the failure surfaces from
+/// `validate_loaded_rows` describing the chain actually loaded rather than as
+/// a bare "no Full frame" from the lookup.
+async fn widen_to_chain_head(
+    storage: &UnigraphStorage,
+    timeline_id: &TimelineID,
+    from: Option<GraphID>,
+    task: &ll::Task,
+) -> Result<Option<GraphID>> {
+    let Some(from) = from else {
+        return Ok(None);
+    };
+    let head = super::find_nearest_full_frame(storage, timeline_id, from, task).await?;
+    Ok(Some(head.map_or(from, |frame| frame.graph_id)))
 }
 
 /// Record the shape of the chain that was loaded.

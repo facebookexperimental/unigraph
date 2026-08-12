@@ -98,6 +98,9 @@
 //! The `find_nearest_full_frame` step fetches metadata only (no data).
 //! The `load_frame_range` step does a single query that fetches all needed
 //! data in one pass, including the Full frame.
+//!
+//! `load_range` — the batch sibling of this path, used by history ingest —
+//! shares step 1 to widen a caller's lower bound back to its chain's Full.
 
 mod cas_store;
 mod load_range;
@@ -207,27 +210,40 @@ pub async fn fetch_graph(
     task: &ll::Task,
 ) -> Result<ArrayGraphSerializable> {
     task.data("graph_key", key.to_string());
-    let full_frame = find_nearest_full_frame(storage, key, &task).await?;
+    let full_frame = find_nearest_full_frame(storage, &key.timeline_id, key.graph_id, &task)
+        .await?
+        .with_context(|| {
+            format!(
+                "no Full frame found at or before graph_id={} in timeline '{}'",
+                key.graph_id.0, key.timeline_id.0,
+            )
+        })?;
     let range = load_frame_range(storage, key, full_frame.graph_id, &task).await?;
     reconstruct_from_range(storage, &range, &task).await
 }
 
-/// Find the most recent Full frame at or before the target graph_id.
+/// Find the most recent Full frame at or before `graph_id`.
 ///
 /// Returns metadata only (no data) — the actual graph data is loaded
 /// later in `load_frame_range` to avoid fetching it twice.
+///
+/// `None` means no frame at or before `graph_id` carries a full snapshot:
+/// the timeline is empty, or `graph_id` sits before its first Full. Whether
+/// that is an error is the caller's call — `load_range` widens its lower
+/// bound with this and lets its own chain validation speak.
 async fn find_nearest_full_frame(
     storage: &UnigraphStorage,
-    key: &GraphKey,
+    timeline_id: &TimelineID,
+    graph_id: GraphID,
     task: &ll::Task,
-) -> Result<Frame> {
+) -> Result<Option<Frame>> {
     let mut conn = storage.graph.conn().await?;
     let mut rows = conn
         .select_frames(
             &FrameQuery {
-                timeline_id: key.timeline_id.clone(),
+                timeline_id: timeline_id.clone(),
                 frame_types: Some(vec![FrameType::Full]),
-                graph_id_bounds: Some((None, Some(key.graph_id))),
+                graph_id_bounds: Some((None, Some(graph_id))),
                 order: Some(Order::Desc),
                 limit: Some(1),
                 before: None,
@@ -238,14 +254,7 @@ async fn find_nearest_full_frame(
         )
         .await?;
 
-    let row = rows.pop().with_context(|| {
-        format!(
-            "no Full frame found at or before graph_id={} in timeline '{}'",
-            key.graph_id.0, key.timeline_id.0,
-        )
-    })?;
-
-    Ok(row.frame)
+    Ok(rows.pop().map(|row| row.frame))
 }
 
 #[ll::task(tags(l2))]

@@ -1986,3 +1986,77 @@ async fn graph_history_ingest_matches_across_a_real_delta_chain() -> Result<()> 
     );
     Ok(())
 }
+
+/// An ingest window almost never lines up with a chain head — a `graph_id`
+/// bound picked for a repair, or (in production) a fixed-size replay chunk,
+/// starts wherever it starts, and on a long chain that is a Delta.
+///
+/// The replay path handles that by reaching back to the Full the chain hangs
+/// off. Before it did, every such window failed its `load_range` and quietly
+/// fell back to fetching one frame at a time: same numbers, O(L²) work. So the
+/// series equality below is the weaker half of this test — `replay_fallbacks`
+/// is the half that fails if the reach-back goes away.
+#[tokio::test]
+async fn graph_history_ingest_replays_a_window_whose_full_is_outside_it() -> Result<()> {
+    let task = ll::Task::create_new("test");
+    let threshold = 25.0;
+    let values = random_walk(20);
+    // Graph 1 carries the only Full, so any window starting past it opens on a
+    // Delta.
+    let mut options = ingest_opts(1, threshold);
+    options.graph_id_bounds = (Some(GraphID(8)), None);
+
+    let chained = make_db();
+    let chained_id = setup_timeline(&chained, "history_window_past_full", &task).await?;
+    register_empty_frames(&chained, &chained_id, &(1..=20).collect::<Vec<_>>(), &task).await?;
+
+    let mut builder = GraphRangeBuilder::new(chained_id.clone());
+    for (index, value) in values.iter().enumerate() {
+        let graph_id = i64::try_from(index)? + 1;
+        builder.add(
+            GraphTimeKey {
+                timeline_id: chained_id.clone(),
+                graph_id: GraphID(graph_id),
+                timestamp: recent_timestamp(u64::try_from(graph_id)?)?,
+            },
+            one_node_graph(&[("size", *value)]),
+        )?;
+    }
+    chained
+        .graph
+        .adjacent_deltas
+        .store_range(builder.finalize(), &task)
+        .await?;
+
+    let report = chained
+        .graph_history
+        .ingest(&chained_id, &options, &task)
+        .await?;
+    assert!(
+        report.processed > 0,
+        "the window must actually contain frames, or the fallback count says nothing"
+    );
+    assert_eq!(
+        report.replay_fallbacks, 0,
+        "a window opening on a Delta must still replay in one pass"
+    );
+
+    // The same values over the same window, but as standalone Full frames —
+    // no chain to reach back through.
+    let fulls = make_db();
+    let fulls_id = setup_timeline(&fulls, "history_window_past_full_oracle", &task).await?;
+    for (index, value) in values.iter().enumerate() {
+        fill_frame(&fulls, &fulls_id, i64::try_from(index)? + 1, *value, &task).await?;
+    }
+    fulls
+        .graph_history
+        .ingest(&fulls_id, &options, &task)
+        .await?;
+
+    assert_eq!(
+        kept_graph_ids(&chained, &chained_id, &task).await?,
+        kept_graph_ids(&fulls, &fulls_id, &task).await?,
+        "a mid-chain window must produce the same series as standalone Full frames"
+    );
+    Ok(())
+}

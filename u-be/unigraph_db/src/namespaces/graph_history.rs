@@ -224,6 +224,12 @@ pub struct HistoryIngestReport {
     /// by the number of kept rows, and the other number to watch for write
     /// amplification — unlike `deferred_rows`, compaction will not reclaim it.
     pub anchors: usize,
+    /// Chunks whose one-pass replay failed and were reconstructed frame by
+    /// frame instead. Correct either way, but the fallback is O(L²) delta
+    /// applications and L round trips per chunk, so anything above zero on an
+    /// `AdjacentDeltas` timeline means the run is paying for a chain the fast
+    /// path could not load.
+    pub replay_fallbacks: usize,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -711,9 +717,10 @@ impl GraphHistory {
         let mut done = 0i64;
 
         for chunk in frames.chunks(REPLAY_CHUNK_FRAMES) {
-            let mut graphs = self
+            let (mut graphs, fell_back) = self
                 .extract_chunk(timeline_id, chunk, &status_by_id, replayable, task)
                 .await;
+            report.replay_fallbacks += usize::from(fell_back);
 
             for frame in chunk {
                 let existing_status = status_by_id.get(&frame.frame.graph_id);
@@ -776,12 +783,13 @@ impl GraphHistory {
     /// Fetching frames one at a time re-walks from the nearest Full for every
     /// frame, so a chain of length L costs O(L²) delta applications and L
     /// round trips. `load_range` pulls the chain in a single query — snapping
-    /// back to the Full itself — and `replay` folds each graph out of the
-    /// previous one, making it O(L).
+    /// back to the Full itself, so a chunk boundary landing mid-chain costs
+    /// only the leading frames the caller then filters out — and `replay`
+    /// folds each graph out of the previous one, making it O(L).
     ///
     /// Best-effort: any failure falls back to the per-frame fetch path rather
     /// than failing the run, so an odd chain degrades in speed, not
-    /// correctness.
+    /// correctness. The second return value is whether it did.
     async fn extract_chunk(
         &self,
         timeline_id: &TimelineID,
@@ -789,9 +797,9 @@ impl GraphHistory {
         status_by_id: &BTreeMap<GraphID, HistoryStatusRow>,
         replayable: bool,
         task: &ll::Task,
-    ) -> BTreeMap<GraphID, NodeMetrics> {
+    ) -> (BTreeMap<GraphID, NodeMetrics>, bool) {
         if !replayable {
-            return BTreeMap::new();
+            return (BTreeMap::new(), false);
         }
         let wanted = chunk
             .iter()
@@ -805,20 +813,24 @@ impl GraphHistory {
             .collect::<BTreeSet<_>>();
 
         let (Some(from), Some(to)) = (wanted.first(), wanted.last()) else {
-            return BTreeMap::new();
+            return (BTreeMap::new(), false);
         };
         match self
             .replay_metrics(timeline_id, *from, *to, &wanted, task)
             .await
         {
-            Ok(graphs) => graphs,
+            Ok(graphs) => (graphs, false),
             Err(error) => {
                 task.data("history_replay_fallback", format!("{error:#}"));
-                BTreeMap::new()
+                (BTreeMap::new(), true)
             }
         }
     }
 
+    /// Reconstruct the graphs `wanted` names, keyed by graph ID.
+    ///
+    /// `load_range` widens `from` back to its chain's Full, so the range can
+    /// start before `from` — `wanted` is what decides which graphs are kept.
     async fn replay_metrics(
         &self,
         timeline_id: &TimelineID,
