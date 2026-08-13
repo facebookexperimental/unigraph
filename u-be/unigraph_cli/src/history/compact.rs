@@ -2,7 +2,6 @@
 
 use clap::Parser;
 use unigraph_db::HistoryCompactOptions;
-use unigraph_db::graph_history::DEFAULT_SETTLE_HOURS;
 use unigraph_storage_core::GraphID;
 use unigraph_storage_core::HistoryRange;
 use unigraph_storage_core::TimelineID;
@@ -11,23 +10,34 @@ use unigraph_storage_core::TimestampBounds;
 
 use crate::UnigraphCLIContext;
 
-/// Re-apply a threshold to history that has already been ingested.
+/// Reclaim history rows nothing needs any more, and re-apply a threshold.
 ///
-/// Two reasons to run this. Raising the threshold after the fact is one.
-/// The other, and the one that matters on a schedule: `history ingest` cannot
-/// safely drop a sample recorded while an earlier frame was still unbuilt, so
-/// it keeps everything and flags the frame. `--deferred-only` compacts exactly
-/// those flagged ranges once the holes have closed, which is what a job
-/// running behind `ingest` wants.
+/// Two jobs, with very different costs:
 ///
-/// Only the settled prefix of the timeline is touched — dropping a row is
-/// irreversible, so frames that might still change are left alone. Expect
-/// compaction to trail the timeline head by roughly `--settle-hours`.
-/// Idempotent: a second run at the same threshold drops nothing.
+/// - **The segment sweep** deletes rows that have no reason left to exist. The
+///   usual source is a hole closing: the built frames on either side of a gap
+///   keep a row for every node while the region between them is unknown, and
+///   once it is not, those rows are ordinary collapse candidates. One statement
+///   per stretch between barriers, for every node at once — cheap enough to run
+///   on the same schedule as `ingest`.
+/// - **The re-threshold pass** re-derives each node's crossings and anchors
+///   from the stored values. Only a threshold change needs it, and it costs one
+///   series read per node, so bound it with `--min-id` / `--max-id` on a wide
+///   timeline.
+///
+/// Compaction can only ever raise the threshold. Every crossing stores the row
+/// before it, so "would this still cross at a higher bar?" is answerable from
+/// the rows alone — but lowering the bar needs values that were never written.
+/// Re-ingest for that.
+///
+/// Unlike the design this replaced, there is no settled frontier and no waiting
+/// period: each stretch between barriers is judgeable on its own, so compaction
+/// reaches the head of the timeline whether or not any hole ever closes.
+/// Idempotent: a second run at the same threshold changes nothing.
 ///
 /// ```sh
-/// # Scheduled: reclaim what ingest had to over-keep
-/// unigraph history compact --timeline-id my_timeline --threshold 1000 --deferred-only
+/// # Scheduled, alongside ingest
+/// unigraph history compact --timeline-id my_timeline --threshold 1000
 ///
 /// # One-off: raise the threshold across the whole timeline
 /// unigraph history compact --timeline-id my_timeline --threshold 5000
@@ -38,26 +48,16 @@ pub struct HistoryCompact {
     #[arg(long)]
     timeline_id: String,
 
-    /// Minimum absolute change in any metric, versus the previous kept sample,
-    /// for a sample to survive
+    /// Minimum absolute change in any metric, against the immediately
+    /// preceding built frame, for a row to survive
     #[arg(long)]
     threshold: f64,
-
-    /// Compact only the ranges `ingest` flagged as deferred, ignoring
-    /// `--min-id` / `--max-id`
-    #[arg(long)]
-    deferred_only: bool,
-
-    /// How long an unfilled frame may hold back the settled frontier before it
-    /// is presumed abandoned. Must match the value `history ingest` uses.
-    #[arg(long, default_value_t = DEFAULT_SETTLE_HOURS)]
-    settle_hours: usize,
 
     /// Start of the graph ID range (inclusive). Defaults to the whole timeline.
     #[arg(long)]
     min_id: Option<i64>,
 
-    /// End of the graph ID range (inclusive). Clamped to the settled frontier.
+    /// End of the graph ID range (inclusive). Defaults to the whole timeline.
     #[arg(long)]
     max_id: Option<i64>,
 
@@ -79,28 +79,25 @@ impl HistoryCompact {
                 &TimelineID(self.timeline_id.clone()),
                 &HistoryCompactOptions {
                     threshold: self.threshold,
-                    settle_hours: self.settle_hours,
                     range: HistoryRange {
                         timestamps: parse_bounds(self.start.as_deref(), self.end.as_deref())?,
                         graph_ids: (self.min_id.map(GraphID), self.max_id.map(GraphID)),
                     },
-                    deferred_only: self.deferred_only,
                 },
                 task,
             )
             .await?;
-        // `None` means the range resolved to nothing, which has several
-        // causes — no settled frames, no flagged frames, or a request sitting
-        // entirely above the frontier. The task log says which.
         ctx.println_after_done(&format!(
-            "checked {} node(s), dropped {} history row(s), kept {} as anchor(s), \
-             compacted through {}.",
+            "swept {} segment(s) reclaiming {} row(s); re-thresholded {} node(s), \
+             dropping {} row(s) and rewriting {}. \
+             {} frame flag(s) updated, {} frame(s) queued for re-judgement.",
+            report.segments,
+            report.collapsed,
             report.nodes,
             report.dropped,
-            report.anchored,
-            report
-                .compacted_through
-                .map_or_else(|| "nothing".to_string(), |id| id.0.to_string()),
+            report.updated,
+            report.flags_updated,
+            report.rejudged,
         ))?;
         Ok(())
     }

@@ -2,9 +2,18 @@
 
 //! Row structs for the plain-row graph metric history tables.
 //!
-//! These are dumb data carriers for the `graph_history_*` tables — the
-//! packing/threshold logic and the orchestration both live in
-//! `unigraph_db::graph_history`.
+//! Dumb data carriers for the `graph_history_*` tables — the packing, the
+//! threshold rule and the orchestration all live in
+//! `unigraph_db::graph_history`. What the columns *are* lives in [`columns`],
+//! next door: a column whose legal values are a fixed set is that set here too,
+//! so the trait the backends implement never traffics in bare `u32`s and
+//! `String`s that every read site has to re-interpret.
+
+pub mod columns;
+
+pub use columns::FrameFlags;
+pub use columns::IngestState;
+pub use columns::Reasons;
 
 use crate::traits::GraphIDBounds;
 use crate::types::GraphID;
@@ -30,8 +39,22 @@ impl HistoryRange {
     }
 }
 
-/// One kept history sample: all of a node's metrics at one frame, packed
-/// into a single binary blob (see `unigraph_db::graph_history::pack`).
+/// A stretch of `graph_id` space with **exclusive** bounds.
+///
+/// Compaction works between barrier frames, and a barrier's own rows are held
+/// by its frame flags whatever their reasons say. Excluding the endpoints is
+/// what lets the collapse delete be a single-table range statement with nothing
+/// to join against and no node list to send.
+///
+/// `None` on either side means the timeline's own end.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ExclusiveGraphIDRange {
+    pub after: Option<GraphID>,
+    pub before: Option<GraphID>,
+}
+
+/// One stored history sample: all of a node's metrics at one frame, packed into
+/// a single binary blob (see `unigraph_db::graph_history::pack`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct HistoryEntryRow {
     pub node_name: String,
@@ -39,24 +62,12 @@ pub struct HistoryEntryRow {
     pub timestamp: Timestamp,
     /// Sorted `[(metric_id: u32 LE, value: f64 LE)]` pairs.
     pub values: Vec<u8>,
-    /// The row is below the threshold and was only written because an earlier
-    /// frame was still unfilled — compaction is expected to delete it.
+    /// Why this row exists.
     ///
-    /// Such a row must never be used as the baseline a later sample is
-    /// measured against: it is about to disappear, and measuring against it
-    /// hides drift that accumulated since the last *surviving* sample. Reads
-    /// that resolve a baseline therefore skip these rows entirely.
-    pub deferred: bool,
-    /// The row exists only to make the *next* sample's frame-over-frame delta
-    /// readable — it is the built frame immediately before a surviving sample,
-    /// which the threshold would otherwise have folded away.
-    ///
-    /// Like `deferred`, an anchor is never a baseline: it sits below the
-    /// threshold by construction, so measuring against it would hide the drift
-    /// accumulated since the last surviving sample and permanently omit a
-    /// sample that deserved a row. Unlike `deferred`, it is not provisional —
-    /// compaction keeps it for as long as the sample it explains survives.
-    pub anchor: bool,
+    /// Empty is legal only at a barrier frame, where the row is held by
+    /// [`HistoryStatusRow::frame_flags`] instead. Anywhere else a reasonless
+    /// row is garbage awaiting collection by `history compact`.
+    pub reasons: Reasons,
 }
 
 /// One stored sample of a node's series, as read back from the entries table.
@@ -66,8 +77,8 @@ pub struct HistorySampleRow {
     pub timestamp: Timestamp,
     /// Sorted `[(metric_id: u32 LE, value: f64 LE)]` pairs.
     pub values: Vec<u8>,
-    /// See [`HistoryEntryRow::anchor`].
-    pub anchor: bool,
+    /// See [`HistoryEntryRow::reasons`].
+    pub reasons: Reasons,
 }
 
 /// One node's stored sample at a single frame.
@@ -76,25 +87,28 @@ pub struct HistoryNodeSample {
     pub node_name: String,
     /// Sorted `[(metric_id: u32 LE, value: f64 LE)]` pairs.
     pub values: Vec<u8>,
-    /// See [`HistoryEntryRow::anchor`].
-    pub anchor: bool,
+    /// See [`HistoryEntryRow::reasons`].
+    pub reasons: Reasons,
 }
 
 /// Per-`(timeline, graph_id)` ingest checkpoint.
 ///
-/// `status` is the string form of `unigraph_db::graph_history::HistoryStatus`.
-/// It is kept as a `String` here so the storage layer stays independent of
-/// the history logic that defines the enum.
+/// Also the work list: every frame whose `ingest_state` is not `Ingested` stays
+/// on it, with no time bound. That is what makes an ingest outage a delay
+/// rather than a permanent hole.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HistoryStatusRow {
     pub graph_id: GraphID,
-    pub status: String,
+    pub ingest_state: IngestState,
+    /// Failed attempts to read this frame. Only meaningful while
+    /// `ingest_state` is `Failed`.
     pub attempts: i64,
-    /// Key into blob storage holding the serialized error payload, if the
-    /// last attempt failed.
+    /// Key into blob storage holding the serialized error payload, if the last
+    /// attempt failed.
     pub error_blob_key: Option<String>,
-    /// The frame was ingested while an earlier frame was still unfilled, so
-    /// its threshold decision was deferred and every node's row was kept
-    /// unconditionally. `history compact` clears this once the gap closes.
-    pub omission_deferred: bool,
+    /// This frame's place in the gap structure.
+    ///
+    /// Per frame rather than per row on purpose: when a gap fills, this is two
+    /// row writes instead of `2 x node_count`.
+    pub frame_flags: FrameFlags,
 }

@@ -43,13 +43,13 @@ async fn returns_decodable_history_for_multiple_nodes() -> Result<()> {
 metrics: lines, size
 
 app
-  t+0s   g0  lines=10  size=100
-  t+10s  g1  lines=20  size=300
-  t+20s  g2  lines=20  size=900
+  t+0s   g0  FIRST|ANCHOR           lines=10  size=100  (unattributable)
+  t+10s  g1  OVER_THRESHOLD|ANCHOR  lines=20  size=300
+  t+20s  g2  OVER_THRESHOLD|LATEST  lines=20  size=900
 util
-  t+0s   g0  lines=1  size=5
-  t+10s  g1  lines=-  size=-
-  t+20s  g2  lines=4  size=50
+  t+0s   g0  FIRST|ANCHOR           lines=1  size=5  (unattributable)
+  t+10s  g1  OVER_THRESHOLD         lines=-  size=-
+  t+20s  g2  FIRST|LATEST           lines=4  size=50
 "
     );
 
@@ -74,10 +74,10 @@ async fn samples_go_over_the_wire_as_deltas() -> Result<()> {
     snapshot!(
         format_wire(&out),
         "
-stride 5 = 3 header + 2 metrics
+stride 6 = 4 header + 2 metrics
 
-app   T0, 0, 0, 10, 100  |  10, 1, 0, 10, 200  |  10, 1, 0, 0, 600
-util  T0, 0, 0, 1, 5  |  10, 1, 0, null, null  |  10, 1, 0, 3, 45
+app   T0, 0, 5, 0, 10, 100  |  10, 1, 1, 1, 10, 200  |  10, 1, 4, 0, 0, 600
+util  T0, 0, 5, 0, 1, 5  |  10, 1, -3, 1, null, null  |  10, 1, 7, 0, 3, 45
 "
     );
 
@@ -108,9 +108,9 @@ async fn a_kept_sample_arrives_with_the_frame_before_it() -> Result<()> {
 metrics: lines, size
 
 app
-  t+0s   g0  lines=10  size=100
-  t+10s  g1  lines=10  size=145  (anchor)
-  t+20s  g2  lines=10  size=150
+  t+0s   g0  FIRST                  lines=10  size=100  (unattributable)
+  t+10s  g1  ANCHOR                 lines=10  size=145
+  t+20s  g2  OVER_THRESHOLD|LATEST  lines=10  size=250
 "
     );
 
@@ -172,9 +172,9 @@ async fn time_bounds_narrow_the_result() -> Result<()> {
 metrics: lines, size
 
 app
-  t+0s  g1  lines=20  size=300
+  t+0s  g1  OVER_THRESHOLD|ANCHOR  lines=20  size=300  (unattributable)
 util
-  t+0s  g1  lines=-  size=-
+  t+0s  g1  OVER_THRESHOLD         lines=-  size=-  (unattributable)
 "
     );
 
@@ -294,8 +294,15 @@ fn format_samples(metrics: &[String], samples: &[DecodedSample], base: i64) -> V
                 })
                 .collect::<Vec<_>>()
                 .join("  ");
-            let anchor = if sample.anchor { "  (anchor)" } else { "" };
-            format!("  {offset:<width$}  g{}  {values}{anchor}", sample.graph_id)
+            let step = match sample.attributable {
+                true => "",
+                false => "  (unattributable)",
+            };
+            format!(
+                "  {offset:<width$}  g{}  {:<22} {values}{step}",
+                sample.graph_id,
+                sample.reasons.to_string(),
+            )
         })
         .collect()
 }
@@ -378,8 +385,7 @@ async fn ingest_history(t: &TestApp) -> Result<String> {
         .ingest(
             &tid,
             &HistoryIngestOptions {
-                lookback_hours: 1,
-                settle_hours: 0,
+                lookback_hours: None,
                 threshold: 1.0,
                 graph_id_bounds: (None, None),
             },
@@ -391,7 +397,11 @@ async fn ingest_history(t: &TestApp) -> Result<String> {
 }
 
 /// Three frames whose middle one falls under the threshold, so history keeps it
-/// only as the anchor for the sample that follows.
+/// only as the anchor for the crossing that follows.
+///
+/// The steps are +45 then +105 against a bar of 50: the first is not one diff's
+/// worth of movement and records nothing, the second is, and it drags the frame
+/// before it along so its step reads as +105 rather than +150.
 async fn ingest_sparse_history(t: &TestApp) -> Result<String> {
     let timeline_id = "history_sparse_test";
     let tid = TimelineID(timeline_id.to_owned());
@@ -403,7 +413,7 @@ async fn ingest_sparse_history(t: &TestApp) -> Result<String> {
 
     store_frame(t, &tid, 0, 0, &[("app", 10.0, 100.0)]).await?;
     store_frame(t, &tid, 1, 10, &[("app", 10.0, 145.0)]).await?;
-    store_frame(t, &tid, 2, 20, &[("app", 10.0, 150.0)]).await?;
+    store_frame(t, &tid, 2, 20, &[("app", 10.0, 250.0)]).await?;
 
     t.app
         .db
@@ -411,8 +421,7 @@ async fn ingest_sparse_history(t: &TestApp) -> Result<String> {
         .ingest(
             &tid,
             &HistoryIngestOptions {
-                lookback_hours: 1,
-                settle_hours: 0,
+                lookback_hours: None,
                 threshold: 50.0,
                 graph_id_bounds: (None, None),
             },

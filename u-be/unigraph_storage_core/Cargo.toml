@@ -13,7 +13,11 @@ license = "MIT"
 [dependencies]
 anyhow = "1.0.104"
 async-trait = "0.1.91"
+bitflags = { version = "2.13.1", features = ["serde", "std"], default-features = false }
 ll = "10.0.0"
 serde = { version = "1.0.229", features = ["derive", "rc"] }
 typegen = { version = "0.1.1-alpha.0", path = "../typegen" }
 unigraph_core = { version = "0.1.1-alpha.0", path = "../unigraph_core" }
+
+[dev-dependencies]
+k9 = { version = "0.12.0", features = ["custom_comparison_formatters", "regex"] }

@@ -2,45 +2,68 @@
 
 //! Pure transforms for the plain-row graph metric history (`unigraph history`).
 //!
-//! This module holds only DB-agnostic logic: value packing, threshold
-//! filtering, compaction decisions, and the status/error payload types. The
-//! orchestration that uses them — transactions, locking, retries, blob
-//! cleanup — lives in [`crate::namespaces::GraphHistory`], and the SQL lives
-//! in the storage backend.
+//! DB-agnostic logic only: value packing, the threshold rule, the reason and
+//! gap-flag sets, and compaction decisions. The orchestration that uses them —
+//! transactions, locking, retries, blob cleanup — lives in
+//! [`crate::namespaces::GraphHistory`], and the SQL lives in the storage
+//! backends.
 //!
 //! ```text
-//! extract_node_metrics        node -> metric name -> f64   (unigraph_metric_history)
-//!   -> intern metric names    metric name -> u32           (storage)
-//!   -> settle::is_frame_settled  may omitting be trusted?  (here)
-//!   -> threshold::keep_row    is this sample worth a row?  (here)
-//!   -> pack::encode_values    BTreeMap<u32, f64> -> blob   (here)
+//! extract_node_metrics       node -> metric name -> f64   (unigraph_metric_history)
+//!   -> intern metric names   metric name -> u32           (storage)
+//!   -> threshold::crosses    did this node move?          (here)
+//!   -> reasons::Reasons      why does this row exist?     (here)
+//!   -> gaps::FrameFlags      what bounds the unknown?     (here)
+//!   -> pack::encode_values   BTreeMap<u32, f64> -> blob   (here)
 //! ```
 //!
-//! # The asymmetry everything here is built around
+//! # What the subsystem is for
+//!
+//! A *timeline* is an ordered sequence of graphs, one per landed diff. History
+//! answers one question about it: **which diff moved this node?** Recording
+//! every node at every frame is unaffordable — `www-budget` produced 24,252
+//! frames in six days — so a node's value is recorded only where it moved.
+//!
+//! # The rule everything follows from
+//!
+//! ```text
+//! crossing at N  <=>  |value(N) - value(N-1)| >= threshold      N-1 = previous BUILT frame
+//! ```
+//!
+//! Measured against the **immediately preceding built frame**, never against
+//! the node's last kept row. See [`threshold`] for why that single choice
+//! deletes an entire category of hazard, and what it deliberately gives up.
+//!
+//! # The three things a row can be
+//!
+//! Not an enum — a set of OR'd [`Reasons`], because a row is routinely more
+//! than one of them at once. Plus a fourth case that is not a reason at all:
+//! the built frames bounding a gap keep every node's row through their
+//! [`FrameFlags`], which is a property of the frame, not the row.
+//!
+//! Both of those, and [`IngestState`], are defined in
+//! [`unigraph_storage_core`] and re-exported here: they are stored columns, so
+//! they live with the rows that carry them and the trait the backends
+//! implement never sees a bare `u32`. The *rules* that decide when to set them
+//! are what lives in this module.
+//!
+//! ```text
+//! row exists     <=>  reasons != 0  OR  the frame is a barrier
+//! is a baseline  <=>  reasons contains OVER_THRESHOLD
+//! ```
+//!
+//! # The asymmetry to keep in mind
 //!
 //! **Keeping a row is reversible; omitting one is not.** `compact` can drop a
-//! row that later proves redundant, but nothing can resurrect a sample that was
-//! never written. Because the source timeline fills frames out of order, a
-//! threshold verdict taken across an unfilled gap can be invalidated by a frame
-//! that arrives later — so [`settle`] gates omission, and anything it can't
-//! vouch for is kept and flagged `omission_deferred` for `compact` to revisit.
-//!
-//! # The other thing omission destroys
-//!
-//! A surviving sample is an absolute, and the row before it may be hundreds of
-//! frames back, so its step reads as all the drift since the last kept row
-//! rather than what its own graph contributed. Ingest therefore also keeps the
-//! row at the frame immediately before each surviving sample — an *anchor*.
-//! Anchors are never baselines and are never judged by the threshold; see
-//! [`crate::namespaces::GraphHistory`] for the full rules.
+//! row that proves redundant, but nothing resurrects a sample never written.
+//! Every ambiguous decision in here errs toward keeping.
 //!
 //! Kept separate from [`crate::metric_history`], which is the older
-//! blob-per-node-per-week subsystem written inside the graph store
-//! transaction.
+//! blob-per-node-per-week subsystem written inside the graph store transaction.
 
 pub mod compact;
+pub mod gaps;
 pub mod pack;
-pub mod settle;
 pub mod status;
 pub mod threshold;
 
@@ -48,33 +71,29 @@ pub use compact::CompactInput;
 pub use compact::CompactPlan;
 pub use compact::CompactRow;
 pub use compact::compact_series;
+pub use gaps::FlagUpdate;
+pub use gaps::FrameGap;
+pub use gaps::Segment;
+pub use gaps::desired_flags;
+pub use gaps::frame_has_data;
+pub use gaps::only_frame;
+pub use gaps::reconcile_flags;
+pub use gaps::segments;
 pub use pack::decode_values;
 pub use pack::encode_values;
-pub use settle::is_frame_settled;
 pub use status::ErrorPayload;
-pub use status::HistoryStatus;
-pub use threshold::keep_row;
+pub use threshold::Values;
+pub use threshold::crosses;
+// The stored column types. Re-exported so the whole subsystem can say
+// `graph_history::Reasons` without caring which layer defines it.
+pub use unigraph_storage_core::FrameFlags;
+pub use unigraph_storage_core::IngestState;
+pub use unigraph_storage_core::Reasons;
 
 /// How many times a frame may fail ingestion before it is abandoned.
 ///
-/// Without a cap, a permanently-broken frame would burn a graph fetch on
-/// every scheduled run forever.
+/// Without a cap, a permanently-broken frame would burn a graph fetch on every
+/// scheduled run forever. A frame past the cap stays a gap, which is the honest
+/// description of it — we have no values there — and its neighbours keep
+/// boundary rows accordingly.
 pub const MAX_ATTEMPTS: u32 = 5;
-
-/// Default age at which an unfilled frame is presumed abandoned.
-///
-/// Frames are registered in order but filled out of order, so omitting a sample
-/// is only safe once every earlier frame has stopped changing. Waiting forever
-/// is not an option — a large share of `www-budget`'s frames are Empty
-/// placeholders that will never be filled (their source counterpart failed to
-/// build), and they would pin the settled frontier permanently.
-///
-/// 48h is deliberately generous against the source pipeline's observed
-/// catch-up latency. Raising it costs storage (more deferred rows waiting on
-/// compaction); lowering it risks a late fill silently distorting a series.
-pub const DEFAULT_SETTLE_HOURS: usize = 48;
-
-pub const STATUS_PROCESSED: &str = "Processed";
-pub const STATUS_OMITTED: &str = "Omitted";
-pub const STATUS_ERROR: &str = "Error";
-pub const STATUS_EMPTY: &str = "Empty";

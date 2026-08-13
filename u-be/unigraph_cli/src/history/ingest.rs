@@ -2,40 +2,37 @@
 
 use clap::Parser;
 use unigraph_db::HistoryIngestOptions;
-use unigraph_db::graph_history::DEFAULT_SETTLE_HOURS;
 use unigraph_storage_core::GraphID;
 use unigraph_storage_core::TimelineID;
 
 use crate::UnigraphCLIContext;
 
-/// Record per-node metric history for recently-landed frames.
+/// Record per-node metric history for frames that have not been judged yet.
 ///
-/// Runs after the fact (typically on a schedule) over the frames in the
-/// lookback window, keeping only samples where some metric moved by at least
-/// `--threshold` since that node's last *kept* sample. Each frame is fetched
-/// and extracted outside any transaction, then its rows and checkpoint are
-/// committed in one short per-frame transaction, so a run can never grow into
-/// a single oversized write.
+/// A node's row is written where the node **moved by at least `--threshold`
+/// against the immediately preceding built frame**. That is a statement about
+/// one diff: the series answers "which diff moved this bucket?", not "what was
+/// the size over time". Slow creep — a little more every frame, forever — is
+/// deliberately not recorded, because no single diff is to blame for it; the
+/// newest frame is pinned instead, so the right-hand edge of a chart is always
+/// the true current value.
 ///
-/// Source frames are registered in order but built out of order, so a frame
-/// can be ingested while an earlier one is still unbuilt. Omitting a sample in
-/// that situation is unsafe — the frame that fills the hole later could have
-/// changed the verdict, and an omission is never revisited. So a frame sitting
-/// behind an unfilled hole keeps every row and is flagged for `history
-/// compact` to re-threshold once the hole closes. `--settle-hours` decides how
-/// long to wait before giving up on a hole ever closing.
+/// Source frames are registered in order but built out of order, so the
+/// timeline is pocked with holes. A hole costs two things and nothing else: the
+/// built frames on either side keep a row for every node, bounding the region
+/// where nothing can be attributed, and the frame after it is judged again once
+/// the hole closes. Nothing else in the timeline is affected, and nothing is
+/// ever provisional.
 ///
-/// Keeping a sample also writes an *anchor*: the row for the built frame
-/// immediately before it, which the threshold had folded away. Without it the
-/// sample's step reads as all the drift since the node's last kept row —
-/// hundreds of diffs' worth — instead of what the one graph that crossed the
-/// threshold actually contributed.
+/// Every frame that is not yet ingested stays on the work list with no time
+/// bound, so an outage is a delay rather than a hole. `--lookback-hours` only
+/// caps how much of that backlog one run will chew through.
 ///
 /// Already-ingested frames are skipped, so re-running with a different
 /// `--threshold` does nothing to them — use `history compact` for that.
 ///
 /// ```sh
-/// unigraph history ingest --timeline-id my_timeline --lookback-hours 72 --threshold 1000
+/// unigraph history ingest --timeline-id my_timeline --threshold 1000
 /// ```
 #[derive(Parser, Debug)]
 pub struct HistoryIngest {
@@ -43,20 +40,16 @@ pub struct HistoryIngest {
     #[arg(long)]
     timeline_id: String,
 
-    /// How far back from now to look for frames to ingest
-    #[arg(long)]
-    lookback_hours: usize,
-
-    /// Minimum absolute change in any metric, versus the node's last kept
-    /// sample, for a new sample to be recorded
+    /// Minimum absolute change in any metric, against the immediately
+    /// preceding built frame, for a row to be recorded
     #[arg(long)]
     threshold: f64,
 
-    /// How long an unfilled frame may block its successors from being
-    /// threshold-filtered before it is presumed abandoned. Set this from the
-    /// source pipeline's worst-case catch-up latency, not the job cadence.
-    #[arg(long, default_value_t = DEFAULT_SETTLE_HOURS)]
-    settle_hours: usize,
+    /// Cap how far back this run reaches for outstanding frames. Advisory:
+    /// frames it skips stay on the work list for the next run. Defaults to no
+    /// limit.
+    #[arg(long)]
+    lookback_hours: Option<usize>,
 
     /// Only ingest frames with graph ID >= this value (inclusive). For
     /// repairing a specific range after a `history delete`.
@@ -77,7 +70,6 @@ impl HistoryIngest {
                 &TimelineID(self.timeline_id.clone()),
                 &HistoryIngestOptions {
                     lookback_hours: self.lookback_hours,
-                    settle_hours: self.settle_hours,
                     threshold: self.threshold,
                     graph_id_bounds: (self.min_id.map(GraphID), self.max_id.map(GraphID)),
                 },
@@ -85,17 +77,17 @@ impl HistoryIngest {
             )
             .await?;
         ctx.println_after_done(&format!(
-            "processed={} omitted={} empty={} skipped={} errors={} entries={} \
-             deferred={} deferred_rows={} anchors={}",
-            report.processed,
-            report.omitted,
-            report.empty,
+            "ingested={} no_data={} skipped={} errors={} entries={} anchors={} \
+             barrier_rows={} flags_updated={} rejudged={}",
+            report.ingested,
+            report.no_data,
             report.skipped,
             report.errors,
             report.entries,
-            report.deferred,
-            report.deferred_rows,
             report.anchors,
+            report.barrier_rows,
+            report.flags_updated,
+            report.rejudged,
         ))?;
         Ok(())
     }

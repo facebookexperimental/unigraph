@@ -33,37 +33,48 @@
 //! # Layout
 //!
 //! [`NodeHistory::deltas`] is a flat array of `stride`-sized chunks, one chunk
-//! per sample, in ascending time order. `stride = 3 + metrics.len()`: three
+//! per sample, in ascending time order. `stride = 4 + metrics.len()`: four
 //! header slots, then one slot per metric.
 //!
 //! ```text
-//! metrics: ["lines", "size"]          <- sent once; stride = 3 + 2 = 5
+//! metrics: ["lines", "size"]          <- sent once; stride = 4 + 2 = 6
 //!
 //! series[0].node_name = "app"
-//! series[0].deltas    = [1754400000, 0, 0, 10, 100,  3600, 1, 1, 10, 200,  3600, 1, -1, 0, 600]
-//!                        └── chunk 0 ──────────────┘ └── chunk 1 ────────┘ └── chunk 2 ───────┘
-//!                         ts         gid  ↑   ↑    ↑
-//!                                   anchor  lines  size
-//! decodes to
-//!   2026-08-05T16:00:00Z  graph_id 0            lines 10  size 100
-//!   2026-08-05T17:00:00Z  graph_id 1  (anchor)  lines 20  size 300
-//!   2026-08-05T18:00:00Z  graph_id 2            lines 20  size 900
+//! series[0].deltas    = [1754400000, 0, 1, 0, 10, 100,  3600, 1, 3, 1, 10, 200,  ...]
+//!                        └── chunk 0 ─────────────────┘ └── chunk 1 ──────────┘
+//!                         ts         gid  ↑  ↑   ↑    ↑
+//!                                 reasons  │  lines  size
+//!                                   attributable
 //! ```
 //!
 //! Slot `0` is the sample's timestamp in **unix seconds** (not RFC3339 — a
 //! quoted timestamp is 25 bytes per sample and needs parsing; a delta from the
-//! previous frame is usually a 4-digit integer). Slot `1` is the `graph_id`,
-//! so a chart point can link straight back to the frame it came from.
+//! previous frame is usually a 4-digit integer). Slot `1` is the `graph_id`, so
+//! a chart point can link straight back to the frame it came from.
 //!
-//! Slot `2` is `1` for an *anchor* sample and `0` otherwise. An anchor is the
-//! frame immediately before the sample that follows it, kept so that sample's
-//! step is attributable to its own graph rather than to all the drift the
-//! threshold folded away before it; see
-//! [`unigraph_storage_core::HistoryEntryRow::anchor`]. It rides the same
-//! column-wise delta encoder as everything else, so a series with few anchors
-//! costs about one character per sample — far less than a parallel array of
-//! JSON booleans. Charts will usually want to plot anchors as ordinary points
-//! but attribute a step only across an anchor→sample pair.
+//! Slot `2` is the sample's **reasons** bitmask — why the row exists at all:
+//!
+//! ```text
+//! 1  FIRST           the node's first sample
+//! 2  OVER_THRESHOLD  an attributable movement; the row is real data
+//! 4  ANCHOR          kept so the crossing after it reads correctly
+//! 8  LATEST          the newest built frame, i.e. the node's current value
+//! ```
+//!
+//! They are a *set*, not an enum: `6` is a crossing that is also the anchor for
+//! the crossing after it, which is what a landing diff stack produces. A row
+//! with no `OVER_THRESHOLD` bit is not a measured movement, and a UI offering
+//! per-diff selection should say so.
+//!
+//! Slot `3` is `1` when this sample's **step is attributable** — when the
+//! previous sample in the series sits at the immediately preceding built frame,
+//! so the difference between them is the work of exactly one diff. `0` on the
+//! first sample of a series and on the first sample after a gap, where the
+//! difference spans an unknown region and must not be drawn as if it did not.
+//!
+//! Both ride the same column-wise delta encoder as everything else, so a series
+//! whose shape barely changes costs about one character per sample — far less
+//! than parallel arrays of JSON booleans.
 //!
 //! # Encoding rules
 //!
@@ -76,7 +87,7 @@
 //!   still measured against the last real one. A chunk whose metric slots are
 //!   *all* null is history's record that the node was absent from that frame
 //!   entirely: a real event, not a gap in the data.
-//! - The two header slots are never null.
+//! - The four header slots are never null.
 //!
 //! [`decode_series`] is the reference decoder; the frontend mirrors it.
 //!
@@ -108,6 +119,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use typegen::TypeGen;
 use unigraph_db::HistorySeriesRow;
+use unigraph_db::graph_history::Reasons;
 use unigraph_rpc::RpcExec;
 use unigraph_storage_core::TimelineID;
 use unigraph_storage_core::Timestamp;
@@ -116,12 +128,13 @@ use unigraph_storage_core::TimestampBounds;
 use crate::Unigraph;
 
 /// Slots that precede the metric values in every chunk: timestamp, `graph_id`,
-/// then the anchor flag.
-pub const SAMPLE_HEADER_LEN: usize = 3;
+/// the reasons bitmask, then whether this sample's step is attributable.
+pub const SAMPLE_HEADER_LEN: usize = 4;
 
 const TIMESTAMP_COLUMN: usize = 0;
 const GRAPH_ID_COLUMN: usize = 1;
-const ANCHOR_COLUMN: usize = 2;
+const REASONS_COLUMN: usize = 2;
+const ATTRIBUTABLE_COLUMN: usize = 3;
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -142,8 +155,7 @@ pub struct GetHistoryInput {
 #[derive(Debug, Clone, Serialize, Deserialize, TypeGen)]
 pub struct GetHistoryOutput {
     /// Metric names in the order every sample chunk's value slots follow the
-    /// two header slots. Also fixes the chunk stride at
-    /// `2 + metrics.len()`.
+    /// four header slots. Also fixes the chunk stride at `4 + metrics.len()`.
     pub metrics: Vec<String>,
     /// One entry per requested node, sorted by name. A node with no recorded
     /// history still gets an entry, with an empty stream.
@@ -154,11 +166,11 @@ pub struct GetHistoryOutput {
 pub struct NodeHistory {
     pub node_name: String,
     /// The node's whole series, delta-encoded and flattened into
-    /// `2 + metrics.len()`-sized chunks in ascending time order. See the
-    /// module docs for the layout, and [`decode_series`] for how to read it.
+    /// `4 + metrics.len()`-sized chunks in ascending time order. See the module
+    /// docs for the layout, and [`decode_series`] for how to read it.
     ///
-    /// Not indexable on its own: slot `n` means nothing without the stride,
-    /// and no slot after a column's first is an absolute value.
+    /// Not indexable on its own: slot `n` means nothing without the stride, and
+    /// no slot after a column's first is an absolute value.
     pub deltas: Vec<Option<f64>>,
 }
 
@@ -168,10 +180,11 @@ pub struct DecodedSample {
     /// Unix seconds.
     pub timestamp: i64,
     pub graph_id: i64,
-    /// The sample is the frame immediately before the next one in the series,
-    /// kept so that one's step can be attributed to its own graph. See the
-    /// module docs.
-    pub anchor: bool,
+    /// Why the row exists. See the module docs for what each flag means.
+    pub reasons: Reasons,
+    /// Is the difference from the previous sample in this series the work of
+    /// exactly one diff? See the module docs.
+    pub attributable: bool,
     /// Values aligned with [`GetHistoryOutput::metrics`]. `None` where the
     /// node had no value for that metric; all-`None` means the node was
     /// absent from the frame.
@@ -245,9 +258,20 @@ fn decode_sample(
     Ok(DecodedSample {
         timestamp: require_header(node_name, header[TIMESTAMP_COLUMN], "timestamp")?,
         graph_id: require_header(node_name, header[GRAPH_ID_COLUMN], "graph_id")?,
-        anchor: require_header(node_name, header[ANCHOR_COLUMN], "anchor")? != 0,
+        reasons: decode_reasons(node_name, header[REASONS_COLUMN])?,
+        attributable: require_header(node_name, header[ATTRIBUTABLE_COLUMN], "attributable")? != 0,
         values,
     })
+}
+
+/// Unknown bits are kept rather than rejected: a stream written by a newer
+/// server carries reasons this build cannot name, and dropping them would make
+/// a row that is genuinely justified look collapsed.
+fn decode_reasons(node_name: &str, slot: Option<f64>) -> Result<Reasons> {
+    let bits = require_header(node_name, slot, "reasons")?;
+    let bits = u32::try_from(bits)
+        .map_err(|_| anyhow::anyhow!("history sample for '{node_name}' has invalid reasons"))?;
+    Ok(Reasons::from_bits_retain(bits))
 }
 
 fn require_header(node_name: &str, value: Option<f64>, label: &str) -> Result<i64> {
@@ -302,7 +326,11 @@ fn to_node_history(
             Some(row.timestamp.to_unix_timestamp() as f64),
         );
         encoder.push(GRAPH_ID_COLUMN, Some(row.graph_id.0 as f64));
-        encoder.push(ANCHOR_COLUMN, Some(f64::from(u8::from(row.anchor))));
+        encoder.push(REASONS_COLUMN, Some(f64::from(row.reasons.bits())));
+        encoder.push(
+            ATTRIBUTABLE_COLUMN,
+            Some(f64::from(u8::from(row.attributable))),
+        );
         for (offset, metric) in metrics.iter().enumerate() {
             encoder.push(SAMPLE_HEADER_LEN + offset, row.values.get(metric).copied());
         }
@@ -378,73 +406,118 @@ mod tests {
     const FRAME_SPACING_SECS: i64 = 3600;
     const NODE: &str = "app";
 
-    /// One series per case, each as `[sample][(metric, value)]`. An empty
-    /// sample is a node that vanished from that frame.
-    type Series<'a> = Vec<Vec<(&'a str, f64)>>;
+    /// One sample: its metric values, why the row exists, and whether the step
+    /// from the sample before it belongs to a single diff.
+    struct Sample<'a> {
+        values: Vec<(&'a str, f64)>,
+        reasons: Reasons,
+        attributable: bool,
+    }
 
-    /// A case: name, samples, and the indices of the samples that are anchors.
-    type Case<'a> = (&'a str, Series<'a>, &'a [usize]);
+    /// A case: a name and the series it describes.
+    struct Case<'a> {
+        name: &'a str,
+        samples: Vec<Sample<'a>>,
+    }
+
+    fn sample<'a>(values: &[(&'a str, f64)], reasons: Reasons, attributable: bool) -> Sample<'a> {
+        Sample {
+            values: values.to_vec(),
+            reasons,
+            attributable,
+        }
+    }
 
     #[test]
     fn round_trips_every_shape_of_series() {
-        let cases: Vec<Case<'_>> = vec![
-            (
-                "steady climb",
-                vec![
-                    vec![("lines", 10.0), ("size", 100.0)],
-                    vec![("lines", 20.0), ("size", 300.0)],
-                    vec![("lines", 20.0), ("size", 900.0)],
+        let crossing = Reasons::OVER_THRESHOLD;
+        let cases = vec![
+            Case {
+                name: "steady climb",
+                samples: vec![
+                    sample(&[("lines", 10.0), ("size", 100.0)], Reasons::FIRST, false),
+                    sample(&[("lines", 20.0), ("size", 300.0)], crossing, true),
+                    sample(&[("lines", 20.0), ("size", 900.0)], crossing, true),
                 ],
-                &[],
-            ),
-            (
-                "metric appears late",
-                vec![
-                    vec![("lines", 10.0)],
-                    vec![("lines", 12.0), ("size", 5.0)],
-                    vec![("lines", 12.0), ("size", 6.0)],
+            },
+            Case {
+                name: "metric appears late",
+                samples: vec![
+                    sample(&[("lines", 10.0)], Reasons::FIRST, false),
+                    sample(&[("lines", 12.0), ("size", 5.0)], crossing, true),
+                    sample(&[("lines", 12.0), ("size", 6.0)], crossing, true),
                 ],
-                &[],
-            ),
-            (
-                "node vanishes mid-series",
-                vec![
-                    vec![("lines", 1.0), ("size", 5.0)],
-                    vec![],
-                    vec![("lines", 4.0), ("size", 50.0)],
+            },
+            Case {
+                name: "node vanishes mid-series",
+                samples: vec![
+                    sample(&[("lines", 1.0), ("size", 5.0)], Reasons::FIRST, false),
+                    sample(&[], crossing, true),
+                    sample(&[("lines", 4.0), ("size", 50.0)], crossing, true),
                 ],
-                &[],
-            ),
-            (
-                "fractional metric",
-                vec![
-                    vec![("ratio", 0.1)],
-                    vec![("ratio", 0.2)],
-                    vec![("ratio", 0.30000000000000004)],
-                    vec![("ratio", 0.4)],
+            },
+            Case {
+                name: "fractional metric",
+                samples: vec![
+                    sample(&[("ratio", 0.1)], Reasons::FIRST, false),
+                    sample(&[("ratio", 0.2)], crossing, true),
+                    sample(&[("ratio", 0.30000000000000004)], crossing, true),
+                    sample(&[("ratio", 0.4)], crossing, true),
                 ],
-                &[],
-            ),
+            },
             // The shape compaction leaves behind: a far-apart pair of samples
             // with an anchor pinned right before the second, so the +5 that
-            // graph actually contributed is readable instead of the +99 the
-            // gap suggests.
-            (
-                "anchored threshold crossing",
-                vec![
-                    vec![("size", 1.0)],
-                    vec![("size", 95.0)],
-                    vec![("size", 100.0)],
+            // graph actually contributed is readable instead of the +99 the gap
+            // suggests. The anchor's own step is not attributable — the row
+            // before it is hundreds of frames back.
+            Case {
+                name: "anchored threshold crossing",
+                samples: vec![
+                    sample(&[("size", 1.0)], Reasons::FIRST, false),
+                    sample(&[("size", 95.0)], Reasons::ANCHOR, false),
+                    sample(&[("size", 100.0)], crossing, true),
                 ],
-                &[1],
-            ),
-            ("single sample", vec![vec![("lines", 7.0)]], &[]),
-            ("no samples", vec![], &[]),
+            },
+            // A landing diff stack. Every row is a crossing *and* the anchor
+            // for the one after it — a combination the old single `anchor` flag
+            // could not express, which is why it reported these steps as
+            // unattributable and threw them away.
+            Case {
+                name: "diff stack",
+                samples: vec![
+                    sample(&[("size", 10.0)], Reasons::FIRST, false),
+                    sample(&[("size", 40.0)], crossing | Reasons::ANCHOR, true),
+                    sample(&[("size", 70.0)], crossing | Reasons::LATEST, true),
+                ],
+            },
+            // Both sides of a gap keep a row for every node, with no reason of
+            // their own, and the step across the hole is explicitly not
+            // attributable to anything.
+            Case {
+                name: "across a gap",
+                samples: vec![
+                    sample(&[("size", 10.0)], Reasons::FIRST, false),
+                    sample(&[("size", 12.0)], Reasons::empty(), true),
+                    sample(&[("size", 80.0)], Reasons::empty(), false),
+                ],
+            },
+            Case {
+                name: "single sample",
+                samples: vec![sample(
+                    &[("lines", 7.0)],
+                    Reasons::FIRST | Reasons::LATEST,
+                    false,
+                )],
+            },
+            Case {
+                name: "no samples",
+                samples: vec![],
+            },
         ];
 
         let report = cases
             .iter()
-            .map(|(name, series, anchors)| format_case(name, series, anchors))
+            .map(format_case)
             .collect::<Vec<_>>()
             .join("\n\n");
 
@@ -452,54 +525,70 @@ mod tests {
             report,
             "
 ── steady climb
-   metrics [lines, size]  stride 5  wire 15 values
-   wire    1700000000, 0, 0, 10, 100  |  3600, 1, 0, 10, 200  |  3600, 1, 0, 0, 600
-   decode  t+0s     g0  lines=10  size=100
-           t+3600s  g1  lines=20  size=300
-           t+7200s  g2  lines=20  size=900
+   metrics [lines, size]  stride 6  wire 18 values
+   wire    1700000000, 0, 1, 0, 10, 100  |  3600, 1, 1, 1, 10, 200  |  3600, 1, 0, 0, 0, 600
+   decode  t+0s     g0  FIRST                  —             lines=10  size=100
+           t+3600s  g1  OVER_THRESHOLD         attributable  lines=20  size=300
+           t+7200s  g2  OVER_THRESHOLD         attributable  lines=20  size=900
    3 samples, bit-exact
 
 ── metric appears late
-   metrics [lines, size]  stride 5  wire 15 values
-   wire    1700000000, 0, 0, 10, null  |  3600, 1, 0, 2, 5  |  3600, 1, 0, 0, 1
-   decode  t+0s     g0  lines=10  size=-
-           t+3600s  g1  lines=12  size=5
-           t+7200s  g2  lines=12  size=6
+   metrics [lines, size]  stride 6  wire 18 values
+   wire    1700000000, 0, 1, 0, 10, null  |  3600, 1, 1, 1, 2, 5  |  3600, 1, 0, 0, 0, 1
+   decode  t+0s     g0  FIRST                  —             lines=10  size=-
+           t+3600s  g1  OVER_THRESHOLD         attributable  lines=12  size=5
+           t+7200s  g2  OVER_THRESHOLD         attributable  lines=12  size=6
    3 samples, bit-exact
 
 ── node vanishes mid-series
-   metrics [lines, size]  stride 5  wire 15 values
-   wire    1700000000, 0, 0, 1, 5  |  3600, 1, 0, null, null  |  3600, 1, 0, 3, 45
-   decode  t+0s     g0  lines=1  size=5
-           t+3600s  g1  lines=-  size=-
-           t+7200s  g2  lines=4  size=50
+   metrics [lines, size]  stride 6  wire 18 values
+   wire    1700000000, 0, 1, 0, 1, 5  |  3600, 1, 1, 1, null, null  |  3600, 1, 0, 0, 3, 45
+   decode  t+0s     g0  FIRST                  —             lines=1  size=5
+           t+3600s  g1  OVER_THRESHOLD         attributable  lines=-  size=-
+           t+7200s  g2  OVER_THRESHOLD         attributable  lines=4  size=50
    3 samples, bit-exact
 
 ── fractional metric
-   metrics [ratio]  stride 4  wire 16 values
-   wire    1700000000, 0, 0, 0.1  |  3600, 1, 0, 0.1  |  3600, 1, 0, 0.10000000000000003  |  3600, 1, 0, 0.09999999999999998
-   decode  t+0s      g0  ratio=0.1
-           t+3600s   g1  ratio=0.2
-           t+7200s   g2  ratio=0.30000000000000004
-           t+10800s  g3  ratio=0.4
+   metrics [ratio]  stride 5  wire 20 values
+   wire    1700000000, 0, 1, 0, 0.1  |  3600, 1, 1, 1, 0.1  |  3600, 1, 0, 0, 0.10000000000000003  |  3600, 1, 0, 0, 0.09999999999999998
+   decode  t+0s      g0  FIRST                  —             ratio=0.1
+           t+3600s   g1  OVER_THRESHOLD         attributable  ratio=0.2
+           t+7200s   g2  OVER_THRESHOLD         attributable  ratio=0.30000000000000004
+           t+10800s  g3  OVER_THRESHOLD         attributable  ratio=0.4
    4 samples, bit-exact
 
 ── anchored threshold crossing
-   metrics [size]  stride 4  wire 12 values
-   wire    1700000000, 0, 0, 1  |  3600, 1, 1, 94  |  3600, 1, -1, 5
-   decode  t+0s     g0  size=1
-           t+3600s  g1 (anchor)  size=95
-           t+7200s  g2  size=100
+   metrics [size]  stride 5  wire 15 values
+   wire    1700000000, 0, 1, 0, 1  |  3600, 1, 3, 0, 94  |  3600, 1, -2, 1, 5
+   decode  t+0s     g0  FIRST                  —             size=1
+           t+3600s  g1  ANCHOR                 —             size=95
+           t+7200s  g2  OVER_THRESHOLD         attributable  size=100
+   3 samples, bit-exact
+
+── diff stack
+   metrics [size]  stride 5  wire 15 values
+   wire    1700000000, 0, 1, 0, 10  |  3600, 1, 5, 1, 30  |  3600, 1, 4, 0, 30
+   decode  t+0s     g0  FIRST                  —             size=10
+           t+3600s  g1  OVER_THRESHOLD|ANCHOR  attributable  size=40
+           t+7200s  g2  OVER_THRESHOLD|LATEST  attributable  size=70
+   3 samples, bit-exact
+
+── across a gap
+   metrics [size]  stride 5  wire 15 values
+   wire    1700000000, 0, 1, 0, 10  |  3600, 1, -1, 1, 2  |  3600, 1, 0, -1, 68
+   decode  t+0s     g0  FIRST                  —             size=10
+           t+3600s  g1  -                      attributable  size=12
+           t+7200s  g2  -                      —             size=80
    3 samples, bit-exact
 
 ── single sample
-   metrics [lines]  stride 4  wire 4 values
-   wire    1700000000, 0, 0, 7
-   decode  t+0s  g0  lines=7
+   metrics [lines]  stride 5  wire 5 values
+   wire    1700000000, 0, 9, 0, 7
+   decode  t+0s  g0  FIRST|LATEST           —             lines=7
    1 samples, bit-exact
 
 ── no samples
-   metrics []  stride 3  wire 0 values
+   metrics []  stride 4  wire 0 values
    wire    (empty)
    0 samples, bit-exact
 "
@@ -515,10 +604,10 @@ mod tests {
         };
 
         let Err(err) = decode_series(&metrics, &node) else {
-            panic!("3 values cannot be a whole number of 5-value samples");
+            panic!("3 values cannot be a whole number of 6-value samples");
         };
         assert!(
-            format!("{err:#}").contains("not a whole number of 5-value samples"),
+            format!("{err:#}").contains("not a whole number of 6-value samples"),
             "Error should name the stride mismatch, got: {err:#}"
         );
     }
@@ -527,18 +616,15 @@ mod tests {
 
     /// Push one case through the real encoder, decode it back, and render both
     /// halves plus the round-trip verdict.
-    fn format_case(name: &str, series: &Series<'_>, anchors: &[usize]) -> String {
-        let out = to_output(BTreeMap::from([(
-            NODE.to_owned(),
-            to_rows(series, anchors),
-        )]));
+    fn format_case(case: &Case<'_>) -> String {
+        let out = to_output(BTreeMap::from([(NODE.to_owned(), to_rows(&case.samples))]));
         let node = &out.series[0];
         let decoded =
             decode_series(&out.metrics, node).expect("the encoder must emit a decodable stream");
         let stride = SAMPLE_HEADER_LEN + out.metrics.len();
 
         let mut lines = vec![
-            format!("── {name}"),
+            format!("── {}", case.name),
             format!(
                 "   metrics [{}]  stride {stride}  wire {} values",
                 out.metrics.join(", "),
@@ -549,7 +635,7 @@ mod tests {
         lines.extend(format_decoded(&out.metrics, &decoded));
         lines.push(format!(
             "   {}",
-            verify(series, anchors, &out.metrics, &decoded)
+            verify(&case.samples, &out.metrics, &decoded)
         ));
         lines.join("\n")
     }
@@ -569,8 +655,8 @@ mod tests {
         value.map_or_else(|| "null".to_owned(), |value| format!("{value}"))
     }
 
-    /// Timestamps are shown as an offset from [`BASE_TS`], and the offset
-    /// column is padded so the metric columns line up down the block.
+    /// Timestamps are shown as an offset from [`BASE_TS`], and the offset column
+    /// is padded so the metric columns line up down the block.
     fn format_decoded(metrics: &[String], decoded: &[DecodedSample]) -> Vec<String> {
         let offsets = decoded
             .iter()
@@ -583,10 +669,9 @@ mod tests {
             .zip(&offsets)
             .enumerate()
             .map(|(index, (sample, offset))| {
-                let label = if index == 0 {
-                    "   decode  "
-                } else {
-                    "           "
+                let label = match index {
+                    0 => "   decode  ",
+                    _ => "           ",
                 };
                 let values = metrics
                     .iter()
@@ -597,10 +682,14 @@ mod tests {
                     })
                     .collect::<Vec<_>>()
                     .join("  ");
-                let anchor = if sample.anchor { " (anchor)" } else { "" };
+                let step = match sample.attributable {
+                    true => "attributable",
+                    false => "—",
+                };
                 format!(
-                    "{label}{offset:<width$}  g{}{anchor}  {values}",
-                    sample.graph_id
+                    "{label}{offset:<width$}  g{}  {:<22} {step:<13} {values}",
+                    sample.graph_id,
+                    sample.reasons.to_string(),
                 )
             })
             .collect()
@@ -614,20 +703,15 @@ mod tests {
     /// rounding step off; the point of deltaing against the reconstruction is
     /// that the gap stays that size instead of compounding down the series, so
     /// the bound below is absolute rather than proportional to sample count.
-    fn verify(
-        series: &Series<'_>,
-        anchors: &[usize],
-        metrics: &[String],
-        decoded: &[DecodedSample],
-    ) -> String {
+    fn verify(samples: &[Sample<'_>], metrics: &[String], decoded: &[DecodedSample]) -> String {
         assert_eq!(
             decoded.len(),
-            series.len(),
+            samples.len(),
             "Every sample must survive the round trip"
         );
 
         let mut worst = 0.0f64;
-        for (index, (expected, sample)) in series.iter().zip(decoded).enumerate() {
+        for (index, (expected, sample)) in samples.iter().zip(decoded).enumerate() {
             assert_eq!(
                 sample.timestamp,
                 BASE_TS + index as i64 * FRAME_SPACING_SECS,
@@ -638,14 +722,19 @@ mod tests {
                 "The graph_id column is integral and must reconstruct exactly"
             );
             assert_eq!(
-                sample.anchor,
-                anchors.contains(&index),
-                "Which samples are anchors decides where a step may be \
-                 attributed, so it must reconstruct exactly"
+                sample.reasons, expected.reasons,
+                "The reasons bitmask decides what a row may be used for, so it \
+                 must reconstruct exactly"
+            );
+            assert_eq!(
+                sample.attributable, expected.attributable,
+                "Attribution decides whether a step may be blamed on one diff, \
+                 so it must reconstruct exactly"
             );
 
             for (offset, metric) in metrics.iter().enumerate() {
                 let want = expected
+                    .values
                     .iter()
                     .find(|(name, _)| name == metric)
                     .map(|(_, value)| *value);
@@ -670,20 +759,22 @@ mod tests {
         }
     }
 
-    fn to_rows(series: &Series<'_>, anchors: &[usize]) -> Vec<HistorySeriesRow> {
-        series
+    fn to_rows(samples: &[Sample<'_>]) -> Vec<HistorySeriesRow> {
+        samples
             .iter()
             .enumerate()
-            .map(|(index, values)| HistorySeriesRow {
+            .map(|(index, sample)| HistorySeriesRow {
                 graph_id: GraphID(index as i64),
                 timestamp: Timestamp::from_unix_timestamp(
                     BASE_TS + index as i64 * FRAME_SPACING_SECS,
                 ),
-                values: values
+                values: sample
+                    .values
                     .iter()
                     .map(|(name, value)| ((*name).to_owned(), *value))
                     .collect(),
-                anchor: anchors.contains(&index),
+                reasons: sample.reasons,
+                attributable: sample.attributable,
             })
             .collect()
     }

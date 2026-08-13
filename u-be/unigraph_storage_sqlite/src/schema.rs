@@ -92,55 +92,65 @@ CREATE TABLE IF NOT EXISTS graph_history_metrics (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_graph_history_metrics_name
     ON graph_history_metrics(timeline_id, metric_name);
 
--- Per-(timeline, graph_id) ingest checkpoint / status.
+-- Per-(timeline, graph_id) ingest checkpoint, and the ingest work list.
 --
--- `omission_deferred` marks a frame that was ingested while an earlier frame
--- was still unfilled: its threshold verdict could not be trusted, so every
--- node's row was kept. It is `history compact`'s work list. Indexed because
--- compact reads only the flagged span and the flag is 0 for almost every row.
+-- Every frame whose `ingest_state` is not 'Ingested' stays on that list with
+-- no time bound, which is the whole recovery story: the design this replaced
+-- only ever looked at a lookback window, so a frame that fell out of it was
+-- never reconsidered and froze compaction behind it permanently. The partial
+-- index is what makes an unbounded sweep cheap.
+--
+-- `frame_flags` records this frame's place in the gap structure (NO_DATA,
+-- AFTER_GAP, BEFORE_GAP). It lives here rather than on every node's row
+-- because gap structure is a property of the frame sequence alone: when a gap
+-- fills, that is two row writes instead of 2 x node_count.
 CREATE TABLE IF NOT EXISTS graph_history_status (
-    timeline_id       TEXT    NOT NULL,
-    graph_id          INTEGER NOT NULL,
-    status            TEXT    NOT NULL,
-    attempts          INTEGER NOT NULL DEFAULT 0,
-    error_blob_key    TEXT,
-    omission_deferred INTEGER NOT NULL DEFAULT 0,
-    updated_at        INTEGER NOT NULL,
+    timeline_id    TEXT    NOT NULL,
+    graph_id       INTEGER NOT NULL,
+    ingest_state   TEXT    NOT NULL,
+    attempts       INTEGER NOT NULL DEFAULT 0,
+    error_blob_key TEXT,
+    frame_flags    INTEGER NOT NULL DEFAULT 0,
+    updated_at     INTEGER NOT NULL,
     PRIMARY KEY (timeline_id, graph_id)
 ) WITHOUT ROWID;
 
-CREATE INDEX IF NOT EXISTS idx_graph_history_status_deferred
+CREATE INDEX IF NOT EXISTS idx_graph_history_status_pending
     ON graph_history_status(timeline_id, graph_id)
-    WHERE omission_deferred != 0;
+    WHERE ingest_state != 'Ingested';
 
 -- Kept per-node history samples. All of a node's metrics at one frame are
 -- packed into `metric_values`, so row count scales with nodes, not metrics.
--- The PK doubles as the chart read index (one node's series over time) and
--- the 'last kept value before graph_id X' reverse range scan.
+-- The PK doubles as the chart read index — one node's series over time.
 --
--- `deferred` marks a below-threshold row that was only written because an
--- earlier frame was still unfilled. Baseline lookups skip these, so a later
--- sample is never measured against a row compaction is about to delete.
+-- `reasons` is an OR'd set of the independent justifications for the row:
+-- FIRST (the node's first sample), OVER_THRESHOLD (it moved by at least the
+-- threshold against the immediately preceding built frame), ANCHOR (the next
+-- built frame keeps a crossing this row makes readable), LATEST (this is the
+-- newest built frame, so the row is the node's current value).
 --
--- `anchor` marks a below-threshold row kept on purpose: it is the built frame
--- immediately before a surviving sample, and without it that sample's step
--- reads as the whole drift since the last kept row rather than what its own
--- graph contributed. Baseline lookups skip these too — an anchor never cleared
--- the threshold, so measuring against one would hide the accumulated drift.
+-- The set matters rather than a single winner: a row is routinely both a
+-- crossing and the anchor for the crossing after it, which is what happens
+-- every time a diff stack lands. Only OVER_THRESHOLD makes a row a baseline.
+--
+-- `reasons = 0` is legal only at a barrier frame — one flagged AFTER_GAP or
+-- BEFORE_GAP, which holds every node's row so the unknown region across the
+-- gap is bounded on both sides. Anywhere else a zero-reason row is garbage
+-- awaiting collection by `history compact`.
 CREATE TABLE IF NOT EXISTS graph_history_entries (
     timeline_id   TEXT    NOT NULL,
     node_name     TEXT    NOT NULL,
     graph_id      INTEGER NOT NULL,
     timestamp     INTEGER NOT NULL,
     metric_values BLOB    NOT NULL,
-    deferred      INTEGER NOT NULL DEFAULT 0,
-    anchor        INTEGER NOT NULL DEFAULT 0,
+    reasons       INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (timeline_id, node_name, graph_id)
 ) WITHOUT ROWID;
 
 -- graph_id sits behind node_name in the primary key, so a bare
--- 'WHERE timeline_id = ? AND graph_id = ?' cannot seek without this. Both
--- `history delete` and per-frame compaction run exactly that predicate.
+-- 'WHERE timeline_id = ? AND graph_id = ?' cannot seek without this. The
+-- whole-frame reason updates, the segment collapse delete and `history delete`
+-- all run exactly that predicate.
 CREATE INDEX IF NOT EXISTS idx_graph_history_entries_graph
     ON graph_history_entries(timeline_id, graph_id);
 

@@ -1,7 +1,7 @@
 /**
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
- * @generated SignedSource<<0c29658f6548269e2bbe4ad30b9efec3>>
+ * @generated SignedSource<<82923ff8edd9413fe4a1846e44e18d19>>
  */
 
 
@@ -10,8 +10,7 @@ import type { NodeHistory } from './NodeHistory.ts';
 export interface GetHistoryOutput {
   /**
    * Metric names in the order every sample chunk's value slots follow the
-   * two header slots. Also fixes the chunk stride at
-   * `2 + metrics.len()`.
+   * four header slots. Also fixes the chunk stride at `4 + metrics.len()`.
    */
   metrics: string[];
   /**

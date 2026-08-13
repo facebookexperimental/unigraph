@@ -1,113 +1,171 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
+//! What compaction should do to one node's stored rows.
+//!
+//! Two jobs, both pure:
+//!
+//! 1. **Collapse.** A row whose reasons have all evaporated holds no
+//!    information the series needs. The usual way that happens is a gap
+//!    filling: the barrier rows on either side were kept without being judged,
+//!    and once the hole closes nothing is holding them any more.
+//! 2. **Re-threshold.** Every crossing stores its anchor, so
+//!    *"would this still cross at a higher threshold?"* is answerable from the
+//!    rows alone, with no graph fetch.
+//!
+//! # Compaction can only raise the threshold
+//!
+//! *Lowering* it would need values that were never written. That is a
+//! deliberate non-goal: re-ingest is the way to lower a threshold.
+//!
+//! # It never invents a row
+//!
+//! Where the row a decision needs is absent, the stored verdict stands. Two
+//! shapes reach that state and only one of them is garbage, and since dropping
+//! a row is exactly as irreversible as never writing it, the tie goes to
+//! keeping:
+//!
+//! - a node that *appeared* at this frame has a crossing with nothing to anchor
+//!   it, because there was no predecessor value to record;
+//! - a stale row left behind by a barrier whose gap has closed has no reasons
+//!   to begin with, so it is dropped anyway.
+
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
 use unigraph_storage_core::GraphID;
 
-use crate::graph_history::threshold::keep_row;
+use crate::graph_history::Reasons;
+use crate::graph_history::threshold::Values;
+use crate::graph_history::threshold::crosses;
 
 /// One of a node's stored rows in the range being compacted.
+#[derive(Debug, Clone, PartialEq)]
 pub struct CompactRow {
     pub graph_id: GraphID,
-    pub values: BTreeMap<u32, f64>,
-    /// The row is already an anchor — see [`CompactPlan::anchored`].
-    pub anchor: bool,
+    pub values: Values,
+    pub reasons: Reasons,
 }
 
-/// One node's stored series plus the context needed to judge its first row.
+/// One node's stored series plus the frame context needed to judge it.
 pub struct CompactInput<'a> {
-    /// The node's rows inside the range being compacted, by ascending
-    /// `graph_id`. Includes anchors.
+    /// The node's rows in the range, ascending by `graph_id`.
     pub series: &'a [CompactRow],
-    /// The node's last kept sample *before* the range, if any.
+    /// Every frame in the range that carries data, ascending.
     ///
-    /// Without it the first row in a bounded range compares against nothing and
-    /// is always kept, so compacting `[a, b]` then `[b, c]` would keep more rows
-    /// than compacting `[a, c]` in one pass. Seeding makes a windowed compaction
-    /// produce exactly the same result as a whole-timeline one.
-    pub seed: Option<&'a BTreeMap<u32, f64>>,
-    /// Every *built* frame in the range, ascending.
+    /// Which row explains which is a *frame* question, not a row question: a
+    /// crossing's predecessor usually has no row of its own, and the row before
+    /// it in `series` can be thousands of frames back.
     ///
-    /// Which row anchors which sample is a frame question, not a row question:
-    /// a sample's immediate predecessor usually has no row of its own, and the
-    /// row before it in `series` can be thousands of frames back.
+    /// A bounded range cannot see the data frame below its lower bound, so the
+    /// range's first row is judged conservatively — its stored verdict stands.
+    /// Compacting the whole timeline, which is the default, has no such edge.
     pub frames: &'a [GraphID],
+    /// Frames with a gap immediately behind them.
+    ///
+    /// Load-bearing, and easy to leave out: `frames` lists the frames that
+    /// carry data, so two of them can be adjacent *in that list* while a run of
+    /// unbuilt frames sits between them in the timeline. Measuring across that
+    /// would attribute a whole unknown region to one diff — the exact mistake
+    /// this subsystem exists to prevent — so a frame listed here is treated as
+    /// having no predecessor at all.
+    pub after_gap: &'a BTreeSet<GraphID>,
+    /// Frames whose rows are held by their frame flags whatever their reasons
+    /// say. See [`crate::graph_history::gaps`].
+    pub barriers: &'a BTreeSet<GraphID>,
     pub threshold: f64,
 }
 
-/// What compaction should do to one node's rows in the range.
+/// What compaction should write and delete for one node.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct CompactPlan {
-    /// Rows that are redundant at `threshold` and explain nothing. Delete them.
+    /// Rows whose reason set changed but that still have one. Rewrite them.
+    pub updated: Vec<(GraphID, Reasons)>,
+    /// Rows with no reason left and no barrier holding them. Delete them.
     pub dropped: Vec<GraphID>,
-    /// Rows that are redundant on their own but sit at the built frame
-    /// immediately before a surviving sample. They stay, flagged as anchors, so
-    /// that sample's step reads as its own graph's contribution rather than as
-    /// all the drift since the last kept row.
-    ///
-    /// Only rows that are not anchors *yet* appear here; ones that already are
-    /// need no write.
-    pub anchored: Vec<GraphID>,
+}
+
+impl CompactPlan {
+    pub fn is_empty(&self) -> bool {
+        self.updated.is_empty() && self.dropped.is_empty()
+    }
 }
 
 /// Decide the fate of every row in one node's series.
 ///
-/// Only ever call this on a range where every frame is settled — dropping a row
-/// is as irreversible as never writing it, so a frame that fills later could
-/// have made a dropped row significant. See [`crate::graph_history::settle`].
-///
-/// Anchors take no part in the threshold walk: one is below the threshold by
-/// construction, so judging it would always drop it, and letting it advance the
-/// baseline would hide the drift accumulated before it and swallow the very
-/// sample it exists to explain. An anchor is therefore never promoted back to a
-/// sample either — the walk simply does not see it.
-///
-/// A windowed pass cannot anchor across its lower bound: the predecessor of the
-/// window's first survivor lies outside the range, so its row was never read.
-/// Every row *inside* the window gets the same verdict a whole-series pass
-/// would give it.
+/// Idempotent: running it twice at the same threshold finds nothing to do the
+/// second time.
 pub fn compact_series(input: &CompactInput<'_>) -> CompactPlan {
-    let survivors = threshold_survivors(input);
-    let wanted = anchor_frames(&survivors, input.frames);
+    let stored = input
+        .series
+        .iter()
+        .map(|row| (row.graph_id, row))
+        .collect::<BTreeMap<_, _>>();
+
+    let crossings = input
+        .series
+        .iter()
+        .filter(|row| still_crosses(row, &stored, input))
+        .map(|row| row.graph_id)
+        .collect::<BTreeSet<_>>();
+    let anchors = anchor_frames(&crossings, input, &stored);
 
     let mut plan = CompactPlan::default();
     for row in input.series {
-        if survivors.contains(&row.graph_id) {
-            continue;
+        let mut reasons = row.reasons.difference(Reasons::THRESHOLD_DERIVED);
+        reasons.set(Reasons::OVER_THRESHOLD, crossings.contains(&row.graph_id));
+        reasons.set(Reasons::ANCHOR, anchors.contains(&row.graph_id));
+
+        if reasons.is_empty() && !input.barriers.contains(&row.graph_id) {
+            plan.dropped.push(row.graph_id);
+        } else if reasons != row.reasons {
+            plan.updated.push((row.graph_id, reasons));
         }
-        if wanted.contains(&row.graph_id) {
-            if !row.anchor {
-                plan.anchored.push(row.graph_id);
-            }
-            continue;
-        }
-        plan.dropped.push(row.graph_id);
     }
     plan
 }
 
-/// The rows that clear the threshold, walking real samples only.
-fn threshold_survivors(input: &CompactInput<'_>) -> BTreeSet<GraphID> {
-    let mut last_kept = input.seed;
-    let mut survivors = BTreeSet::new();
-
-    for row in input.series.iter().filter(|row| !row.anchor) {
-        if keep_row(last_kept, &row.values, input.threshold) {
-            last_kept = Some(&row.values);
-            survivors.insert(row.graph_id);
-        }
-    }
-    survivors
+/// Does this row still clear the threshold against the row at the data frame
+/// immediately before it?
+///
+/// With no row there to measure against, the stored verdict stands — see the
+/// module docs for why that is the safe direction.
+fn still_crosses(
+    row: &CompactRow,
+    stored: &BTreeMap<GraphID, &CompactRow>,
+    input: &CompactInput<'_>,
+) -> bool {
+    let Some(previous) = preceding_frame(row.graph_id, input) else {
+        return row.reasons.contains(Reasons::OVER_THRESHOLD);
+    };
+    let Some(previous) = stored.get(&previous) else {
+        return row.reasons.contains(Reasons::OVER_THRESHOLD);
+    };
+    crosses(Some(&previous.values), Some(&row.values), input.threshold)
 }
 
-/// The built frame immediately before each survivor, where the range holds one.
-fn anchor_frames(survivors: &BTreeSet<GraphID>, frames: &[GraphID]) -> BTreeSet<GraphID> {
-    survivors
+/// The data frame immediately before `graph_id`, where one is adjacent.
+///
+/// `None` across a gap: the previous entry in `frames` is then the far side of
+/// an unknown region, not a predecessor.
+fn preceding_frame(graph_id: GraphID, input: &CompactInput<'_>) -> Option<GraphID> {
+    if input.after_gap.contains(&graph_id) {
+        return None;
+    }
+    let index = input.frames.binary_search(&graph_id).ok()?;
+    input.frames.get(index.checked_sub(1)?).copied()
+}
+
+/// The rows that have to stay so each crossing's step reads as its own diff's
+/// contribution.
+fn anchor_frames(
+    crossings: &BTreeSet<GraphID>,
+    input: &CompactInput<'_>,
+    stored: &BTreeMap<GraphID, &CompactRow>,
+) -> BTreeSet<GraphID> {
+    crossings
         .iter()
-        .filter_map(|graph_id| frames.binary_search(graph_id).ok())
-        .filter_map(|index| index.checked_sub(1))
-        .map(|index| frames[index])
+        .filter_map(|graph_id| preceding_frame(*graph_id, input))
+        .filter(|graph_id| stored.contains_key(graph_id))
         .collect()
 }
 
@@ -115,19 +173,36 @@ fn anchor_frames(survivors: &BTreeSet<GraphID>, frames: &[GraphID]) -> BTreeSet<
 mod tests {
     use super::*;
 
-    fn series(values: &[(i64, f64)]) -> Vec<CompactRow> {
-        values
+    /// A row per data frame, values as given, reasons as ingest would have left
+    /// them at `threshold`.
+    fn ingested(values: &[(i64, f64)], threshold: f64) -> Vec<CompactRow> {
+        let mut rows = values
             .iter()
             .map(|(graph_id, value)| CompactRow {
                 graph_id: GraphID(*graph_id),
-                values: BTreeMap::from([(1, *value)]),
-                anchor: false,
+                values: Values::from([(1, *value)]),
+                reasons: Reasons::empty(),
             })
-            .collect()
+            .collect::<Vec<_>>();
+
+        rows[0].reasons = Reasons::FIRST;
+        for index in 1..rows.len() {
+            let moved = crosses(
+                Some(&rows[index - 1].values),
+                Some(&rows[index].values),
+                threshold,
+            );
+            if moved {
+                rows[index].reasons |= Reasons::OVER_THRESHOLD;
+                rows[index - 1].reasons |= Reasons::ANCHOR;
+            }
+        }
+        if let Some(last) = rows.last_mut() {
+            last.reasons |= Reasons::LATEST;
+        }
+        rows
     }
 
-    /// Every graph ID in `series` is also a built frame, which is the usual
-    /// shape for these fixtures — one row per frame before compaction.
     fn frames(values: &[(i64, f64)]) -> Vec<GraphID> {
         values
             .iter()
@@ -135,33 +210,88 @@ mod tests {
             .collect()
     }
 
-    /// Apply a plan the way the storage layer does: drop, then flag.
     fn apply(rows: Vec<CompactRow>, plan: &CompactPlan) -> Vec<CompactRow> {
         rows.into_iter()
             .filter(|row| !plan.dropped.contains(&row.graph_id))
-            .map(|row| CompactRow {
-                anchor: row.anchor || plan.anchored.contains(&row.graph_id),
-                ..row
+            .map(|row| {
+                let reasons = plan
+                    .updated
+                    .iter()
+                    .find(|(graph_id, _)| *graph_id == row.graph_id)
+                    .map_or(row.reasons, |(_, reasons)| *reasons);
+                CompactRow { reasons, ..row }
             })
             .collect()
     }
 
-    fn format_plan(plan: &CompactPlan) -> String {
-        let ids = |list: &[GraphID]| {
-            list.iter()
-                .map(|id| id.0.to_string())
-                .collect::<Vec<_>>()
-                .join(", ")
-        };
-        format!(
-            "dropped [{}]  anchored [{}]",
-            ids(&plan.dropped),
-            ids(&plan.anchored)
-        )
+    fn render(rows: &[CompactRow]) -> String {
+        rows.iter()
+            .map(|row| {
+                format!(
+                    "{:>3} {:<8} {}",
+                    row.graph_id.0, row.values[&1], row.reasons
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 
+    fn plan_for(rows: &[CompactRow], values: &[(i64, f64)], threshold: f64) -> CompactPlan {
+        compact_series(&CompactInput {
+            series: rows,
+            frames: &frames(values),
+            after_gap: &BTreeSet::new(),
+            barriers: &BTreeSet::new(),
+            threshold,
+        })
+    }
+
+    /// The worked example from the redesign doc (III.9), end to end: values at
+    /// frames 01..12 with a threshold of 3. This is the clearest statement of
+    /// what the whole subsystem is for, so it is pinned here as well as in the
+    /// storage tests.
     #[test]
-    fn compact_series_drops_until_drift_crosses_threshold() {
+    fn the_worked_example_from_the_design_doc() {
+        let values = [
+            (1, 10.0),
+            (2, 10.0),
+            (3, 15.0),
+            (4, 15.0),
+            (5, 15.0),
+            (6, 20.0),
+            (7, 20.0),
+            (8, 21.0),
+            (9, 22.0),
+            (10, 23.0),
+            (11, 24.0),
+            (12, 29.0),
+        ];
+        let rows = ingested(&values, 3.0);
+        let plan = plan_for(&rows, &values, 3.0);
+
+        k9::snapshot!(
+            render(&apply(rows, &plan)),
+            "
+  1 10       FIRST
+  2 10       ANCHOR
+  3 15       OVER_THRESHOLD
+  5 15       ANCHOR
+  6 20       OVER_THRESHOLD
+ 11 24       ANCHOR
+ 12 29       OVER_THRESHOLD|LATEST
+"
+        );
+        assert_eq!(
+            plan.updated,
+            vec![],
+            "ingest already wrote these reasons, so compaction only reclaims"
+        );
+    }
+
+    /// Rows that explain nothing at the new threshold are gone after one pass,
+    /// and a second pass has nothing left to do.
+    #[test]
+    fn re_thresholding_collapses_once_and_then_settles() {
         let values = [
             (1, 0.0),
             (2, 4.0),
@@ -170,155 +300,171 @@ mod tests {
             (5, 14.0),
             (6, 20.0),
         ];
-        let rows = series(&values);
-        let frames = frames(&values);
+        let rows = ingested(&values, 3.0);
 
-        let plan = compact_series(&CompactInput {
-            series: &rows,
-            seed: None,
-            frames: &frames,
-            threshold: 10.0,
-        });
-        // Survivors are 1, 4 and 6. Rows 3 and 5 immediately precede 4 and 6,
-        // so they stay as anchors; only 2 explains nothing and is dropped.
-        k9::snapshot!(format_plan(&plan), "dropped [2]  anchored [3, 5]");
-
+        // Nothing steps by 10 or more from one frame to the next, so at that
+        // threshold no diff is to blame for anything and only the two
+        // position-shaped reasons survive.
+        let plan = plan_for(&rows, &values, 10.0);
         let compacted = apply(rows, &plan);
         k9::snapshot!(
-            format_plan(&compact_series(&CompactInput {
-                series: &compacted,
-                seed: None,
-                frames: &frames,
-                threshold: 10.0,
-            })),
-            "dropped []  anchored []"
+            render(&compacted),
+            "
+  1 0        FIRST
+  6 20       LATEST
+"
         );
-    }
-
-    /// An anchor must never take part in the threshold walk. If it did, it
-    /// would become the baseline for the sample it precedes — and since it sits
-    /// within a threshold of that sample by construction, the sample would be
-    /// dropped and the anchor kept. Exactly backwards.
-    #[test]
-    fn an_anchor_never_swallows_the_sample_it_explains() {
-        let values = [(1, 0.0), (2, 95.0), (3, 100.0)];
-        let mut rows = series(&values);
-        rows[1].anchor = true;
-        let frames = frames(&values);
-
-        let plan = compact_series(&CompactInput {
-            series: &rows,
-            seed: None,
-            frames: &frames,
-            threshold: 10.0,
-        });
         assert_eq!(
-            plan,
+            plan_for(&compacted, &values, 10.0),
             CompactPlan::default(),
-            "graph 3 is +100 against its baseline at graph 1 and must survive, \
-             and its anchor at graph 2 must stay to explain the +5 it contributed"
+            "a second pass at the same threshold must be a no-op"
         );
     }
 
-    /// An anchor whose sample no longer survives is just a wasted row.
+    /// Raising the threshold retracts a crossing, and the anchor that existed
+    /// only to explain it goes with it.
     #[test]
-    fn orphaned_anchors_are_reclaimed() {
+    fn raising_the_threshold_retracts_a_crossing_and_its_anchor() {
         let values = [(1, 0.0), (2, 95.0), (3, 100.0)];
-        let mut rows = series(&values);
-        rows[1].anchor = true;
-        let frames = frames(&values);
+        let rows = ingested(&values, 3.0);
+        k9::snapshot!(
+            render(&rows),
+            "
+  1 0        FIRST|ANCHOR
+  2 95       OVER_THRESHOLD|ANCHOR
+  3 100      OVER_THRESHOLD|LATEST
+"
+        );
 
-        // At this threshold graph 3 no longer clears the bar, so nothing needs
-        // graph 2's row any more.
-        let plan = compact_series(&CompactInput {
-            series: &rows,
-            seed: None,
-            frames: &frames,
-            threshold: 1000.0,
-        });
-        k9::snapshot!(format_plan(&plan), "dropped [2, 3]  anchored []");
-    }
-
-    /// A row only anchors a sample when it is that sample's immediate *frame*
-    /// predecessor. The row before it in the series is not the same thing —
-    /// most frames have no row at all.
-    #[test]
-    fn only_the_immediately_preceding_frame_anchors() {
-        let values = [(1, 0.0), (5, 9.0), (9, 20.0)];
-        let rows = series(&values);
-        // Frames 1..9 all exist; the node just has no row at most of them.
-        let frames = (1..=9).map(GraphID).collect::<Vec<_>>();
-
-        let plan = compact_series(&CompactInput {
-            series: &rows,
-            seed: None,
-            frames: &frames,
-            threshold: 10.0,
-        });
-        assert_eq!(
-            format_plan(&plan),
-            "dropped [5]  anchored []",
-            "graph 9's predecessor is frame 8, which has no row — graph 5 is not \
-             an anchor for it and is simply redundant"
+        // The old design could not represent frame 2's row: `anchor` meant
+        // "not a crossing", so flagging it removed a real +95 from baseline
+        // lookups.
+        let plan = plan_for(&rows, &values, 50.0);
+        k9::snapshot!(
+            render(&apply(rows, &plan)),
+            "
+  1 0        FIRST|ANCHOR
+  2 95       OVER_THRESHOLD
+  3 100      LATEST
+"
         );
     }
 
-    /// A windowed compaction must agree with a whole-series one. Without the
-    /// seed the window's first row is kept unconditionally, so `[4, 6]` alone
-    /// would retain graph 4 even though it is redundant against graph 1.
+    /// A barrier holds its rows even with nothing else to justify them, and
+    /// releases them the moment the gap closes.
     #[test]
-    fn seed_makes_a_windowed_pass_match_the_whole_series() {
-        let values = [
-            (1, 0.0),
-            (2, 4.0),
-            (3, 9.0),
-            (4, 10.0),
-            (5, 14.0),
-            (6, 20.0),
+    fn barrier_rows_survive_until_the_gap_closes() {
+        let values = [(1, 10.0), (2, 10.0)];
+        let rows = vec![
+            CompactRow {
+                graph_id: GraphID(1),
+                values: Values::from([(1, 10.0)]),
+                reasons: Reasons::empty(),
+            },
+            CompactRow {
+                graph_id: GraphID(2),
+                values: Values::from([(1, 10.0)]),
+                reasons: Reasons::empty(),
+            },
         ];
-        let window_values = [(4, 10.0), (5, 14.0), (6, 20.0)];
-        let whole = series(&values);
-        let window = series(&window_values);
-        let before_window = BTreeMap::from([(1, 0.0)]);
 
-        let whole_plan = compact_series(&CompactInput {
-            series: &whole,
-            seed: None,
+        let held = compact_series(&CompactInput {
+            series: &rows,
             frames: &frames(&values),
-            threshold: 10.0,
+            after_gap: &BTreeSet::new(),
+            barriers: &BTreeSet::from([GraphID(1), GraphID(2)]),
+            threshold: 3.0,
         });
-        let seeded = compact_series(&CompactInput {
-            series: &window,
-            seed: Some(&before_window),
-            frames: &frames(&window_values),
-            threshold: 10.0,
-        });
-        let unseeded = compact_series(&CompactInput {
-            series: &window,
-            seed: None,
-            frames: &frames(&window_values),
-            threshold: 10.0,
-        });
-
-        let in_window = |list: &[GraphID]| {
-            list.iter()
-                .copied()
-                .filter(|id| id.0 >= 4)
-                .collect::<Vec<_>>()
-        };
         assert_eq!(
-            (seeded.dropped, seeded.anchored),
-            (
-                in_window(&whole_plan.dropped),
-                in_window(&whole_plan.anchored)
-            ),
-            "a seeded window should reach the same verdict the whole-series pass \
-             reaches for every row inside the window"
+            held,
+            CompactPlan::default(),
+            "while the gap is open both rows bound an unknown region"
         );
+
+        let released = plan_for(&rows, &values, 3.0);
+        k9::snapshot!(
+            format!("dropped {:?}", released.dropped),
+            "dropped [GraphID(1), GraphID(2)]"
+        );
+    }
+
+    /// A crossing whose predecessor row is absent cannot be re-judged, so it
+    /// keeps the verdict it was ingested with. That is the node-appeared case,
+    /// where there was no earlier value to anchor against.
+    #[test]
+    fn a_crossing_with_no_predecessor_row_keeps_its_verdict() {
+        let values = [(1, 10.0), (5, 500.0)];
+        let rows = vec![CompactRow {
+            graph_id: GraphID(5),
+            values: Values::from([(1, 500.0)]),
+            reasons: Reasons::OVER_THRESHOLD,
+        }];
+
         assert_eq!(
-            format_plan(&unseeded),
-            "dropped []  anchored [5]",
-            "without a seed the window's first row survives even though it is redundant"
+            plan_for(&rows, &values, 1_000_000.0),
+            CompactPlan::default(),
+            "with nothing to measure against, dropping the row would be a \
+             guess — and an irreversible one"
+        );
+    }
+
+    /// Compaction must not reach across a gap.
+    ///
+    /// `frames` lists the frames that *carry data*, so the two sides of a hole
+    /// sit next to each other in it while a run of unbuilt frames separates
+    /// them in the timeline. Measuring across that would credit one diff with a
+    /// whole unknown region — and then anchor the far side to make the lie
+    /// legible.
+    #[test]
+    fn a_gap_is_never_measured_across() {
+        let values = [(1, 10.0), (2, 10.0), (5, 900.0), (6, 900.0)];
+        // Frames 3 and 4 carry no data, so 5 sits after a gap and both 2 and 5
+        // are barriers holding their rows. 1 and 6 carry the position reasons
+        // any real series has at its ends.
+        let reasons = [
+            Reasons::FIRST,
+            Reasons::empty(),
+            Reasons::empty(),
+            Reasons::LATEST,
+        ];
+        let rows = values
+            .iter()
+            .zip(reasons)
+            .map(|((graph_id, value), reasons)| CompactRow {
+                graph_id: GraphID(*graph_id),
+                values: Values::from([(1, *value)]),
+                reasons,
+            })
+            .collect::<Vec<_>>();
+        let input = CompactInput {
+            series: &rows,
+            frames: &frames(&values),
+            after_gap: &BTreeSet::from([GraphID(5)]),
+            barriers: &BTreeSet::from([GraphID(2), GraphID(5)]),
+            threshold: 50.0,
+        };
+
+        assert_eq!(
+            compact_series(&input),
+            CompactPlan::default(),
+            "the +890 across the hole belongs to no diff, so neither a \
+             crossing at 5 nor an anchor at 2 may be invented for it"
+        );
+
+        // Without the gap the very same rows are a crossing and its anchor.
+        let plan = compact_series(&CompactInput {
+            after_gap: &BTreeSet::new(),
+            barriers: &BTreeSet::new(),
+            ..input
+        });
+        k9::snapshot!(
+            render(&apply(rows, &plan)),
+            "
+  1 10       FIRST
+  2 10       ANCHOR
+  5 900      OVER_THRESHOLD
+  6 900      LATEST
+"
         );
     }
 }

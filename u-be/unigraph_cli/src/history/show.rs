@@ -4,33 +4,44 @@ use std::collections::BTreeSet;
 
 use clap::Parser;
 use unigraph_db::HistorySeriesRow;
+use unigraph_db::graph_history::Reasons;
 use unigraph_storage_core::TimelineID;
 
 use crate::UnigraphCLIContext;
 use crate::history::compact::parse_bounds;
 
-/// Print one node's kept history samples, with metric names resolved.
+/// Print one node's recorded history, with metric names resolved.
 ///
-/// # Reading the delta column
+/// # Reading the output
 ///
-/// A sample's metrics are absolute, so the gap between two printed rows is the
-/// drift accumulated over every frame between them — which for a compacted
-/// series can be hundreds of diffs, not the work of the graph on the row.
+/// A row's metrics are absolute. The gap between two printed rows is therefore
+/// **not** the work of the diff on the second row unless the two are
+/// frame-adjacent — and after compaction they usually are not.
 ///
-/// `Δ vs prev frame` is the honest attribution: the change against the frame
-/// immediately before, which is printed exactly when the preceding row is that
-/// frame — an `(anchor)` row, kept by ingest for this purpose. A `-` means the
-/// preceding frame has no row, so this graph's own contribution is unknown.
+/// `Δ vs prev frame` is the honest attribution: it is printed exactly when the
+/// row above is the immediately preceding built frame, so the difference is one
+/// diff's contribution and nothing else. Where that is not the case, the run of
+/// frames in between is called out on its own line rather than quietly
+/// differenced, because the two reasons for it are very different and neither
+/// supports blaming one diff:
+///
+/// - the frames in between moved the node by less than the threshold each time,
+///   so nothing was recorded — real information, just not attributable;
+/// - or they carry no data at all (unbuilt or failed), in which case the rows
+///   on either side are `[gap-edge]` and the region is genuinely unknown.
+///
+/// # Reason tags
+///
+/// ```text
+/// [CROSSING]   moved by at least the threshold against the frame before it
+/// [anchor]     kept so the crossing after it reads as one diff's work
+/// [first]      the node's first recorded sample
+/// [latest]     the newest built frame — the node's current value
+/// [gap-edge]   kept only to bound a region with no data
+/// ```
 ///
 /// ```sh
 /// unigraph history show --timeline-id my_timeline --node-name my_node
-/// ```
-///
-/// ```text
-/// graph_id     timestamp                metrics      Δ vs prev frame
-/// 1            2026-08-01T00:00:00Z     size=1       -
-/// 999          2026-08-05T09:00:00Z     size=95      (anchor)
-/// 1000         2026-08-05T10:00:00Z     size=100     size +5
 /// ```
 #[derive(Parser, Debug)]
 pub struct HistoryShow {
@@ -51,6 +62,9 @@ pub struct HistoryShow {
     end: Option<String>,
 }
 
+/// Width of the rule the unknown-region banner is drawn with.
+const BANNER_WIDTH: usize = 108;
+
 impl HistoryShow {
     pub async fn run(&self, ctx: &UnigraphCLIContext, task: &ll::Task) -> anyhow::Result<()> {
         let rows = ctx
@@ -69,21 +83,72 @@ impl HistoryShow {
 }
 
 fn format_series(rows: &[HistorySeriesRow]) -> String {
-    let mut lines = vec![format!(
-        "{:<12} {:<24} {:<40} {}",
-        "graph_id", "timestamp", "metrics", "Δ vs prev frame"
-    )];
-    lines.push("-".repeat(100));
+    let mut lines = vec![
+        format!(
+            "{:<12} {:<24} {:<12} {:<40} {}",
+            "graph_id", "timestamp", "reasons", "metrics", "Δ vs prev frame"
+        ),
+        "-".repeat(BANNER_WIDTH),
+    ];
+
     for (index, row) in rows.iter().enumerate() {
+        let previous = index.checked_sub(1).map(|previous| &rows[previous]);
+        if let Some(previous) = previous
+            && !row.attributable
+        {
+            lines.push(unknown_region(previous, row));
+        }
         lines.push(format!(
-            "{:<12} {:<24} {:<40} {}",
+            "{:<12} {:<24} {:<12} {:<40} {}",
             row.graph_id.0,
             row.timestamp.to_comparable_rfc3339_str(),
+            format_reasons(row.reasons),
             format_metrics(row),
-            format_delta(row, index.checked_sub(1).map(|prev| &rows[prev])),
+            format_delta(row, previous),
         ));
     }
     lines.join("\n")
+}
+
+/// The banner drawn where two adjacent rows are not adjacent frames.
+///
+/// Loud on purpose. Reading straight across an unrecorded stretch is the single
+/// easiest way to misattribute a change to the wrong diff, and the whole point
+/// of this subsystem is to not do that.
+fn unknown_region(previous: &HistorySeriesRow, row: &HistorySeriesRow) -> String {
+    let frames = row.graph_id.0 - previous.graph_id.0 - 1;
+    let cause = match previous.reasons.is_empty() || row.reasons.is_empty() {
+        true => "no data",
+        false => "nothing recorded",
+    };
+    let label = format!(
+        " unknown region: {cause} for {frames} frame(s) between {} and {} ",
+        previous.graph_id.0, row.graph_id.0
+    );
+    let rule = BANNER_WIDTH.saturating_sub(label.chars().count());
+    format!(
+        "{}{label}{}",
+        "─".repeat(rule / 2),
+        "─".repeat(rule - rule / 2)
+    )
+}
+
+/// The row's reasons, shortest-first so the eye lands on the real data.
+fn format_reasons(reasons: Reasons) -> String {
+    if reasons.is_empty() {
+        return "[gap-edge]".to_owned();
+    }
+    let tags = [
+        (Reasons::OVER_THRESHOLD, "[CROSSING]"),
+        (Reasons::ANCHOR, "[anchor]"),
+        (Reasons::FIRST, "[first]"),
+        (Reasons::LATEST, "[latest]"),
+    ];
+    tags.iter()
+        .filter(|(flag, _)| reasons.contains(*flag))
+        .map(|(_, tag)| *tag)
+        .collect::<Vec<_>>()
+        .join("")
 }
 
 fn format_metrics(row: &HistorySeriesRow) -> String {
@@ -94,17 +159,9 @@ fn format_metrics(row: &HistorySeriesRow) -> String {
         .join(", ")
 }
 
-/// What this row's own graph changed, where that is knowable.
-///
-/// Only an anchor is guaranteed to be the row's immediate frame predecessor —
-/// that is what an anchor is. Any other preceding row may be arbitrarily far
-/// back, and differencing against it would attribute all the intervening drift
-/// to this one graph, which is the whole thing this column exists to avoid.
+/// What this row's own diff changed, where that is knowable.
 fn format_delta(row: &HistorySeriesRow, previous: Option<&HistorySeriesRow>) -> String {
-    if row.anchor {
-        return "(anchor)".to_owned();
-    }
-    let Some(previous) = previous.filter(|previous| previous.anchor) else {
+    let Some(previous) = previous.filter(|_| row.attributable) else {
         return "-".to_owned();
     };
 

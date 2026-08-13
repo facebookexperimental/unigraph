@@ -16,11 +16,15 @@ use unigraph_core::config_key::GraphQueryConfigKey;
 use unigraph_core::config_key::TraversalConfigKey;
 
 use crate::frame::FrameRow;
+use crate::history::ExclusiveGraphIDRange;
+use crate::history::FrameFlags;
 use crate::history::HistoryEntryRow;
 use crate::history::HistoryNodeSample;
 use crate::history::HistoryRange;
 use crate::history::HistorySampleRow;
 use crate::history::HistoryStatusRow;
+use crate::history::IngestState;
+use crate::history::Reasons;
 use crate::types::ExternalID;
 use crate::types::ExternalIDNamespace;
 use crate::types::FrameQuery;
@@ -307,6 +311,10 @@ pub trait UnigraphGraphConnection: Send {
     ) -> Result<BTreeMap<u32, String>>;
 
     /// Insert history entries with `INSERT OR REPLACE` semantics.
+    ///
+    /// `reasons` is overwritten, not OR-ed: re-ingesting a frame in its own
+    /// right supersedes whatever a neighbour minted for it. Callers that mean
+    /// to *add* a reason to an existing row use [`Self::set_history_reasons_at`].
     async fn insert_history_entries(
         &mut self,
         timeline_id: &TimelineID,
@@ -314,22 +322,7 @@ pub trait UnigraphGraphConnection: Send {
         task: &ll::Task,
     ) -> Result<()>;
 
-    /// For each requested node, the most recent *baseline* value blob strictly
-    /// before `before_graph_id`. Nodes with no earlier entry are omitted.
-    ///
-    /// Deferred and anchor rows are both skipped. Neither cleared the
-    /// threshold, so measuring a later sample against one would hide the drift
-    /// accumulated since the last surviving sample — and omission is
-    /// permanent. Implementations must filter on both flags.
-    async fn get_last_history_entries_before(
-        &mut self,
-        timeline_id: &TimelineID,
-        before_graph_id: GraphID,
-        node_names: &[String],
-        task: &ll::Task,
-    ) -> Result<Vec<(String, Vec<u8>)>>;
-
-    /// One node's kept series within `range`, ordered by `graph_id` ascending.
+    /// One node's stored series within `range`, ordered by `graph_id` ascending.
     async fn get_history_series(
         &mut self,
         timeline_id: &TimelineID,
@@ -354,6 +347,19 @@ pub trait UnigraphGraphConnection: Send {
         task: &ll::Task,
     ) -> Result<Vec<HistoryStatusRow>>;
 
+    /// Every ingest checkpoint within `bounds`, ascending by `graph_id`.
+    ///
+    /// Both `ingest` and `compact` need the whole checkpoint sequence rather
+    /// than a lookup by id: the work list is "everything not yet `Ingested`,
+    /// with no time bound", and gap flags are a function of the sequence around
+    /// each frame. One scan answers both.
+    async fn list_history_statuses(
+        &mut self,
+        timeline_id: &TimelineID,
+        bounds: &GraphIDBounds,
+        task: &ll::Task,
+    ) -> Result<Vec<HistoryStatusRow>>;
+
     /// Batch-write ingest checkpoints with `INSERT OR REPLACE` semantics.
     async fn upsert_history_status(
         &mut self,
@@ -362,41 +368,37 @@ pub trait UnigraphGraphConnection: Send {
         task: &ll::Task,
     ) -> Result<()>;
 
-    /// Graph-ID span of the checkpoints still flagged `omission_deferred`, or
-    /// `None` when there are none. This is `history compact`'s work list — the
-    /// ranges ingested across a gap that still need their threshold re-applied.
-    async fn get_history_deferred_bounds(
+    /// Overwrite `frame_flags` for the given frames, leaving every other
+    /// checkpoint column alone. Returns the row count.
+    ///
+    /// Separate from [`Self::upsert_history_status`] because gap structure
+    /// changes for reasons that have nothing to do with ingest progress — a
+    /// placeholder appearing past the head of the timeline restates its
+    /// neighbour's flags without touching what history has done with it.
+    async fn set_history_frame_flags(
         &mut self,
         timeline_id: &TimelineID,
-        task: &ll::Task,
-    ) -> Result<Option<GraphIDBounds>>;
-
-    /// Clear the `omission_deferred` flag within `bounds`. Returns the row count.
-    async fn clear_history_omission_deferred(
-        &mut self,
-        timeline_id: &TimelineID,
-        bounds: &GraphIDBounds,
+        rows: &[(GraphID, FrameFlags)],
         task: &ll::Task,
     ) -> Result<u64>;
 
-    /// Graph IDs still flagged `omission_deferred` within `bounds`, ascending.
+    /// Move the given frames to `ingest_state`, leaving every other checkpoint
+    /// column alone. Returns the row count.
     ///
-    /// This is the per-frame work list. Ascending order is required: deciding
-    /// a frame's rows can delete them, which moves the baseline the next
-    /// frame's rows are measured against.
-    async fn list_history_deferred_graph_ids(
+    /// This is how a frame is handed *back* to ingest. A frame that has stopped
+    /// being the far edge of a gap holds rows that were never judged, and
+    /// judging them needs the predecessor's values — that is, a graph. Marking
+    /// it `Pending` puts it back on the one work list instead of inventing a
+    /// second.
+    async fn set_history_ingest_states(
         &mut self,
         timeline_id: &TimelineID,
-        bounds: &GraphIDBounds,
+        graph_ids: &[GraphID],
+        ingest_state: IngestState,
         task: &ll::Task,
-    ) -> Result<Vec<GraphID>>;
+    ) -> Result<u64>;
 
     /// Every node's row recorded at one graph ID.
-    ///
-    /// A flagged frame took *all* of its verdicts against an untrustworthy
-    /// baseline — it could keep a row the settled chain would drop just as
-    /// easily as the reverse — so compaction reconsiders the whole frame, not
-    /// only the rows it had to defer.
     async fn get_history_entries_at(
         &mut self,
         timeline_id: &TimelineID,
@@ -413,31 +415,61 @@ pub trait UnigraphGraphConnection: Send {
         task: &ll::Task,
     ) -> Result<u64>;
 
-    /// Flag the given nodes' rows at one graph ID as anchors. Returns the row
-    /// count.
+    /// OR in `set` and mask out `clear` on the given nodes' rows at one graph
+    /// ID. Returns the row count.
     ///
-    /// Compaction's alternative to deleting a row: the sample is redundant on
-    /// its own, but the frame after it kept a row, so it stays to make that
-    /// sample's frame-over-frame delta readable. Flagging also takes it out of
-    /// baseline lookups, which is what keeps it from swallowing the sample it
-    /// explains on the next pass.
-    async fn set_history_entries_anchor_at(
+    /// Read-modify-write in SQL rather than in Rust, because the common caller
+    /// is ingest adding `ANCHOR` to rows it did not write and must not clobber:
+    /// the row it is flagging may be a threshold crossing in its own right, and
+    /// under this design those two coexist.
+    async fn set_history_reasons_at(
         &mut self,
         timeline_id: &TimelineID,
         graph_id: GraphID,
         node_names: &[String],
+        set: Reasons,
+        clear: Reasons,
         task: &ll::Task,
     ) -> Result<u64>;
 
-    /// Clear the per-entry `deferred` flag within `bounds`. Returns the row count.
+    /// Mask out `clear` on **every** row at one graph ID. Returns the row count.
     ///
-    /// Call only on a range that has just been compacted: every row still
-    /// present there survived the threshold, so it is a baseline row now and
-    /// must become visible to `get_last_history_entries_before`.
-    async fn clear_history_entries_deferred(
+    /// The node-list-free variant, for retiring a whole-frame reason such as
+    /// `LATEST` when a newer frame takes over. Enumerating the node names would
+    /// mean shipping the entire graph's node set to say "all of them".
+    async fn clear_history_reasons_at(
         &mut self,
         timeline_id: &TimelineID,
-        bounds: &GraphIDBounds,
+        graph_id: GraphID,
+        clear: Reasons,
+        task: &ll::Task,
+    ) -> Result<u64>;
+
+    /// Overwrite one node's `reasons` at the given graph IDs. Returns the row
+    /// count.
+    ///
+    /// Compaction's write: it re-derives a whole series at once and each row
+    /// lands on its own answer, so this sets exact values rather than
+    /// OR-ing bits.
+    async fn set_history_entry_reasons(
+        &mut self,
+        timeline_id: &TimelineID,
+        node_name: &str,
+        rows: &[(GraphID, Reasons)],
+        task: &ll::Task,
+    ) -> Result<u64>;
+
+    /// Delete every zero-reason row strictly between the bounds, for all nodes.
+    /// Returns the row count.
+    ///
+    /// The collapse half of compaction. Bounds are exclusive because they are
+    /// barrier frames, whose rows are held by their frame flags — so this needs
+    /// no join, no node list, and no per-node round trip, just one range
+    /// statement per segment however many nodes the timeline has.
+    async fn delete_collapsed_history_entries(
+        &mut self,
+        timeline_id: &TimelineID,
+        segment: &ExclusiveGraphIDRange,
         task: &ll::Task,
     ) -> Result<u64>;
 

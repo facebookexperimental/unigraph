@@ -9,9 +9,11 @@ use anyhow::Context;
 use anyhow::Result;
 use async_trait::async_trait;
 use rusqlite::Connection;
+use unigraph_storage_core::ExclusiveGraphIDRange;
 use unigraph_storage_core::ExternalID;
 use unigraph_storage_core::ExternalIDNamespace;
 use unigraph_storage_core::FrameData;
+use unigraph_storage_core::FrameFlags;
 use unigraph_storage_core::FrameQuery;
 use unigraph_storage_core::FrameRow;
 use unigraph_storage_core::FrameType;
@@ -24,7 +26,9 @@ use unigraph_storage_core::HistoryNodeSample;
 use unigraph_storage_core::HistoryRange;
 use unigraph_storage_core::HistorySampleRow;
 use unigraph_storage_core::HistoryStatusRow;
+use unigraph_storage_core::IngestState;
 use unigraph_storage_core::Order;
+use unigraph_storage_core::Reasons;
 use unigraph_storage_core::TimelineConfig;
 use unigraph_storage_core::TimelineID;
 use unigraph_storage_core::config_key::ConfigKeyLike;
@@ -835,16 +839,6 @@ impl UnigraphGraphConnection for SqliteConnection {
         history::insert_entries(&self.lock(), timeline_id, rows)
     }
 
-    async fn get_last_history_entries_before(
-        &mut self,
-        timeline_id: &TimelineID,
-        before_graph_id: GraphID,
-        node_names: &[String],
-        _task: &ll::Task,
-    ) -> Result<Vec<(String, Vec<u8>)>> {
-        history::last_entries_before(&self.lock(), timeline_id, before_graph_id, node_names)
-    }
-
     async fn get_history_series(
         &mut self,
         timeline_id: &TimelineID,
@@ -873,6 +867,15 @@ impl UnigraphGraphConnection for SqliteConnection {
         history::get_status(&self.lock(), timeline_id, graph_ids)
     }
 
+    async fn list_history_statuses(
+        &mut self,
+        timeline_id: &TimelineID,
+        bounds: &GraphIDBounds,
+        _task: &ll::Task,
+    ) -> Result<Vec<HistoryStatusRow>> {
+        history::list_statuses(&self.lock(), timeline_id, bounds)
+    }
+
     async fn upsert_history_status(
         &mut self,
         timeline_id: &TimelineID,
@@ -882,31 +885,23 @@ impl UnigraphGraphConnection for SqliteConnection {
         history::upsert_status(&self.lock(), timeline_id, rows)
     }
 
-    async fn get_history_deferred_bounds(
+    async fn set_history_frame_flags(
         &mut self,
         timeline_id: &TimelineID,
-        _task: &ll::Task,
-    ) -> Result<Option<GraphIDBounds>> {
-        Ok(history::deferred_bounds(&self.lock(), timeline_id)?
-            .map(|(min, max)| (Some(min), Some(max))))
-    }
-
-    async fn clear_history_omission_deferred(
-        &mut self,
-        timeline_id: &TimelineID,
-        bounds: &GraphIDBounds,
+        rows: &[(GraphID, FrameFlags)],
         _task: &ll::Task,
     ) -> Result<u64> {
-        history::clear_omission_deferred(&self.lock(), timeline_id, bounds)
+        history::set_frame_flags(&self.lock(), timeline_id, rows)
     }
 
-    async fn list_history_deferred_graph_ids(
+    async fn set_history_ingest_states(
         &mut self,
         timeline_id: &TimelineID,
-        bounds: &GraphIDBounds,
+        graph_ids: &[GraphID],
+        ingest_state: IngestState,
         _task: &ll::Task,
-    ) -> Result<Vec<GraphID>> {
-        history::deferred_graph_ids(&self.lock(), timeline_id, bounds)
+    ) -> Result<u64> {
+        history::set_ingest_states(&self.lock(), timeline_id, graph_ids, ingest_state)
     }
 
     async fn get_history_entries_at(
@@ -928,23 +923,45 @@ impl UnigraphGraphConnection for SqliteConnection {
         history::delete_entries_at(&self.lock(), timeline_id, graph_id, node_names)
     }
 
-    async fn set_history_entries_anchor_at(
+    async fn set_history_reasons_at(
         &mut self,
         timeline_id: &TimelineID,
         graph_id: GraphID,
         node_names: &[String],
+        set: Reasons,
+        clear: Reasons,
         _task: &ll::Task,
     ) -> Result<u64> {
-        history::set_entries_anchor_at(&self.lock(), timeline_id, graph_id, node_names)
+        history::set_reasons_at(&self.lock(), timeline_id, graph_id, node_names, set, clear)
     }
 
-    async fn clear_history_entries_deferred(
+    async fn clear_history_reasons_at(
         &mut self,
         timeline_id: &TimelineID,
-        bounds: &GraphIDBounds,
+        graph_id: GraphID,
+        clear: Reasons,
         _task: &ll::Task,
     ) -> Result<u64> {
-        history::clear_entries_deferred(&self.lock(), timeline_id, bounds)
+        history::clear_reasons_at(&self.lock(), timeline_id, graph_id, clear)
+    }
+
+    async fn set_history_entry_reasons(
+        &mut self,
+        timeline_id: &TimelineID,
+        node_name: &str,
+        rows: &[(GraphID, Reasons)],
+        _task: &ll::Task,
+    ) -> Result<u64> {
+        history::set_entry_reasons(&self.lock(), timeline_id, node_name, rows)
+    }
+
+    async fn delete_collapsed_history_entries(
+        &mut self,
+        timeline_id: &TimelineID,
+        segment: &ExclusiveGraphIDRange,
+        _task: &ll::Task,
+    ) -> Result<u64> {
+        history::delete_collapsed_entries(&self.lock(), timeline_id, segment)
     }
 
     async fn get_history_error_blob_keys(
