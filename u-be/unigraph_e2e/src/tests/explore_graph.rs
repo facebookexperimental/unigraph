@@ -66,7 +66,7 @@ Entry points
 
 node_name | lines | lines~transitive | node-count~transitive | parents-count | size#eager | size~transitive |  tier
 ==========+=======+==================+=======================+===============+============+=================+======
-~root~    |     0 |            5,690 |                    14 |             0 |    2.18 kB |         2.39 kB | eager
+~root~    |     0 |            5,690 |                    14 |             0 |    2.17 kB |         2.38 kB | eager
 
 "
     );
@@ -90,7 +90,7 @@ Edges of: ~root~
 
 node_name | size~transitive ▼
 ==========+==================
-~root~    |           2.39 kB
+~root~    |           2.38 kB
 ----------+------------------
 app       |           1.99 kB
 root      |           0.45 kB
@@ -217,9 +217,9 @@ app            | 1,200 |                   12 |                    12 |    1.78 
 core           |   600 |                    4 |                     5 |    0.78 kB |   0.87 kB |        0.82 kB |           0.87 kB
 ui             |   800 |                    6 |                     7 |    0.55 kB |   0.67 kB |        0.62 kB |           0.67 kB
 auth           |   420 |                    1 |                     3 |    0.48 kB |   0.48 kB |        0.18 kB |           0.48 kB
-dialogs        |   350 |                    1 |                     5 |    0.26 kB |   0.39 kB |        0.12 kB |           0.39 kB
+dialogs        |   350 |                    1 |                     5 |    0.27 kB |   0.39 kB |        0.12 kB |           0.39 kB
 db             |   500 |                    1 |                     2 |    0.30 kB |   0.30 kB |        0.25 kB |           0.30 kB
-components     |   400 |                    3 |                     4 |    0.26 kB |   0.26 kB |        0.22 kB |           0.26 kB
+components     |   400 |                    3 |                     4 |    0.27 kB |   0.27 kB |        0.22 kB |           0.27 kB
 analytics      |   250 |                    1 |                     2 |    0.05 kB |   0.14 kB |        0.09 kB |           0.14 kB
 styles         |   200 |                    1 |                     1 |    0.08 kB |   0.08 kB |        0.08 kB |           0.08 kB
 utils          |   100 |                    1 |                     1 |    0.05 kB |   0.05 kB |        0.05 kB |           0.05 kB
@@ -293,7 +293,7 @@ node_name  | size~transitive | tag
 ===========+=================+=====
 ui         |         0.67 kB |
 -----------+-----------------+-----
-components |         0.26 kB |
+components |         0.27 kB |
 styles     |         0.08 kB |
 dialogs    |         0.39 kB | lazy
 
@@ -326,7 +326,7 @@ Edges of: components
 
 node_name      | size~transitive | dynamic
 ===============+=================+========================
-components     |         0.26 kB |
+components     |         0.27 kB |
 ---------------+-----------------+------------------------
 utils          |         0.05 kB |
 button_android |         0.04 kB | platform:button/android
@@ -367,7 +367,7 @@ utils      |         0.05 kB
 analytics  |         0.14 kB
 app        |         1.99 kB
 auth       |         0.48 kB
-components |         0.26 kB
+components |         0.27 kB
 db         |         0.30 kB
 
 "
@@ -542,9 +542,9 @@ node_name  | size#eager | size#lazy | size~transitive | tag
 ===========+============+===========+=================+=====
 ui         |    0.55 kB |   0.67 kB |         0.67 kB |
 -----------+------------+-----------+-----------------+-----
-components |    0.26 kB |   0.26 kB |         0.26 kB |
+components |    0.27 kB |   0.27 kB |         0.27 kB |
 styles     |    0.08 kB |   0.08 kB |         0.08 kB |
-dialogs    |    0.26 kB |   0.39 kB |         0.39 kB | lazy
+dialogs    |    0.27 kB |   0.39 kB |         0.39 kB | lazy
 
 "
     );
@@ -585,7 +585,7 @@ Edges of: components
 
 node_name      | lines | node-count~dominated | node-count~transitive | size#eager | size#lazy | size~dominated | size~transitive ▼ | dynamic
 ===============+=======+======================+=======================+============+===========+================+===================+========================
-components     |   400 |                    3 |                     4 |    0.26 kB |   0.26 kB |        0.22 kB |           0.26 kB |
+components     |   400 |                    3 |                     4 |    0.27 kB |   0.27 kB |        0.22 kB |           0.27 kB |
 ---------------+-------+----------------------+-----------------------+------------+-----------+----------------+-------------------+------------------------
 utils          |   100 |                    1 |                     1 |    0.05 kB |   0.05 kB |        0.05 kB |           0.05 kB |
 button_android |    90 |                    1 |                     1 |    0.04 kB |   0.04 kB |        0.04 kB |           0.04 kB | platform:button/android
@@ -630,7 +630,7 @@ ui             |    nested |           0.67 kB
 auth           |    nested |           0.48 kB
 dialogs        |    nested |           0.39 kB
 db             |  bootload |           0.30 kB
-components     |    nested |           0.26 kB
+components     |    nested |           0.27 kB
 analytics      |    nested |           0.14 kB
 styles         |    nested |           0.08 kB
 utils          |    nested |           0.05 kB

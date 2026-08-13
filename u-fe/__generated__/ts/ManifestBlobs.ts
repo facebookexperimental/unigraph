@@ -1,7 +1,7 @@
 /**
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
- * @generated SignedSource<<34fd37338a27318bca197cf62baa3b89>>
+ * @generated SignedSource<<92a8325986493ac23a53903908dc6169>>
  */
 
 
@@ -25,7 +25,7 @@ export interface ManifestBlobs {
   tagged: BlobID[];
   /** Dynamic edges with runtime-defined branch labels. */
   dynamic: BlobID[];
-  /** Per-metric float vectors (one `f32` per node for each named metric). */
+  /** Per-metric float vectors (one `f64` per node for each named metric). */
   metrics: BlobID[];
   /** Per-label-name index (label-name → node → set of values). */
   labels: BlobID[];

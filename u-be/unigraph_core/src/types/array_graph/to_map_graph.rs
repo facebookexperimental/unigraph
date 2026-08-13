@@ -261,7 +261,7 @@ fn collect_properties(graph: &ArrayGraph, node_idx: NodeIDX) -> BTreeMap<String,
         .collect()
 }
 
-fn collect_metrics(graph: &ArrayGraph, node_idx: NodeIDX) -> BTreeMap<String, f32> {
+fn collect_metrics(graph: &ArrayGraph, node_idx: NodeIDX) -> BTreeMap<String, f64> {
     graph
         .data
         .node_metadata

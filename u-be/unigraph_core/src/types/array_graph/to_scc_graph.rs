@@ -171,10 +171,10 @@ impl<'a> SccContext<'a> {
 
     /// Element-wise sum of every metric across the SCC's members, plus the
     /// synthetic `scc_node_count` metric.
-    fn summed_metrics(&self, scc: &[NodeIDX]) -> BTreeMap<String, f32> {
+    fn summed_metrics(&self, scc: &[NodeIDX]) -> BTreeMap<String, f64> {
         let mut out = BTreeMap::new();
         for (name, values) in &self.graph.data.node_metadata.metrics {
-            let mut sum = 0.0f32;
+            let mut sum = 0.0f64;
             for &node_idx in scc {
                 sum += values[node_idx];
             }
@@ -182,7 +182,7 @@ impl<'a> SccContext<'a> {
                 out.insert(name.clone(), sum);
             }
         }
-        out.insert(SCC_NODE_COUNT_METRIC.to_string(), scc.len() as f32);
+        out.insert(SCC_NODE_COUNT_METRIC.to_string(), scc.len() as f64);
         out
     }
 

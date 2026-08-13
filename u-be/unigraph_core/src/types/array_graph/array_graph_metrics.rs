@@ -171,7 +171,7 @@ pub fn get_transitive_tiered_metric_values(
     metric_name: &str,
     dominated: bool,
     should_count: impl ShouldCount,
-) -> Result<BTreeMap<TierName, f32>> {
+) -> Result<BTreeMap<TierName, f64>> {
     let mut result = BTreeMap::new();
 
     if ag.is_node_unreachable(node_idx) || ag.node_tier_idx(node_idx).is_none() {
@@ -257,7 +257,7 @@ pub fn get_transitive_metric_value(
     node_idx: NodeIDX,
     metric_name: &str,
     dominated: bool,
-) -> Result<f32> {
+) -> Result<f64> {
     if ag.is_node_unreachable(node_idx) {
         return Ok(0.0);
     }
@@ -290,7 +290,7 @@ pub fn get_transitive_metric_value(
 /// When `ignore_zero` is set, `0.0` values (the default for missing metrics)
 /// are excluded so they don't drag the range to zero.
 /// Returns `None` when the metric is absent or has no qualifying values.
-pub fn metric_min_max(ag: &ArrayGraph, metric_name: &str, ignore_zero: bool) -> Option<(f32, f32)> {
+pub fn metric_min_max(ag: &ArrayGraph, metric_name: &str, ignore_zero: bool) -> Option<(f64, f64)> {
     let values = ag.data.node_metadata.metrics.get(metric_name)?;
     values
         .iter()
@@ -304,7 +304,7 @@ pub fn metric_min_max(ag: &ArrayGraph, metric_name: &str, ignore_zero: bool) -> 
 pub fn get_metrics_sums_for_nodes(
     ag: &ArrayGraph,
     node_idxs: &[NodeIDX],
-) -> Result<BTreeMap<String, f32>> {
+) -> Result<BTreeMap<String, f64>> {
     let mut result = BTreeMap::new();
 
     for (metric_name, metrics) in &ag.data.node_metadata.metrics {
@@ -332,8 +332,8 @@ pub fn get_metrics_sums_for_nodes(
 pub fn get_metrics_sums_tiered_for_nodes(
     ag: &ArrayGraph,
     node_idxs: &[NodeIDX],
-) -> Result<BTreeMap<MetricName, BTreeMap<TierName, f32>>> {
-    let mut result: BTreeMap<MetricName, BTreeMap<TierName, f32>> = BTreeMap::new();
+) -> Result<BTreeMap<MetricName, BTreeMap<TierName, f64>>> {
+    let mut result: BTreeMap<MetricName, BTreeMap<TierName, f64>> = BTreeMap::new();
 
     let tier_config = ag
         .runtime
@@ -413,9 +413,9 @@ pub fn get_combined_metrics_for_entry_points(
         .node_metadata
         .metrics
         .values()
-        .collect::<Vec<&Vec<f32>>>();
+        .collect::<Vec<&Vec<f64>>>();
 
-    let mut tiered_result_vec: Vec<[f32; 4]> = metric_names
+    let mut tiered_result_vec: Vec<[f64; 4]> = metric_names
         .iter()
         .map(|_name| [0.0; 4])
         .collect::<Vec<_>>();
@@ -503,8 +503,8 @@ pub fn get_combined_metrics_for_entry_points(
 /// "give me total size of all the nodes i just selected"
 #[derive(serde::Serialize, serde::Deserialize, typegen::TypeGen, Clone, Debug)]
 pub struct CombinedMetricsForNodes {
-    pub metrics: BTreeMap<MetricName, f32>,
-    pub tiered_metrics: BTreeMap<MetricName, BTreeMap<TierName, f32>>,
+    pub metrics: BTreeMap<MetricName, f64>,
+    pub tiered_metrics: BTreeMap<MetricName, BTreeMap<TierName, f64>>,
     pub node_count: usize,
 }
 
@@ -624,7 +624,7 @@ include O->F + exclude O->P     15     15      7      9     10     15
     /// Render combined-metrics results (one row per case) as a single ASCII
     /// table so all inputs/outputs are visible in one snapshot.
     fn format_metrics_table(results: &[(&str, CombinedMetricsForNodes)]) -> String {
-        let tier = |r: &CombinedMetricsForNodes, name: &str| -> f32 {
+        let tier = |r: &CombinedMetricsForNodes, name: &str| -> f64 {
             r.tiered_metrics
                 .get("size")
                 .and_then(|t| t.get(name))

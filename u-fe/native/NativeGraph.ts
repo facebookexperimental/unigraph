@@ -178,21 +178,21 @@ export default class NativeGraph {
     this.parentsCountCache = new SingleMetricsCache(
       this.nodeCount,
       (nodeIDXs: NodeIDX[]) =>
-        new Float32Array(
+        new Float64Array(
           get_reverse_edges_len(new Uint32Array(nodeIDXs), this.side),
         ),
     );
     this.transitiveCountCache = new SingleMetricsCache(
       this.nodeCount,
       (nodeIDXs: NodeIDX[]) =>
-        new Float32Array(
+        new Float64Array(
           get_transitive_count(new Uint32Array(nodeIDXs), this.side),
         ),
     );
     this.transitiveCountDominatedCache = new SingleMetricsCache(
       this.nodeCount,
       (nodeIDXs: NodeIDX[]) =>
-        new Float32Array(
+        new Float64Array(
           get_transitive_count_dominated(new Uint32Array(nodeIDXs), this.side),
         ),
     );
@@ -356,7 +356,7 @@ export default class NativeGraph {
     return value as number;
   }
 
-  getNodeMetricBatched(nodeIDXs: NodeIDX[], metricName: string): Float32Array {
+  getNodeMetricBatched(nodeIDXs: NodeIDX[], metricName: string): Float64Array {
     return this.metricCaches.getOrInitForPlain(metricName).getForIDXs(nodeIDXs);
   }
 
@@ -381,15 +381,15 @@ export default class NativeGraph {
     return value;
   }
 
-  getParentsCount(nodeIDX: NodeIDX[]): Float32Array {
+  getParentsCount(nodeIDX: NodeIDX[]): Float64Array {
     return this.parentsCountCache.getForIDXs(nodeIDX);
   }
 
-  getTransitiveCount(nodeIDX: NodeIDX[]): Float32Array {
+  getTransitiveCount(nodeIDX: NodeIDX[]): Float64Array {
     return this.transitiveCountCache.getForIDXs(nodeIDX);
   }
 
-  getTransitiveCountDominated(nodeIDX: NodeIDX[]): Float32Array {
+  getTransitiveCountDominated(nodeIDX: NodeIDX[]): Float64Array {
     return this.transitiveCountDominatedCache.getForIDXs(nodeIDX);
   }
 
@@ -403,7 +403,7 @@ export default class NativeGraph {
   getTransitiveMetricsBatched(
     nodeIDXs: NodeIDX[],
     metricName: string,
-  ): Float32Array {
+  ): Float64Array {
     return this.metricCaches
       .getOrInitForTransitive(metricName)
       .getForIDXs(nodeIDXs);
@@ -412,7 +412,7 @@ export default class NativeGraph {
   getTransitiveDominatedMetricsBatched(
     nodeIDXs: NodeIDX[],
     metricName: string,
-  ): Float32Array {
+  ): Float64Array {
     return this.metricCaches
       .getOrInitForTransitiveDominated(metricName)
       .getForIDXs(nodeIDXs);

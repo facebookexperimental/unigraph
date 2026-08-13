@@ -19,7 +19,7 @@ use crate::timings;
 pub fn build_map_graph(
     cargo_graph: &CargoGraph,
     timings: Option<&BTreeMap<String, timings::UnitTiming>>,
-    rlib_sizes: Option<&BTreeMap<String, f32>>,
+    rlib_sizes: Option<&BTreeMap<String, f64>>,
 ) -> MapGraph {
     let mut nodes = BTreeMap::new();
 

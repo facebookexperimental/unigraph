@@ -163,7 +163,7 @@ pub fn derive_delta(
 fn collect_graph_node_from_csr(
     node_idx: NodeIDX,
     edges: &ArrayGraphSerializableEdges,
-    metrics: &BTreeMap<MetricName, Vec<f32>>,
+    metrics: &BTreeMap<MetricName, Vec<f64>>,
     labels_inverted: &BTreeMap<LabelName, BTreeMap<NodeIDX, BTreeSet<LabelValue>>>,
     properties_inverted: &BTreeMap<PropertyName, BTreeMap<NodeIDX, PropertyValue>>,
     nodes: &ArrayGraphNodes,
@@ -215,7 +215,7 @@ fn collect_graph_node_from_csr(
     };
 
     // Metrics (only include non-zero)
-    let node_metrics: BTreeMap<String, f32> = metrics
+    let node_metrics: BTreeMap<String, f64> = metrics
         .iter()
         .filter_map(|(name, values)| {
             let v = values[node_idx];
@@ -279,8 +279,8 @@ fn diff_graph_node(
     node_idx: NodeIDX,
     base_edges: &crate::ArrayGraphSerializableEdges,
     target_edges: &crate::ArrayGraphSerializableEdges,
-    base_metrics: &BTreeMap<MetricName, Vec<f32>>,
-    target_metrics: &BTreeMap<MetricName, Vec<f32>>,
+    base_metrics: &BTreeMap<MetricName, Vec<f64>>,
+    target_metrics: &BTreeMap<MetricName, Vec<f64>>,
     base_labels: &BTreeMap<LabelName, BTreeMap<NodeIDX, BTreeSet<LabelValue>>>,
     target_labels: &BTreeMap<LabelName, BTreeMap<NodeIDX, BTreeSet<LabelValue>>>,
     base_properties: &BTreeMap<PropertyName, BTreeMap<NodeIDX, PropertyValue>>,
@@ -418,10 +418,10 @@ fn diff_dynamic_edges_csr(
 
 fn diff_metrics(
     node_idx: NodeIDX,
-    base_metrics: &BTreeMap<MetricName, Vec<f32>>,
-    target_metrics: &BTreeMap<MetricName, Vec<f32>>,
-) -> Option<<BTreeMap<String, f32> as Deltable>::Delta> {
-    let base: BTreeMap<String, f32> = base_metrics
+    base_metrics: &BTreeMap<MetricName, Vec<f64>>,
+    target_metrics: &BTreeMap<MetricName, Vec<f64>>,
+) -> Option<<BTreeMap<String, f64> as Deltable>::Delta> {
+    let base: BTreeMap<String, f64> = base_metrics
         .iter()
         .filter_map(|(name, values)| {
             let v = values[node_idx];
@@ -432,7 +432,7 @@ fn diff_metrics(
             }
         })
         .collect();
-    let target: BTreeMap<String, f32> = target_metrics
+    let target: BTreeMap<String, f64> = target_metrics
         .iter()
         .filter_map(|(name, values)| {
             let v = values[node_idx];

@@ -157,7 +157,7 @@ export class TransitiveMetricColumn implements Column {
     return sortableForView(this.ctx, key);
   }
 
-  getValuesFn(): (idxs: NodeIDX[]) => Float32Array {
+  getValuesFn(): (idxs: NodeIDX[]) => Float64Array {
     return (idxs: NodeIDX[]) =>
       this.nativeGraph.getTransitiveMetricsBatched(idxs, this.metricName);
   }
@@ -235,7 +235,7 @@ export class DominatedMetricColumn implements Column {
     return sortableForView(this.ctx, key);
   }
 
-  getValuesFn(): (idxs: NodeIDX[]) => Float32Array {
+  getValuesFn(): (idxs: NodeIDX[]) => Float64Array {
     return (idxs: NodeIDX[]) =>
       this.nativeGraph.getTransitiveDominatedMetricsBatched(
         idxs,
@@ -367,7 +367,7 @@ export class TransitiveTieredMetricColumn implements Column {
         }
       },
       getNumericValues: (idxs: NodeIDX[]) => {
-        return new Float32Array(getValues(idxs));
+        return new Float64Array(getValues(idxs));
       },
       sortable: this.sortable(),
       isHidden: false,
@@ -456,7 +456,7 @@ export class TieredDominatedMetricColumn implements Column {
         }
       },
       getNumericValues: (idxs: NodeIDX[]) => {
-        return new Float32Array(getValues(idxs));
+        return new Float64Array(getValues(idxs));
       },
       sortable: this.sortable(),
       isHidden: false,
@@ -524,9 +524,9 @@ export class TransitiveTieredMetricDeltaColumn implements Column {
     };
   }
 
-  getValuesFnForSorting(): (idxs: NodeIDX[]) => Float32Array {
+  getValuesFnForSorting(): (idxs: NodeIDX[]) => Float64Array {
     return (idxs: NodeIDX[]) =>
-      Float32Array.from(this.getValuesFn()(idxs).map((n) => Math.abs(n)));
+      Float64Array.from(this.getValuesFn()(idxs).map((n) => Math.abs(n)));
   }
 
   definition(): [string, NumericValueColumnDefinition] {
@@ -649,7 +649,7 @@ export class TransitiveTieredMetricRightDeltaColumn implements Column {
         );
       },
       getNumericValues: (idxs: NodeIDX[]) => {
-        return new Float32Array(getValuesR(idxs));
+        return new Float64Array(getValuesR(idxs));
       },
       sortable: this.sortable(),
       isHidden: false,
@@ -768,14 +768,14 @@ export class MetricDeltaViewColumn implements Column {
     return sortableForView(this.ctx, MV.delta(MV.metric(this.metricName)));
   }
 
-  getValuesFn(): (idxs: NodeIDX[]) => Float32Array {
+  getValuesFn(): (idxs: NodeIDX[]) => Float64Array {
     const r = this.twinGraph.r;
     const l = this.twinGraph.leftGraphX();
     return (idxs: NodeIDX[]) => {
       const valuesL = l.getNodeMetricBatched(idxs, this.metricName);
       const valuesR = r.getNodeMetricBatched(idxs, this.metricName);
 
-      const deltas = new Float32Array(idxs.length);
+      const deltas = new Float64Array(idxs.length);
       for (let i = 0; i < idxs.length; i++) {
         deltas[i] = (valuesR[i] ?? 0) - (valuesL[i] ?? 0);
       }
@@ -784,7 +784,7 @@ export class MetricDeltaViewColumn implements Column {
     };
   }
 
-  getValuesFnForSorting(): (idxs: NodeIDX[]) => Float32Array {
+  getValuesFnForSorting(): (idxs: NodeIDX[]) => Float64Array {
     return (idxs: NodeIDX[]) =>
       this.getValuesFn()(idxs).map((n) => Math.abs(n));
   }
@@ -926,14 +926,14 @@ export class TransitiveMetricDeltaColumn implements Column {
     return sortableForView(this.ctx, MV.delta(MV.transitive(this.metricName)));
   }
 
-  getValuesFn(): (idxs: NodeIDX[]) => Float32Array {
+  getValuesFn(): (idxs: NodeIDX[]) => Float64Array {
     const r = this.twinGraph.r;
     const l = this.twinGraph.leftGraphX();
     return (idxs: NodeIDX[]) => {
       const valuesL = l.getTransitiveMetricsBatched(idxs, this.metricName);
       const valuesR = r.getTransitiveMetricsBatched(idxs, this.metricName);
 
-      const deltas = new Float32Array(idxs.length);
+      const deltas = new Float64Array(idxs.length);
       for (let i = 0; i < idxs.length; i++) {
         deltas[i] = (valuesR[i] ?? 0) - (valuesL[i] ?? 0);
       }
@@ -942,7 +942,7 @@ export class TransitiveMetricDeltaColumn implements Column {
     };
   }
 
-  getValuesFnForSorting(): (idxs: NodeIDX[]) => Float32Array {
+  getValuesFnForSorting(): (idxs: NodeIDX[]) => Float64Array {
     return (idxs: NodeIDX[]) =>
       this.getValuesFn()(idxs).map((n) => Math.abs(n));
   }

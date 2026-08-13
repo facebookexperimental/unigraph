@@ -510,7 +510,7 @@ pub enum SizeOutputUnits {
 }
 
 impl MetricFormat {
-    pub fn format_value(&self, value: f32) -> String {
+    pub fn format_value(&self, value: f64) -> String {
         match self {
             MetricFormat::Percent { scaled_percentage } => {
                 let pct = if *scaled_percentage == Some(true) {
@@ -550,7 +550,7 @@ impl MetricFormat {
     }
 }
 
-fn format_size(value: f32, config: &SizeFormatConfig) -> String {
+fn format_size(value: f64, config: &SizeFormatConfig) -> String {
     let bytes = match config.input_units {
         SizeInputUnits::Bytes => value,
     };
@@ -563,7 +563,7 @@ fn format_size(value: f32, config: &SizeFormatConfig) -> String {
                 let i = i.min(8);
                 let units = ["bytes", "kB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
                 let decimals = if i == 0 { 0 } else { 2 };
-                (bytes / 1000f32.powi(i as i32), units[i], decimals)
+                (bytes / 1000f64.powi(i as i32), units[i], decimals)
             }
         }
         SizeOutputUnits::KB => (bytes / 1000.0, "kB", 2),
@@ -580,7 +580,7 @@ fn format_size(value: f32, config: &SizeFormatConfig) -> String {
 }
 
 fn format_number(
-    value: f32,
+    value: f64,
     min_precision: usize,
     max_precision: usize,
     use_delimiter: bool,
@@ -588,7 +588,7 @@ fn format_number(
     let rounded = if max_precision == 0 {
         value.round()
     } else {
-        let factor = 10f32.powi(max_precision as i32);
+        let factor = 10f64.powi(max_precision as i32);
         (value * factor).round() / factor
     };
 

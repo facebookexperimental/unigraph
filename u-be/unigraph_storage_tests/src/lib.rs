@@ -59,17 +59,17 @@ impl TestGraphTimeline {
             directed_offsets.push(directed.len());
         }
 
-        // Metrics: always 3 metrics with random f32 values.
+        // Metrics: always 3 metrics with random f64 values.
         // Using a fixed set of metric names ensures delta round-trips
         // produce identical results (no phantom all-zero metrics).
         let mut metrics = BTreeMap::new();
         for m in 0..3 {
             let metric_name = format!("metric_{}", m);
-            let values: Vec<f32> = (0..node_count)
+            let values: Vec<f64> = (0..node_count)
                 .map(|_| {
                     let bits = rng.next() as u32;
-                    // Generate a finite f32 in a reasonable range
-                    (bits % 10000) as f32 / 100.0
+                    // Generate a finite f64 in a reasonable range
+                    (bits % 10000) as f64 / 100.0
                 })
                 .collect();
             metrics.insert(metric_name, values);

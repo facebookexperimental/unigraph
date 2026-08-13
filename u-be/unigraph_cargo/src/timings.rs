@@ -9,9 +9,9 @@ use anyhow::Result;
 
 /// Build timing info for a single compilation unit.
 pub struct UnitTiming {
-    pub duration: f32,
-    pub rmeta_time: f32,
-    pub codegen_time: f32,
+    pub duration: f64,
+    pub rmeta_time: f64,
+    pub codegen_time: f64,
 }
 
 /// Run `cargo build --timings=json` and parse the resulting timing data.
@@ -59,11 +59,11 @@ fn parse_timing_lines(output: &str) -> Result<BTreeMap<String, UnitTiming>> {
             continue;
         };
 
-        let duration = value["duration"].as_f64().unwrap_or(0.0) as f32;
-        let rmeta_time = value["rmeta_time"].as_f64().unwrap_or(0.0) as f32;
+        let duration = value["duration"].as_f64().unwrap_or(0.0);
+        let rmeta_time = value["rmeta_time"].as_f64().unwrap_or(0.0);
         // codegen_time is not always present; compute from duration - rmeta_time.
         let codegen_time = if value.get("codegen_time").is_some() {
-            value["codegen_time"].as_f64().unwrap_or(0.0) as f32
+            value["codegen_time"].as_f64().unwrap_or(0.0)
         } else {
             (duration - rmeta_time).max(0.0)
         };

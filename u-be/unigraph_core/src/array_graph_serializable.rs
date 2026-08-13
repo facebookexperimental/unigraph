@@ -229,9 +229,9 @@ pub struct DynamicEdgeView<'a> {
 /// Serializable per-node metadata: numeric metrics, categorical labels, and string properties.
 #[derive(serde::Serialize, serde::Deserialize, typegen::TypeGen, Clone)]
 pub struct ArrayGraphSerializableNodeMetadata {
-    /// Named metrics — each entry maps a metric name to a `Vec<f32>` with one
+    /// Named metrics — each entry maps a metric name to a `Vec<f64>` with one
     /// value per node (indexed by [`NodeIDX`]).
-    pub metrics: BTreeMap<MetricName, Vec<f32>>,
+    pub metrics: BTreeMap<MetricName, Vec<f64>>,
     /// Per-label-name index — maps a label name to the set of nodes that have it,
     /// and for each node the set of values for that label.
     pub labels: BTreeMap<LabelName, BTreeMap<NodeIDX, BTreeSet<LabelValue>>>,

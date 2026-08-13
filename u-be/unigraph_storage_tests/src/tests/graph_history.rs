@@ -63,7 +63,7 @@ async fn store_metric_graph(
     timeline_id: &TimelineID,
     graph_id: i64,
     timestamp: Timestamp,
-    metrics: &[(&str, f32)],
+    metrics: &[(&str, f64)],
     task: &ll::Task,
 ) -> Result<()> {
     db.graph
@@ -85,7 +85,7 @@ async fn store_multi_node_graph(
     timeline_id: &TimelineID,
     graph_id: i64,
     timestamp: Timestamp,
-    nodes: &[(&str, f32)],
+    nodes: &[(&str, f64)],
     task: &ll::Task,
 ) -> Result<()> {
     db.graph
@@ -103,7 +103,7 @@ async fn store_multi_node_graph(
 }
 
 /// A graph with one `size` metric per named node.
-fn multi_node_graph(nodes: &[(&str, f32)]) -> ArrayGraphSerializable {
+fn multi_node_graph(nodes: &[(&str, f64)]) -> ArrayGraphSerializable {
     let mut names = String::new();
     let mut offsets = vec![0usize];
     for (name, _) in nodes {
@@ -132,7 +132,7 @@ fn multi_node_graph(nodes: &[(&str, f32)]) -> ArrayGraphSerializable {
     }
 }
 
-fn one_node_graph(metrics: &[(&str, f32)]) -> ArrayGraphSerializable {
+fn one_node_graph(metrics: &[(&str, f64)]) -> ArrayGraphSerializable {
     let metric_values = metrics
         .iter()
         .map(|(name, value)| (name.to_string(), vec![*value]))
@@ -1010,15 +1010,15 @@ async fn graph_history_randomized_ingest_matches_compaction() -> Result<()> {
 
 /// Deterministic pseudorandom walk — steps are usually below `threshold` but
 /// occasionally jump past it, so both keep and drop paths get exercised.
-fn random_walk(count: usize) -> Vec<f32> {
+fn random_walk(count: usize) -> Vec<f64> {
     let mut state: u64 = 0x2545_F491_4F6C_DD1D;
-    let mut value = 100.0f32;
+    let mut value = 100.0f64;
     (0..count)
         .map(|_| {
             state ^= state << 13;
             state ^= state >> 7;
             state ^= state << 17;
-            value += (state % 41) as f32 - 20.0;
+            value += (state % 41) as f64 - 20.0;
             value
         })
         .collect()
@@ -1065,7 +1065,7 @@ async fn fill_frame(
     db: &UnigraphDb,
     timeline_id: &TimelineID,
     graph_id: i64,
-    size: f32,
+    size: f64,
     task: &ll::Task,
 ) -> Result<()> {
     store_metric_graph(
@@ -1503,7 +1503,7 @@ async fn fill_wave(
     db: &UnigraphDb,
     timeline_id: &TimelineID,
     graph_ids: &[i64],
-    values: &[f32],
+    values: &[f64],
     task: &ll::Task,
 ) -> Result<()> {
     for graph_id in graph_ids {
@@ -1521,7 +1521,7 @@ async fn fill_wave(
 /// would be measuring the wrong thing.
 async fn in_order_kept_ids(
     built: &[i64],
-    values: &[f32],
+    values: &[f64],
     timeline_name: &str,
     task: &ll::Task,
 ) -> Result<Vec<i64>> {
@@ -1564,7 +1564,7 @@ async fn run_fill_order(
     db: &UnigraphDb,
     timeline_id: &TimelineID,
     waves: &[&[i64]],
-    values: &[f32],
+    values: &[f64],
     mode: CompactMode,
     task: &ll::Task,
 ) -> Result<()> {
@@ -1760,7 +1760,7 @@ fn status_char(status: Option<&HistoryStatusRow>) -> char {
 #[tokio::test]
 async fn graph_history_deferred_rows_do_not_shift_the_threshold_baseline() -> Result<()> {
     let task = ll::Task::create_new("test");
-    let values = [100.0f32, 101.0, 109.0, 117.0];
+    let values = [100.0f64, 101.0, 109.0, 117.0];
     let threshold = 10.0;
 
     let db = make_db();
@@ -1799,7 +1799,7 @@ async fn graph_history_deferred_rows_do_not_shift_the_threshold_baseline() -> Re
 /// The oracle for an arbitrary value series: ingested in order, nothing ever
 /// unsettled, so the threshold chain is the plain one.
 async fn in_order_kept_ids_for(
-    values: &[f32],
+    values: &[f64],
     threshold: f64,
     timeline_name: &str,
     task: &ll::Task,

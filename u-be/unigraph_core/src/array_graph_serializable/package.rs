@@ -299,7 +299,7 @@ impl_blob_codec_json!(
     // edge metadata map (sparse: edge idx -> metadata idx)
     BTreeMap<crate::EdgeIDX, crate::EdgeMetaIDX>,
     // metrics
-    BTreeMap<MetricName, Vec<f32>>,
+    BTreeMap<MetricName, Vec<f64>>,
     // labels
     BTreeMap<LabelName, BTreeMap<NodeIDX, BTreeSet<LabelValue>>>,
     // properties
@@ -375,7 +375,7 @@ pub struct ManifestBlobs {
     pub dynamic: Vec<BlobID>,
 
     /* METADATA */
-    /// Per-metric float vectors (one `f32` per node for each named metric).
+    /// Per-metric float vectors (one `f64` per node for each named metric).
     pub metrics: Vec<BlobID>,
     /// Per-label-name index (label-name → node → set of values).
     pub labels: Vec<BlobID>,

@@ -249,7 +249,7 @@ pub fn get_node_metrics(
     node_idxs: Vec<u32>,
     metric_name: &str,
     side: u32,
-) -> Result<Vec<f32>, WasmJSError> {
+) -> Result<Vec<f64>, WasmJSError> {
     let gs = GlobalGraphState::graph_state().get();
     let ag = gs.mode.graph(side)?;
     let mut result = Vec::with_capacity(node_idxs.len());
@@ -286,7 +286,7 @@ pub fn get_metric_min_max(
     metric_name: &str,
     ignore_zero: bool,
     side: u32,
-) -> Result<Vec<f32>, WasmJSError> {
+) -> Result<Vec<f64>, WasmJSError> {
     let gs = GlobalGraphState::graph_state().get();
     let ag = gs.mode.graph(side)?;
     Ok(match ag.metric_min_max(metric_name, ignore_zero) {
@@ -301,7 +301,7 @@ pub fn get_transitive_metrics(
     metric_name: &str,
     dominated: bool,
     side: u32,
-) -> Result<Vec<f32>, WasmJSError> {
+) -> Result<Vec<f64>, WasmJSError> {
     let gs = GlobalGraphState::graph_state().get();
     let ag = gs.mode.graph(side)?;
     let mut result = Vec::with_capacity(node_idxs.len());

@@ -113,7 +113,7 @@ pub fn get_transitive_tiered_delta(
     tg: &TwinGraph,
     merged_idx: NodeIDX,
     metric_name: &str,
-) -> Result<BTreeMap<String, f32>> {
+) -> Result<BTreeMap<String, f64>> {
     {
         let l = tg.graph(GraphSide::Left);
         let r = &tg.r;

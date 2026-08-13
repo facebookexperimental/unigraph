@@ -165,7 +165,7 @@ impl TwinGraph {
         &self,
         node_idx: NodeIDX,
         metric_name: &str,
-    ) -> Result<BTreeMap<TierName, f32>> {
+    ) -> Result<BTreeMap<TierName, f64>> {
         get_transitive_tiered_delta(self, node_idx, metric_name)
     }
 

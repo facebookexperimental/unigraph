@@ -132,7 +132,7 @@ fn format_graph(g: &ArrayGraphSerializable) -> String {
                 .filter(|(_, v)| **v != 0.0)
                 .map(|(i, v)| {
                     let name = g.node_names_ordered.idx_to_name(crate::NodeIDX::from(i));
-                    format!("{}={}", name, format_f32(*v))
+                    format!("{}={}", name, format_metric(*v))
                 })
                 .collect();
             if !entries.is_empty() {
@@ -235,7 +235,7 @@ fn format_delta(d: &MapGraphDelta) -> String {
     out.trim_end().to_string()
 }
 
-fn format_f32(v: f32) -> String {
+fn format_metric(v: f64) -> String {
     if v == v.floor() {
         format!("{}", v as i64)
     } else {
@@ -908,7 +908,7 @@ fn test_apply_deltas_metric_overwrite_ordering() -> Result<()> {
                     metrics: Some(OptionDelta::Changed(MapDelta {
                         added: BTreeMap::new(),
                         removed: BTreeSet::new(),
-                        changed: BTreeMap::from([("size".to_string(), 5.0f32)]),
+                        changed: BTreeMap::from([("size".to_string(), 5.0f64)]),
                     })),
                     ..Default::default()
                 },
@@ -927,7 +927,7 @@ fn test_apply_deltas_metric_overwrite_ordering() -> Result<()> {
                     metrics: Some(OptionDelta::Changed(MapDelta {
                         added: BTreeMap::new(),
                         removed: BTreeSet::new(),
-                        changed: BTreeMap::from([("size".to_string(), 10.0f32)]),
+                        changed: BTreeMap::from([("size".to_string(), 10.0f64)]),
                     })),
                     ..Default::default()
                 },
@@ -984,7 +984,7 @@ fn test_large_batch() -> Result<()> {
                     added: BTreeMap::from([(
                         name.clone(),
                         GraphNode {
-                            metrics: Some(BTreeMap::from([("size".to_string(), (i + 1) as f32)])),
+                            metrics: Some(BTreeMap::from([("size".to_string(), (i + 1) as f64)])),
                             ..Default::default()
                         },
                     )]),

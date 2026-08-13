@@ -37,7 +37,7 @@ export type TSortable = {
 export type NumericValueColumnDefinition =
   CommonNonTreeColumnDefinitionFields & {
     t: "numeric_value_column";
-    getNumericValues: (idx: NodeIDX[]) => Float32Array;
+    getNumericValues: (idx: NodeIDX[]) => Float64Array;
     sortable: TSortable | null;
   };
 

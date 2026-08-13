@@ -20,7 +20,7 @@ use anyhow::Result;
 /// functionality are good candidates for replacement or feature-flag trimming.
 ///
 /// Returns a map from crate name to `.rlib` file size in bytes.
-pub fn collect_rlib_sizes(target_dir: &Path) -> Result<BTreeMap<String, f32>> {
+pub fn collect_rlib_sizes(target_dir: &Path) -> Result<BTreeMap<String, f64>> {
     let deps_dir = target_dir.join("debug").join("deps");
 
     if !deps_dir.exists() {
@@ -30,7 +30,7 @@ pub fn collect_rlib_sizes(target_dir: &Path) -> Result<BTreeMap<String, f32>> {
         );
     }
 
-    let mut sizes: BTreeMap<String, f32> = BTreeMap::new();
+    let mut sizes: BTreeMap<String, f64> = BTreeMap::new();
 
     let entries = std::fs::read_dir(&deps_dir)
         .with_context(|| format!("Failed to read {}", deps_dir.display()))?;
@@ -57,7 +57,7 @@ pub fn collect_rlib_sizes(target_dir: &Path) -> Result<BTreeMap<String, f32>> {
         // Cargo uses underscores in filenames, but crate names may use hyphens.
         let crate_name = name.replace('_', "-");
 
-        let file_size = entry.metadata()?.len() as f32;
+        let file_size = entry.metadata()?.len() as f64;
 
         // Keep the largest rlib if there are duplicates.
         let current = sizes.entry(crate_name).or_insert(0.0);

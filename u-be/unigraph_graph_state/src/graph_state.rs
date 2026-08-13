@@ -183,7 +183,7 @@ impl GraphState {
         })
     }
 
-    pub fn get_selected_metrics_vec(&self) -> Option<&Vec<f32>> {
+    pub fn get_selected_metrics_vec(&self) -> Option<&Vec<f64>> {
         if let Some(selected_metric) = &self.selected_metric {
             self.mode
                 .r()

@@ -237,7 +237,7 @@ fn has_dynamic_edge_changes(
 fn build_flat_metric_pairs<'a>(
     l: &'a crate::ArrayGraph,
     r: &'a crate::ArrayGraph,
-) -> Option<Vec<(&'a Vec<f32>, &'a Vec<f32>)>> {
+) -> Option<Vec<(&'a Vec<f64>, &'a Vec<f64>)>> {
     let l_keys: BTreeSet<_> = l.data.node_metadata.metrics.keys().collect();
     let r_keys: BTreeSet<_> = r.data.node_metadata.metrics.keys().collect();
     if l_keys != r_keys {
@@ -254,7 +254,7 @@ fn build_flat_metric_pairs<'a>(
 }
 
 fn has_node_metrics_changed(
-    flat_metrics: &[(&Vec<f32>, &Vec<f32>)],
+    flat_metrics: &[(&Vec<f64>, &Vec<f64>)],
     l_idx: NodeIDX,
     r_idx: NodeIDX,
 ) -> bool {

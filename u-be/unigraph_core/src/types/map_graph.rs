@@ -109,9 +109,9 @@ pub struct GraphNode {
     pub labels: Option<BTreeMap<String, BTreeSet<String>>>,
 
     /// Numeric per-node values (e.g. file size in bytes).
-    /// Cheap: stored as flat `Vec<f32>` per metric in the ArrayGraph.
+    /// Cheap: stored as flat `Vec<f64>` per metric in the ArrayGraph.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub metrics: Option<BTreeMap<String, f32>>,
+    pub metrics: Option<BTreeMap<String, f64>>,
 
     /// Untagged directed edges. Cheap: stored in CSR (flat array + offsets).
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -169,7 +169,7 @@ impl MapGraph {
             .flat_map(|m| m.keys())
             .collect::<HashSet<_>>();
 
-        let mut metrics: BTreeMap<String, Vec<f32>> = all_metric_names
+        let mut metrics: BTreeMap<String, Vec<f64>> = all_metric_names
             .into_iter()
             .map(|name| (name.clone(), vec![]))
             .collect();

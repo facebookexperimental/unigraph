@@ -41,7 +41,7 @@ export default class TwinGraph {
     this.transitiveCountDeltaCache = new SingleMetricsCache(
       r.nodeCount,
       (nodeIDXs: NodeIDX[]) =>
-        new Float32Array(get_transitive_count_delta(new Uint32Array(nodeIDXs))),
+        new Float64Array(get_transitive_count_delta(new Uint32Array(nodeIDXs))),
     );
     this.transitiveTieredDeltaCache = new Map<string, KeyedMetricsCache>();
   }
@@ -88,7 +88,7 @@ export default class TwinGraph {
     return search_node_name_fuzzy(pattern, limit);
   }
 
-  getTransitiveCountDelta(nodeIDX: NodeIDX[]): Float32Array {
+  getTransitiveCountDelta(nodeIDX: NodeIDX[]): Float64Array {
     return this.transitiveCountDeltaCache.getForIDXs(nodeIDX);
   }
 

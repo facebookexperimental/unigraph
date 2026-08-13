@@ -392,14 +392,14 @@ impl ArrayGraph {
         node_idx: NodeIDX,
         metric_name: &str,
         dominated: bool,
-    ) -> Result<f32> {
+    ) -> Result<f64> {
         get_transitive_metric_value(self, node_idx, metric_name, dominated)
     }
 
     /// Min and max of a metric across all nodes (reachable or not). `None`
     /// when the metric is absent or empty. When `ignore_zero` is set, `0.0`
     /// values (the default for missing metrics) are excluded.
-    pub fn metric_min_max(&self, metric_name: &str, ignore_zero: bool) -> Option<(f32, f32)> {
+    pub fn metric_min_max(&self, metric_name: &str, ignore_zero: bool) -> Option<(f64, f64)> {
         metric_min_max(self, metric_name, ignore_zero)
     }
 
@@ -408,7 +408,7 @@ impl ArrayGraph {
         node_idx: NodeIDX,
         metric_name: &str,
         dominated: bool,
-    ) -> Result<BTreeMap<TierName, f32>> {
+    ) -> Result<BTreeMap<TierName, f64>> {
         get_transitive_tiered_metric_values(self, node_idx, metric_name, dominated, CountAllNodes)
             .with_context(|| {
                 format!(

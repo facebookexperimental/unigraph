@@ -1,7 +1,7 @@
 /**
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
- * @generated SignedSource<<f474bef46858dcbe834b0b2c0ac3a15d>>
+ * @generated SignedSource<<b043614014c335de887a589dca2cd5c7>>
  */
 
 
@@ -38,7 +38,7 @@ export interface GraphNode {
   labels?: { [key: string]: string[] } | undefined;
   /**
    * Numeric per-node values (e.g. file size in bytes).
-   * Cheap: stored as flat `Vec<f32>` per metric in the ArrayGraph.
+   * Cheap: stored as flat `Vec<f64>` per metric in the ArrayGraph.
    */
   metrics?: { [key: string]: number } | undefined;
   /** Untagged directed edges. Cheap: stored in CSR (flat array + offsets). */

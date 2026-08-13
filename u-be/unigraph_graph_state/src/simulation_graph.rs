@@ -300,7 +300,10 @@ impl SimulationGraph {
         Ok(())
     }
 
-    pub fn recalculate_adjusted_sizes(&mut self, selected_metrics: &[f32]) -> Result<()> {
+    /// Metrics arrive as `f64` (exact for byte counts); the simulation keeps
+    /// node sizes in `f32` because they are geometry, not accounting — the
+    /// narrowing is deliberate and happens here, at the boundary.
+    pub fn recalculate_adjusted_sizes(&mut self, selected_metrics: &[f64]) -> Result<()> {
         let nodes_len = self.nodes_len();
         if nodes_len == 0 {
             return Ok(());
@@ -312,7 +315,10 @@ impl SimulationGraph {
                 .remap_ctx
                 .get_original_position_assert(sim_node_idx)
                 .context("calc sizes")?;
-            all_sizes.push(selected_metrics[original_node_idx]);
+            // Narrow here and nowhere else: everything below is geometry,
+            // normalised to 1..100, so f32 is ample. Only the accounting
+            // upstream needs the full width.
+            all_sizes.push(selected_metrics[original_node_idx] as f32);
         }
 
         if all_sizes.is_empty() {

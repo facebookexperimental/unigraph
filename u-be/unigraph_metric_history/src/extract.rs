@@ -2,11 +2,11 @@
 
 //! Extract per-node metrics from an `ArrayGraphSerializable`.
 //!
-//! Graph metrics are stored as `BTreeMap<MetricName, Vec<f32>>` where each
-//! `Vec<f32>` is indexed by `NodeIDX`. This module pivots that column-oriented
+//! Graph metrics are stored as `BTreeMap<MetricName, Vec<f64>>` where each
+//! `Vec<f64>` is indexed by `NodeIDX`. This module pivots that column-oriented
 //! layout into a row-oriented `BTreeMap<NodeName, BTreeMap<MetricName, f64>>`.
 //!
-//! The f32→f64 conversion happens here so that `FlatHistory` can work with
+//! The f64→f64 conversion happens here so that `FlatHistory` can work with
 //! f64 natively (future-proofing for f64 metrics). Nodes where ALL metrics
 //! are zero are excluded — they carry no useful data and would just inflate
 //! the history blobs.

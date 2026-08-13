@@ -178,13 +178,13 @@ fn resolve_edges(
         .collect()
 }
 
-fn build_metrics(route_data: &RouteData, module_path: &str) -> BTreeMap<String, f32> {
+fn build_metrics(route_data: &RouteData, module_path: &str) -> BTreeMap<String, f64> {
     let mut metrics = BTreeMap::new();
     if let Some(size) = route_data.sizes.get(module_path) {
-        metrics.insert(METRIC_SIZE.to_string(), size.size as f32);
+        metrics.insert(METRIC_SIZE.to_string(), size.size as f64);
         metrics.insert(
             METRIC_COMPRESSED_SIZE.to_string(),
-            size.compressed_size as f32,
+            size.compressed_size as f64,
         );
     }
     metrics
@@ -205,7 +205,7 @@ fn merge_into_existing(
     existing: &mut GraphNode,
     directed: BTreeSet<String>,
     async_deps: BTreeSet<String>,
-    metrics: BTreeMap<String, f32>,
+    metrics: BTreeMap<String, f64>,
 ) {
     // Union edges.
     if !directed.is_empty() {
@@ -497,8 +497,8 @@ fn is_route_node(node: &GraphNode) -> bool {
 
 #[derive(Default)]
 struct TierSizes {
-    size: f32,
-    compressed: f32,
+    size: f64,
+    compressed: f64,
 }
 
 /// BFS from a route node and compute per-tier size totals.

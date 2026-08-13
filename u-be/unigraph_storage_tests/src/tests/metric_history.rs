@@ -123,7 +123,7 @@ fn format_history(
 
 struct Scene {
     /// node_name → {metric_name → value}. Missing nodes are absent.
-    nodes: BTreeMap<String, BTreeMap<String, f32>>,
+    nodes: BTreeMap<String, BTreeMap<String, f64>>,
 }
 
 impl Scene {
@@ -133,8 +133,8 @@ impl Scene {
         }
     }
 
-    fn node(mut self, name: &str, metrics: &[(&str, f32)]) -> Self {
-        let m: BTreeMap<String, f32> = metrics.iter().map(|(k, v)| (k.to_string(), *v)).collect();
+    fn node(mut self, name: &str, metrics: &[(&str, f64)]) -> Self {
+        let m: BTreeMap<String, f64> = metrics.iter().map(|(k, v)| (k.to_string(), *v)).collect();
         self.nodes.insert(name.to_string(), m);
         self
     }
@@ -150,7 +150,7 @@ impl Scene {
             offsets.push(buf.len());
         }
 
-        let mut all_metrics: BTreeMap<String, Vec<f32>> = BTreeMap::new();
+        let mut all_metrics: BTreeMap<String, Vec<f64>> = BTreeMap::new();
         for node_metrics in self.nodes.values() {
             for k in node_metrics.keys() {
                 all_metrics.entry(k.clone()).or_insert_with(|| vec![0.0; n]);
@@ -294,11 +294,11 @@ fn generate_scenes(n: usize, seed: u64) -> Vec<(i64, i64, Scene)> {
     let mut scenes = Vec::with_capacity(n);
 
     // Seed initial metric values per node.
-    let mut current: BTreeMap<&str, BTreeMap<&str, f32>> = BTreeMap::new();
+    let mut current: BTreeMap<&str, BTreeMap<&str, f64>> = BTreeMap::new();
     for &node in NODES {
         let mut m = BTreeMap::new();
         for &metric in METRICS {
-            m.insert(metric, (10 + rng.next() % 90) as f32);
+            m.insert(metric, (10 + rng.next() % 90) as f64);
         }
         current.insert(node, m);
     }
@@ -322,7 +322,7 @@ fn generate_scenes(n: usize, seed: u64) -> Vec<(i64, i64, Scene)> {
             for &metric in METRICS {
                 let prev = base.get(metric).copied().unwrap_or(0.0);
                 let val = if (rng.next() % 100) < 30 {
-                    (prev + (rng.next() % 10) as f32 - 4.0).max(1.0)
+                    (prev + (rng.next() % 10) as f64 - 4.0).max(1.0)
                 } else {
                     prev
                 };
@@ -330,7 +330,7 @@ fn generate_scenes(n: usize, seed: u64) -> Vec<(i64, i64, Scene)> {
             }
             current.insert(node, metrics.clone());
 
-            let m: Vec<(&str, f32)> = metrics.iter().map(|(&k, &v)| (k, v)).collect();
+            let m: Vec<(&str, f64)> = metrics.iter().map(|(&k, &v)| (k, v)).collect();
             scene = scene.node(node, &m);
         }
 

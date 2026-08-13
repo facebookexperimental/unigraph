@@ -7,17 +7,17 @@ import type { NodeIDX } from "@/__generated__/ts/NodeIDX";
 /// batches and cache the results on JS side so we don't have to go
 /// multiple to WASM for the same data.
 export class SingleMetricsCache {
-  private metrics: Float32Array;
+  private metrics: Float64Array;
   private valueExists: Uint8Array;
-  private getMetrics: (nodeIDXs: NodeIDX[]) => Float32Array;
+  private getMetrics: (nodeIDXs: NodeIDX[]) => Float64Array;
 
-  constructor(size: number, getMetrics: (nodeIDXs: NodeIDX[]) => Float32Array) {
-    this.metrics = new Float32Array(size);
+  constructor(size: number, getMetrics: (nodeIDXs: NodeIDX[]) => Float64Array) {
+    this.metrics = new Float64Array(size);
     this.valueExists = new Uint8Array(size).fill(0);
     this.getMetrics = getMetrics;
   }
 
-  getForIDXs(nodeIDXs: NodeIDX[]): Float32Array {
+  getForIDXs(nodeIDXs: NodeIDX[]): Float64Array {
     const cacheMissesIDXs: NodeIDX[] = [];
 
     for (let i = 0; i < nodeIDXs.length; i++) {
@@ -37,7 +37,7 @@ export class SingleMetricsCache {
       }
     }
 
-    const result = new Float32Array(nodeIDXs.length);
+    const result = new Float64Array(nodeIDXs.length);
 
     for (let i = 0; i < nodeIDXs.length; i++) {
       const nodeIDX = nodeIDXs[i] as NodeIDX;

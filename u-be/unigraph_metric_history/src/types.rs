@@ -14,7 +14,7 @@ use unigraph_timestamp::Timestamp;
 
 /// Metric values for a single node at a single point in time.
 ///
-/// Uses f64 for full precision (even though graph metrics are f32, we
+/// Uses f64 for full precision (even though graph metrics are f64, we
 /// promote to f64 during extraction to future-proof for f64 metrics).
 /// Zero-valued metrics are excluded during extraction — see
 /// [`crate::extract::extract_node_metrics`].

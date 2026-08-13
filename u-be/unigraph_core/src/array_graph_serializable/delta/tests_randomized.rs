@@ -67,8 +67,8 @@ mod tests {
             self.next() % 100 < pct_chance
         }
 
-        fn next_f32(&mut self) -> f32 {
-            (self.next() % 10000) as f32 / 100.0
+        fn next_metric(&mut self) -> f64 {
+            (self.next() % 10000) as f64 / 100.0
         }
 
         fn pick<'a>(&mut self, items: &'a [&str]) -> &'a str {
@@ -113,7 +113,7 @@ mod tests {
         // Metrics: 3 metrics
         let mut metrics = BTreeMap::new();
         for m in 0..3 {
-            let values: Vec<f32> = (0..node_count).map(|_| rng.next_f32()).collect();
+            let values: Vec<f64> = (0..node_count).map(|_| rng.next_metric()).collect();
             metrics.insert(format!("metric_{}", m), values);
         }
 

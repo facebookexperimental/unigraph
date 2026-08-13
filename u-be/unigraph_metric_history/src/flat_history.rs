@@ -105,7 +105,7 @@
 //! ## Value encoding
 //!
 //! f64 metric values are converted to i64 via `(v * 1000.0).round() as i64`.
-//! This preserves 3 decimal places — sufficient for f32-origin data since f32
+//! This preserves 3 decimal places — sufficient for f64-origin data since f64
 //! only has ~7 significant digits. The integer encoding enables much better
 //! delta compression (small integer deltas compress extremely well with ZSTD).
 //!

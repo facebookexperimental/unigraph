@@ -65,7 +65,7 @@ export class TransitiveCountColumn implements Column {
     return sortable;
   }
 
-  getValuesFn(): (idxs: NodeIDX[]) => Float32Array {
+  getValuesFn(): (idxs: NodeIDX[]) => Float64Array {
     return (idxs: NodeIDX[]) => this.nativeGraph.getTransitiveCount(idxs);
   }
 
@@ -163,7 +163,7 @@ export class DominatedCountColumn implements Column {
     return sortable;
   }
 
-  getValuesFn(): (idxs: NodeIDX[]) => Float32Array {
+  getValuesFn(): (idxs: NodeIDX[]) => Float64Array {
     return (idxs: NodeIDX[]) =>
       this.nativeGraph.getTransitiveCountDominated(idxs);
   }
@@ -239,14 +239,14 @@ export class TransitiveCountDeltaColumn implements Column {
     return sortable;
   }
 
-  getValuesFn(): (idxs: NodeIDX[]) => Float32Array {
+  getValuesFn(): (idxs: NodeIDX[]) => Float64Array {
     return (idxs: NodeIDX[]) => this.twinGraph.getTransitiveCountDelta(idxs);
   }
 
   /// when we sort delta column we want to sort by absolute value
   /// to see "what changed the most". Sorting it as is will push
   /// negative values all the way to the bottom below zeros.
-  getValuesFnForSorting(): (idxs: NodeIDX[]) => Float32Array {
+  getValuesFnForSorting(): (idxs: NodeIDX[]) => Float64Array {
     return (idxs: NodeIDX[]) =>
       this.twinGraph.getTransitiveCountDelta(idxs).map(Math.abs);
   }
@@ -319,7 +319,7 @@ export class TransitiveCountRightInDeltaViewColumn implements Column {
     return sortable;
   }
 
-  getValuesFn(side: GraphSide): (idxs: NodeIDX[]) => Float32Array {
+  getValuesFn(side: GraphSide): (idxs: NodeIDX[]) => Float64Array {
     const graph = (() => {
       switch (side) {
         case GRAPH_SIDE.L:

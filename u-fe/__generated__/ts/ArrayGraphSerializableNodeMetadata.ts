@@ -1,7 +1,7 @@
 /**
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
- * @generated SignedSource<<75ace7d0784fab19bf0648f8b38f4fc0>>
+ * @generated SignedSource<<6f85af625e08016ad14f801403567b20>>
  */
 
 
@@ -10,7 +10,7 @@ import type { NodeIDX } from './NodeIDX.ts';
 /** Serializable per-node metadata: numeric metrics, categorical labels, and string properties. */
 export interface ArrayGraphSerializableNodeMetadata {
   /**
-   * Named metrics — each entry maps a metric name to a `Vec<f32>` with one
+   * Named metrics — each entry maps a metric name to a `Vec<f64>` with one
    * value per node (indexed by [`NodeIDX`]).
    */
   metrics: { [key: string]: number[] };

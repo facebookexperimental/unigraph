@@ -114,7 +114,7 @@ pub struct ExploreGraphArrow {
     /// - "{metric}_{tier}" — tiered transitive (if tiers configured)
     /// - "parents_count" — number of configured parents
     /// - "children_count" — number of children in current graph structure
-    pub metrics: BTreeMap<String, f32>,
+    pub metrics: BTreeMap<String, f64>,
     /// Edge tag (e.g. "lazy"), if this is a tagged edge.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tag: Option<String>,
@@ -341,7 +341,7 @@ fn sort_arrows(
     };
 
     // Compute the sort metric value for each arrow
-    let mut valued: Vec<(usize, f32)> = arrows
+    let mut valued: Vec<(usize, f64)> = arrows
         .iter()
         .enumerate()
         .map(|(i, ad)| {
@@ -387,7 +387,7 @@ fn compute_metric(
     node_idx: NodeIDX,
     metric: &MetricView,
     _graph_structure: GraphStructure,
-) -> Result<f32> {
+) -> Result<f64> {
     match metric {
         MetricView::Metric { name } => Ok(ag
             .data
@@ -405,12 +405,12 @@ fn compute_metric(
             let tiered = ag.get_transitive_tiered_metric_values(node_idx, name, true)?;
             Ok(*tiered.get(tier_name.as_str()).unwrap_or(&0.0))
         }
-        MetricView::ParentsCount {} => Ok(ag.parents_len_configured(node_idx) as f32),
-        MetricView::CountTransitive {} => Ok(ag.transitive_count_configured(node_idx) as f32),
+        MetricView::ParentsCount {} => Ok(ag.parents_len_configured(node_idx) as f64),
+        MetricView::CountTransitive {} => Ok(ag.transitive_count_configured(node_idx) as f64),
         MetricView::CountDominated {} => {
-            Ok(ag.transitive_count_configured_dominated(node_idx) as f32)
+            Ok(ag.transitive_count_configured_dominated(node_idx) as f64)
         }
-        MetricView::TierIndex {} => Ok(ag.node_tier_idx(node_idx).unwrap_or(0) as f32),
+        MetricView::TierIndex {} => Ok(ag.node_tier_idx(node_idx).unwrap_or(0) as f64),
     }
 }
 
@@ -420,7 +420,7 @@ fn build_metrics_map(
     node_idx: NodeIDX,
     metrics: &[MetricView],
     graph_structure: GraphStructure,
-) -> Result<BTreeMap<String, f32>> {
+) -> Result<BTreeMap<String, f64>> {
     let mut map = BTreeMap::new();
     for metric in metrics {
         let value = compute_metric(ag, node_idx, metric, graph_structure)?;
@@ -777,7 +777,7 @@ fn trim_trailing_spaces(out: &mut String, start: usize) {
 }
 
 fn format_cell_value(
-    v: f32,
+    v: f64,
     col: &str,
     formats: &BTreeMap<String, unigraph_core::graph_settings::MetricFormat>,
     tier_names: &[String],
