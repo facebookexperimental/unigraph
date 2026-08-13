@@ -27,6 +27,7 @@ import {
   useTVC,
 } from "../context/TraversalConfigContext";
 import { triggerDownload } from "../lib/utils";
+import TvcDiffDialog from "../tvc_diff/TvcDiffDialog";
 import { SidebarPanel, SidebarPanelHeader } from "./SidebarPanel";
 import VirtualEntryList from "./VirtualEntryList";
 
@@ -40,6 +41,7 @@ export default function TraversalConfigEditorPanel() {
   return (
     <SidebarPanel storageKey="traversal-config" defaultWidth={560}>
       <div className="flex flex-col gap-6">
+        <TvcDiffDialog />
         <TraversalConfigEditor
           committed={tvcR}
           draftState={draftR}
