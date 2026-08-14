@@ -14,6 +14,7 @@ use serde::Deserialize;
 
 use crate::FlowGenerator;
 use crate::HackGenerator;
+use crate::TypeGenDecl;
 use crate::TypeGenGeneratedType;
 use crate::TypeScriptGenerator;
 
@@ -122,19 +123,46 @@ impl TypeGenConfig {
                 let content = shared_config.prepend_header(content);
                 let content = crate::signed_source::sign(content);
                 let mut path = self.resolve_path(export_path)?;
-                path.push(self.make_file_name(&decl.original_type_name, lang));
+                path.push(self.make_decl_file_name(&decl, lang));
                 return Ok(Some(TypeGenFile { path, content }));
             }
         }
         Ok(None)
     }
 
+    /// File name to reference `type_name` from another generated file.
+    ///
+    /// Always the declaration-file name, because cross-file references are
+    /// type-only imports.
     pub fn make_file_name(&self, type_name: &str, lang: Lang) -> PathBuf {
-        let name = match lang {
-            Lang::TypeScript => format!("{type_name}.ts"),
-            Lang::Flow => format!("{type_name}.js.flow"),
-            Lang::Hack => format!("{type_name}.php"),
+        self.file_name_with_suffix(type_name, Self::declaration_suffix(lang), lang)
+    }
+
+    /// File name a declaration writes itself to.
+    ///
+    /// Differs from [`Self::make_file_name`] only for Flow const groups: those
+    /// carry runtime values, so they have to be real `.js` modules. A `.js.flow`
+    /// is a declaration file with no runtime counterpart — an `export const`
+    /// there would typecheck and then fail at import time.
+    pub fn make_decl_file_name(&self, decl: &TypeGenGeneratedType, lang: Lang) -> PathBuf {
+        let suffix = match lang == Lang::Flow && flow_emits_runtime_values(decl) {
+            true => "js",
+            false => Self::declaration_suffix(lang),
         };
+
+        self.file_name_with_suffix(&decl.original_type_name, suffix, lang)
+    }
+
+    fn declaration_suffix(lang: Lang) -> &'static str {
+        match lang {
+            Lang::TypeScript => "ts",
+            Lang::Flow => "js.flow",
+            Lang::Hack => "php",
+        }
+    }
+
+    fn file_name_with_suffix(&self, type_name: &str, suffix: &str, lang: Lang) -> PathBuf {
+        let name = format!("{type_name}.{suffix}");
 
         if let Some(shared_config) = self.get_shared_config(lang) {
             shared_config.add_file_prefix(&name).into()
@@ -177,6 +205,19 @@ impl SharedConfig {
             file_name.to_string()
         }
     }
+}
+
+/// Whether Flow output for `decl` is a runtime module rather than a declaration.
+///
+/// Only const groups qualify, and only when no Flow override replaced their body
+/// with a plain type alias.
+fn flow_emits_runtime_values(decl: &TypeGenGeneratedType) -> bool {
+    let overridden = decl
+        .overrides
+        .as_ref()
+        .is_some_and(|overrides| overrides.flow.is_some());
+
+    !overridden && matches!(decl.declaration, TypeGenDecl::ConstDecl(_))
 }
 
 /// Cache for resolved configs - maps directory paths to configs

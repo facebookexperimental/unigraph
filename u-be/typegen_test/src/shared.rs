@@ -13,13 +13,17 @@ use typegen::TypeScriptConfig;
 
 use crate::Address;
 use crate::Animal;
+use crate::FlowOverriddenConsts;
 use crate::HttpMethod;
 use crate::OverrideTest;
+use crate::PartialConsts;
 use crate::Person;
 use crate::Point;
 use crate::Shape;
 use crate::SkipAndOverrideTest;
 use crate::SkipTest;
+use crate::Timelines;
+use crate::TrickyConsts;
 use crate::Unit;
 use crate::User;
 use crate::WrappedString;
@@ -38,6 +42,10 @@ pub fn get_all_declarations() -> Vec<TypeGenGeneratedType> {
         OverrideTest::to_type_decl(),
         SkipTest::to_type_decl(),
         SkipAndOverrideTest::to_type_decl(),
+        Timelines::to_type_decl(),
+        TrickyConsts::to_type_decl(),
+        PartialConsts::to_type_decl(),
+        FlowOverriddenConsts::to_type_decl(),
     ]
 }
 

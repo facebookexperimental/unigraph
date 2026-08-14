@@ -4,6 +4,8 @@ use crate::Lang;
 use crate::TypeGenConfig;
 use crate::docs::DocFormat;
 use crate::docs::render_docs;
+use crate::escape::escape_js_string;
+use crate::types::ConstDecl;
 use crate::types::EnumDecl;
 use crate::types::EnumVariant;
 use crate::types::PrimitiveTypeRef;
@@ -49,6 +51,9 @@ impl FlowGenerator {
             ),
             TypeGenDecl::EnumDecl(enum_decl) => {
                 Self::generate_enum_flow(&type_name, &generated_type.docs, enum_decl, &mut imports)
+            }
+            TypeGenDecl::ConstDecl(const_decl) => {
+                Self::generate_const_flow(&type_name, &generated_type.docs, const_decl)
             }
             TypeGenDecl::Null => Self::generate_null_flow(&type_name, &generated_type.docs),
         };
@@ -234,6 +239,41 @@ impl FlowGenerator {
                 variants.join(" |\n")
             ));
         }
+
+        result
+    }
+
+    /// Generate a frozen const object plus the union of its values.
+    ///
+    /// Unlike every other Flow declaration this is a runtime module, written to a
+    /// `.js` file rather than a `.js.flow` (see `TypeGenConfig::make_decl_file_name`).
+    /// `Object.freeze` is load-bearing twice over: it makes the table immutable at
+    /// runtime, and Flow special-cases it to infer singleton literal types for the
+    /// properties, so `$Values` yields the value union rather than `string`.
+    fn generate_const_flow(
+        type_name: &str,
+        docs: &Option<String>,
+        const_decl: &ConstDecl,
+    ) -> String {
+        let mut result = String::new();
+
+        result.push_str(&render_docs(docs, DocFormat::Block, 0));
+        result.push_str(&format!("export const {} = Object.freeze({{\n", type_name));
+
+        for entry in &const_decl.entries {
+            result.push_str(&render_docs(&entry.docs, DocFormat::Block, 2));
+            result.push_str(&format!(
+                "  {}: \"{}\",\n",
+                entry.name,
+                escape_js_string(&entry.value)
+            ));
+        }
+
+        result.push_str("});\n\n");
+        result.push_str(&format!(
+            "export type {0} = $Values<typeof {0}>;\n",
+            type_name
+        ));
 
         result
     }

@@ -110,6 +110,46 @@ export type FlowTypeHttpMethod = "GetRequest" | "PostRequest" | "DeleteAll" | "X
 // Test struct with type overrides
 export type FlowTypeOverrideTest = () => void;
 
+---------------- ./flow/FlowPrefixTimelines.js
+
+/* flow header */
+
+/** Well-known timeline identifiers. */
+export const FlowTypeTimelines = Object.freeze({
+  /** The main timeline. */
+  MY_TIMELINE: "timeline-123",
+  OTHER_TIMELINE: "timeline-456",
+});
+
+export type FlowTypeTimelines = $Values<typeof FlowTypeTimelines>;
+
+---------------- ./flow/FlowPrefixTrickyConsts.js
+
+/* flow header */
+
+/** Values that need escaping in one or more target languages. */
+export const FlowTypeTrickyConsts = Object.freeze({
+  /** Double quotes and backslashes. */
+  QUOTED: "say \\"hi\\" \\\\ bye",
+  /** Hack interpolates `$name` inside double-quoted strings. */
+  DOLLAR: "{$notAVariable}",
+  APOSTROPHE: "it's",
+  NEWLINE: "line1\
+line2",
+});
+
+export type FlowTypeTrickyConsts = $Values<typeof FlowTypeTrickyConsts>;
+
+---------------- ./flow/FlowPrefixFlowOverriddenConsts.js.flow
+
+/* flow header */
+
+// Const group whose Flow output is overridden to a plain type alias.
+// 
+// An override emits no runtime values, so this one stays a `.js.flow`
+// declaration file rather than becoming a `.js` module.
+export type FlowTypeFlowOverriddenConsts = string;
+
 "#
     );
 }

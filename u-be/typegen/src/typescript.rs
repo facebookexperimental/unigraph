@@ -4,6 +4,8 @@ use crate::Lang;
 use crate::TypeGenConfig;
 use crate::docs::DocFormat;
 use crate::docs::render_docs;
+use crate::escape::escape_js_string;
+use crate::types::ConstDecl;
 use crate::types::EnumDecl;
 use crate::types::EnumVariant;
 use crate::types::PrimitiveTypeRef;
@@ -62,6 +64,9 @@ impl TypeScriptGenerator {
                 enum_decl,
                 &mut imports,
             ),
+            TypeGenDecl::ConstDecl(const_decl) => {
+                Self::generate_const_typescript(&type_name, &generated_type.docs, const_decl)
+            }
             TypeGenDecl::Null => Self::generate_null_typescript(&type_name, &generated_type.docs),
         };
 
@@ -272,6 +277,39 @@ impl TypeScriptGenerator {
                 variant_names.join(" | ")
             ));
         }
+
+        result
+    }
+
+    /// Generate a const object plus the union of its values.
+    ///
+    /// The object and the type deliberately share a name: TypeScript keeps value
+    /// and type namespaces separate, so `Timelines.MY_TIMELINE` and
+    /// `x: Timelines` both work off a single declaration.
+    fn generate_const_typescript(
+        type_name: &str,
+        docs: &Option<String>,
+        const_decl: &ConstDecl,
+    ) -> String {
+        let mut result = String::new();
+
+        result.push_str(&render_docs(docs, DocFormat::Block, 0));
+        result.push_str(&format!("export const {} = {{\n", type_name));
+
+        for entry in &const_decl.entries {
+            result.push_str(&render_docs(&entry.docs, DocFormat::Block, 2));
+            result.push_str(&format!(
+                "  {}: \"{}\",\n",
+                entry.name,
+                escape_js_string(&entry.value)
+            ));
+        }
+
+        result.push_str("} as const;\n\n");
+        result.push_str(&format!(
+            "export type {0} = (typeof {0})[keyof typeof {0}];\n",
+            type_name
+        ));
 
         result
     }

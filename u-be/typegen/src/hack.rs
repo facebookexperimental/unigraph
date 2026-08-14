@@ -4,6 +4,8 @@ use crate::Lang;
 use crate::TypeGenConfig;
 use crate::docs::DocFormat;
 use crate::docs::render_docs;
+use crate::escape::escape_hack_string;
+use crate::types::ConstDecl;
 use crate::types::EnumDecl;
 use crate::types::EnumVariant;
 use crate::types::PrimitiveTypeRef;
@@ -85,6 +87,7 @@ impl<'a> HackGenerator<'a> {
                 self.generate_tuple_struct_hack(&type_name, tuple_struct_decl)
             }
             TypeGenDecl::EnumDecl(enum_decl) => self.generate_enum_hack(&type_name, enum_decl),
+            TypeGenDecl::ConstDecl(const_decl) => self.generate_const_hack(&type_name, const_decl),
             TypeGenDecl::Null => self.generate_null_hack(&type_name),
         }; // Generate use statements
         let mut result = String::new();
@@ -269,6 +272,36 @@ impl<'a> HackGenerator<'a> {
             }
             result.push_str("}\n");
         }
+        result
+    }
+
+    /// Generate a string enum carrying a const group's values.
+    ///
+    /// Constant names are emitted verbatim rather than run through
+    /// [`to_screaming_snake_case`] — they are already written as constants on the
+    /// Rust side, so reshaping them would break the `Foo::BAR` symmetry that is
+    /// the whole point of the feature.
+    fn generate_const_hack(&self, type_name: &str, const_decl: &ConstDecl) -> String {
+        let mut result = String::new();
+
+        result.push_str(&render_docs(
+            &self.generated_type.docs,
+            DocFormat::TwoSlash,
+            0,
+        ));
+
+        result.push_str(&format!("enum {}: string as string {{\n", type_name));
+
+        for entry in &const_decl.entries {
+            result.push_str(&render_docs(&entry.docs, DocFormat::TwoSlash, 2));
+            result.push_str(&format!(
+                "  {} = \"{}\";\n",
+                entry.name,
+                escape_hack_string(&entry.value)
+            ));
+        }
+
+        result.push_str("}\n");
         result
     }
 

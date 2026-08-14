@@ -8,7 +8,38 @@ use quote::quote;
 use syn::Data;
 use syn::DeriveInput;
 use syn::Fields;
+use syn::parse::Parse;
+use syn::parse::ParseStream;
 use syn::parse_macro_input;
+
+/// Declare a named group of string constants mirrored into every configured
+/// target language.
+///
+/// ```ignore
+/// typegen_consts! {
+///     /// Well-known timeline identifiers.
+///     pub Timelines {
+///         /// The main timeline.
+///         MY_TIMELINE = "timeline-123",
+///         OTHER_TIMELINE = "timeline-456",
+///     }
+/// }
+/// ```
+///
+/// Rust and Hack both get `Timelines::MY_TIMELINE`, TypeScript gets
+/// `Timelines.MY_TIMELINE`. Flow gets the union of the values only, because
+/// `.js.flow` files are declarations and cannot carry runtime values.
+///
+/// Group-level `#[typegen(skip(..))]` and `#[typegen(Hack("..")]`-style
+/// overrides work exactly as they do on `#[derive(TypeGen)]`.
+#[proc_macro]
+pub fn typegen_consts(input: TokenStream) -> TokenStream {
+    let group = parse_macro_input!(input as ConstGroup);
+
+    expand_const_group(group)
+        .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
+}
 
 #[proc_macro_derive(TypeGen, attributes(typegen))]
 pub fn type_gen(input: TokenStream) -> TokenStream {
@@ -360,6 +391,185 @@ pub fn type_gen(input: TokenStream) -> TokenStream {
                 .to_compile_error()
                 .into()
         }
+    }
+}
+
+/// A parsed `typegen_consts!` group: `pub Timelines { NAME = "value", .. }`
+struct ConstGroup {
+    attrs: Vec<syn::Attribute>,
+    visibility: syn::Visibility,
+    name: syn::Ident,
+    entries: Vec<ConstGroupEntry>,
+}
+
+/// A single `NAME = "value"` line within a [`ConstGroup`]
+struct ConstGroupEntry {
+    attrs: Vec<syn::Attribute>,
+    name: syn::Ident,
+    value: syn::LitStr,
+}
+
+impl Parse for ConstGroup {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let attrs = input.call(syn::Attribute::parse_outer)?;
+        let visibility: syn::Visibility = input.parse()?;
+        let name: syn::Ident = input.parse()?;
+
+        let body;
+        syn::braced!(body in input);
+        let entries = body
+            .parse_terminated(ConstGroupEntry::parse, syn::Token![,])?
+            .into_iter()
+            .collect();
+
+        Ok(ConstGroup {
+            attrs,
+            visibility,
+            name,
+            entries,
+        })
+    }
+}
+
+impl Parse for ConstGroupEntry {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let attrs = input.call(syn::Attribute::parse_outer)?;
+        let name: syn::Ident = input.parse()?;
+        input.parse::<syn::Token![=]>()?;
+        let value: syn::LitStr = input.parse()?;
+
+        Ok(ConstGroupEntry { attrs, name, value })
+    }
+}
+
+fn expand_const_group(group: ConstGroup) -> syn::Result<proc_macro2::TokenStream> {
+    let ConstGroup {
+        attrs,
+        visibility,
+        name,
+        entries,
+    } = group;
+
+    if entries.is_empty() {
+        return Err(syn::Error::new(
+            name.span(),
+            "typegen_consts! group must declare at least one constant",
+        ));
+    }
+
+    reject_unknown_attrs(&attrs, &["doc", "typegen"])?;
+    for entry in &entries {
+        reject_unknown_attrs(&entry.attrs, &["doc"])?;
+    }
+
+    let group_name = name.to_string();
+    // Only `#[doc]` survives onto the generated struct — `#[typegen(..)]` is a
+    // helper attribute registered by the derive macro and is not in scope here.
+    let group_docs = attrs
+        .iter()
+        .filter(|attr| attr.path().is_ident("doc"))
+        .collect::<Vec<_>>();
+    let group_docs_token = docs_token(extract_docs(&attrs));
+    let overrides_token = extract_type_overrides(&attrs);
+    let skip_token = extract_type_skip(&attrs);
+
+    let consts = entries
+        .iter()
+        .map(|entry| {
+            let entry_docs = &entry.attrs;
+            let entry_name = &entry.name;
+            let value = &entry.value;
+            quote! {
+                #(#entry_docs)*
+                #visibility const #entry_name: &'static str = #value;
+            }
+        })
+        .collect::<Vec<_>>();
+
+    let decl_entries = entries
+        .iter()
+        .map(|entry| {
+            let entry_name = entry.name.to_string();
+            let value = entry.value.value();
+            let entry_docs_token = docs_token(extract_docs(&entry.attrs));
+            quote! {
+                ::typegen::ConstEntry {
+                    name: #entry_name.to_string(),
+                    value: #value.to_string(),
+                    docs: #entry_docs_token,
+                }
+            }
+        })
+        .collect::<Vec<_>>();
+
+    let test_name = syn::Ident::new(
+        &format!("test_{}_const_generation", group_name.to_lowercase()),
+        name.span(),
+    );
+
+    Ok(quote! {
+        #(#group_docs)*
+        #visibility struct #name;
+
+        impl #name {
+            #(#consts)*
+        }
+
+        impl ::typegen::TypeGenTypeRefTrait for #name {
+            fn type_ref() -> ::typegen::TypeRef {
+                ::typegen::TypeRef::TypeReference(#group_name.to_string())
+            }
+        }
+
+        impl ::typegen::TypeGenDeclTrait for #name {
+            fn to_type_decl() -> ::typegen::TypeGenGeneratedType {
+                ::typegen::TypeGenGeneratedType {
+                    original_type_name: #group_name.to_string(),
+                    docs: #group_docs_token,
+                    file_path: std::path::PathBuf::from(file!()),
+                    declaration: ::typegen::TypeGenDecl::ConstDecl(::typegen::ConstDecl {
+                        entries: vec![#(#decl_entries),*],
+                    }),
+                    overrides: #overrides_token,
+                    skip: #skip_token,
+                }
+            }
+        }
+
+        #[cfg(test)]
+        #[test]
+        fn #test_name() {
+            // Generate and write files for this const group
+            let type_decl = <#name as ::typegen::TypeGenDeclTrait>::to_type_decl();
+            type_decl.write_to_file().expect("Failed to write const files");
+        }
+    })
+}
+
+/// Reject attributes the macro would otherwise drop on the floor.
+fn reject_unknown_attrs(attrs: &[syn::Attribute], allowed: &[&str]) -> syn::Result<()> {
+    for attr in attrs {
+        if !allowed.iter().any(|name| attr.path().is_ident(name)) {
+            return Err(syn::Error::new_spanned(
+                attr,
+                format!(
+                    "unsupported attribute in typegen_consts!; only {} allowed here",
+                    allowed
+                        .iter()
+                        .map(|name| format!("`#[{name}]`"))
+                        .collect::<Vec<_>>()
+                        .join(" and ")
+                ),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn docs_token(docs: Option<String>) -> proc_macro2::TokenStream {
+    match docs {
+        Some(docs) => quote! { Some(#docs.to_string()) },
+        None => quote! { None },
     }
 }
 

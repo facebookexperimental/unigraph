@@ -15,6 +15,7 @@ mod test_hack;
 mod test_ts;
 
 use typegen::TypeGen;
+use typegen::typegen_consts;
 
 type StringAlias = String;
 
@@ -127,6 +128,46 @@ pub enum HttpMethod {
     DeleteAll,
     XMLParser,
     SimpleA,
+}
+
+typegen_consts! {
+    /// Well-known timeline identifiers.
+    pub Timelines {
+        /// The main timeline.
+        MY_TIMELINE = "timeline-123",
+        OTHER_TIMELINE = "timeline-456",
+    }
+}
+
+typegen_consts! {
+    /// Values that need escaping in one or more target languages.
+    pub TrickyConsts {
+        /// Double quotes and backslashes.
+        QUOTED = "say \"hi\" \\ bye",
+        /// Hack interpolates `$name` inside double-quoted strings.
+        DOLLAR = "{$notAVariable}",
+        APOSTROPHE = "it's",
+        NEWLINE = "line1\nline2",
+    }
+}
+
+typegen_consts! {
+    /// Const group that opts out of Flow and overrides the Hack output.
+    #[typegen(skip(Flow), Hack("string"))]
+    pub PartialConsts {
+        ONLY_SOME_LANGUAGES = "value",
+    }
+}
+
+typegen_consts! {
+    /// Const group whose Flow output is overridden to a plain type alias.
+    ///
+    /// An override emits no runtime values, so this one stays a `.js.flow`
+    /// declaration file rather than becoming a `.js` module.
+    #[typegen(Flow("string"))]
+    pub FlowOverriddenConsts {
+        SOME_VALUE = "value",
+    }
 }
 
 #[cfg(test)]
@@ -624,6 +665,142 @@ TypeGenGeneratedType {
             typescript: false,
         },
     ),
+}
+
+TypeGenGeneratedType {
+    original_type_name: "Timelines",
+    docs: Some(
+        "Well-known timeline identifiers.",
+    ),
+    file_path: <SANITIZED>
+    declaration: ConstDecl(
+        ConstDecl {
+            entries: [
+                ConstEntry {
+                    name: "MY_TIMELINE",
+                    value: "timeline-123",
+                    docs: Some(
+                        "The main timeline.",
+                    ),
+                },
+                ConstEntry {
+                    name: "OTHER_TIMELINE",
+                    value: "timeline-456",
+                    docs: None,
+                },
+            ],
+        },
+    ),
+    overrides: None,
+    skip: None,
+}
+
+TypeGenGeneratedType {
+    original_type_name: "TrickyConsts",
+    docs: Some(
+        "Values that need escaping in one or more target languages.",
+    ),
+    file_path: <SANITIZED>
+    declaration: ConstDecl(
+        ConstDecl {
+            entries: [
+                ConstEntry {
+                    name: "QUOTED",
+                    value: "say \\"hi\\" \\\\ bye",
+                    docs: Some(
+                        "Double quotes and backslashes.",
+                    ),
+                },
+                ConstEntry {
+                    name: "DOLLAR",
+                    value: "{$notAVariable}",
+                    docs: Some(
+                        "Hack interpolates `$name` inside double-quoted strings.",
+                    ),
+                },
+                ConstEntry {
+                    name: "APOSTROPHE",
+                    value: "it's",
+                    docs: None,
+                },
+                ConstEntry {
+                    name: "NEWLINE",
+                    value: "line1\
+line2",
+                    docs: None,
+                },
+            ],
+        },
+    ),
+    overrides: None,
+    skip: None,
+}
+
+TypeGenGeneratedType {
+    original_type_name: "PartialConsts",
+    docs: Some(
+        "Const group that opts out of Flow and overrides the Hack output.",
+    ),
+    file_path: <SANITIZED>
+    declaration: ConstDecl(
+        ConstDecl {
+            entries: [
+                ConstEntry {
+                    name: "ONLY_SOME_LANGUAGES",
+                    value: "value",
+                    docs: None,
+                },
+            ],
+        },
+    ),
+    overrides: Some(
+        TypeGenOverrides {
+            hack: Some(
+                "string",
+            ),
+            flow: None,
+            typescript: None,
+        },
+    ),
+    skip: Some(
+        TypeGenSkip {
+            hack: false,
+            flow: true,
+            typescript: false,
+        },
+    ),
+}
+
+TypeGenGeneratedType {
+    original_type_name: "FlowOverriddenConsts",
+    docs: Some(
+        "Const group whose Flow output is overridden to a plain type alias.\
+\
+An override emits no runtime values, so this one stays a `.js.flow`\
+declaration file rather than becoming a `.js` module.",
+    ),
+    file_path: <SANITIZED>
+    declaration: ConstDecl(
+        ConstDecl {
+            entries: [
+                ConstEntry {
+                    name: "SOME_VALUE",
+                    value: "value",
+                    docs: None,
+                },
+            ],
+        },
+    ),
+    overrides: Some(
+        TypeGenOverrides {
+            hack: None,
+            flow: Some(
+                "string",
+            ),
+            typescript: None,
+        },
+    ),
+    skip: None,
 }
 "#
         );

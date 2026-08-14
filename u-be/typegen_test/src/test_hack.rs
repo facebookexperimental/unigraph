@@ -159,6 +159,55 @@ type HackTypeSkipAndOverrideTest = shape(
   'data' => int,
 );
 
+---------------- ./hack/HackPrefixTimelines.php
+
+<?hh
+/* hack header */
+
+// Well-known timeline identifiers.
+enum HackTypeTimelines: string as string {
+  // The main timeline.
+  MY_TIMELINE = "timeline-123";
+  OTHER_TIMELINE = "timeline-456";
+}
+
+---------------- ./hack/HackPrefixTrickyConsts.php
+
+<?hh
+/* hack header */
+
+// Values that need escaping in one or more target languages.
+enum HackTypeTrickyConsts: string as string {
+  // Double quotes and backslashes.
+  QUOTED = "say \\"hi\\" \\\\ bye";
+  // Hack interpolates `$name` inside double-quoted strings.
+  DOLLAR = "{\\$notAVariable}";
+  APOSTROPHE = "it's";
+  NEWLINE = "line1\
+line2";
+}
+
+---------------- ./hack/HackPrefixPartialConsts.php
+
+<?hh
+/* hack header */
+
+// Const group that opts out of Flow and overrides the Hack output.
+type HackTypePartialConsts = string;
+
+---------------- ./hack/HackPrefixFlowOverriddenConsts.php
+
+<?hh
+/* hack header */
+
+// Const group whose Flow output is overridden to a plain type alias.
+// 
+// An override emits no runtime values, so this one stays a `.js.flow`
+// declaration file rather than becoming a `.js` module.
+enum HackTypeFlowOverriddenConsts: string as string {
+  SOME_VALUE = "value";
+}
+
 "#
     );
 }

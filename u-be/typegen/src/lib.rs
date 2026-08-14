@@ -26,6 +26,7 @@
 
 mod config;
 mod docs;
+mod escape;
 mod flow;
 mod hack;
 mod signed_source;
@@ -38,5 +39,6 @@ pub use hack::*;
 pub use signed_source::*;
 // Always export the derive macro
 pub use typegen_derive::TypeGen;
+pub use typegen_derive::typegen_consts;
 pub use types::*;
 pub use typescript::*;

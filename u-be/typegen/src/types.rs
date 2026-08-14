@@ -111,6 +111,7 @@ pub enum TypeGenDecl {
     StructDecl(StructDecl),
     TupleStructDecl(TupleStructDecl),
     EnumDecl(EnumDecl),
+    ConstDecl(ConstDecl),
     Null,
 }
 
@@ -130,6 +131,24 @@ pub struct TupleStructDecl {
 #[derive(Debug, Clone)]
 pub struct EnumDecl {
     pub variants: Vec<EnumVariant>,
+}
+
+/// Abstract representation of a named group of string constants.
+///
+/// Unlike the other declarations this one carries *values*, not just types.
+/// It exists so a table of well-known strings can be declared once in Rust and
+/// mirrored verbatim into every target language.
+#[derive(Debug, Clone)]
+pub struct ConstDecl {
+    pub entries: Vec<ConstEntry>,
+}
+
+/// A single constant within a [`ConstDecl`]
+#[derive(Debug, Clone)]
+pub struct ConstEntry {
+    pub name: String,
+    pub value: String,
+    pub docs: Option<String>,
 }
 
 /// Abstract representation of a field in a struct
