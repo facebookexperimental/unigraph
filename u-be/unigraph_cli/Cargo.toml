@@ -6,7 +6,6 @@ version = "0.1.1-alpha.0"
 authors = ["Meta Platforms, Inc. and affiliates"]
 edition = "2024"
 description = "Interactive graph visualization and exploration tool"
-homepage = "https://github.com/facebookexperimental/unigraph"
 repository = "https://github.com/facebookexperimental/unigraph"
 license = "MIT"
 
