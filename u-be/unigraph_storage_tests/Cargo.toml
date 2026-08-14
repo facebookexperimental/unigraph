@@ -2,9 +2,10 @@
 
 [package]
 name = "unigraph_storage_tests"
-version = "0.1.0"
+version = "0.1.1-alpha.0"
 authors = ["Meta Platforms, Inc. and affiliates"]
 edition = "2024"
+repository = "https://github.com/facebookexperimental/unigraph"
 license = "MIT"
 publish = false
 
