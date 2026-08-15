@@ -21,4 +21,4 @@ unigraph_storage_sqlite = { path = "../unigraph_storage_sqlite" }
 [dev-dependencies]
 k9 = { version = "0.12.0", features = ["custom_comparison_formatters", "regex"] }
 serde_json = { version = "1.0.151", features = ["alloc", "float_roundtrip", "raw_value", "unbounded_depth"] }
-tokio = { version = "1.52.4", features = ["full", "test-util", "tracing"] }
+tokio = { version = "1.53.1", features = ["full", "test-util", "tracing"] }

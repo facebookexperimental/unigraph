@@ -15,7 +15,7 @@ axum = { version = "0.8.9", features = ["macros", "multipart", "ws"] }
 hyper-util = { version = "0.1.20", features = ["client-legacy", "http1", "http2", "server-auto", "service", "tokio"] }
 ll = "10.0.0"
 serde_json = { version = "1.0.151", features = ["alloc", "float_roundtrip", "raw_value", "unbounded_depth"] }
-tokio = { version = "1.52.4", features = ["full", "test-util", "tracing"] }
+tokio = { version = "1.53.1", features = ["full", "test-util", "tracing"] }
 tower-http = { version = "0.6.11", features = ["compression-full", "cors", "fs", "set-header", "trace"] }
 tracing = { version = "0.1.41", features = ["attributes", "valuable"] }
 unigraph_app = { version = "0.1.1-alpha.0", path = "../unigraph_app" }

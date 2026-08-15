@@ -16,7 +16,7 @@ ll = "10.0.0"
 lru = { version = "0.16.4", default-features = false }
 paste = "1.0.14"
 serde = { version = "1.0.229", features = ["derive", "rc"] }
-tokio = { version = "1.52.4", features = ["full", "test-util", "tracing"] }
+tokio = { version = "1.53.1", features = ["full", "test-util", "tracing"] }
 typegen = { version = "0.1.1-alpha.0", path = "../typegen" }
 unigraph_core = { version = "0.1.1-alpha.0", path = "../unigraph_core" }
 unigraph_db = { version = "0.1.1-alpha.0", path = "../unigraph_db" }
