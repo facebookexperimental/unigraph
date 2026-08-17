@@ -249,7 +249,14 @@ impl FlowGenerator {
     /// `.js` file rather than a `.js.flow` (see `TypeGenConfig::make_decl_file_name`).
     /// `Object.freeze` is load-bearing twice over: it makes the table immutable at
     /// runtime, and Flow special-cases it to infer singleton literal types for the
-    /// properties, so `$Values` yields the value union rather than `string`.
+    /// properties, so `Values` yields the value union rather than `string`.
+    ///
+    /// The value union is suffixed `Value` rather than sharing the group's name.
+    /// TypeScript can reuse the name because it keeps type and value namespaces
+    /// apart, but Babel registers a Flow `type` alias as an ordinary binding, so
+    /// `const X` next to `type X` fails to transform with `Duplicate declaration
+    /// "X"`. Flow's own checker accepts it, so `flow check` does NOT catch this —
+    /// it surfaces only when something actually builds the module.
     fn generate_const_flow(
         type_name: &str,
         docs: &Option<String>,
@@ -271,7 +278,7 @@ impl FlowGenerator {
 
         result.push_str("});\n\n");
         result.push_str(&format!(
-            "export type {0} = $Values<typeof {0}>;\n",
+            "export type {0}Value = Values<typeof {0}>;\n",
             type_name
         ));
 

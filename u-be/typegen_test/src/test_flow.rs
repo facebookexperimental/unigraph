@@ -121,7 +121,7 @@ export const FlowTypeTimelines = Object.freeze({
   OTHER_TIMELINE: "timeline-456",
 });
 
-export type FlowTypeTimelines = $Values<typeof FlowTypeTimelines>;
+export type FlowTypeTimelinesValue = Values<typeof FlowTypeTimelines>;
 
 ---------------- ./flow/FlowPrefixTrickyConsts.js
 
@@ -138,7 +138,7 @@ export const FlowTypeTrickyConsts = Object.freeze({
 line2",
 });
 
-export type FlowTypeTrickyConsts = $Values<typeof FlowTypeTrickyConsts>;
+export type FlowTypeTrickyConstsValue = Values<typeof FlowTypeTrickyConsts>;
 
 ---------------- ./flow/FlowPrefixFlowOverriddenConsts.js.flow
 
