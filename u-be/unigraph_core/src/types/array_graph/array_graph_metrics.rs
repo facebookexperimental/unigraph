@@ -11,6 +11,7 @@ use crate::types::TierName;
 use crate::types::array_graph::offset_graph::DFSConfigured;
 use crate::types::array_graph::offset_graph::EdgeOverrides;
 use crate::types::array_graph::offset_graph::edge_flags::EdgeFlags;
+use crate::types::array_graph::tiers::MAX_TIERS;
 use crate::types::twin_graph::NodeDiff;
 
 /// This struct is used to compute transitive deltas in delta view.
@@ -344,7 +345,7 @@ pub fn get_metrics_sums_tiered_for_nodes(
 
     if let Some(TieredTraversalConfig::AscendingTiers(ascending_tiers)) = tier_config {
         for (metric_name, metrics) in &ag.data.node_metadata.metrics {
-            let mut tiered_metrics = [0.0; 4];
+            let mut tiered_metrics = [0.0; MAX_TIERS];
 
             for node_idx in node_idxs {
                 if ag.is_node_unreachable(*node_idx) {
@@ -356,7 +357,7 @@ pub fn get_metrics_sums_tiered_for_nodes(
 
                 // make it cumulative.
                 #[allow(clippy::needless_range_loop)]
-                for add_metric_to_tier_idx in tier_idx..4 {
+                for add_metric_to_tier_idx in tier_idx..MAX_TIERS {
                     tiered_metrics[add_metric_to_tier_idx] += value;
                 }
             }
@@ -415,9 +416,9 @@ pub fn get_combined_metrics_for_entry_points(
         .values()
         .collect::<Vec<&Vec<f64>>>();
 
-    let mut tiered_result_vec: Vec<[f64; 4]> = metric_names
+    let mut tiered_result_vec: Vec<[f64; MAX_TIERS]> = metric_names
         .iter()
-        .map(|_name| [0.0; 4])
+        .map(|_name| [0.0; MAX_TIERS])
         .collect::<Vec<_>>();
 
     let mut metrics_result_vec = vec![0.0; metric_names.len()];

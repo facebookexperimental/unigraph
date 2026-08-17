@@ -76,6 +76,7 @@ use crate::types::array_graph::offset_graph::lengauer_tarjan_dominator_tree::mak
 use crate::types::array_graph::offset_graph::reverse_parallel;
 use crate::types::array_graph::tiers::ALL_TIER_FLAGS;
 use crate::types::array_graph::tiers::TIER_FLAGS;
+use crate::types::array_graph::tiers::flags_to_tier_idx;
 use crate::types::map_graph::GraphNode;
 
 pub struct ArrayGraph {
@@ -111,25 +112,24 @@ bitflags::bitflags! {
         const TIER_IDX_1 =  TIER_FLAGS[1];
         const TIER_IDX_2 =  TIER_FLAGS[2];
         const TIER_IDX_3 =  TIER_FLAGS[3];
+        const TIER_IDX_4 =  TIER_FLAGS[4];
+        const TIER_IDX_5 =  TIER_FLAGS[5];
+        const TIER_IDX_6 =  TIER_FLAGS[6];
+        const TIER_IDX_7 =  TIER_FLAGS[7];
         const ALL_TIERS =   ALL_TIER_FLAGS;
     }
 }
 
 impl NodeFlags {
     pub fn tier_idx(self) -> Option<usize> {
-        let tier_bits = self.intersection(NodeFlags::ALL_TIERS);
-        match tier_bits {
-            NodeFlags::TIER_IDX_0 => Some(0),
-            NodeFlags::TIER_IDX_1 => Some(1),
-            NodeFlags::TIER_IDX_2 => Some(2),
-            NodeFlags::TIER_IDX_3 => Some(3),
-            _ => None,
-        }
+        flags_to_tier_idx(self.intersection(NodeFlags::ALL_TIERS).bits())
     }
 
+    /// All 32 bits, because the tier block lives at bits 16..24 — a narrower
+    /// rendering would silently hide it.
     pub fn to_binary_string(self) -> String {
-        let binary = format!("{:016b}", self.bits());
-        let mut result = String::with_capacity(19); // 16 digits + 3 separators
+        let binary = format!("{:032b}", self.bits());
+        let mut result = String::with_capacity(39); // 32 digits + 7 separators
         for (i, c) in binary.chars().enumerate() {
             if i > 0 && i % 4 == 0 {
                 result.push('_');

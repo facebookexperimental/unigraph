@@ -5,6 +5,7 @@ use anyhow::Result;
 
 use crate::types::array_graph::tiers::ALL_TIER_FLAGS;
 use crate::types::array_graph::tiers::TIER_FLAGS;
+use crate::types::array_graph::tiers::flags_to_tier_idx;
 use crate::types::array_graph::tiers::tier_idx_to_flags;
 
 pub enum EdgeType {
@@ -25,6 +26,10 @@ bitflags::bitflags! {
         const TRANSITIONS_TO_TIER_IDX_1 =   TIER_FLAGS[1];
         const TRANSITIONS_TO_TIER_IDX_2 =   TIER_FLAGS[2];
         const TRANSITIONS_TO_TIER_IDX_3 =   TIER_FLAGS[3];
+        const TRANSITIONS_TO_TIER_IDX_4 =   TIER_FLAGS[4];
+        const TRANSITIONS_TO_TIER_IDX_5 =   TIER_FLAGS[5];
+        const TRANSITIONS_TO_TIER_IDX_6 =   TIER_FLAGS[6];
+        const TRANSITIONS_TO_TIER_IDX_7 =   TIER_FLAGS[7];
         const ALL_TIERS =                   ALL_TIER_FLAGS;
 
         /// These bits used to encode traversal message index
@@ -45,9 +50,11 @@ bitflags::bitflags! {
 }
 
 impl EdgeFlags {
+    /// All 32 bits, because the tier block lives at bits 16..24 — a narrower
+    /// rendering would silently hide it.
     pub fn to_binary_string(self) -> String {
-        let binary = format!("{:016b}", self.bits());
-        let mut result = String::with_capacity(19); // 16 digits + 3 separators
+        let binary = format!("{:032b}", self.bits());
+        let mut result = String::with_capacity(39); // 32 digits + 7 separators
         for (i, c) in binary.chars().enumerate() {
             if i > 0 && i % 4 == 0 {
                 result.push('_');
@@ -118,14 +125,7 @@ transitions to tier idx: {:?}
     }
 
     pub fn transitions_to_tier_idx(self) -> Option<usize> {
-        let tier_flags = self.intersection(EdgeFlags::ALL_TIERS);
-        match tier_flags {
-            EdgeFlags::TRANSITIONS_TO_TIER_IDX_0 => Some(0),
-            EdgeFlags::TRANSITIONS_TO_TIER_IDX_1 => Some(1),
-            EdgeFlags::TRANSITIONS_TO_TIER_IDX_2 => Some(2),
-            EdgeFlags::TRANSITIONS_TO_TIER_IDX_3 => Some(3),
-            _ => None,
-        }
+        flags_to_tier_idx(self.intersection(EdgeFlags::ALL_TIERS).bits())
     }
 
     pub fn set_transitions_to_tier_idx(&mut self, tier_idx: usize) -> Result<()> {
@@ -185,7 +185,10 @@ mod tests {
     #[test]
     fn test_edge_flags() -> Result<()> {
         let edge = Edge::new_with_flags(NodeIDX(1), EdgeFlags::IS_TAGGED);
-        assert_equal!(edge.flags.to_binary_string(), "0000_0000_0000_0001");
+        assert_equal!(
+            edge.flags.to_binary_string(),
+            "0000_0000_0000_0000_0000_0000_0000_0001"
+        );
         assert_equal!(edge.flags.contains(EdgeFlags::IS_TAGGED), true);
         assert_equal!(edge.flags.intersects(EdgeFlags::IS_TAGGED), true);
         assert_equal!(edge.flags.intersects(EdgeFlags::IS_DYNAMIC), false);
@@ -195,12 +198,18 @@ mod tests {
             true
         );
 
-        assert_equal!(edge.flags.to_binary_string(), "0000_0000_0000_0001");
+        assert_equal!(
+            edge.flags.to_binary_string(),
+            "0000_0000_0000_0000_0000_0000_0000_0001"
+        );
 
         let edge = Edge::new_with_flags(NodeIDX(1), EdgeFlags::IS_DYNAMIC);
         assert_equal!(edge.flags.contains(EdgeFlags::IS_DYNAMIC), true);
 
-        assert_equal!(edge.flags.to_binary_string(), "0000_0000_0000_0010");
+        assert_equal!(
+            edge.flags.to_binary_string(),
+            "0000_0000_0000_0000_0000_0000_0000_0010"
+        );
 
         Ok(())
     }

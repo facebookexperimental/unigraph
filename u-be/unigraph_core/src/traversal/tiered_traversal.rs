@@ -15,6 +15,7 @@ use crate::types::array_graph::NodeFlags;
 use crate::types::array_graph::offset_graph::EdgeOverrides;
 use crate::types::array_graph::offset_graph::edge_flags::EdgeFlags;
 use crate::types::array_graph::offset_graph::edge_overrides::edge_should_be_followed;
+use crate::types::array_graph::tiers::MAX_TIERS;
 use crate::types::array_graph::tiers::tier_idx_to_flags;
 
 /// Configuration for tiered traversal, which allows traversing the graph in tiers.
@@ -143,7 +144,7 @@ pub struct TieredTraversalIter<'a> {
     overrides: Option<&'a EdgeOverrides>,
     current_tier: usize,
     visited: HashSet<NodeIDX>,
-    stacks: [Vec<NodeIDX>; 4],
+    stacks: [Vec<NodeIDX>; MAX_TIERS],
     tiers: Vec<AscendingTier>,
 }
 
@@ -166,7 +167,8 @@ impl<'a> TieredTraversalIter<'a> {
         entry_points: &[NodeIDX],
         overrides: Option<&'a EdgeOverrides>,
     ) -> Self {
-        let stacks = [entry_points.to_vec(), Vec::new(), Vec::new(), Vec::new()];
+        let mut stacks: [Vec<NodeIDX>; MAX_TIERS] = std::array::from_fn(|_| Vec::new());
+        stacks[0] = entry_points.to_vec();
 
         TieredTraversalIter {
             targets,

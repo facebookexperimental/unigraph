@@ -18,6 +18,7 @@ use test_utils::print_forward_edges;
 
 use crate::ArrayGraph;
 use crate::ArrayGraphSerializable;
+use crate::MAX_TIERS;
 use crate::NodeIDX;
 use crate::tests::test_graphs::make_test_array_graph_1;
 use crate::tests::test_graphs::make_test_array_graph_2;
@@ -28,7 +29,6 @@ use crate::traversal::DefaultBranches;
 use crate::traversal::DynamicTypeConfig;
 use crate::traversal::NodeLabelPredicate;
 use crate::traversal::TraversalConfig;
-use crate::types::array_graph::NodeFlags;
 
 #[test]
 fn determine_entrypoints() -> Result<()> {
@@ -69,17 +69,17 @@ fn test_edge_flags() -> Result<()> {
     snapshot!(
         result.trim(),
         "
-A -> B: 0000_0000_0000_0000
-A -> D: 0000_0000_0000_0000
-B -> C: 0000_0000_0000_0001
-B -> J: 0000_0000_0000_0001
+A -> B: 0000_0000_0000_0000_0000_0000_0000_0000
+A -> D: 0000_0000_0000_0000_0000_0000_0000_0000
+B -> C: 0000_0000_0000_0000_0000_0000_0000_0001
+B -> J: 0000_0000_0000_0000_0000_0000_0000_0001
 
-D -> F: 0000_0000_0000_0000
-D -> E: 0000_0000_0000_0001
+D -> F: 0000_0000_0000_0000_0000_0000_0000_0000
+D -> E: 0000_0000_0000_0000_0000_0000_0000_0001
 
-F -> G: 0000_0000_0000_0010
-F -> H: 0000_0000_0000_0010
-F -> I: 0000_0000_0000_0010
+F -> G: 0000_0000_0000_0000_0000_0000_0000_0010
+F -> H: 0000_0000_0000_0000_0000_0000_0000_0010
+F -> I: 0000_0000_0000_0000_0000_0000_0000_0010
 "
     );
 
@@ -203,15 +203,15 @@ F -> I
     snapshot!(
         snap(&g),
         r#"
-A -> B: 0000_0000_0000_0000 (None)
-A -> D: 0000_0000_0000_0000 (None)
-B -> C: 0000_0000_0000_0001 (Some(Tagged { tag: "BL" }))
-B -> J: 0000_0000_0000_0001 (Some(Tagged { tag: "RD" }))
-D -> F: 0000_0000_0000_0000 (None)
-D -> E: 0000_0000_0000_0001 (Some(Tagged { tag: "RDFD" }))
-F -> G: 0000_0000_0000_0010 (Some(Dynamic { type_key: "ddd", edge_name: "ddd_1", branch: "b1", metadata: None }))
-F -> H: 0000_0000_0000_0010 (Some(Dynamic { type_key: "ddd", edge_name: "ddd_1", branch: "b1", metadata: None }))
-F -> I: 0000_0000_0000_0010 (Some(Dynamic { type_key: "ddd", edge_name: "ddd_1", branch: "b2", metadata: None }))
+A -> B: 0000_0000_0000_0000_0000_0000_0000_0000 (None)
+A -> D: 0000_0000_0000_0000_0000_0000_0000_0000 (None)
+B -> C: 0000_0000_0000_0000_0000_0000_0000_0001 (Some(Tagged { tag: "BL" }))
+B -> J: 0000_0000_0000_0000_0000_0000_0000_0001 (Some(Tagged { tag: "RD" }))
+D -> F: 0000_0000_0000_0000_0000_0000_0000_0000 (None)
+D -> E: 0000_0000_0000_0000_0000_0000_0000_0001 (Some(Tagged { tag: "RDFD" }))
+F -> G: 0000_0000_0000_0000_0000_0000_0000_0010 (Some(Dynamic { type_key: "ddd", edge_name: "ddd_1", branch: "b1", metadata: None }))
+F -> H: 0000_0000_0000_0000_0000_0000_0000_0010 (Some(Dynamic { type_key: "ddd", edge_name: "ddd_1", branch: "b1", metadata: None }))
+F -> I: 0000_0000_0000_0000_0000_0000_0000_0010 (Some(Dynamic { type_key: "ddd", edge_name: "ddd_1", branch: "b2", metadata: None }))
 "#
     );
 
@@ -225,15 +225,15 @@ F -> I: 0000_0000_0000_0010 (Some(Dynamic { type_key: "ddd", edge_name: "ddd_1",
     snapshot!(
         snap(&g),
         r#"
-A -> B: 0000_0000_0000_0000 (None)
-A -> D: 0000_0000_0000_0000 (None)
-B -> C: 0000_0000_0000_0001 (Some(Tagged { tag: "BL" }))
-B -> J: 0000_0000_0000_0001 (Some(Tagged { tag: "RD" }))
-D -> F: 0000_0000_0000_0000 (None)
-D -> E: 0000_0000_0000_0001 (Some(Tagged { tag: "RDFD" }))
-F -> G: 0000_0000_0000_0010 (Some(Dynamic { type_key: "ddd", edge_name: "ddd_1", branch: "b1", metadata: None }))
-F -> H: 0000_0000_0000_0010 (Some(Dynamic { type_key: "ddd", edge_name: "ddd_1", branch: "b1", metadata: None }))
-F -> I: 0000_1100_0000_0110 (Some(Dynamic { type_key: "ddd", edge_name: "ddd_1", branch: "b2", metadata: None }))
+A -> B: 0000_0000_0000_0000_0000_0000_0000_0000 (None)
+A -> D: 0000_0000_0000_0000_0000_0000_0000_0000 (None)
+B -> C: 0000_0000_0000_0000_0000_0000_0000_0001 (Some(Tagged { tag: "BL" }))
+B -> J: 0000_0000_0000_0000_0000_0000_0000_0001 (Some(Tagged { tag: "RD" }))
+D -> F: 0000_0000_0000_0000_0000_0000_0000_0000 (None)
+D -> E: 0000_0000_0000_0000_0000_0000_0000_0001 (Some(Tagged { tag: "RDFD" }))
+F -> G: 0000_0000_0000_0000_0000_0000_0000_0010 (Some(Dynamic { type_key: "ddd", edge_name: "ddd_1", branch: "b1", metadata: None }))
+F -> H: 0000_0000_0000_0000_0000_0000_0000_0010 (Some(Dynamic { type_key: "ddd", edge_name: "ddd_1", branch: "b1", metadata: None }))
+F -> I: 0000_0000_0000_0000_0000_1100_0000_0110 (Some(Dynamic { type_key: "ddd", edge_name: "ddd_1", branch: "b2", metadata: None }))
 "#
     );
 
@@ -247,15 +247,15 @@ F -> I: 0000_1100_0000_0110 (Some(Dynamic { type_key: "ddd", edge_name: "ddd_1",
     snapshot!(
         snap(&g),
         r#"
-A -> B: 0000_0000_0000_0000 (None)
-A -> D: 0000_0000_0000_0000 (None)
-B -> C: 0000_1000_0000_0101 (Some(Tagged { tag: "BL" }))
-B -> J: 0000_0000_0000_0001 (Some(Tagged { tag: "RD" }))
-D -> F: 0000_0000_0000_0000 (None)
-D -> E: 0000_0000_0000_0001 (Some(Tagged { tag: "RDFD" }))
-F -> G: 0000_0000_0000_0010 (Some(Dynamic { type_key: "ddd", edge_name: "ddd_1", branch: "b1", metadata: None }))
-F -> H: 0000_0000_0000_0010 (Some(Dynamic { type_key: "ddd", edge_name: "ddd_1", branch: "b1", metadata: None }))
-F -> I: 0000_1100_0000_0010 (Some(Dynamic { type_key: "ddd", edge_name: "ddd_1", branch: "b2", metadata: None }))
+A -> B: 0000_0000_0000_0000_0000_0000_0000_0000 (None)
+A -> D: 0000_0000_0000_0000_0000_0000_0000_0000 (None)
+B -> C: 0000_0000_0000_0000_0000_1000_0000_0101 (Some(Tagged { tag: "BL" }))
+B -> J: 0000_0000_0000_0000_0000_0000_0000_0001 (Some(Tagged { tag: "RD" }))
+D -> F: 0000_0000_0000_0000_0000_0000_0000_0000 (None)
+D -> E: 0000_0000_0000_0000_0000_0000_0000_0001 (Some(Tagged { tag: "RDFD" }))
+F -> G: 0000_0000_0000_0000_0000_0000_0000_0010 (Some(Dynamic { type_key: "ddd", edge_name: "ddd_1", branch: "b1", metadata: None }))
+F -> H: 0000_0000_0000_0000_0000_0000_0000_0010 (Some(Dynamic { type_key: "ddd", edge_name: "ddd_1", branch: "b1", metadata: None }))
+F -> I: 0000_0000_0000_0000_0000_1100_0000_0010 (Some(Dynamic { type_key: "ddd", edge_name: "ddd_1", branch: "b2", metadata: None }))
 "#
     );
     Ok(())
@@ -446,6 +446,86 @@ J [UNREACHABLE] (labels: assert_tags: [a, b]):
     Ok(())
 }
 
+/// Exercise the full tier capacity: a chain of `MAX_TIERS - 1` tagged edges,
+/// each tagged so it transitions to the next tier. Node `N{i}` must land in
+/// tier `i`.
+///
+/// The point is the tail of that range — tiers 4..8 only became representable
+/// when `TIER_FLAGS` grew, and nothing else in the suite reaches past tier 3.
+#[test]
+fn test_traversal_uses_every_available_tier() -> Result<()> {
+    let tag = |i: usize| format!("TAG_TO_T{i}");
+
+    let nodes: BTreeMap<String, crate::types::map_graph::GraphNode> = (0..MAX_TIERS)
+        .map(|i| {
+            let node = crate::types::map_graph::GraphNode {
+                // Each node points at the next one through a tag that
+                // transitions to that node's tier.
+                edges_tagged: (i + 1 < MAX_TIERS).then(|| {
+                    BTreeMap::from([(tag(i + 1), BTreeSet::from([format!("N{}", i + 1)]))])
+                }),
+                ..Default::default()
+            };
+            (format!("N{i}"), node)
+        })
+        .collect();
+
+    let tiers = (0..MAX_TIERS)
+        .map(|i| crate::AscendingTier {
+            name: format!("T{i}"),
+            // Tier 0 is the base tier — nothing transitions *into* it.
+            tags_that_transition_to_this_tier: if i == 0 { vec![] } else { vec![tag(i)] },
+            dynamic_type_keys_that_transition_to_this_tier: vec![],
+        })
+        .collect();
+
+    let mut g = crate::MapGraph {
+        nodes,
+        traversal_config: None,
+        graph_settings: None,
+        entry_points: None,
+        properties: BTreeMap::new(),
+    }
+    .to_array_graph(&ll::Task::create_new("test"))?;
+
+    g.apply_traversal_config_and_entry_points(TraversalConfig {
+        tiered_traversal: Some(crate::TieredTraversalConfig::AscendingTiers(
+            crate::AscendingTiersConfig {
+                tiers,
+                max_tier: None,
+            },
+        )),
+        ..Default::default()
+    })?;
+
+    let assigned = g
+        .node_idx_iter()
+        .map(|idx| {
+            let tier = g.runtime.node_flags[idx]
+                .tier_idx()
+                .map_or_else(|| "<none>".to_string(), |t| t.to_string());
+            format!("{}: tier {}", g.idx_to_name(idx), tier)
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    snapshot!(
+        assigned,
+        "
+N0: tier 0
+N1: tier 1
+N2: tier 2
+N3: tier 3
+N4: tier 4
+N5: tier 5
+N6: tier 6
+N7: tier 7
+"
+    );
+
+    Ok(())
+}
+
 #[test]
 fn test_tiered_traversal() -> Result<()> {
     let mut g = make_test_array_graph_1()?;
@@ -458,13 +538,8 @@ fn test_tiered_traversal() -> Result<()> {
     let mut result = String::new();
     for node_idx in g.node_idx_iter() {
         let node_name = g.idx_to_name(node_idx);
-        let tier_flags = g.runtime.node_flags[node_idx].intersection(NodeFlags::ALL_TIERS);
-        let tier_idx = match tier_flags {
-            NodeFlags::TIER_IDX_0 => 0,
-            NodeFlags::TIER_IDX_1 => 1,
-            NodeFlags::TIER_IDX_2 => 2,
-            NodeFlags::TIER_IDX_3 => 3,
-            _ => anyhow::bail!("Does not match any tier or has multiple tiers assigned"), // No tier assigned
+        let Some(tier_idx) = g.runtime.node_flags[node_idx].tier_idx() else {
+            anyhow::bail!("Does not match any tier or has multiple tiers assigned");
         };
 
         result.push_str(&format!(

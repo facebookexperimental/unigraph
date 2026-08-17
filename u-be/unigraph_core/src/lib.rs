@@ -105,6 +105,7 @@ pub use crate::types::array_graph::offset_graph::EdgeOverrides;
 pub use crate::types::array_graph::offset_graph::TraversalType;
 pub use crate::types::array_graph::property_index::PropertyIndices;
 pub use crate::types::array_graph::remap_utils;
+pub use crate::types::array_graph::tiers::MAX_TIERS;
 pub use crate::types::array_graph::to_scc_graph::SccGraph;
 pub use crate::types::map_graph::GraphNode;
 pub use crate::types::map_graph::MapGraph;
