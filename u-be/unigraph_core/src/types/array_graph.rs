@@ -63,6 +63,7 @@ use crate::types::array_graph::array_graph_metrics::get_metrics_sums_tiered_for_
 use crate::types::array_graph::array_graph_metrics::get_transitive_metric_value;
 pub use crate::types::array_graph::array_graph_metrics::get_transitive_tiered_metric_values;
 use crate::types::array_graph::array_graph_metrics::metric_min_max;
+use crate::types::array_graph::array_graph_metrics::metric_value;
 use crate::types::array_graph::array_graph_metrics::parents_len_configured;
 use crate::types::array_graph::array_graph_state::ArrayGraphState;
 use crate::types::array_graph::array_graph_stats::ArrayGraphStats;
@@ -421,6 +422,12 @@ impl ArrayGraph {
 
     pub fn parents_len_configured(&self, node_idx: NodeIDX) -> usize {
         parents_len_configured(self, node_idx)
+    }
+
+    /// Resolve a single [`MetricView`] to a number for one node. The shared
+    /// dispatcher behind every metric column renderer.
+    pub fn metric_value(&self, node_idx: NodeIDX, view: &MetricView) -> Result<f64> {
+        metric_value(self, node_idx, view)
     }
 
     pub fn all_reachable_node_idxs(&self) -> Vec<NodeIDX> {

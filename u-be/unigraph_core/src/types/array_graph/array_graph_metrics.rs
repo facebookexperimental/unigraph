@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 use anyhow::Result;
 
 use crate::ArrayGraph;
+use crate::MetricView;
 use crate::NodeIDX;
 use crate::TieredTraversalConfig;
 use crate::types::MetricName;
@@ -227,6 +228,38 @@ pub fn get_transitive_tiered_metric_values(
         }
         (None, _) => Ok(result),
         (_, None) => Ok(result),
+    }
+}
+
+/// Resolve a single [`MetricView`] to a number for one node.
+///
+/// The only place that maps a user-facing metric view onto the accessor that
+/// produces it — every caller that renders metric columns goes through here so
+/// the views cannot drift apart.
+pub fn metric_value(ag: &ArrayGraph, node_idx: NodeIDX, view: &MetricView) -> Result<f64> {
+    match view {
+        MetricView::Metric { name } => Ok(ag
+            .data
+            .node_metadata
+            .metrics
+            .get(name.as_str())
+            .map_or(0.0, |values| values[node_idx])),
+        MetricView::Transitive { name } => ag.get_transitive_metric_value(node_idx, name, false),
+        MetricView::Dominated { name } => ag.get_transitive_metric_value(node_idx, name, true),
+        MetricView::Tiered { name, tier_name } => {
+            let tiered = ag.get_transitive_tiered_metric_values(node_idx, name, false)?;
+            Ok(*tiered.get(tier_name.as_str()).unwrap_or(&0.0))
+        }
+        MetricView::TieredDominated { name, tier_name } => {
+            let tiered = ag.get_transitive_tiered_metric_values(node_idx, name, true)?;
+            Ok(*tiered.get(tier_name.as_str()).unwrap_or(&0.0))
+        }
+        MetricView::ParentsCount {} => Ok(ag.parents_len_configured(node_idx) as f64),
+        MetricView::CountTransitive {} => Ok(ag.transitive_count_configured(node_idx) as f64),
+        MetricView::CountDominated {} => {
+            Ok(ag.transitive_count_configured_dominated(node_idx) as f64)
+        }
+        MetricView::TierIndex {} => Ok(ag.node_tier_idx(node_idx).unwrap_or(0) as f64),
     }
 }
 

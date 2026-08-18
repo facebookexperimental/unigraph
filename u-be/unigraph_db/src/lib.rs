@@ -56,6 +56,7 @@ pub use namespaces::HistorySeriesRow;
 pub use namespaces::MetricHistory;
 pub use namespaces::Timelines;
 pub use namespaces::Utility;
+pub use resolve::apply_traversal;
 pub use storage::UnigraphStorage;
 use unigraph_core::ArrayGraphSerializable;
 use unigraph_core::ArrayGraphSerializablePackageConfig;

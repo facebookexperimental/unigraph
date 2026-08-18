@@ -7,11 +7,18 @@ use anyhow::bail;
 
 const SEPARATOR: char = '~';
 const TIER_SEPARATOR: char = '#';
+const SIDE_SEPARATOR: char = '@';
 const NODE_COUNT: &str = "node-count";
 const PARENTS_COUNT: &str = "parents-count";
 const TIER_INDEX: &str = "tier";
 const TRANSITIVE: &str = "transitive";
 const DOMINATED: &str = "dominated";
+const LEFT: &str = "left";
+const DELTA: &str = "delta";
+/// Never emitted — `Right` is the bare form. Accepted only because
+/// `SortColumn`'s docs advertised it before these keys were typed, so it may
+/// exist in hand-written graph settings. See [`MetricColumn::from_str`].
+const RIGHT_ALIAS: &str = "right";
 
 /// A user-facing metric specification.
 ///
@@ -121,6 +128,122 @@ impl FromStr for MetricView {
             return parse_tiered(metric_part, tier_part);
         }
         parse_non_tiered(s)
+    }
+}
+
+// ── Table column keys ───────────────────────────────────────────
+
+/// Which graph a metric column reads from, when a table is comparing two.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum MetricSide {
+    /// The "before" graph.
+    Left,
+    /// The "after" graph. The default, so a bare `size~transitive` means this.
+    #[default]
+    Right,
+    /// Right minus left. Not always a plain subtraction — tiered and
+    /// node-count deltas exclude nodes that didn't change.
+    Delta,
+}
+
+/// The identity of a column in a metrics table: *what* to measure
+/// ([`MetricView`]) and *which graph* to read it from ([`MetricSide`]).
+///
+/// The two are deliberately separate types. A [`MetricView`] is a property of
+/// one graph — `ArrayGraph::metric_value`, `available_metric_views`, and the
+/// `metrics_visibility` map all operate on a single graph, where a side would
+/// be meaningless (and, folded into the variants, would be *representable*).
+/// A side only exists once you are naming a column in a table that may be
+/// showing two graphs at once.
+///
+/// Used as the sort key in [`GraphTableSort`], as the column list of the
+/// ExploreDelta RPC, and as the keys of that RPC's metrics map. A bare view
+/// means the right-hand graph, so every single-graph key is also a valid
+/// `MetricColumn`:
+///
+/// ```text
+/// size~transitive             → Right   (bare == right graph)
+/// size~transitive@left        → Left
+/// size~transitive@delta       → Delta
+/// size#lazy@delta             → Delta of a tiered view
+/// node-count~transitive@delta → Delta of the transitive node count
+/// ```
+///
+/// Serializes as that string rather than as a struct: these keys are persisted
+/// inside `GraphSettings` on stored graphs, and the frontend indexes them as
+/// plain strings.
+///
+/// [`GraphTableSort`]: crate::graph_settings::GraphTableSort
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MetricColumn {
+    pub view: MetricView,
+    pub side: MetricSide,
+}
+
+impl MetricColumn {
+    pub fn new(view: MetricView, side: MetricSide) -> Self {
+        Self { view, side }
+    }
+
+    /// A column reading the right-hand graph — the only graph, in single-graph
+    /// mode.
+    pub fn right(view: MetricView) -> Self {
+        Self::new(view, MetricSide::Right)
+    }
+
+    pub fn is_delta(&self) -> bool {
+        self.side == MetricSide::Delta
+    }
+}
+
+impl From<MetricView> for MetricColumn {
+    fn from(view: MetricView) -> Self {
+        Self::right(view)
+    }
+}
+
+impl fmt::Display for MetricColumn {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.side {
+            MetricSide::Right => write!(f, "{}", self.view),
+            MetricSide::Left => write!(f, "{}{SIDE_SEPARATOR}{LEFT}", self.view),
+            MetricSide::Delta => write!(f, "{}{SIDE_SEPARATOR}{DELTA}", self.view),
+        }
+    }
+}
+
+impl FromStr for MetricColumn {
+    type Err = anyhow::Error;
+
+    /// `@right` parses to [`MetricSide::Right`] but is never produced —
+    /// `SortColumn`'s docs described that spelling while the key was still an
+    /// untyped `String`, so it may sit in hand-written graph settings. Since
+    /// these keys are persisted inside stored graphs, rejecting one would fail
+    /// the whole `GraphSettings` load over a cosmetic sort preference.
+    fn from_str(s: &str) -> anyhow::Result<Self> {
+        let Some((view, side)) = s.split_once(SIDE_SEPARATOR) else {
+            return Ok(Self::right(s.parse()?));
+        };
+        let side = match side {
+            LEFT => MetricSide::Left,
+            DELTA => MetricSide::Delta,
+            RIGHT_ALIAS => MetricSide::Right,
+            other => bail!("unknown metric side: '{other}' (expected '{LEFT}' or '{DELTA}')"),
+        };
+        Ok(Self::new(view.parse()?, side))
+    }
+}
+
+impl serde::Serialize for MetricColumn {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_str(self)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for MetricColumn {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let raw = String::deserialize(deserializer)?;
+        raw.parse().map_err(serde::de::Error::custom)
     }
 }
 
@@ -238,5 +361,103 @@ node-count~dominated       -
     fn test_parse_errors() {
         assert!("node-count~unknown".parse::<MetricView>().is_err());
         assert!("size#T1~unknown".parse::<MetricView>().is_err());
+    }
+
+    /// Every view × side, rendered and parsed back. One table so the whole
+    /// column vocabulary — the strings that end up in `SortColumn`, in stored
+    /// `GraphSettings`, and in the frontend's key comparisons — is visible in
+    /// one place.
+    #[test]
+    fn test_twin_metric_view_roundtrip() {
+        let sides = [MetricSide::Right, MetricSide::Left, MetricSide::Delta];
+        let mut out = format!("{:<32} {}\n", "display", "is_delta");
+
+        for view in all_variants().into_iter().chain([MetricView::TierIndex {}]) {
+            for side in sides {
+                let column = MetricColumn::new(view.clone(), side);
+                let display = column.to_string();
+                let parsed: MetricColumn = display
+                    .parse()
+                    .unwrap_or_else(|e| panic!("roundtrip failed for '{display}': {e}"));
+                assert_eq!(parsed, column, "roundtrip mismatch for '{display}'");
+                out.push_str(&format!("{:<32} {}\n", display, column.is_delta()));
+            }
+        }
+
+        snapshot!(
+            out,
+            "
+display                          is_delta
+size                             false
+size@left                        false
+size@delta                       true
+size~transitive                  false
+size~transitive@left             false
+size~transitive@delta            true
+size~dominated                   false
+size~dominated@left              false
+size~dominated@delta             true
+size#T1                          false
+size#T1@left                     false
+size#T1@delta                    true
+size#T1~dominated                false
+size#T1~dominated@left           false
+size#T1~dominated@delta          true
+parents-count                    false
+parents-count@left               false
+parents-count@delta              true
+node-count~transitive            false
+node-count~transitive@left       false
+node-count~transitive@delta      true
+node-count~dominated             false
+node-count~dominated@left        false
+node-count~dominated@delta       true
+tier                             false
+tier@left                        false
+tier@delta                       true
+
+"
+        );
+    }
+
+    /// A bare `MetricView` string is a valid column key meaning "right graph",
+    /// so every key written before twin mode existed still parses.
+    #[test]
+    fn test_bare_view_is_the_right_side() {
+        let parsed: MetricColumn = "size#eager".parse().unwrap();
+        assert_eq!(parsed.side, MetricSide::Right);
+        assert_eq!(parsed.to_string(), "size#eager");
+    }
+
+    /// Serializes as its display string, not as a struct — stored
+    /// `GraphSettings` carry these as plain JSON strings.
+    #[test]
+    fn test_serializes_as_a_plain_string() {
+        let column = MetricColumn::new(
+            MetricView::Transitive {
+                name: "size".into(),
+            },
+            MetricSide::Delta,
+        );
+        let json = serde_json::to_string(&column).unwrap();
+        assert_eq!(json, r#""size~transitive@delta""#);
+        assert_eq!(serde_json::from_str::<MetricColumn>(&json).unwrap(), column);
+    }
+
+    /// `@right` was the spelling `SortColumn`'s docs advertised while the key
+    /// was an untyped `String`. Stored graph settings may carry it, and a
+    /// parse failure there would sink the entire graph load — so it is
+    /// accepted, and normalizes to the bare form on the way out.
+    #[test]
+    fn test_right_alias_is_accepted_but_never_emitted() {
+        let parsed: MetricColumn = "size~transitive@right".parse().unwrap();
+        assert_eq!(parsed.side, MetricSide::Right);
+        assert_eq!(parsed.to_string(), "size~transitive");
+    }
+
+    #[test]
+    fn test_twin_parse_errors() {
+        assert!("size~transitive@sideways".parse::<MetricColumn>().is_err());
+        assert!("size~bogus@delta".parse::<MetricColumn>().is_err());
     }
 }

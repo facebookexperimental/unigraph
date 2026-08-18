@@ -13,6 +13,9 @@
 //! - **`by_timeline_latest`** — keyed by `TimelineID`. Stores the latest raw graph
 //!   for a timeline (no roots/traversal). Used by SearchNodes RPC.
 //!
+//! - **`twins`** — keyed by a pair of `ExploreCacheKey`s. Stores merged
+//!   `TwinGraph`s for left-vs-right comparison. Used by the ExploreDelta RPC.
+//!
 //! Each entry carries its own TTL, set by the caller at fetch time.
 //!
 //! ```text
@@ -24,8 +27,14 @@
 //! get_latest_by_timeline("my-timeline", task, 60s)
 //!   ├─ cache hit   → Arc::clone(cached_graph)
 //!   └─ cache miss  → fetch_latest → into_array_graph → store → return Arc::clone
+//!
+//! get_twin(left_gqc, right_gqc, task, 5min)
+//!   ├─ cache hit   → Arc::clone(cached_twin)
+//!   └─ cache miss  → resolve both sides (concurrently, untraversed)
+//!                    → super-root both → traverse each → merge → Arc::clone
 //! ```
 
+use std::fmt;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::sync::Arc;
@@ -37,8 +46,11 @@ use lru::LruCache;
 use tokio::sync::Mutex;
 use unigraph_core::ArrayGraph;
 use unigraph_core::ExploreCacheKey;
+use unigraph_core::TraversalConfig;
+use unigraph_core::TwinGraph;
 use unigraph_core::config_query::GraphQueryConfig;
 use unigraph_db::UnigraphDb;
+use unigraph_db::apply_traversal;
 use unigraph_storage_core::GraphKey;
 use unigraph_storage_core::TimelineID;
 
@@ -51,7 +63,22 @@ struct ArrayGraphCacheEntry {
     graph_key: GraphKey,
 }
 
-type CacheSlot = Arc<Mutex<Option<ArrayGraphCacheEntry>>>;
+/// One LRU slot. Empty until the first caller fills it; the inner `Mutex` is
+/// what serializes concurrent misses for the same key.
+type Slot<V> = Arc<Mutex<Option<V>>>;
+type CacheSlot = Slot<ArrayGraphCacheEntry>;
+type TwinSlot = Slot<Arc<TwinGraph>>;
+
+/// Identifies a merged `TwinGraph` by the two query configs it was built from:
+/// `(left, right)`. Order matters — swapping the sides flips every delta's sign.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct TwinCacheKey(ExploreCacheKey, ExploreCacheKey);
+
+impl fmt::Display for TwinCacheKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}..{}", self.0, self.1)
+    }
+}
 
 /// In-memory LRU cache for prepared graphs.
 ///
@@ -78,6 +105,7 @@ pub struct GraphCache {
     db: UnigraphDb,
     explore: Arc<Mutex<LruCache<ExploreCacheKey, CacheSlot>>>,
     by_timeline_latest: Arc<Mutex<LruCache<TimelineID, CacheSlot>>>,
+    twins: Arc<Mutex<LruCache<TwinCacheKey, TwinSlot>>>,
 }
 
 impl GraphCache {
@@ -87,6 +115,7 @@ impl GraphCache {
             db,
             explore: Arc::new(Mutex::new(LruCache::new(cap))),
             by_timeline_latest: Arc::new(Mutex::new(LruCache::new(cap))),
+            twins: Arc::new(Mutex::new(LruCache::new(cap))),
         }
     }
 
@@ -166,6 +195,51 @@ impl GraphCache {
         self.resolve_timeline_slot(slot, timeline_id, task, ttl)
             .await
     }
+
+    /// Retrieve the merged [`TwinGraph`] for a pair of query configs, building
+    /// it on miss.
+    ///
+    /// Both sides are resolved **independently of the `explore` LRU**: a
+    /// `TwinGraph` owns its two `ArrayGraph`s, and super-rooting mutates them
+    /// through `Arc::make_mut` — handing it a shared `Arc<ArrayGraph>` would
+    /// deep-clone a tens-of-megabytes payload. The cost is one extra fetch when
+    /// a handle is used both standalone and as a twin side.
+    ///
+    /// Caching the twin (rather than its two sides) is what makes repeated
+    /// requests cheap: the changed-nodes graph is built lazily behind a
+    /// `OnceLock` *inside* `TwinGraph`, so every "changed nodes only" request
+    /// after the first is free.
+    pub async fn get_twin(
+        &self,
+        left: &GraphQueryConfig,
+        right: &GraphQueryConfig,
+        task: &ll::Task,
+        ttl: Duration,
+    ) -> Result<Arc<TwinGraph>> {
+        let cache_key = TwinCacheKey(left.cache_key(), right.cache_key());
+        let this = self.clone();
+        let (left, right) = (left.clone(), right.clone());
+
+        task.spawn("get_twin", |task| async move {
+            task.data("cache_key", cache_key.to_string());
+            let slot = get_or_create_slot(&this.twins, &cache_key).await;
+            let mut guard = slot.lock().await;
+
+            if let Some(twin) = guard.as_ref() {
+                task.data("cache", "hit");
+                return Ok(Arc::clone(twin));
+            }
+
+            task.data("cache", "miss");
+            let twin = Arc::new(this.build_twin(&left, &right, &task).await?);
+            *guard = Some(Arc::clone(&twin));
+
+            schedule_eviction(&this.twins, cache_key, ttl);
+
+            Ok(twin)
+        })
+        .await
+    }
 }
 
 // ── Slot resolution ─────────────────────────────────────────────
@@ -221,26 +295,67 @@ impl GraphCache {
     }
 }
 
+impl GraphCache {
+    /// Resolve both sides, then super-root → traverse → merge.
+    ///
+    /// This can't just call `resolve_graph_query_config` twice: the super root
+    /// has to be decided across *both* sides together, and it must land before
+    /// traversal so it gets tiered and made reachable by the same pass as every
+    /// other node.
+    async fn build_twin(
+        &self,
+        left: &GraphQueryConfig,
+        right: &GraphQueryConfig,
+        task: &ll::Task,
+    ) -> Result<TwinGraph> {
+        let ((_, l_graph, l_traversal), (_, r_graph, r_traversal)) = tokio::try_join!(
+            self.db.resolve_gqc_untraversed(left, task),
+            self.db.resolve_gqc_untraversed(right, task),
+        )?;
+
+        task.spawn("merge_twin", |_task| async move {
+            tokio::task::spawn_blocking(move || {
+                merge_twin(l_graph, l_traversal, r_graph, r_traversal)
+            })
+            .await
+            .context("spawn_blocking panicked")?
+        })
+        .await
+    }
+}
+
+fn merge_twin(
+    l: ArrayGraph,
+    l_traversal: Option<TraversalConfig>,
+    r: ArrayGraph,
+    r_traversal: Option<TraversalConfig>,
+) -> Result<TwinGraph> {
+    let (mut l, mut r) = TwinGraph::add_super_roots(l, r)?;
+    apply_traversal(&mut l, l_traversal.as_ref())?;
+    apply_traversal(&mut r, r_traversal.as_ref())?;
+    TwinGraph::from_prepared(l, r)
+}
+
 // ── Generic LRU helpers ─────────────────────────────────────────
 
 /// Check the LRU for an existing slot, or create an empty one.
-async fn get_or_create_slot<K: Clone + Eq + Hash>(
-    lru: &Arc<Mutex<LruCache<K, CacheSlot>>>,
+async fn get_or_create_slot<K: Clone + Eq + Hash, V>(
+    lru: &Arc<Mutex<LruCache<K, Slot<V>>>>,
     key: &K,
-) -> CacheSlot {
+) -> Slot<V> {
     let mut guard = lru.lock().await;
     if let Some(slot) = guard.get(key) {
         Arc::clone(slot)
     } else {
-        let slot: CacheSlot = Arc::new(Mutex::new(None));
+        let slot: Slot<V> = Arc::new(Mutex::new(None));
         guard.put(key.clone(), Arc::clone(&slot));
         slot
     }
 }
 
 /// Schedule TTL-based eviction for a key from an LRU cache.
-fn schedule_eviction<K: Clone + Eq + Hash + Debug + Send + 'static>(
-    lru: &Arc<Mutex<LruCache<K, CacheSlot>>>,
+fn schedule_eviction<K: Clone + Eq + Hash + Debug + Send + 'static, V: Send + 'static>(
+    lru: &Arc<Mutex<LruCache<K, Slot<V>>>>,
     key: K,
     ttl: Duration,
 ) {

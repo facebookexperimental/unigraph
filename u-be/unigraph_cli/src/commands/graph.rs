@@ -6,6 +6,7 @@ use unigraph_cli::UnigraphCLIContext;
 use unigraph_cli::UnigraphCLISubcommand;
 use unigraph_cli::graph::GraphCut;
 use unigraph_cli::graph::GraphExplore;
+use unigraph_cli::graph::GraphExploreDelta;
 use unigraph_cli::graph::GraphGet;
 use unigraph_cli::graph::GraphGetError;
 use unigraph_cli::graph::GraphPut;
@@ -24,6 +25,7 @@ pub enum GraphCommands {
     Put(GraphPut),
     GetError(GraphGetError),
     Explore(GraphExplore),
+    ExploreDelta(GraphExploreDelta),
     Upload(GraphUpload),
     Cut(GraphCut),
     Scc(GraphScc),
@@ -36,6 +38,7 @@ impl UnigraphCLISubcommand for Graph {
             GraphCommands::Put(cmd) => cmd.run(ctx, task).await,
             GraphCommands::GetError(cmd) => cmd.run(ctx, task).await,
             GraphCommands::Explore(cmd) => cmd.run(ctx, task).await,
+            GraphCommands::ExploreDelta(cmd) => cmd.run(ctx, task).await,
             GraphCommands::Upload(cmd) => cmd.run(ctx, task).await,
             GraphCommands::Cut(cmd) => cmd.run(ctx, task).await,
             GraphCommands::Scc(cmd) => cmd.run(ctx, task).await,

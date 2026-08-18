@@ -70,6 +70,9 @@ impl Unigraph {
                 UnigraphRequest::ExploreGraph(input) => Ok(UnigraphResponse::ExploreGraph(
                     input.exec(self, &task).await?,
                 )),
+                UnigraphRequest::ExploreDelta(input) => Ok(UnigraphResponse::ExploreDelta(
+                    input.exec(self, &task).await?,
+                )),
                 UnigraphRequest::FindAncestors(input) => Ok(UnigraphResponse::FindAncestors(
                     input.exec(self, &task).await?,
                 )),
@@ -130,6 +133,7 @@ unigraph_rpc::define_rpc_for_exec! {
         ListTimelines(ListTimelinesInput) -> ListTimelinesOutput,
         SelectFrames(SelectFramesInput) -> SelectFramesOutput,
         ExploreGraph(ExploreGraphInput) -> ExploreGraphOutput,
+        ExploreDelta(ExploreDeltaInput) -> ExploreDeltaOutput,
         FindAncestors(FindAncestorsInput) -> FindAncestorsOutput,
         FindPath(FindPathInput) -> FindPathOutput,
         SearchNodes(SearchNodesInput) -> SearchNodesOutput,

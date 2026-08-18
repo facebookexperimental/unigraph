@@ -249,7 +249,7 @@ fn compute_changed_flags(tg: &TwinGraph) -> Vec<bool> {
         .collect()
 }
 
-fn is_node_changed(tg: &TwinGraph, merged_idx: NodeIDX) -> bool {
+pub(crate) fn is_node_changed(tg: &TwinGraph, merged_idx: NodeIDX) -> bool {
     let diff = tg.node_diff[merged_idx];
 
     let existence_changed =

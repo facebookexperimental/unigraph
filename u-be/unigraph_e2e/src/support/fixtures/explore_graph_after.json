@@ -20,29 +20,37 @@
       },
       "edges_directed": [
         "components",
-        "styles"
+        "styles",
+        "utils"
       ],
       "edges_tagged": {
-        "lazy": [
+        "deferred": [
           "dialogs"
         ]
       }
     },
     "core": {
       "metrics": {
-        "size": 300,
+        "size": 420,
         "lines": 600,
         "node_type": 3
       },
       "edges_directed": [
         "db",
-        "auth"
-      ],
-      "edges_tagged": {
-        "lazy": [
-          "analytics"
-        ]
-      }
+        "auth",
+        "telemetry"
+      ]
+    },
+    "telemetry": {
+      "metrics": {
+        "size": 140,
+        "lines": 300,
+        "node_type": 1
+      },
+      "edges_directed": [
+        "db",
+        "utils"
+      ]
     },
     "utils": {
       "metrics": {
@@ -70,6 +78,9 @@
               ],
               "android": [
                 "button_android"
+              ],
+              "web": [
+                "button_web"
               ]
             }
           }
@@ -114,16 +125,6 @@
         "utils"
       ]
     },
-    "analytics": {
-      "metrics": {
-        "size": 90,
-        "lines": 250,
-        "node_type": 1
-      },
-      "edges_directed": [
-        "utils"
-      ]
-    },
     "button_ios": {
       "metrics": {
         "size": 30,
@@ -135,6 +136,13 @@
       "metrics": {
         "size": 35,
         "lines": 90,
+        "node_type": 1
+      }
+    },
+    "button_web": {
+      "metrics": {
+        "size": 40,
+        "lines": 95,
         "node_type": 1
       }
     }

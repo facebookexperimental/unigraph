@@ -18,6 +18,7 @@ use anyhow::Result;
 use unigraph_core::AscendingTier;
 use unigraph_core::AscendingTiersConfig;
 use unigraph_core::MapGraph;
+use unigraph_core::MetricView;
 use unigraph_core::TieredTraversalConfig;
 use unigraph_core::TraversalConfig;
 use unigraph_core::graph_settings::ArrayGraphUISettings;
@@ -735,7 +736,11 @@ fn graph_settings() -> GraphSettings {
                 hide_metrics: Some(false),
                 graph_table_sort: Some(GraphTableSort {
                     column: SortColumn::MetricView {
-                        key: format!("{METRIC_COMPRESSED_SIZE}#{TIER_EAGER}"),
+                        key: MetricView::Tiered {
+                            name: METRIC_COMPRESSED_SIZE.to_string(),
+                            tier_name: TIER_EAGER.to_string(),
+                        }
+                        .into(),
                     },
                     order: SortOrder::Desc,
                 }),

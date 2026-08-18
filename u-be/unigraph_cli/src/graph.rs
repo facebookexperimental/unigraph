@@ -1,7 +1,8 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 mod cut;
-mod explore;
+pub mod explore;
+mod explore_delta;
 mod get;
 mod get_error;
 pub mod put;
@@ -11,6 +12,7 @@ mod upload;
 
 pub use cut::GraphCut;
 pub use explore::GraphExplore;
+pub use explore_delta::GraphExploreDelta;
 pub use get::GraphGet;
 pub use get_error::GraphGetError;
 pub use put::GraphPut;

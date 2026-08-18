@@ -4,6 +4,7 @@ use std::collections::BTreeSet;
 
 use anyhow::Result;
 
+use crate::ArrayGraph;
 use crate::ArrayGraphSerializable;
 use crate::NodeIDX;
 use crate::TwinGraph;
@@ -16,19 +17,38 @@ pub fn merge_into_twin(
     right: ArrayGraphSerializable,
     task: &ll::Task,
 ) -> Result<TwinGraph> {
-    let mut ag_l = left.into_array_graph(task)?;
-    let mut ag_r = right.into_array_graph(task)?;
+    let ag_l = left.into_array_graph(task)?;
+    let ag_r = right.into_array_graph(task)?;
+    let (ag_l, ag_r) = add_super_roots(ag_l, ag_r)?;
+    merge_prepared(ag_l, ag_r)
+}
 
-    let entrypoints_left = ag_l.determine_entrypoints();
-    let entrypoints_right = ag_r.determine_entrypoints();
+/// Give both sides a single, shared entry point.
+///
+/// Entry points are compared **by name**: the two graphs still live in
+/// independent index namespaces at this point, so comparing `NodeIDX` values
+/// across them is meaningless whenever the node sets differ.
+pub fn add_super_roots(ag_l: ArrayGraph, ag_r: ArrayGraph) -> Result<(ArrayGraph, ArrayGraph)> {
+    let entrypoints_left = entrypoint_names(&ag_l);
+    let entrypoints_right = entrypoint_names(&ag_r);
 
-    // If both graphs have different root nodes (or multiple roots), add a super root
-    // to each to ensure a single consistent entrypoint.
-    if (entrypoints_left != entrypoints_right) || (entrypoints_left.len() > 1) {
-        ag_l = ag_l.append_super_root(true)?;
-        ag_r = ag_r.append_super_root(true)?;
+    if entrypoints_left == entrypoints_right && entrypoints_left.len() <= 1 {
+        return Ok((ag_l, ag_r));
     }
 
+    Ok((ag_l.append_super_root(true)?, ag_r.append_super_root(true)?))
+}
+
+fn entrypoint_names(ag: &ArrayGraph) -> BTreeSet<&str> {
+    ag.determine_entrypoints()
+        .into_iter()
+        .map(|idx| ag.idx_to_name(idx))
+        .collect()
+}
+
+/// Merge two graphs that already share a single entry point and have their
+/// traversal applied. See [`add_super_roots`] for the step before this one.
+pub fn merge_prepared(ag_l: ArrayGraph, ag_r: ArrayGraph) -> Result<TwinGraph> {
     // Build remap tables by merge-walking the two sorted name lists.
     // No strings are copied — just index arithmetic.
     let remap = TwinRemap::build(&ag_l.data.node_names_ordered, &ag_r.data.node_names_ordered);
@@ -271,7 +291,47 @@ mod tests {
     use k9::snapshot;
 
     use super::*;
+    use crate::GraphBuilder;
     use crate::tests::test_graphs::make_twin_graph;
+
+    /// Two graphs with one entry point each, but *different* ones.
+    ///
+    /// The old check compared `Vec<NodeIDX>` across two independent namespaces,
+    /// so it saw `[0] == [0]` and skipped the super root — leaving the twin
+    /// with two disconnected roots. Comparing names catches it.
+    #[test]
+    fn differently_named_single_entry_points_get_a_super_root() -> Result<()> {
+        let task = ll::Task::create_new("test");
+        let one_root = |root: &str| -> Result<ArrayGraphSerializable> {
+            let mut builder = GraphBuilder::new();
+            builder.add_edge(root, "shared")?;
+            builder.build().to_array_graph_serializable()
+        };
+
+        let tg = merge_into_twin(one_root("left_root")?, one_root("right_root")?, &task)?;
+
+        let entrypoint_name = |ag: &ArrayGraph| {
+            ag.determine_entrypoints()
+                .into_iter()
+                .map(|idx| ag.idx_to_name(idx).to_string())
+                .collect::<Vec<_>>()
+        };
+
+        snapshot!(
+            (entrypoint_name(&tg.l), entrypoint_name(&tg.r)),
+            r#"
+(
+    [
+        "~root~",
+    ],
+    [
+        "~root~",
+    ],
+)
+"#
+        );
+        Ok(())
+    }
 
     #[test]
     fn test_node_diff() -> Result<()> {

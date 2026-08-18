@@ -38,18 +38,36 @@ impl UnigraphDb {
         add_super_root: bool,
         task: &ll::Task,
     ) -> Result<(GraphKey, ArrayGraph)> {
-        let (inner_gqc, key, ags) = self.resolve_handle_and_fetch(gqc, task).await?;
-        let roots = resolve_roots(gqc, &inner_gqc);
-        let traversal = self.resolve_gqc_traversal(gqc, &inner_gqc, task).await?;
-
-        let ags = extract_subgraph(ags, &roots, task)?;
-
-        let mut ag = ags.into_array_graph(task)?;
+        let (key, mut ag, traversal) = self.resolve_gqc_untraversed(gqc, task).await?;
         if add_super_root {
             ag = ag.append_super_root(false)?;
         }
         apply_traversal(&mut ag, traversal.as_ref())?;
         Ok((key, ag))
+    }
+
+    /// Steps 1–4 of the pipeline: handle resolution, root filtering, subgraph
+    /// extraction. Stops short of the super-root and traversal steps and hands
+    /// back the resolved [`TraversalConfig`] so the caller can run them itself.
+    ///
+    /// Exists for callers that must interleave something between the two — twin
+    /// graphs decide on a super root across *both* sides before either is
+    /// traversed. Everyone else wants [`resolve_graph_query_config`].
+    ///
+    /// [`resolve_graph_query_config`]: Self::resolve_graph_query_config
+    pub async fn resolve_gqc_untraversed(
+        &self,
+        gqc: &GraphQueryConfig,
+        task: &ll::Task,
+    ) -> Result<(GraphKey, ArrayGraph, Option<TraversalConfig>)> {
+        let (inner_gqc, key, ags) = self.resolve_handle_and_fetch(gqc, task).await?;
+        let roots = resolve_roots(gqc, &inner_gqc);
+        let traversal = self.resolve_gqc_traversal(gqc, &inner_gqc, task).await?;
+
+        let ags = extract_subgraph(ags, &roots, task)?;
+        let ag = ags.into_array_graph(task)?;
+
+        Ok((key, ag, traversal))
     }
 }
 
@@ -134,7 +152,9 @@ fn extract_subgraph(
     ag.get_reachable_subgraph_unconfigured(&root_idxs)
 }
 
-fn apply_traversal(ag: &mut ArrayGraph, traversal: Option<&TraversalConfig>) -> Result<()> {
+/// Apply the resolved traversal config, falling back to the one baked into the
+/// graph. Pairs with [`UnigraphDb::resolve_gqc_untraversed`].
+pub fn apply_traversal(ag: &mut ArrayGraph, traversal: Option<&TraversalConfig>) -> Result<()> {
     let tvc = traversal.or(ag.runtime.state.traversal_config.as_ref());
     if let Some(tvc) = tvc {
         ag.apply_traversal_config_and_entry_points(tvc.clone())?;

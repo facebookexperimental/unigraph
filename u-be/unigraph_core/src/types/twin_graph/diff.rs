@@ -65,11 +65,25 @@ impl NodeDiff {
     }
 }
 
+/// Serialized as the raw `u32` bitmask — the frontend reads the bits directly,
+/// so a struct-shaped encoding would just be noise on the wire.
 impl serde::Serialize for NodeDiff {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
         serializer.serialize_u32(self.bits())
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for NodeDiff {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let bits = u32::deserialize(deserializer)?;
+        // Unknown bits are dropped rather than rejected: a newer producer
+        // adding a flag shouldn't break an older consumer.
+        Ok(NodeDiff::from_bits_truncate(bits))
     }
 }

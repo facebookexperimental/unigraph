@@ -1,6 +1,6 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-mod changed_nodes_graph;
+pub(crate) mod changed_nodes_graph;
 mod diff;
 pub(crate) mod get_arrows;
 mod merge;
@@ -61,6 +61,25 @@ impl TwinGraph {
         task: &ll::Task,
     ) -> Result<Self> {
         merge::merge_into_twin(l, r, task)
+    }
+
+    /// Give both sides a single shared entry point. Must run **before**
+    /// traversal is applied, so the super root is tiered and made reachable by
+    /// the same pass as every other node.
+    pub fn add_super_roots(l: ArrayGraph, r: ArrayGraph) -> Result<(ArrayGraph, ArrayGraph)> {
+        merge::add_super_roots(l, r)
+    }
+
+    /// Merge two graphs that already went through [`Self::add_super_roots`] and
+    /// have their traversal applied.
+    pub fn from_prepared(l: ArrayGraph, r: ArrayGraph) -> Result<Self> {
+        merge::merge_prepared(l, r)
+    }
+
+    /// Does this node differ between the two sides — edges, metrics, existence,
+    /// or reachability? This is the predicate behind "changed nodes only".
+    pub fn is_node_changed(&self, merged_idx: NodeIDX) -> bool {
+        changed_nodes_graph::is_node_changed(self, merged_idx)
     }
 
     pub fn merged_len(&self) -> usize {

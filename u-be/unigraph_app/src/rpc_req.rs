@@ -1,6 +1,8 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 mod about_graph;
+mod ascii_table;
+mod explore_delta;
 mod explore_graph;
 mod find_ancestors;
 mod find_path;
@@ -16,6 +18,10 @@ mod select_frames;
 pub use about_graph::AboutGraphInput;
 pub use about_graph::AboutGraphMetricInfo;
 pub use about_graph::AboutGraphOutput;
+pub use explore_delta::ExploreDeltaArrow;
+pub use explore_delta::ExploreDeltaEdge;
+pub use explore_delta::ExploreDeltaInput;
+pub use explore_delta::ExploreDeltaOutput;
 pub use explore_graph::ExploreGraphArrow;
 pub use explore_graph::ExploreGraphInput;
 pub use explore_graph::ExploreGraphOutput;

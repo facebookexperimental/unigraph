@@ -18,10 +18,19 @@ pub use unigraph_core::MetricView;
 use unigraph_core::NodeIDX;
 use unigraph_core::config_query::GraphQueryConfig;
 use unigraph_core::graph_settings::GraphStructure;
+use unigraph_core::graph_settings::MetricFormat;
+use unigraph_core::graph_settings::MetricsConfig;
 use unigraph_core::graph_settings::SortOrder;
 use unigraph_rpc::RpcExec;
 
 use crate::Unigraph;
+use crate::rpc_req::ascii_table::SORT_ARROW_DISPLAY_LEN;
+use crate::rpc_req::ascii_table::build_format_map;
+use crate::rpc_req::ascii_table::format_cell_value;
+use crate::rpc_req::ascii_table::sort_arrow;
+use crate::rpc_req::ascii_table::trim_trailing_spaces;
+use crate::rpc_req::ascii_table::write_cell;
+use crate::rpc_req::ascii_table::write_separator;
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -147,22 +156,16 @@ fn explore_node(ag: Arc<ArrayGraph>, input: &ExploreGraphInput) -> Result<Explor
     let total_arrows_count = arrow_data.len();
 
     let sort_order = input.sort_order.unwrap_or(SortOrder::Desc);
-    let sorted = sort_arrows(
-        &ag,
-        arrow_data,
-        input.sort_by.as_ref(),
-        sort_order,
-        input.graph_structure,
-    )?;
+    let sorted = sort_arrows(&ag, arrow_data, input.sort_by.as_ref(), sort_order)?;
 
     let offset = input.offset.unwrap_or(0);
     let limit = input.limit.unwrap_or(50);
     let page = paginate(&sorted, offset, limit);
 
-    let arrows = build_explore_arrows(&ag, page, &metrics, input.graph_structure)?;
+    let arrows = build_explore_arrows(&ag, page, &metrics)?;
 
     let node = parent_idx
-        .map(|idx| build_explore_arrow_for_node(&ag, idx, &metrics, input.graph_structure))
+        .map(|idx| build_explore_arrow_for_node(&ag, idx, &metrics))
         .transpose()?;
 
     let include_ascii = input.include_ascii.unwrap_or(false);
@@ -330,7 +333,6 @@ fn sort_arrows(
     mut arrows: Vec<ArrowData>,
     sort_by: Option<&MetricView>,
     sort_order: SortOrder,
-    graph_structure: GraphStructure,
 ) -> Result<Vec<ArrowData>> {
     let sort_by = match sort_by {
         Some(metric) => metric,
@@ -344,10 +346,7 @@ fn sort_arrows(
     let mut valued: Vec<(usize, f64)> = arrows
         .iter()
         .enumerate()
-        .map(|(i, ad)| {
-            let val = compute_metric(ag, ad.node_idx, sort_by, graph_structure)?;
-            Ok((i, val))
-        })
+        .map(|(i, ad)| Ok((i, ag.metric_value(ad.node_idx, sort_by)?)))
         .collect::<Result<Vec<_>>>()?;
 
     valued.sort_by(|a, b| match sort_order {
@@ -381,52 +380,16 @@ fn paginate(arrows: &[ArrowData], offset: usize, limit: usize) -> &[ArrowData] {
 
 // ── Metric computation ──────────────────────────────────────────
 
-/// Compute a single metric value for a node.
-fn compute_metric(
-    ag: &ArrayGraph,
-    node_idx: NodeIDX,
-    metric: &MetricView,
-    _graph_structure: GraphStructure,
-) -> Result<f64> {
-    match metric {
-        MetricView::Metric { name } => Ok(ag
-            .data
-            .node_metadata
-            .metrics
-            .get(name.as_str())
-            .map_or(0.0, |v| v[node_idx])),
-        MetricView::Transitive { name } => ag.get_transitive_metric_value(node_idx, name, false),
-        MetricView::Dominated { name } => ag.get_transitive_metric_value(node_idx, name, true),
-        MetricView::Tiered { name, tier_name } => {
-            let tiered = ag.get_transitive_tiered_metric_values(node_idx, name, false)?;
-            Ok(*tiered.get(tier_name.as_str()).unwrap_or(&0.0))
-        }
-        MetricView::TieredDominated { name, tier_name } => {
-            let tiered = ag.get_transitive_tiered_metric_values(node_idx, name, true)?;
-            Ok(*tiered.get(tier_name.as_str()).unwrap_or(&0.0))
-        }
-        MetricView::ParentsCount {} => Ok(ag.parents_len_configured(node_idx) as f64),
-        MetricView::CountTransitive {} => Ok(ag.transitive_count_configured(node_idx) as f64),
-        MetricView::CountDominated {} => {
-            Ok(ag.transitive_count_configured_dominated(node_idx) as f64)
-        }
-        MetricView::TierIndex {} => Ok(ag.node_tier_idx(node_idx).unwrap_or(0) as f64),
-    }
-}
-
 /// Build the flat metrics map for a node from the requested metric list.
 fn build_metrics_map(
     ag: &ArrayGraph,
     node_idx: NodeIDX,
     metrics: &[MetricView],
-    graph_structure: GraphStructure,
 ) -> Result<BTreeMap<String, f64>> {
-    let mut map = BTreeMap::new();
-    for metric in metrics {
-        let value = compute_metric(ag, node_idx, metric, graph_structure)?;
-        map.insert(metric.to_string(), value);
-    }
-    Ok(map)
+    metrics
+        .iter()
+        .map(|metric| Ok((metric.to_string(), ag.metric_value(node_idx, metric)?)))
+        .collect()
 }
 
 // ── Building output arrows ──────────────────────────────────────
@@ -435,12 +398,11 @@ fn build_explore_arrows(
     ag: &ArrayGraph,
     arrow_data: &[ArrowData],
     metrics: &[MetricView],
-    graph_structure: GraphStructure,
 ) -> Result<Vec<ExploreGraphArrow>> {
     arrow_data
         .iter()
         .map(|ad| {
-            let metrics = build_metrics_map(ag, ad.node_idx, metrics, graph_structure)?;
+            let metrics = build_metrics_map(ag, ad.node_idx, metrics)?;
             Ok(ExploreGraphArrow {
                 name: ag.idx_to_name(ad.node_idx).to_string(),
                 metrics,
@@ -455,9 +417,8 @@ fn build_explore_arrow_for_node(
     ag: &ArrayGraph,
     node_idx: NodeIDX,
     metrics: &[MetricView],
-    graph_structure: GraphStructure,
 ) -> Result<ExploreGraphArrow> {
-    let metrics = build_metrics_map(ag, node_idx, metrics, graph_structure)?;
+    let metrics = build_metrics_map(ag, node_idx, metrics)?;
     Ok(ExploreGraphArrow {
         name: ag.idx_to_name(node_idx).to_string(),
         metrics,
@@ -467,16 +428,6 @@ fn build_explore_arrow_for_node(
 }
 
 // ── ASCII table rendering ───────────────────────────────────────
-
-/// Display width of a sort arrow suffix (" ▼" or " ▲").
-const SORT_ARROW_DISPLAY_LEN: usize = 2;
-
-fn sort_arrow(order: SortOrder) -> &'static str {
-    match order {
-        SortOrder::Desc => " ▼",
-        SortOrder::Asc => " ▲",
-    }
-}
 
 #[expect(
     clippy::too_many_arguments,
@@ -491,7 +442,7 @@ fn render_ascii(
     offset: usize,
     sort_by_key: Option<&str>,
     sort_order: SortOrder,
-    metrics_config: Option<&unigraph_core::graph_settings::MetricsConfig>,
+    metrics_config: Option<&MetricsConfig>,
     tier_names: &[String],
 ) -> String {
     let all_arrows = node.into_iter().chain(arrows.iter()).collect::<Vec<_>>();
@@ -597,7 +548,7 @@ fn compute_column_widths(
     has_dynamic: bool,
     arrows: &[&ExploreGraphArrow],
     sort_by_key: Option<&str>,
-    formats: &BTreeMap<String, unigraph_core::graph_settings::MetricFormat>,
+    formats: &BTreeMap<String, MetricFormat>,
     tier_names: &[String],
 ) -> Vec<usize> {
     let num_cols = 1 + metric_cols.len() + usize::from(has_tags) + usize::from(has_dynamic);
@@ -691,20 +642,6 @@ fn write_header(
     out.push('\n');
 }
 
-fn write_separator(out: &mut String, ch: char, widths: &[usize]) {
-    for (i, &w) in widths.iter().enumerate() {
-        if i > 0 {
-            out.push(ch);
-            out.push('+');
-            out.push(ch);
-        }
-        for _ in 0..w {
-            out.push(ch);
-        }
-    }
-    out.push('\n');
-}
-
 #[expect(
     clippy::too_many_arguments,
     reason = "ASCII rendering helper with many formatting options"
@@ -716,7 +653,7 @@ fn write_row(
     has_tags: bool,
     has_dynamic: bool,
     widths: &[usize],
-    formats: &BTreeMap<String, unigraph_core::graph_settings::MetricFormat>,
+    formats: &BTreeMap<String, MetricFormat>,
     tier_names: &[String],
 ) {
     let start = out.len();
@@ -754,69 +691,4 @@ fn write_footer(out: &mut String, shown: usize, total: usize, offset: usize) {
     if total > shown {
         let _ = write!(out, "\n(showing {shown} of {total} rows, offset {offset})");
     }
-}
-
-fn write_cell(out: &mut String, text: &str, width: usize, left_align: bool) {
-    let pad = width.saturating_sub(text.len());
-    if left_align {
-        out.push_str(text);
-        for _ in 0..pad {
-            out.push(' ');
-        }
-    } else {
-        for _ in 0..pad {
-            out.push(' ');
-        }
-        out.push_str(text);
-    }
-}
-
-fn trim_trailing_spaces(out: &mut String, start: usize) {
-    let trimmed = out[start..].trim_end_matches(' ').len();
-    out.truncate(start + trimmed);
-}
-
-fn format_cell_value(
-    v: f64,
-    col: &str,
-    formats: &BTreeMap<String, unigraph_core::graph_settings::MetricFormat>,
-    tier_names: &[String],
-) -> String {
-    if let Ok(unigraph_core::MetricView::TierIndex {}) = col.parse::<unigraph_core::MetricView>() {
-        let idx = v as usize;
-        return tier_names
-            .get(idx)
-            .cloned()
-            .unwrap_or_else(|| format!("T{idx}"));
-    }
-    match formats.get(col) {
-        Some(f) => f.format_value(v),
-        None => {
-            if v == v.trunc() && v.abs() < 1e15 {
-                format!("{}", v as i64)
-            } else {
-                format!("{v:.2}")
-            }
-        }
-    }
-}
-
-fn build_format_map(
-    metric_cols: &[String],
-    metrics_config: Option<&unigraph_core::graph_settings::MetricsConfig>,
-) -> BTreeMap<String, unigraph_core::graph_settings::MetricFormat> {
-    let mut map: BTreeMap<String, unigraph_core::graph_settings::MetricFormat> = BTreeMap::new();
-    let Some(config) = metrics_config else {
-        return map;
-    };
-    for col in metric_cols {
-        let view: unigraph_core::MetricView = match col.parse() {
-            Ok(v) => v,
-            Err(_) => continue,
-        };
-        if let Some(fmt) = config.format_for_view(&view) {
-            map.insert(col.clone(), fmt.clone());
-        }
-    }
-    map
 }

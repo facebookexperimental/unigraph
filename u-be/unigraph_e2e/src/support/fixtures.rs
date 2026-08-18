@@ -26,6 +26,27 @@ pub async fn ingest_explore_graph(t: &TestApp) -> Result<String> {
     Ok(timeline_id.to_string())
 }
 
+/// Ingest the "after" counterpart of the `explore_graph` fixture — the same
+/// graph with one of every kind of change, for delta tests:
+///
+/// | change          | edit                                              |
+/// |-----------------|---------------------------------------------------|
+/// | metrics changed | `core.size` 300 → 420                             |
+/// | node added      | `telemetry`, reachable via `core`                 |
+/// | node removed    | `analytics`, with `core`'s `lazy` edge to it      |
+/// | edges changed   | `ui` gains a directed edge to `utils`             |
+/// | dynamic edge    | `components.platform.button` gains a `web` branch |
+///
+/// Everything else (`db`, `auth`, `styles`, `dialogs`, `button_ios`,
+/// `button_android`) is untouched — that untouched region is what
+/// `changed_nodes_only` collapses.
+pub async fn ingest_explore_graph_after(t: &TestApp) -> Result<String> {
+    let json = include_str!("fixtures/explore_graph_after.json");
+    let timeline_id = "explore_test_after";
+    ingest_map_graph_json(t, timeline_id, json).await?;
+    Ok(timeline_id.to_string())
+}
+
 /// Ingest the "explore_graph_two_entry_points" fixture into the test app.
 ///
 /// This is the same graph as `ingest_explore_graph`, but with an extra

@@ -6,6 +6,7 @@ use std::collections::BTreeSet;
 use anyhow::Result;
 use anyhow::bail;
 
+use crate::MetricColumn;
 use crate::types::DynamicTypeKey;
 use crate::types::NodeName;
 use crate::types::PropertyName;
@@ -1076,10 +1077,24 @@ pub enum SortColumn {
     /// Sort by node name (tree column)
     NodeName {},
 
-    /// Sort by a metric view column. `key` is `MetricView.to_string()`,
-    /// optionally suffixed with `@right` or `@delta` to select the
-    /// comparison-graph or delta column in twin-graph mode.
-    MetricView { key: String },
+    /// Sort by a metric view column.
+    ///
+    /// The key is a `MetricView` string, optionally suffixed with `@left` or
+    /// `@delta`. A bare key means the right-hand graph — which is the only
+    /// graph outside twin mode, so every single-graph key is valid here:
+    ///
+    /// ```text
+    /// size#eager              sort by the eager-tier size
+    /// size~transitive@left    sort by the before graph's transitive size
+    /// size~transitive@delta   sort by how much it changed
+    /// ```
+    ///
+    /// Serialized as that string, so this stays wire-compatible with the
+    /// stored graph settings that predate the typed representation.
+    MetricView {
+        #[typegen(as = "String")]
+        key: MetricColumn,
+    },
 }
 
 impl Default for SortColumn {
