@@ -16,6 +16,8 @@ use unigraph_core::graph_settings::SortOrder;
 
 use crate::support::app::TestApp;
 use crate::support::app::init_app;
+use crate::support::fixtures::ingest_delta_semantics;
+use crate::support::fixtures::ingest_delta_semantics_after;
 use crate::support::fixtures::ingest_explore_graph;
 use crate::support::fixtures::ingest_explore_graph_after;
 
@@ -256,6 +258,91 @@ telemetry | ADDED         | added   |         +0.14 kB |              +0.44 kB |
 
 "
     );
+
+    Ok(())
+}
+
+/// The exclusive rule again, for the *other* column that uses it —
+/// `node-count~transitive@delta`. The `explore_graph` fixture cannot pin this
+/// one: there the added and removed nodes net out to `+1` under either rule,
+/// so a regression to plain `R - L` would go unnoticed.
+///
+/// Here `newcomer` reaches 3 nodes but only *added* itself — `shared_b` and
+/// `shared_c` were already in the graph. Exclusive says `+1`; the plain
+/// transitive column next to it says the subtree is worth `+35`.
+#[tokio::test]
+async fn transitive_count_delta_is_exclusive() -> Result<()> {
+    let t = init_app();
+    let d = Delta::setup_semantics(&t).await?;
+
+    let out = call_rpc!(
+        t,
+        ExploreDelta(
+            d.all_nodes()
+                .metrics(&[
+                    "node-count~transitive@left",
+                    "node-count~transitive",
+                    "node-count~transitive@delta",
+                    "size~transitive@delta",
+                ])
+                .build()
+        )
+    );
+    snapshot!(out.ascii.unwrap(), "
+Delta: all reachable nodes
+
+node_name | change | node-count~transitive | node-count~transitive@delta | node-count~transitive@left | size~transitive@delta
+==========+========+=======================+=============================+============================+======================
+newcomer  | ADDED  |                     3 |                          +1 |                          0 |                   +35
+root      | EDGES  |                     5 |                          +1 |                          4 |                    +5
+shared_a  |        |                     3 |                           0 |                          3 |                     0
+shared_b  |        |                     2 |                           0 |                          2 |                     0
+shared_c  |        |                     1 |                           0 |                          1 |                     0
+
+");
+
+    Ok(())
+}
+
+/// Dominated `∆` columns are a plain `R - L`. There is no exclusive variant
+/// for them and no UI column either, so this snapshot is the only description
+/// of what the RPC hands back.
+///
+/// `newcomer` gives `shared_b` a second parent, so `shared_b` and `shared_c`
+/// leave `shared_a`'s dominated subtree. `shared_a` is otherwise untouched —
+/// same size, same edges — yet its dominated deltas are large and negative.
+/// The exclusive rule, which skips unchanged nodes, would have reported `0`.
+#[tokio::test]
+async fn dominated_deltas_are_plain_subtraction() -> Result<()> {
+    let t = init_app();
+    let d = Delta::setup_semantics(&t).await?;
+
+    let out = call_rpc!(
+        t,
+        ExploreDelta(
+            d.all_nodes()
+                .structure(GraphStructure::Dominator)
+                .metrics(&[
+                    "size~dominated@left",
+                    "size~dominated",
+                    "size~dominated@delta",
+                    "node-count~dominated@delta",
+                ])
+                .build()
+        )
+    );
+    snapshot!(out.ascii.unwrap(), "
+Delta: all reachable nodes
+
+node_name | change | node-count~dominated@delta | size~dominated | size~dominated@delta | size~dominated@left
+==========+========+============================+================+======================+====================
+newcomer  | ADDED  |                         +1 |              5 |                   +5 |                   0
+root      | EDGES  |                         +1 |            175 |                   +5 |                 170
+shared_a  |        |                         -2 |             40 |                  -30 |                  70
+shared_b  |        |                          0 |             30 |                    0 |                  30
+shared_c  |        |                          0 |             10 |                    0 |                  10
+
+");
 
     Ok(())
 }
@@ -527,9 +614,20 @@ impl Delta {
     async fn setup(t: &TestApp) -> Result<Self> {
         let before = ingest_explore_graph(t).await?;
         let after = ingest_explore_graph_after(t).await?;
+        Self::over(&before, &after)
+    }
+
+    /// The minimal chain fixture, for tests about delta *arithmetic*.
+    async fn setup_semantics(t: &TestApp) -> Result<Self> {
+        let before = ingest_delta_semantics(t).await?;
+        let after = ingest_delta_semantics_after(t).await?;
+        Self::over(&before, &after)
+    }
+
+    fn over(before: &str, after: &str) -> Result<Self> {
         Ok(Self {
-            left: bare_gqc(&before)?,
-            right: bare_gqc(&after)?,
+            left: bare_gqc(before)?,
+            right: bare_gqc(after)?,
             target: ExploreGraphTarget::EntryPoints {},
             graph_structure: GraphStructure::Forward,
             changed_nodes_only: false,

@@ -47,6 +47,46 @@ pub async fn ingest_explore_graph_after(t: &TestApp) -> Result<String> {
     Ok(timeline_id.to_string())
 }
 
+/// Ingest the "before" side of the minimal delta-semantics fixture — a plain
+/// chain, sized so every number in a delta snapshot is checkable by hand:
+///
+/// ```text
+///   root(100) → shared_a(40) → shared_b(20) → shared_c(10)
+/// ```
+///
+/// Pairs with [`ingest_delta_semantics_after`]. Deliberately carries no
+/// `metrics_config`, so `size` renders as a raw number rather than a formatted
+/// size — the point of these tests is the arithmetic, not the formatting.
+pub async fn ingest_delta_semantics(t: &TestApp) -> Result<String> {
+    let json = include_str!("fixtures/delta_semantics.json");
+    let timeline_id = "delta_semantics";
+    ingest_map_graph_json(t, timeline_id, json).await?;
+    Ok(timeline_id.to_string())
+}
+
+/// Ingest the "after" side of the delta-semantics fixture: one node is added,
+/// and it depends on a node that already existed.
+///
+/// ```text
+///   root(100) → shared_a(40) → shared_b(20) → shared_c(10)
+///        └────→ newcomer(5) ──────┘
+/// ```
+///
+/// This is the worked example from `twin_graph/metrics.rs` made concrete, and
+/// it is what makes the two delta semantics disagree:
+///
+/// - `newcomer` pulls in a 3-node subtree but only *adds* itself, so its
+///   exclusive count delta (`+1`) differs from a plain `R - L` (`+3`).
+/// - `shared_b` gains a second parent, so it stops being dominated by
+///   `shared_a` — `shared_a`'s dominated subtree shrinks even though
+///   `shared_a` itself is byte-for-byte unchanged.
+pub async fn ingest_delta_semantics_after(t: &TestApp) -> Result<String> {
+    let json = include_str!("fixtures/delta_semantics_after.json");
+    let timeline_id = "delta_semantics_after";
+    ingest_map_graph_json(t, timeline_id, json).await?;
+    Ok(timeline_id.to_string())
+}
+
 /// Ingest the "explore_graph_two_entry_points" fixture into the test app.
 ///
 /// This is the same graph as `ingest_explore_graph`, but with an extra

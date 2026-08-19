@@ -1,0 +1,36 @@
+{
+  "nodes": {
+    "root": {
+      "metrics": {
+        "size": 100
+      },
+      "edges_directed": [
+        "shared_a"
+      ]
+    },
+    "shared_a": {
+      "metrics": {
+        "size": 40
+      },
+      "edges_directed": [
+        "shared_b"
+      ]
+    },
+    "shared_b": {
+      "metrics": {
+        "size": 20
+      },
+      "edges_directed": [
+        "shared_c"
+      ]
+    },
+    "shared_c": {
+      "metrics": {
+        "size": 10
+      }
+    }
+  },
+  "entry_points": [
+    "root"
+  ]
+}
