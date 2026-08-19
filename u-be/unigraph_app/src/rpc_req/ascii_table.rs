@@ -92,7 +92,7 @@ pub fn format_cell_value(
     formats: &BTreeMap<String, MetricFormat>,
     tier_names: &[String],
 ) -> String {
-    if let Ok(MetricView::TierIndex {}) = col.parse::<MetricView>() {
+    if let Ok(MetricView::TierIndex { .. }) = col.parse::<MetricView>() {
         let idx = v as usize;
         return tier_names
             .get(idx)

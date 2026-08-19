@@ -6,7 +6,7 @@ use std::collections::BTreeSet;
 use anyhow::Result;
 use anyhow::bail;
 
-use crate::MetricColumn;
+use crate::MetricView;
 use crate::types::DynamicTypeKey;
 use crate::types::NodeName;
 use crate::types::PropertyName;
@@ -1065,14 +1065,7 @@ pub struct GraphTableSort {
     pub order: SortOrder,
 }
 
-#[derive(
-    Clone,
-    Debug,
-    serde::Serialize,
-    serde::Deserialize,
-    typegen::TypeGen,
-    PartialEq
-)]
+#[derive(Clone, Debug, serde::Serialize, typegen::TypeGen, PartialEq)]
 pub enum SortColumn {
     /// Sort by node name (tree column)
     NodeName {},
@@ -1081,7 +1074,7 @@ pub enum SortColumn {
     ///
     /// The key is a `MetricView` string, optionally suffixed with `@left` or
     /// `@delta`. A bare key means the right-hand graph — which is the only
-    /// graph outside twin mode, so every single-graph key is valid here:
+    /// graph outside delta mode, so every single-graph key is valid here:
     ///
     /// ```text
     /// size#eager              sort by the eager-tier size
@@ -1092,14 +1085,235 @@ pub enum SortColumn {
     /// Serialized as that string, so this stays wire-compatible with the
     /// stored graph settings that predate the typed representation.
     MetricView {
+        #[serde(with = "crate::metric_view::as_string")]
         #[typegen(as = "String")]
-        key: MetricColumn,
+        key: MetricView,
     },
 }
 
 impl Default for SortColumn {
     fn default() -> Self {
         SortColumn::NodeName {}
+    }
+}
+
+/// Hand-written so an unrecognized key degrades to "unsorted" instead of
+/// failing the deserialization.
+///
+/// `GraphSettings` is persisted *inside* stored graph blobs, so a strict parse
+/// here means one stale sort key makes an entire multi-megabyte graph
+/// unloadable — which is what happened to keys written before the `#` tier
+/// separator. A sort preference is not worth a graph.
+impl<'de> serde::Deserialize<'de> for SortColumn {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(serde::Deserialize)]
+        enum Raw {
+            NodeName {},
+            MetricView { key: String },
+        }
+
+        Ok(match Raw::deserialize(deserializer)? {
+            Raw::NodeName {} => SortColumn::NodeName {},
+            Raw::MetricView { key } => match key.parse() {
+                Ok(view) => SortColumn::MetricView { key: view },
+                Err(e) => {
+                    log::warn!("ignoring unparseable graph_table_sort key '{key}': {e}");
+                    SortColumn::NodeName {}
+                }
+            },
+        })
+    }
+}
+
+#[cfg(test)]
+mod sort_column_tests {
+    use k9::snapshot;
+
+    use super::*;
+
+    /// Sort keys live inside `GraphSettings`, which is persisted *inside* the
+    /// stored graph blob. Every spelling ever written to disk therefore has to
+    /// keep loading — a parse failure here doesn't degrade sorting, it makes a
+    /// multi-megabyte graph unopenable.
+    ///
+    /// One table over every form: what we might read, what it parses to, and
+    /// what we would write back.
+    ///
+    /// `written back` differing from `input` is a **migration**, not a bug:
+    /// legacy spellings normalize to the current one on rewrite. `written back`
+    /// always being re-readable is the forward-compatibility half, asserted
+    /// below by parsing it a second time.
+    #[test]
+    fn sort_key_json_roundtrip() {
+        let cases = [
+            // ── shapes that predate the typed key ──
+            ("NodeName", r#"{"NodeName":{}}"#),
+            ("plain metric", r#"{"MetricView":{"key":"size"}}"#),
+            ("transitive", r#"{"MetricView":{"key":"size~transitive"}}"#),
+            ("dominated", r#"{"MetricView":{"key":"size~dominated"}}"#),
+            ("parents count", r#"{"MetricView":{"key":"parents-count"}}"#),
+            (
+                "count transitive",
+                r#"{"MetricView":{"key":"node-count~transitive"}}"#,
+            ),
+            (
+                "count dominated",
+                r#"{"MetricView":{"key":"node-count~dominated"}}"#,
+            ),
+            ("tier index", r#"{"MetricView":{"key":"tier"}}"#),
+            // ── legacy `~` tier separator, from before `#` ──
+            ("legacy tier", r#"{"MetricView":{"key":"size~T2"}}"#),
+            (
+                "legacy tier dominated",
+                r#"{"MetricView":{"key":"size~dominated~T2"}}"#,
+            ),
+            // ── a spelling the docs advertised but nothing ever emitted ──
+            (
+                "@right alias",
+                r#"{"MetricView":{"key":"size~transitive@right"}}"#,
+            ),
+            // ── current spellings ──
+            ("tier", r#"{"MetricView":{"key":"size#T2"}}"#),
+            (
+                "tier dominated",
+                r#"{"MetricView":{"key":"size#T2~dominated"}}"#,
+            ),
+            (
+                "left side",
+                r#"{"MetricView":{"key":"size~transitive@left"}}"#,
+            ),
+            (
+                "delta side",
+                r#"{"MetricView":{"key":"size~transitive@delta"}}"#,
+            ),
+            (
+                "tiered delta",
+                r#"{"MetricView":{"key":"size#eager@delta"}}"#,
+            ),
+            // ── keys nothing can make sense of: degrade, never fail ──
+            (
+                "unknown count",
+                r#"{"MetricView":{"key":"node-count~nonsense"}}"#,
+            ),
+            (
+                "unknown modifier",
+                r#"{"MetricView":{"key":"size#T2~nonsense"}}"#,
+            ),
+            ("unknown side", r#"{"MetricView":{"key":"size@sideways"}}"#),
+            ("too many parts", r#"{"MetricView":{"key":"a~b~c~d"}}"#),
+        ];
+
+        let mut out = format!("{:<22} {:<34} {}\n", "case", "parsed", "written back");
+        for (label, json) in cases {
+            let parsed: SortColumn = serde_json::from_str(json)
+                .unwrap_or_else(|e| panic!("{label}: {json} must not fail to parse: {e}"));
+            let written = serde_json::to_string(&parsed).unwrap();
+
+            // Forward compatibility: whatever we write must read back to the
+            // same value, so a rewritten graph never drifts.
+            let reparsed: SortColumn = serde_json::from_str(&written).unwrap();
+            assert_eq!(reparsed, parsed, "{label}: rewriting changed the meaning");
+
+            out.push_str(&format!(
+                "{:<22} {:<34} {}\n",
+                label,
+                describe(&parsed),
+                written
+            ));
+        }
+
+        snapshot!(
+            out,
+            r#"
+case                   parsed                             written back
+NodeName               <node name / unsorted>             {"NodeName":{}}
+plain metric           size                               {"MetricView":{"key":"size"}}
+transitive             size~transitive                    {"MetricView":{"key":"size~transitive"}}
+dominated              size~dominated                     {"MetricView":{"key":"size~dominated"}}
+parents count          parents-count                      {"MetricView":{"key":"parents-count"}}
+count transitive       node-count~transitive              {"MetricView":{"key":"node-count~transitive"}}
+count dominated        node-count~dominated               {"MetricView":{"key":"node-count~dominated"}}
+tier index             tier                               {"MetricView":{"key":"tier"}}
+legacy tier            size#T2                            {"MetricView":{"key":"size#T2"}}
+legacy tier dominated  size#T2~dominated                  {"MetricView":{"key":"size#T2~dominated"}}
+@right alias           size~transitive                    {"MetricView":{"key":"size~transitive"}}
+tier                   size#T2                            {"MetricView":{"key":"size#T2"}}
+tier dominated         size#T2~dominated                  {"MetricView":{"key":"size#T2~dominated"}}
+left side              size~transitive@left               {"MetricView":{"key":"size~transitive@left"}}
+delta side             size~transitive@delta              {"MetricView":{"key":"size~transitive@delta"}}
+tiered delta           size#eager@delta                   {"MetricView":{"key":"size#eager@delta"}}
+unknown count          <node name / unsorted>             {"NodeName":{}}
+unknown modifier       <node name / unsorted>             {"NodeName":{}}
+unknown side           <node name / unsorted>             {"NodeName":{}}
+too many parts         <node name / unsorted>             {"NodeName":{}}
+
+"#
+        );
+    }
+
+    /// The reported failure, reproduced at the level it actually occurred:
+    /// a whole `GraphSettings` blob whose sort key is a legacy `~`-tier key.
+    /// Before the legacy spellings parsed, this returned
+    /// `invalid metric view: 'size~T2'` and took the entire graph with it.
+    #[test]
+    fn legacy_sort_key_does_not_sink_graph_settings() {
+        let json = r#"{
+            "ui_settings": {
+                "columns": {
+                    "graph_table_sort": {
+                        "column": { "MetricView": { "key": "size~T2" } },
+                        "order": "Desc"
+                    }
+                }
+            }
+        }"#;
+
+        let settings: GraphSettings = serde_json::from_str(json).expect("must load");
+        let sort = settings
+            .ui_settings
+            .and_then(|ui| ui.columns)
+            .and_then(|c| c.graph_table_sort)
+            .expect("sort survives the round trip");
+
+        assert_eq!(
+            sort.column,
+            SortColumn::MetricView {
+                key: crate::MetricView::tiered("size", "T2"),
+            }
+        );
+        assert_eq!(sort.order, SortOrder::Desc);
+    }
+
+    /// Same, for a key no version of the parser understands: the graph still
+    /// loads, it just loses the sort.
+    #[test]
+    fn unparseable_sort_key_does_not_sink_graph_settings() {
+        let json = r#"{
+            "ui_settings": {
+                "columns": {
+                    "graph_table_sort": {
+                        "column": { "MetricView": { "key": "node-count~nonsense" } },
+                        "order": "Asc"
+                    }
+                }
+            }
+        }"#;
+
+        let settings: GraphSettings = serde_json::from_str(json).expect("must load");
+        let sort = settings
+            .ui_settings
+            .and_then(|ui| ui.columns)
+            .and_then(|c| c.graph_table_sort)
+            .expect("the sort entry itself survives");
+
+        assert_eq!(sort.column, SortColumn::NodeName {});
+    }
+
+    fn describe(column: &SortColumn) -> String {
+        match column {
+            SortColumn::NodeName {} => "<node name / unsorted>".to_string(),
+            SortColumn::MetricView { key } => key.to_string(),
+        }
     }
 }
 

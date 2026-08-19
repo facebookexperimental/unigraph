@@ -234,9 +234,15 @@ impl TypeScriptGenerator {
                             .iter()
                             .map(|field| {
                                 let field_name = &field.field_name;
+                                // Same optionality marker `generate_struct_typescript`
+                                // applies, so an `Option` field can be omitted
+                                // rather than spelled `undefined`.
+                                let question_mark = matches!(field.type_ref, TypeRef::Option(_))
+                                    .then_some("?")
+                                    .unwrap_or_default();
                                 let ts_type =
                                     Self::resolve_typescript_type(&field.type_ref, imports);
-                                format!("{}: {}", field_name, ts_type)
+                                format!("{}{}: {}", field_name, question_mark, ts_type)
                             })
                             .collect();
                         variant_result.push_str(&format!(

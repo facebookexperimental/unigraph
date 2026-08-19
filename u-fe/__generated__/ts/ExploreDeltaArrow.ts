@@ -1,7 +1,7 @@
 /**
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
- * @generated SignedSource<<0b3440e976ed14439c0bfa51eba2340f>>
+ * @generated SignedSource<<84b78d7d687be8b757a11096e54db115>>
  */
 
 
@@ -19,7 +19,7 @@ export interface ExploreDeltaArrow {
   /** Node name. */
   name: string;
   /**
-   * Flat metrics map, keyed by `MetricColumn` display strings — e.g.
+   * Flat metrics map, keyed by `MetricView` display strings — e.g.
    * `size~transitive` (right graph), `size~transitive@left`,
    * `size~transitive@delta`.
    */

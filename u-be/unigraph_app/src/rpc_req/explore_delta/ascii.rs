@@ -12,13 +12,12 @@
 //!
 //! Columns are assembled into a plain grid and padded generically, so adding a
 //! column is one push rather than an edit in four places. Headers are the exact
-//! `MetricColumn` strings, so a header can be pasted straight back into
+//! `MetricView` strings, so a header can be pasted straight back into
 //! `--sort-by`.
 
 use std::collections::BTreeSet;
 use std::fmt::Write;
 
-use unigraph_core::MetricColumn;
 use unigraph_core::MetricView;
 use unigraph_core::NodeDiff;
 use unigraph_core::graph_settings::GraphStructure;
@@ -146,7 +145,7 @@ fn build_columns<'a>(
 }
 
 /// Render a per-side edge field, showing `before ► after` when the two sides
-/// disagree. Same idiom `EnumMetricColumn` uses in the UI for a changed enum
+/// disagree. Same idiom `EnumMetricView` uses in the UI for a changed enum
 /// value — a retag is easy to miss if only the new tag is printed.
 fn sided_cell(
     arrow: &ExploreDeltaArrow,
@@ -192,22 +191,19 @@ fn metric_columns<'a>(
 
     keys.into_iter()
         .map(|key| {
-            // Keys are produced by `MetricColumn::to_string`, so this parses.
-            let view: MetricColumn = key.parse().unwrap_or_else(|_| {
-                MetricColumn::new(
-                    MetricView::Metric { name: key.clone() },
-                    unigraph_core::MetricSide::Right,
-                )
-            });
+            // Keys are produced by `MetricView::to_string`, so this parses.
+            let view: MetricView = key.parse().unwrap_or_else(|_| MetricView::metric(key));
             // A categorical format applied to a difference produces a bogus
             // label, so delta cells of such metrics fall back to plain numbers.
             // Default columns never ask for one; an explicit `--metric` can.
+            //
+            // `base()` drops the side: format is a property of *what* is
+            // measured, so a delta column formats like its right-hand sibling.
             let format = metrics_config
                 .filter(|_| {
-                    !view.is_delta()
-                        || super::metrics::has_meaningful_delta(&view.view, metrics_config)
+                    !view.is_delta() || super::metrics::has_meaningful_delta(&view, metrics_config)
                 })
-                .and_then(|c| c.format_for_view(&view.view).cloned());
+                .and_then(|c| c.format_for_view(&view.base()).cloned());
             let key = key.clone();
             let tier_names = table.tier_names;
 
@@ -227,11 +223,11 @@ fn metric_columns<'a>(
 /// distinguishable at a glance; negatives already print their own sign.
 fn format_metric(
     value: f64,
-    view: &MetricColumn,
+    view: &MetricView,
     format: Option<&MetricFormat>,
     tier_names: &[String],
 ) -> String {
-    if matches!(view.view, MetricView::TierIndex {}) && !view.is_delta() {
+    if matches!(view, MetricView::TierIndex { .. }) && !view.is_delta() {
         let idx = value as usize;
         return tier_names
             .get(idx)

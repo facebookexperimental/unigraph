@@ -64,7 +64,6 @@ pub use crate::identifiers::GraphTimeKey;
 pub use crate::identifiers::TimelineID;
 pub use crate::identifiers::Timestamp;
 pub use crate::map_graph_builder::GraphBuilder;
-pub use crate::metric_view::MetricColumn;
 pub use crate::metric_view::MetricSide;
 pub use crate::metric_view::MetricView;
 pub use crate::min_cut::MinCut;

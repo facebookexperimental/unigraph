@@ -9,7 +9,7 @@ use unigraph_app::ExploreGraphTarget;
 use unigraph_app::RpcExec;
 use unigraph_app::Unigraph;
 use unigraph_core::GraphHandle;
-use unigraph_core::MetricColumn;
+use unigraph_core::MetricView;
 use unigraph_core::config_query::GraphQueryConfig;
 use unigraph_core::config_query::TraversalOverride;
 
@@ -219,23 +219,23 @@ impl GraphExploreDelta {
         }
     }
 
-    fn parse_metrics(&self) -> anyhow::Result<Option<Vec<MetricColumn>>> {
+    fn parse_metrics(&self) -> anyhow::Result<Option<Vec<MetricView>>> {
         if self.metrics.is_empty() {
             return Ok(None);
         }
         let metrics = self
             .metrics
             .iter()
-            .map(|s| s.parse::<MetricColumn>())
+            .map(|s| s.parse::<MetricView>())
             .collect::<Result<Vec<_>, _>>()
             .context("Failed to parse metric")?;
         Ok(Some(metrics))
     }
 
-    fn parse_sort_by(&self) -> anyhow::Result<Option<MetricColumn>> {
+    fn parse_sort_by(&self) -> anyhow::Result<Option<MetricView>> {
         self.sort_by
             .as_deref()
-            .map(|s| s.parse::<MetricColumn>())
+            .map(|s| s.parse::<MetricView>())
             .transpose()
             .context("Failed to parse sort-by metric")
     }

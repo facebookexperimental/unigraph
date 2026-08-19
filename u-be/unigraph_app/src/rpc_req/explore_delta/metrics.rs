@@ -8,7 +8,6 @@ use std::collections::BTreeSet;
 use anyhow::Result;
 use anyhow::bail;
 use unigraph_core::GraphSide;
-use unigraph_core::MetricColumn;
 use unigraph_core::MetricSide;
 use unigraph_core::MetricView;
 use unigraph_core::NodeIDX;
@@ -24,9 +23,9 @@ use unigraph_core::graph_settings::MetricsConfig;
 /// validated against the views this graph actually has.
 pub fn resolve_columns(
     tg: &TwinGraph,
-    requested: &Option<Vec<MetricColumn>>,
+    requested: &Option<Vec<MetricView>>,
     structure: GraphStructure,
-) -> Result<Vec<MetricColumn>> {
+) -> Result<Vec<MetricView>> {
     match requested {
         None => Ok(default_columns(tg, structure)),
         Some(list) => validate_columns(tg, list),
@@ -34,7 +33,7 @@ pub fn resolve_columns(
 }
 
 /// Right value + `∆` for each visible view.
-fn default_columns(tg: &TwinGraph, structure: GraphStructure) -> Vec<MetricColumn> {
+fn default_columns(tg: &TwinGraph, structure: GraphStructure) -> Vec<MetricView> {
     let metrics_config =
         tg.r.graph_settings()
             .and_then(|gs| gs.metrics_config.as_ref());
@@ -43,8 +42,9 @@ fn default_columns(tg: &TwinGraph, structure: GraphStructure) -> Vec<MetricColum
         .into_iter()
         .flat_map(|view| {
             let delta = has_meaningful_delta(&view, metrics_config)
-                .then(|| MetricColumn::new(view.clone(), MetricSide::Delta));
-            [Some(MetricColumn::new(view, MetricSide::Right)), delta]
+                .then(|| view.with_side(Some(MetricSide::Delta)));
+            // `visible_metric_views` already yields side-less views.
+            [Some(view), delta]
         })
         .flatten()
         .collect()
@@ -53,10 +53,10 @@ fn default_columns(tg: &TwinGraph, structure: GraphStructure) -> Vec<MetricColum
 /// Categorical views get no `∆` column. Subtracting two tier indices or two
 /// enum codes yields a number that formats back into a nonsense label —
 /// `node_type` going `root` → `root` would render its zero delta as "root".
-/// The UI reaches the same conclusion: `NodeTierColumn`, `EnumMetricColumn`,
-/// and `TimespanMetricColumn` each render one column with no `∆` sibling.
+/// The UI reaches the same conclusion: `NodeTierColumn`, `EnumMetricView`,
+/// and `TimespanMetricView` each render one column with no `∆` sibling.
 pub fn has_meaningful_delta(view: &MetricView, metrics_config: Option<&MetricsConfig>) -> bool {
-    if matches!(view, MetricView::TierIndex {}) {
+    if matches!(view, MetricView::TierIndex { .. }) {
         return false;
     }
     !matches!(
@@ -65,7 +65,7 @@ pub fn has_meaningful_delta(view: &MetricView, metrics_config: Option<&MetricsCo
     )
 }
 
-fn validate_columns(tg: &TwinGraph, list: &[MetricColumn]) -> Result<Vec<MetricColumn>> {
+fn validate_columns(tg: &TwinGraph, list: &[MetricView]) -> Result<Vec<MetricView>> {
     let available: BTreeSet<String> =
         tg.r.available_metric_views()
             .iter()
@@ -75,7 +75,7 @@ fn validate_columns(tg: &TwinGraph, list: &[MetricColumn]) -> Result<Vec<MetricC
 
     let invalid: Vec<String> = list
         .iter()
-        .filter(|tmv| !available.contains(&tmv.view.to_string()))
+        .filter(|column| !available.contains(&column.base().to_string()))
         .map(|tmv| tmv.to_string())
         .collect();
 
@@ -98,7 +98,7 @@ fn validate_columns(tg: &TwinGraph, list: &[MetricColumn]) -> Result<Vec<MetricC
 pub fn build_map(
     tg: &TwinGraph,
     merged_idx: NodeIDX,
-    columns: &[MetricColumn],
+    columns: &[MetricView],
 ) -> Result<BTreeMap<String, f64>> {
     columns
         .iter()
@@ -106,11 +106,12 @@ pub fn build_map(
         .collect()
 }
 
-pub fn compute(tg: &TwinGraph, merged_idx: NodeIDX, column: &MetricColumn) -> Result<f64> {
-    match column.side {
-        MetricSide::Left => side_value(tg, GraphSide::Left, merged_idx, &column.view),
-        MetricSide::Right => side_value(tg, GraphSide::Right, merged_idx, &column.view),
-        MetricSide::Delta => delta_value(tg, merged_idx, &column.view),
+pub fn compute(tg: &TwinGraph, merged_idx: NodeIDX, column: &MetricView) -> Result<f64> {
+    match column.side() {
+        // No side means the primary graph — the only graph outside delta mode.
+        None => side_value(tg, GraphSide::Right, merged_idx, &column.base()),
+        Some(MetricSide::Left) => side_value(tg, GraphSide::Left, merged_idx, &column.base()),
+        Some(MetricSide::Delta) => delta_value(tg, merged_idx, &column.base()),
     }
 }
 
@@ -139,11 +140,13 @@ fn side_value(
 /// `TransitiveMetricDeltaColumn` in `u-fe/tree_table/columns/metrics.tsx`.
 fn delta_value(tg: &TwinGraph, merged_idx: NodeIDX, view: &MetricView) -> Result<f64> {
     match view {
-        MetricView::Tiered { name, tier_name } => Ok(*tg
+        MetricView::Tiered {
+            name, tier_name, ..
+        } => Ok(*tg
             .get_transitive_tiered_delta(merged_idx, name)?
             .get(tier_name.as_str())
             .unwrap_or(&0.0)),
-        MetricView::CountTransitive {} => Ok(tg.get_transitive_count_delta(merged_idx)? as f64),
+        MetricView::CountTransitive { .. } => Ok(tg.get_transitive_count_delta(merged_idx)? as f64),
         _ => {
             let right = side_value(tg, GraphSide::Right, merged_idx, view)?;
             let left = side_value(tg, GraphSide::Left, merged_idx, view)?;

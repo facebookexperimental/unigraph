@@ -1,7 +1,7 @@
 /**
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
- * @generated SignedSource<<8a79917647d7d17df3d7458740694ecd>>
+ * @generated SignedSource<<738922823d1a0e8c8adb5579ad9356b7>>
  */
 
 
@@ -16,7 +16,7 @@ import type { TimespanUnits } from './TimespanUnits.ts';
  */
 export type MetricFormat =
   /** a value representing a percentage value. */
-  { "Percent": { scaled_percentage: boolean | undefined } } |
+  { "Percent": { scaled_percentage?: boolean | undefined } } |
   /** Given a value of bytes, format it as a size (e.g. 1.4MB, 2kB, etc) */
   { "Size": SizeFormatConfig } |
   /** Given a value of 0 or 1, format it as a boolean */
@@ -32,7 +32,7 @@ export type MetricFormat =
    * 1000000 -> {min:    2, max: 4, delimiter: false} -> "1000000.00"
    * 1000000 -> {min:    0, max: 0, delimiter: true}  -> "1,000,000"
    */
-  { "NumberWithVariablePrecision": { min_precision: number | undefined, max_precision: number | undefined, use_delimiter: boolean | undefined } } |
+  { "NumberWithVariablePrecision": { min_precision?: number | undefined, max_precision?: number | undefined, use_delimiter?: boolean | undefined } } |
   /**
    * Treat the value as an enum: map an integer value to a display label.
    * The metric value is coerced to an integer (rounded) before lookup.
@@ -46,6 +46,6 @@ export type MetricFormat =
    * `timespan_end_metric_name`. The UI renders a positioned bar spanning
    * start→end; the CLI and any text context render the raw numeric value.
    */
-  { "TimespanStart": { timespan_end_metric_name: string | undefined, units: TimespanUnits, ignore_zero: boolean | undefined } };
+  { "TimespanStart": { timespan_end_metric_name?: string | undefined, units: TimespanUnits, ignore_zero?: boolean | undefined } };
 
 export type MetricFormatVariants = "Percent" | "Size" | "NumericBoolean" | "NumberWithVariablePrecision" | "Enum" | "TimespanStart";

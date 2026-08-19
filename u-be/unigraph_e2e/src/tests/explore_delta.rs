@@ -9,7 +9,7 @@ use k9::snapshot;
 use unigraph_app::ExploreDeltaInput;
 use unigraph_app::ExploreGraphTarget;
 use unigraph_app::call_rpc;
-use unigraph_core::MetricColumn;
+use unigraph_core::MetricView;
 use unigraph_core::config_query::GraphQueryConfig;
 use unigraph_core::graph_settings::GraphStructure;
 use unigraph_core::graph_settings::SortOrder;
@@ -515,8 +515,8 @@ struct Delta {
     target: ExploreGraphTarget,
     graph_structure: GraphStructure,
     changed_nodes_only: bool,
-    metrics: Option<Vec<MetricColumn>>,
-    sort_by: Option<MetricColumn>,
+    metrics: Option<Vec<MetricView>>,
+    sort_by: Option<MetricView>,
     sort_order: Option<SortOrder>,
     offset: Option<usize>,
     limit: Option<usize>,
@@ -616,7 +616,7 @@ fn bare_gqc(handle: &str) -> Result<GraphQueryConfig> {
     })
 }
 
-fn parse_metric(s: &str) -> MetricColumn {
+fn parse_metric(s: &str) -> MetricView {
     s.parse()
         .unwrap_or_else(|e| panic!("bad metric '{s}': {e}"))
 }

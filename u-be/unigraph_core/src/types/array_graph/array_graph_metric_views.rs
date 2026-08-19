@@ -28,7 +28,7 @@ pub fn available_metric_views(ag: &ArrayGraph) -> Vec<MetricView> {
 
     push_available_structural_counts(&mut views, config);
     if !tier_names.is_empty() {
-        views.push(MetricView::TierIndex {});
+        views.push(MetricView::tier_index());
     }
     views
 }
@@ -107,11 +107,11 @@ fn view_type_default_visibility(
     };
     let per_type = match view {
         MetricView::Metric { .. } => dv.self_view,
-        MetricView::Transitive { .. } | MetricView::CountTransitive {} => dv.transitive,
-        MetricView::Dominated { .. } | MetricView::CountDominated {} => dv.dominated,
+        MetricView::Transitive { .. } | MetricView::CountTransitive { .. } => dv.transitive,
+        MetricView::Dominated { .. } | MetricView::CountDominated { .. } => dv.dominated,
         MetricView::Tiered { .. } => dv.tiered,
         MetricView::TieredDominated { .. } => dv.tiered_dominated,
-        MetricView::ParentsCount {} | MetricView::TierIndex {} => None,
+        MetricView::ParentsCount { .. } | MetricView::TierIndex { .. } => None,
     };
     per_type
         .or(dv.all)
@@ -149,19 +149,13 @@ fn push_available_base_views(
     config: Option<&MetricsConfig>,
 ) {
     if resolve_available(config, name, |mc| mc.self_view, |d| d.self_view) {
-        views.push(MetricView::Metric {
-            name: name.to_string(),
-        });
+        views.push(MetricView::metric(name.to_string()));
     }
     if resolve_available(config, name, |mc| mc.transitive, |d| d.transitive) {
-        views.push(MetricView::Transitive {
-            name: name.to_string(),
-        });
+        views.push(MetricView::transitive(name.to_string()));
     }
     if resolve_available(config, name, |mc| mc.dominated, |d| d.dominated) {
-        views.push(MetricView::Dominated {
-            name: name.to_string(),
-        });
+        views.push(MetricView::dominated(name.to_string()));
     }
 }
 
@@ -181,16 +175,13 @@ fn push_available_tiered_views(
 
     for &tier_name in tier_names {
         if tiered {
-            views.push(MetricView::Tiered {
-                name: name.to_string(),
-                tier_name: tier_name.to_string(),
-            });
+            views.push(MetricView::tiered(name.to_string(), tier_name.to_string()));
         }
         if tiered_dom {
-            views.push(MetricView::TieredDominated {
-                name: name.to_string(),
-                tier_name: tier_name.to_string(),
-            });
+            views.push(MetricView::tiered_dominated(
+                name.to_string(),
+                tier_name.to_string(),
+            ));
         }
     }
 }
@@ -204,13 +195,13 @@ fn push_available_structural_counts(views: &mut Vec<MetricView>, config: Option<
     };
 
     if resolve_structural(|c| c.parents_count) {
-        views.push(MetricView::ParentsCount {});
+        views.push(MetricView::parents_count());
     }
     if resolve_structural(|c| c.count_transitive) {
-        views.push(MetricView::CountTransitive {});
+        views.push(MetricView::count_transitive());
     }
     if resolve_structural(|c| c.count_dominated) {
-        views.push(MetricView::CountDominated {});
+        views.push(MetricView::count_dominated());
     }
 }
 
@@ -634,39 +625,15 @@ node-count~transitive
         };
 
         let views = vec![
-            (
-                "size",
-                crate::MetricView::Metric {
-                    name: "size".into(),
-                },
-            ),
-            (
-                "size~transitive",
-                crate::MetricView::Transitive {
-                    name: "size".into(),
-                },
-            ),
-            (
-                "size~dominated",
-                crate::MetricView::Dominated {
-                    name: "size".into(),
-                },
-            ),
-            (
-                "size#T1",
-                crate::MetricView::Tiered {
-                    name: "size".into(),
-                    tier_name: "T1".into(),
-                },
-            ),
+            ("size", crate::MetricView::metric("size")),
+            ("size~transitive", crate::MetricView::transitive("size")),
+            ("size~dominated", crate::MetricView::dominated("size")),
+            ("size#T1", crate::MetricView::tiered("size", "T1")),
             (
                 "size#T1~dominated",
-                crate::MetricView::TieredDominated {
-                    name: "size".into(),
-                    tier_name: "T1".into(),
-                },
+                crate::MetricView::tiered_dominated("size", "T1"),
             ),
-            ("parents-count", crate::MetricView::ParentsCount {}),
+            ("parents-count", crate::MetricView::parents_count()),
         ];
 
         let mut results = Vec::new();

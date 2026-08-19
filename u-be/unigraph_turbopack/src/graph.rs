@@ -736,11 +736,10 @@ fn graph_settings() -> GraphSettings {
                 hide_metrics: Some(false),
                 graph_table_sort: Some(GraphTableSort {
                     column: SortColumn::MetricView {
-                        key: MetricView::Tiered {
-                            name: METRIC_COMPRESSED_SIZE.to_string(),
-                            tier_name: TIER_EAGER.to_string(),
-                        }
-                        .into(),
+                        key: MetricView::tiered(
+                            METRIC_COMPRESSED_SIZE.to_string(),
+                            TIER_EAGER.to_string(),
+                        ),
                     },
                     order: SortOrder::Desc,
                 }),

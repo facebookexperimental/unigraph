@@ -32,7 +32,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use typegen::TypeGen;
 use unigraph_core::DynamicEdgeInfo;
-use unigraph_core::MetricColumn;
+use unigraph_core::MetricView;
 use unigraph_core::NodeDiff;
 use unigraph_core::NodeIDX;
 use unigraph_core::TwinGraph;
@@ -72,12 +72,12 @@ pub struct ExploreDeltaInput {
     /// - `Some([...])`: exactly the listed columns.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[typegen(as = "Option<Vec<String>>")]
-    pub metrics: Option<Vec<MetricColumn>>,
+    pub metrics: Option<Vec<MetricView>>,
 
     /// Column to sort by. Computed for every row, even beyond the limit.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[typegen(as = "Option<String>")]
-    pub sort_by: Option<MetricColumn>,
+    pub sort_by: Option<MetricView>,
 
     /// Sort order. Defaults to Desc.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -151,7 +151,7 @@ pub struct ExploreDeltaEdge {
 pub struct ExploreDeltaArrow {
     /// Node name.
     pub name: String,
-    /// Flat metrics map, keyed by `MetricColumn` display strings — e.g.
+    /// Flat metrics map, keyed by `MetricView` display strings — e.g.
     /// `size~transitive` (right graph), `size~transitive@left`,
     /// `size~transitive@delta`.
     pub metrics: BTreeMap<String, f64>,
@@ -257,7 +257,7 @@ fn explore_delta(tg: Arc<TwinGraph>, input: &ExploreDeltaInput) -> Result<Explor
 fn build_arrow(
     tg: &TwinGraph,
     row: &rows::DeltaRow,
-    columns: &[MetricColumn],
+    columns: &[MetricView],
 ) -> Result<ExploreDeltaArrow> {
     Ok(ExploreDeltaArrow {
         name: tg.merged_idx_to_name(row.node_idx).to_string(),

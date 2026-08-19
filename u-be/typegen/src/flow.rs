@@ -219,8 +219,13 @@ impl FlowGenerator {
                             .iter()
                             .map(|field| {
                                 let field_name = &field.field_name;
+                                // Matches the struct renderer: an `Option` field
+                                // is an optional key, not a required `void` one.
+                                let question_mark = matches!(field.type_ref, TypeRef::Option(_))
+                                    .then_some("?")
+                                    .unwrap_or_default();
                                 let flow_type = Self::resolve_flow_type(&field.type_ref, imports);
-                                format!("{}: {}", field_name, flow_type)
+                                format!("{}{}: {}", field_name, question_mark, flow_type)
                             })
                             .collect();
                         variant_result.push_str(&format!(
