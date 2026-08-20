@@ -423,7 +423,7 @@ async fn randomized_out_of_order_with_disappearing_nodes() -> Result<()> {
                     for (metric, &expected_val) in expected_metrics {
                         let actual = snapshot.get(metric).copied().unwrap_or(0.0);
                         assert!(
-                            (expected_val as f64 - actual).abs() < 0.01,
+                            (expected_val - actual).abs() < 0.01,
                             "{node} g={}: {metric} expected={expected_val}, got={actual}",
                             gid.0,
                         );
