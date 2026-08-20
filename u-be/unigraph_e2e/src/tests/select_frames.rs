@@ -67,6 +67,81 @@ graph_id  timestamp                  type    errors
 }
 
 #[tokio::test]
+async fn graph_ids_select_exactly_the_named_frames() -> Result<()> {
+    let t = init_app();
+    let timeline_id = ingest_mixed_timeline(&t).await?;
+
+    // 7 does not exist: asking for a missing graph_id is how callers test for
+    // presence, so it must return the found subset rather than erroring.
+    let out = call_rpc!(
+        t,
+        SelectFrames(SelectFramesInput {
+            graph_ids: Some(vec![2, 0, 7]),
+            ..select_input(&timeline_id)
+        })
+    );
+
+    snapshot!(
+        format_frames(&out.frames),
+        "
+graph_id  timestamp                  type    errors
+0         1970-01-01T00:16:40+00:00  Full    -
+2         1970-01-01T00:50:00+00:00  Full    -
+"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn graph_ids_compose_with_the_other_filters() -> Result<()> {
+    let t = init_app();
+    let timeline_id = ingest_mixed_timeline(&t).await?;
+
+    let out = call_rpc!(
+        t,
+        SelectFrames(SelectFramesInput {
+            graph_ids: Some(vec![1, 2, 3]),
+            frame_types: Some(vec!["Error".to_owned()]),
+            order: Some("Desc".to_owned()),
+            ..select_input(&timeline_id)
+        })
+    );
+
+    snapshot!(
+        format_frames(&out.frames),
+        "
+graph_id  timestamp                  type    errors
+3         1970-01-01T01:06:40+00:00  Error   -
+1         1970-01-01T00:33:20+00:00  Error   -
+"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn no_matching_graph_ids_yields_no_frames() -> Result<()> {
+    let t = init_app();
+    let timeline_id = ingest_mixed_timeline(&t).await?;
+
+    let out = call_rpc!(
+        t,
+        SelectFrames(SelectFramesInput {
+            graph_ids: Some(vec![404]),
+            ..select_input(&timeline_id)
+        })
+    );
+
+    assert!(
+        out.frames.is_empty(),
+        "An unmatched graph_id must return nothing, not fall back to the whole timeline"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn error_content_composes_with_filters() -> Result<()> {
     let t = init_app();
     let timeline_id = ingest_mixed_timeline(&t).await?;
@@ -103,6 +178,7 @@ fn select_input(timeline_id: &str) -> SelectFramesInput {
         order: None,
         timestamp_start: None,
         timestamp_end: None,
+        graph_ids: None,
         include_error_info: None,
     }
 }

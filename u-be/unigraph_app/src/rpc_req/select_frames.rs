@@ -11,6 +11,7 @@ use unigraph_rpc::RpcExec;
 use unigraph_storage_core::FrameQuery;
 use unigraph_storage_core::FrameRow;
 use unigraph_storage_core::FrameType;
+use unigraph_storage_core::GraphID;
 use unigraph_storage_core::GraphKey;
 use unigraph_storage_core::Order;
 use unigraph_storage_core::TimelineID;
@@ -42,6 +43,11 @@ pub struct SelectFramesInput {
     /// Inclusive upper bound on frame timestamp, RFC3339.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub timestamp_end: Option<String>,
+    /// Only return frames with these graph_ids. Compiles to a SQL `IN`, so it
+    /// answers "which of these graphs exist" in one round trip rather than
+    /// paging a busy timeline looking for them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub graph_ids: Option<Vec<i64>>,
     /// Populate [`FrameInfo::error`] for `Error` frames. Off by default — each
     /// error frame costs a full-data row read plus blob resolution.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -127,7 +133,10 @@ fn to_frame_query(input: &SelectFramesInput) -> Result<FrameQuery> {
         order,
         timestamp_bounds,
         graph_id_bounds: None,
-        graph_ids: None,
+        graph_ids: input
+            .graph_ids
+            .as_ref()
+            .map(|ids| ids.iter().copied().map(GraphID).collect()),
         with_data: None,
         before: None,
         expires_before: None,
@@ -231,6 +240,7 @@ mod tests {
             order: None,
             timestamp_start: None,
             timestamp_end: None,
+            graph_ids: None,
             include_error_info: None,
         }
     }
@@ -294,6 +304,30 @@ mod tests {
         assert!(
             format!("{err:#}").contains("rfc3339"),
             "Error should mention the expected format, got: {err:#}"
+        );
+    }
+
+    #[test]
+    fn graph_ids_become_an_in_filter() {
+        let query = to_frame_query(&SelectFramesInput {
+            graph_ids: Some(vec![416802146, 416804233]),
+            ..input()
+        })
+        .expect("an explicit graph_id list should build");
+
+        assert_eq!(
+            query.graph_ids.as_deref(),
+            Some(&[GraphID(416802146), GraphID(416804233)][..]),
+            "Requested graph_ids should reach the query so the DB does the IN, not the caller"
+        );
+    }
+
+    #[test]
+    fn omitted_graph_ids_impose_no_constraint() {
+        let query = to_frame_query(&input()).expect("query with no graph_ids should build");
+        assert!(
+            query.graph_ids.is_none(),
+            "Omitting graph_ids must not narrow the query to the empty set"
         );
     }
 
