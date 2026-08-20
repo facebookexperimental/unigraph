@@ -84,7 +84,7 @@ export function RpcProvider({
  * const {data} = useSuspenseQuery({
  *   queryKey: ['SearchNodes', timelineId],
  *   queryFn: () =>
- *     rpc.call('SearchNodes', {timeline_id: timelineId, match_properties: {...}}),
+ *     rpc.call('SearchNodes', {timeline_id: timelineId, selection: {...}}),
  * });
  * ```
  */

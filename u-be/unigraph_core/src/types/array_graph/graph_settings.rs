@@ -1,17 +1,13 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 use std::collections::BTreeMap;
-use std::collections::BTreeSet;
 
 use anyhow::Result;
 use anyhow::bail;
 
 use crate::MetricView;
-use crate::types::DynamicTypeKey;
 use crate::types::NodeName;
-use crate::types::PropertyName;
-use crate::types::PropertyValue;
-use crate::types::Tag;
+use crate::types::array_graph::node_selection::NodeSelection;
 
 #[derive(
     Debug,
@@ -778,7 +774,7 @@ pub struct ArrayGraphUISettings {
     /// `entry_points` for the same reason as `entry_points_specified`: so the
     /// conditions survive switching to another entry point mode and back.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub entry_points_filter: Option<EntryPointsFilter>,
+    pub entry_points_filter: Option<NodeSelection>,
 }
 
 /// Enum that defines how the graph structure is displayed in the UI.
@@ -845,165 +841,6 @@ pub enum ArrayGraphUISettingsTreeTableEntryPoints {
     Specified,
     /// All reachable nodes narrowed by `entry_points_filter`.
     Filtered,
-}
-
-/// Conditions that narrow the flat list down to a subset of nodes.
-///
-/// Used in combination with `ArrayGraphUISettingsTreeTableEntryPoints::Filtered`.
-/// A node matches only when it satisfies every condition — this is an AND
-/// across all the fields and across the entries within each of them.
-#[derive(
-    Debug,
-    serde::Serialize,
-    serde::Deserialize,
-    typegen::TypeGen,
-    Clone,
-    Default,
-    PartialEq,
-    unigraph_delta::Deltable
-)]
-pub struct EntryPointsFilter {
-    /// Node name must match this. Absent — or blank — matches every name.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub name: Option<NameMatch>,
-
-    /// Property name -> what the value has to look like.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub properties: BTreeMap<PropertyName, PropertyValueMatch>,
-
-    /// Node must have an incoming edge tagged with each of these.
-    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
-    pub incoming_tags: BTreeSet<Tag>,
-
-    /// Node must have an incoming dynamic edge with each of these type keys.
-    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
-    pub incoming_dynamic_type_keys: BTreeSet<DynamicTypeKey>,
-
-    /// Node must have an outgoing edge tagged with each of these.
-    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
-    pub outgoing_tags: BTreeSet<Tag>,
-
-    /// Node must have an outgoing dynamic edge with each of these type keys.
-    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
-    pub outgoing_dynamic_type_keys: BTreeSet<DynamicTypeKey>,
-}
-
-/// How a node-name pattern is read.
-///
-/// Distinct from `unigraph_app`'s `SearchMode`, which drives the typeahead:
-/// that one is subsequence-fuzzy and top-K, where a filter needs every match
-/// and a predicate the user can reason about exactly.
-#[derive(
-    Debug,
-    serde::Serialize,
-    serde::Deserialize,
-    typegen::TypeGen,
-    Clone,
-    Copy,
-    Default,
-    PartialEq,
-    unigraph_delta::Deltable
-)]
-#[deltable(replace)]
-pub enum NameMatchMode {
-    /// Plain text, matched case-insensitively anywhere in the name.
-    #[default]
-    Substring,
-    /// Rust `regex` syntax, unanchored and case-sensitive — prefix with `(?i)`
-    /// to fold case, `^`/`$` to anchor.
-    Regex,
-}
-
-/// What a node's name has to look like.
-#[derive(
-    Debug,
-    serde::Serialize,
-    serde::Deserialize,
-    typegen::TypeGen,
-    Clone,
-    Default,
-    PartialEq,
-    unigraph_delta::Deltable
-)]
-pub struct NameMatch {
-    pub pattern: String,
-    pub mode: NameMatchMode,
-}
-
-impl NameMatch {
-    /// A blank pattern is a condition the user started and abandoned, not one
-    /// that matches nothing — treat it as absent everywhere.
-    pub fn is_blank(&self) -> bool {
-        self.pattern.trim().is_empty()
-    }
-}
-
-/// What a property condition requires of a node's value for that property.
-///
-/// A struct rather than a bare `Option<PropertyValue>` because this is a map
-/// value: `JSON.stringify` drops `undefined`, so an optional-valued map entry
-/// would silently disappear on the way back from the UI. An empty object
-/// survives the round trip and leaves room for future match modes.
-#[derive(
-    Debug,
-    serde::Serialize,
-    serde::Deserialize,
-    typegen::TypeGen,
-    Clone,
-    Default,
-    PartialEq,
-    unigraph_delta::Deltable
-)]
-pub struct PropertyValueMatch {
-    /// Required exact value. Absent matches any node carrying the property,
-    /// whatever its value.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub value: Option<PropertyValue>,
-}
-
-/// One direction's worth of edge conditions, so the matching logic can be
-/// written once and run over the reverse graph and then the forward one.
-pub struct EdgeConditions<'a> {
-    pub tags: &'a BTreeSet<Tag>,
-    pub dynamic_type_keys: &'a BTreeSet<DynamicTypeKey>,
-}
-
-impl EdgeConditions<'_> {
-    /// Nothing to check — the corresponding edge view is never built.
-    pub fn is_empty(&self) -> bool {
-        self.tags.is_empty() && self.dynamic_type_keys.is_empty()
-    }
-}
-
-impl EntryPointsFilter {
-    /// No conditions set — every reachable node matches.
-    pub fn is_empty(&self) -> bool {
-        self.name_condition().is_none()
-            && self.properties.is_empty()
-            && self.incoming_edges().is_empty()
-            && self.outgoing_edges().is_empty()
-    }
-
-    /// The name condition, if there is one worth applying.
-    pub fn name_condition(&self) -> Option<&NameMatch> {
-        self.name.as_ref().filter(|name| !name.is_blank())
-    }
-
-    /// Conditions on the edges pointing at a node.
-    pub fn incoming_edges(&self) -> EdgeConditions<'_> {
-        EdgeConditions {
-            tags: &self.incoming_tags,
-            dynamic_type_keys: &self.incoming_dynamic_type_keys,
-        }
-    }
-
-    /// Conditions on the edges leaving a node.
-    pub fn outgoing_edges(&self) -> EdgeConditions<'_> {
-        EdgeConditions {
-            tags: &self.outgoing_tags,
-            dynamic_type_keys: &self.outgoing_dynamic_type_keys,
-        }
-    }
 }
 
 #[derive(

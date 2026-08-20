@@ -10,6 +10,8 @@ use unigraph_app::ExploreDeltaInput;
 use unigraph_app::ExploreGraphTarget;
 use unigraph_app::call_rpc;
 use unigraph_core::MetricView;
+use unigraph_core::NameMatchMode;
+use unigraph_core::NodeSelection;
 use unigraph_core::config_query::GraphQueryConfig;
 use unigraph_core::graph_settings::GraphStructure;
 use unigraph_core::graph_settings::SortOrder;
@@ -109,6 +111,39 @@ analytics | REMOVED       | removed |         0.00 kB |              -0.14 kB | 
 auth      |               |         |         0.48 kB |               0.00 kB |
 db        |               |         |         0.30 kB |               0.00 kB |
 telemetry | ADDED         | added   |         0.44 kB |              +0.44 kB |
+
+"
+    );
+
+    Ok(())
+}
+
+/// Matching runs against each side's own graph and unions the results, so a
+/// node that exists on only one side still shows up. `analytics` was removed
+/// (left only) and `telemetry` added (right only) — if either side were skipped,
+/// one of these two rows would be missing.
+#[tokio::test]
+async fn matching_unions_both_sides() -> Result<()> {
+    let t = init_app();
+    let d = Delta::setup(&t).await?;
+
+    let out = call_rpc!(
+        t,
+        ExploreDelta(
+            d.matching_name("^(analytics|telemetry)$", NameMatchMode::Regex)
+                .no_metrics()
+                .build()
+        )
+    );
+    snapshot!(
+        out.ascii.unwrap(),
+        "
+Delta nodes matching {name~regex \"^(analytics|telemetry)$\"}
+
+node_name | change
+==========+========
+analytics | REMOVED
+telemetry | ADDED
 
 "
     );
@@ -649,6 +684,13 @@ impl Delta {
 
     fn all_nodes(mut self) -> Self {
         self.target = ExploreGraphTarget::AllNodes {};
+        self
+    }
+
+    fn matching_name(mut self, pattern: &str, mode: NameMatchMode) -> Self {
+        self.target = ExploreGraphTarget::Matching {
+            selection: NodeSelection::by_name(pattern, mode),
+        };
         self
     }
 

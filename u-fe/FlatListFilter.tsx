@@ -22,7 +22,7 @@
 
 import { Filter, Trash2, X } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
-import type { EntryPointsFilter } from "./__generated__/ts/EntryPointsFilter";
+import type { NodeSelection } from "./__generated__/ts/NodeSelection";
 import type { FilterCandidates } from "./__generated__/ts/FilterCandidates";
 import type { NameMatch } from "./__generated__/ts/NameMatch";
 import type { NameMatchMode } from "./__generated__/ts/NameMatchMode";
@@ -231,8 +231,8 @@ const EMPTY_NAME_MATCH: NameMatch = { pattern: "", mode: "Substring" };
 
 /// The popover's pending conditions, and the two ways out of them.
 type FilterDraft = {
-  draft: EntryPointsFilter;
-  setDraft: (draft: EntryPointsFilter) => void;
+  draft: NodeSelection;
+  setDraft: (draft: NodeSelection) => void;
   /// What the regex parser said about the name pattern, or `null` if it's fine.
   nameError: string | null;
   /// Applying would change something, and nothing in the draft is invalid.
@@ -296,7 +296,7 @@ function useFilterDraft(): FilterDraft {
 /// but arrays on the wire, property key order is incidental, and a blank name
 /// pattern is no condition at all. Without normalizing those, Apply lights up
 /// for edits that would change nothing.
-function filterKey(filter: EntryPointsFilter): string {
+function filterKey(filter: NodeSelection): string {
   return JSON.stringify([
     hasNameCondition(filter) ? [filter.name?.pattern, filter.name?.mode] : null,
     Object.entries(filter.properties)
@@ -412,9 +412,9 @@ function PropertyFilterEditor({
   candidates,
   onChange,
 }: {
-  filter: EntryPointsFilter;
+  filter: NodeSelection;
   candidates: PropertyCandidates[];
-  onChange: (filter: EntryPointsFilter) => void;
+  onChange: (filter: NodeSelection) => void;
 }) {
   const [draftName, setDraftName] = useState("");
   // The row that was just added, so focus can move to its value field. Picking

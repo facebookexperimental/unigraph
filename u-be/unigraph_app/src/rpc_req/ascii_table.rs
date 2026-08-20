@@ -16,6 +16,8 @@
 use std::collections::BTreeMap;
 
 use unigraph_core::MetricView;
+use unigraph_core::NameMatchMode;
+use unigraph_core::NodeSelection;
 use unigraph_core::graph_settings::MetricFormat;
 use unigraph_core::graph_settings::MetricsConfig;
 use unigraph_core::graph_settings::SortOrder;
@@ -23,6 +25,48 @@ use unigraph_core::graph_settings::SortOrder;
 /// Display width of a sort arrow suffix (" ▼" or " ▲"). The glyph is 3 bytes
 /// but one column wide, so padding has to be computed by hand.
 pub const SORT_ARROW_DISPLAY_LEN: usize = 2;
+
+/// A [`NodeSelection`] as one human-readable line, e.g.
+/// `{name~substring "comet", type=budget, has oncall, in-tag lazy}`.
+///
+/// Shared by both explore RPCs so a `Matching` target reads the same whether
+/// you're exploring one graph or a delta.
+pub fn describe_selection(selection: &NodeSelection) -> String {
+    let name = selection.name_condition().map(|name| {
+        let mode = match name.mode {
+            NameMatchMode::Substring => "substring",
+            NameMatchMode::Regex => "regex",
+            NameMatchMode::Fuzzy => "fuzzy",
+            NameMatchMode::Exact => "exact",
+        };
+        format!("name~{mode} {:?}", name.pattern)
+    });
+
+    // An absent value means "carries this property at all", which is a
+    // different condition from matching the empty string.
+    let properties = selection
+        .properties
+        .iter()
+        .map(|(key, value)| match &value.value {
+            Some(value) => format!("{key}={value}"),
+            None => format!("has {key}"),
+        });
+
+    let edges = [
+        ("in-tag", &selection.incoming_tags),
+        ("out-tag", &selection.outgoing_tags),
+        ("in-dyn", &selection.incoming_dynamic_type_keys),
+        ("out-dyn", &selection.outgoing_dynamic_type_keys),
+    ]
+    .into_iter()
+    .flat_map(|(label, values)| values.iter().map(move |value| format!("{label} {value}")));
+
+    let parts: Vec<String> = name.into_iter().chain(properties).chain(edges).collect();
+    if parts.is_empty() {
+        return "{any node}".to_string();
+    }
+    format!("{{{}}}", parts.join(", "))
+}
 
 pub fn sort_arrow(order: SortOrder) -> &'static str {
     match order {

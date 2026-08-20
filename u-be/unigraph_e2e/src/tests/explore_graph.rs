@@ -9,6 +9,8 @@ use unigraph_app::GraphHandle;
 use unigraph_app::MetricView;
 use unigraph_app::PutConfigsInput;
 use unigraph_app::call_rpc;
+use unigraph_core::NameMatchMode;
+use unigraph_core::NodeSelection;
 use unigraph_core::config_key::GraphQueryConfigKey;
 use unigraph_core::config_query::GraphQueryConfig;
 use unigraph_core::graph_settings::GraphSettings;
@@ -227,6 +229,224 @@ button_android |    90 |                    1 |                     1 |    0.04 
 button_ios     |    80 |                    1 |                     1 |    0.03 kB |   0.03 kB |        0.03 kB |           0.03 kB
 
 "
+    );
+
+    Ok(())
+}
+
+// ── Matching target ─────────────────────────────────────────────
+
+#[tokio::test]
+async fn matching_by_name_substring() -> Result<()> {
+    let t = init_app();
+    let handle = ingest_explore_graph(&t).await?;
+    let gqc_key = store_gqc(&t, &handle).await?;
+
+    let out = call_rpc!(
+        t,
+        ExploreGraph(
+            Explore::new(gqc_key)
+                .matching_name("button", NameMatchMode::Substring)
+                .metrics(&["lines"])
+                .build()
+        )
+    );
+    assert!(out.node.is_none(), "Matching should have no parent row");
+    snapshot!(
+        out.ascii.unwrap(),
+        r#"
+Nodes matching {name~substring "button"}
+
+node_name      | lines
+===============+======
+button_android |    90
+button_ios     |    80
+
+"#
+    );
+
+    Ok(())
+}
+
+/// Each mode reads the same pattern differently — one table so the four are
+/// comparable at a glance.
+#[tokio::test]
+async fn matching_by_name_across_modes() -> Result<()> {
+    let t = init_app();
+    let handle = ingest_explore_graph(&t).await?;
+    let gqc_key = store_gqc(&t, &handle).await?;
+
+    let modes = [
+        ("substring", NameMatchMode::Substring, "ui"),
+        ("regex", NameMatchMode::Regex, "^u"),
+        ("exact", NameMatchMode::Exact, "ui"),
+        // Negative: an exact name that doesn't exist matches nothing.
+        ("exact-missing", NameMatchMode::Exact, "u"),
+    ];
+
+    let mut rows = Vec::new();
+    for (label, mode, pattern) in modes {
+        let out = call_rpc!(
+            t,
+            ExploreGraph(
+                Explore::new(gqc_key.clone())
+                    .matching_name(pattern, mode)
+                    .no_metrics()
+                    .build()
+            )
+        );
+        let names: Vec<&str> = out.arrows.iter().map(|a| a.name.as_str()).collect();
+        let names = if names.is_empty() {
+            "(none)".to_string()
+        } else {
+            names.join(", ")
+        };
+        rows.push(format!("{label:<14} {pattern:<4} |  {names}"));
+    }
+
+    snapshot!(
+        rows.join("\n"),
+        "
+substring      ui   |  ui
+regex          ^u   |  ui, utils
+exact          ui   |  ui
+exact-missing  u    |  (none)
+"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn matching_by_property() -> Result<()> {
+    let t = init_app();
+    let gqc_key = ingest_matching_graph(&t).await?;
+
+    let out = call_rpc!(
+        t,
+        ExploreGraph(
+            Explore::new(gqc_key)
+                .matching_property("type", Some("service"))
+                .no_metrics()
+                .build()
+        )
+    );
+    snapshot!(
+        out.ascii.unwrap(),
+        "
+Nodes matching {type=service}
+
+node_name
+============
+auth_service
+user_service
+
+"
+    );
+
+    Ok(())
+}
+
+/// An absent value means "carries this property at all".
+#[tokio::test]
+async fn matching_by_property_presence() -> Result<()> {
+    let t = init_app();
+    let gqc_key = ingest_matching_graph(&t).await?;
+
+    let out = call_rpc!(
+        t,
+        ExploreGraph(
+            Explore::new(gqc_key)
+                .matching_property("platform", None)
+                .no_metrics()
+                .build()
+        )
+    );
+    snapshot!(
+        out.ascii.unwrap(),
+        "
+Nodes matching {has platform}
+
+node_name
+=========
+button
+dialog
+
+"
+    );
+
+    Ok(())
+}
+
+/// Sorting and pagination run over the whole match set, not just the page.
+#[tokio::test]
+async fn matching_sorts_and_paginates() -> Result<()> {
+    let t = init_app();
+    let handle = ingest_explore_graph(&t).await?;
+    let gqc_key = store_gqc(&t, &handle).await?;
+
+    let out = call_rpc!(
+        t,
+        ExploreGraph(
+            Explore::new(gqc_key)
+                .matching_name("u", NameMatchMode::Substring)
+                .metrics(&["lines"])
+                .sort_by("lines")
+                .offset(1)
+                .limit(2)
+                .build()
+        )
+    );
+    // ui, utils, auth, button_android, button_ios all contain a "u".
+    assert_eq!(
+        out.total_arrows_count, 5,
+        "the total counts every match, not just the page"
+    );
+    snapshot!(
+        out.ascii.unwrap(),
+        r#"
+Nodes matching {name~substring "u"}
+
+node_name | lines ▼
+==========+========
+auth      |     420
+utils     |     100
+
+(showing 2 of 5 rows, offset 1)
+"#
+    );
+
+    Ok(())
+}
+
+/// `Fuzzy` is top-K, so it can only enumerate a capped prefix and can never
+/// answer "how many nodes match" — which a paginated table with a row count
+/// needs. Explore rejects it rather than reporting a capped number as a total.
+#[tokio::test]
+async fn matching_rejects_fuzzy() -> Result<()> {
+    let t = init_app();
+    let handle = ingest_explore_graph(&t).await?;
+    let gqc_key = store_gqc(&t, &handle).await?;
+
+    let input = Explore::new(gqc_key)
+        .matching_name("u", NameMatchMode::Fuzzy)
+        .no_metrics()
+        .build();
+    let result = t
+        .app
+        .exec_rpc(unigraph_app::UnigraphRequest::ExploreGraph(input), &t.task)
+        .await;
+
+    // `{:#}` walks the whole chain — ll::Task wraps the real message in a
+    // task-name frame.
+    let message = match result {
+        Ok(unigraph_app::UnigraphResponse::Error(e)) => format!("{:#}", e.into_anyhow()),
+        Ok(other) => panic!("expected an error, got a {} response", other.variant_name()),
+        Err(e) => format!("{e:#}"),
+    };
+    assert!(
+        message.contains("Fuzzy name mode is not supported"),
+        "unexpected error: {message}"
     );
 
     Ok(())
@@ -1103,6 +1323,24 @@ async fn ingest_with_settings(
     store_gqc(t, timeline_id).await
 }
 
+/// A small graph carrying node properties — the explore fixture has none, and
+/// giving it some would churn every metric snapshot in this file.
+async fn ingest_matching_graph(t: &TestApp) -> Result<GraphQueryConfigKey> {
+    let json = r#"{
+        "nodes": {
+            "app": {
+                "edges_directed": ["button", "dialog", "auth_service", "user_service"]
+            },
+            "button": { "properties": {"type": "component", "platform": "web"} },
+            "dialog": { "properties": {"type": "component", "platform": "mobile"} },
+            "auth_service": { "properties": {"type": "service"} },
+            "user_service": { "properties": {"type": "service"} }
+        }
+    }"#;
+    crate::support::fixtures::ingest_map_graph_json(t, "matching_props", json).await?;
+    store_gqc(t, "matching_props").await
+}
+
 fn header_columns(ascii: &str) -> Vec<String> {
     ascii
         .lines()
@@ -1153,6 +1391,22 @@ impl Explore {
 
     fn all_nodes(mut self) -> Self {
         self.target = ExploreGraphTarget::AllNodes {};
+        self
+    }
+
+    fn matching_name(self, pattern: &str, mode: NameMatchMode) -> Self {
+        self.matching(NodeSelection::by_name(pattern, mode))
+    }
+
+    fn matching_property(self, key: &str, expected: Option<&str>) -> Self {
+        self.matching(NodeSelection::by_property(
+            key,
+            expected.map(str::to_string),
+        ))
+    }
+
+    fn matching(mut self, selection: NodeSelection) -> Self {
+        self.target = ExploreGraphTarget::Matching { selection };
         self
     }
 

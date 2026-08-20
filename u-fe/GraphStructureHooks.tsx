@@ -2,13 +2,13 @@
 
 import { useCallback } from "react";
 import type { ArrayGraphUISettingsTreeTableEntryPoints } from "./__generated__/ts/ArrayGraphUISettingsTreeTableEntryPoints";
-import type { EntryPointsFilter } from "./__generated__/ts/EntryPointsFilter";
+import type { NodeSelection } from "./__generated__/ts/NodeSelection";
 import type { GraphStructure } from "./__generated__/ts/GraphStructure";
 import { useGraphSettings } from "./context/GraphSettingsContext";
 import { useNativeGraphR } from "./context/NativeGraphContext";
 import { useSelectedNodeIDX } from "./context/SelectedPathContext";
 
-export const EMPTY_ENTRY_POINTS_FILTER: EntryPointsFilter = {
+export const EMPTY_ENTRY_POINTS_FILTER: NodeSelection = {
   properties: {},
   incoming_tags: [],
   incoming_dynamic_type_keys: [],
@@ -28,12 +28,12 @@ export function isFlatListEntryPoints(
   return entryPoints === "AllReachable" || entryPoints === "Filtered";
 }
 
-export function isEntryPointsFilterEmpty(filter: EntryPointsFilter): boolean {
+export function isEntryPointsFilterEmpty(filter: NodeSelection): boolean {
   return countEntryPointsFilterConditions(filter) === 0;
 }
 
 export function countEntryPointsFilterConditions(
-  filter: EntryPointsFilter,
+  filter: NodeSelection,
 ): number {
   return (
     (hasNameCondition(filter) ? 1 : 0) +
@@ -45,10 +45,10 @@ export function countEntryPointsFilterConditions(
   );
 }
 
-/// Mirrors `EntryPointsFilter::name_condition` on the Rust side: a blank
+/// Mirrors `NodeSelection::name_condition` on the Rust side: a blank
 /// pattern is a condition the user started and abandoned, not one that matches
 /// nothing, so it must not count or keep you in `Filtered`.
-export function hasNameCondition(filter: EntryPointsFilter): boolean {
+export function hasNameCondition(filter: NodeSelection): boolean {
   return (filter.name?.pattern ?? "").trim().length > 0;
 }
 
@@ -73,7 +73,7 @@ export function useToggleFlatListView(): [boolean, () => void] {
   return [checked, toggle];
 }
 
-export function useEntryPointsFilter(): EntryPointsFilter {
+export function useEntryPointsFilter(): NodeSelection {
   const [graphSettings] = useGraphSettings();
   return (
     graphSettings.ui_settings?.entry_points_filter ?? EMPTY_ENTRY_POINTS_FILTER
@@ -108,12 +108,12 @@ export function useToggleFilteredFlatList(): [boolean, () => void] {
 /// Commit a new filter. Setting the first condition switches the tree table
 /// into `Filtered` so the effect is immediate; clearing the last one drops back
 /// to the plain flat list, which is where the filter toggle would leave you.
-export function useSetEntryPointsFilter(): (filter: EntryPointsFilter) => void {
+export function useSetEntryPointsFilter(): (filter: NodeSelection) => void {
   const [graphSettings, setGraphSettings] = useGraphSettings();
   const entryPoints = useGraphEntryPoints();
 
   return useCallback(
-    (filter: EntryPointsFilter) => {
+    (filter: NodeSelection) => {
       const hasConditions = !isEntryPointsFilterEmpty(filter);
       setGraphSettings({
         ...graphSettings,

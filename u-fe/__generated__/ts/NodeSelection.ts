@@ -1,7 +1,7 @@
 /**
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
- * @generated SignedSource<<906f84ed7c1765cfb365de134373ab76>>
+ * @generated SignedSource<<88961999c21b38152f3c1c3846ac53da>>
  */
 
 
@@ -9,13 +9,12 @@ import type { NameMatch } from './NameMatch.ts';
 import type { PropertyValueMatch } from './PropertyValueMatch.ts';
 
 /**
- * Conditions that narrow the flat list down to a subset of nodes.
+ * Conditions that narrow the graph down to a subset of nodes.
  * 
- * Used in combination with `ArrayGraphUISettingsTreeTableEntryPoints::Filtered`.
  * A node matches only when it satisfies every condition — this is an AND
  * across all the fields and across the entries within each of them.
  */
-export interface EntryPointsFilter {
+export interface NodeSelection {
   /** Node name must match this. Absent — or blank — matches every name. */
   name?: NameMatch | undefined;
   /** Property name -> what the value has to look like. */

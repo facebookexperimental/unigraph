@@ -27,6 +27,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Duration;
 
+use anyhow::Context;
 use anyhow::Result;
 use serde::Deserialize;
 use serde::Serialize;
@@ -189,28 +190,39 @@ impl RpcExec<Unigraph> for ExploreDeltaInput {
             .get_twin(&self.left, &self.right, task, ttl)
             .await?;
         let input = self;
-        tokio::task::spawn_blocking(move || explore_delta(tg, &input)).await?
+        task.spawn("explore_delta", |task| async move {
+            tokio::task::spawn_blocking(move || explore_delta(tg, &input, &task))
+                .await
+                .context("spawn_blocking panicked")?
+        })
+        .await
     }
 }
 
 // ── Sync core logic (runs in spawn_blocking) ────────────────────
 
-fn explore_delta(tg: Arc<TwinGraph>, input: &ExploreDeltaInput) -> Result<ExploreDeltaOutput> {
+fn explore_delta(
+    tg: Arc<TwinGraph>,
+    input: &ExploreDeltaInput,
+    task: &ll::Task,
+) -> Result<ExploreDeltaOutput> {
     let columns = metrics::resolve_columns(&tg, &input.metrics, input.graph_structure)?;
+
+    let offset = input.offset.unwrap_or(0);
+    let limit = input.limit.unwrap_or(50);
 
     let resolved = rows::resolve(
         &tg,
         &input.target,
         input.graph_structure,
         input.changed_nodes_only,
+        task,
     )?;
     let total_arrows_count = resolved.rows.len();
 
     let sort_order = input.sort_order.unwrap_or(SortOrder::Desc);
     let sorted = sort_rows(&tg, resolved.rows, input, sort_order)?;
 
-    let offset = input.offset.unwrap_or(0);
-    let limit = input.limit.unwrap_or(50);
     let page = paginate(&sorted, offset, limit);
 
     let arrows = page

@@ -30,13 +30,13 @@ mod tests {
     use crate::graph_settings::ArrayGraphUISettings;
     use crate::graph_settings::ArrayGraphUISettingsTreeTableEntryPoints;
     use crate::graph_settings::ColumnSettings;
-    use crate::graph_settings::EntryPointsFilter;
     use crate::graph_settings::GraphSettings;
     use crate::graph_settings::GraphStructure;
-    use crate::graph_settings::NameMatch;
-    use crate::graph_settings::NameMatchMode;
-    use crate::graph_settings::PropertyValueMatch;
     use crate::graph_settings::SidebarPanel;
+    use crate::node_selection::NameMatch;
+    use crate::node_selection::NameMatchMode;
+    use crate::node_selection::NodeSelection;
+    use crate::node_selection::PropertyValueMatch;
     use crate::traversal::Decision;
 
     // -----------------------------------------------------------------------
@@ -309,13 +309,13 @@ mod tests {
         }
     }
 
-    fn random_entry_points_filter(rng: &mut XorShift64) -> EntryPointsFilter {
+    fn random_entry_points_filter(rng: &mut XorShift64) -> NodeSelection {
         let property_names = ["budget_type", "team", "oncall"];
         let property_values = ["ROUTE", "PAGE", "ads"];
         let tag_names = ["lazy", "async", "sync", "eager"];
         let dynamic_type_keys = ["rc:gk", "ddd"];
 
-        EntryPointsFilter {
+        NodeSelection {
             name: rng.next_bool(40).then(|| NameMatch {
                 pattern: rng.pick(&["n_0", "^n_00", "0[12]$"]).to_string(),
                 mode: if rng.next_bool(50) {

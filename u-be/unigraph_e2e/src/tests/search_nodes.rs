@@ -1,13 +1,13 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-use std::collections::BTreeMap;
-
 use anyhow::Result;
 use k9::snapshot;
-use unigraph_app::SearchMode;
 use unigraph_app::SearchNodeMatch;
 use unigraph_app::SearchNodesInput;
 use unigraph_app::call_rpc;
+use unigraph_core::NameMatchMode;
+use unigraph_core::NodeSelection;
+use unigraph_core::PropertyValueMatch;
 use unigraph_storage_core::TimelineID;
 
 use crate::support::app::init_app;
@@ -15,8 +15,10 @@ use crate::support::fixtures::ingest_explore_graph;
 
 // ── Tests ────────────────────────────────────────────────────────
 
+/// The default mode is `Substring`, so a bare pattern matches anywhere in the
+/// name rather than as a subsequence.
 #[tokio::test]
-async fn exact_match() -> Result<()> {
+async fn substring_is_the_default_mode() -> Result<()> {
     let t = init_app();
     let handle = ingest_explore_graph(&t).await?;
     let tid = TimelineID(handle);
@@ -25,10 +27,8 @@ async fn exact_match() -> Result<()> {
         t,
         SearchNodes(SearchNodesInput {
             timeline_id: tid,
-            pattern: Some("app".into()),
+            selection: name("app"),
             limit: None,
-            mode: None,
-            match_properties: None,
         })
     );
     snapshot!(names(&out.matches), "app");
@@ -36,6 +36,7 @@ async fn exact_match() -> Result<()> {
     Ok(())
 }
 
+/// `Fuzzy` is the typeahead's mode: a subsequence match, shortest name first.
 #[tokio::test]
 async fn fuzzy_subsequence() -> Result<()> {
     let t = init_app();
@@ -45,20 +46,42 @@ async fn fuzzy_subsequence() -> Result<()> {
     let out = call_rpc!(
         t,
         SearchNodes(SearchNodesInput {
-            timeline_id: tid,
-            pattern: Some("co".into()),
+            timeline_id: tid.clone(),
+            selection: name_mode("co", NameMatchMode::Fuzzy),
             limit: None,
-            mode: None,
-            match_properties: None,
         })
     );
-    // "co" subsequence matches: core, components (shortest first)
     snapshot!(
         names(&out.matches),
         "
 core
 components
 "
+    );
+
+    // "cts" is a subsequence of "components" but not a substring of anything,
+    // which is what actually separates the two modes.
+    let out = call_rpc!(
+        t,
+        SearchNodes(SearchNodesInput {
+            timeline_id: tid.clone(),
+            selection: name_mode("cts", NameMatchMode::Fuzzy),
+            limit: None,
+        })
+    );
+    snapshot!(names(&out.matches), "components");
+
+    let out = call_rpc!(
+        t,
+        SearchNodes(SearchNodesInput {
+            timeline_id: tid,
+            selection: name("cts"),
+            limit: None,
+        })
+    );
+    assert!(
+        out.matches.is_empty(),
+        "substring mode must not match a mere subsequence"
     );
 
     Ok(())
@@ -74,14 +97,11 @@ async fn limit_results() -> Result<()> {
         t,
         SearchNodes(SearchNodesInput {
             timeline_id: tid,
-            pattern: Some("a".into()),
+            selection: name_mode("a", NameMatchMode::Fuzzy),
             limit: Some(3),
-            mode: None,
-            match_properties: None,
         })
     );
-    // "a" matches many nodes; we only want the 3 shortest
-    assert_eq!(out.matches.len(), 3);
+    assert_eq!(out.matches.len(), 3, "the limit should cap the match count");
 
     Ok(())
 }
@@ -96,10 +116,8 @@ async fn no_matches() -> Result<()> {
         t,
         SearchNodes(SearchNodesInput {
             timeline_id: tid,
-            pattern: Some("zzzzz".into()),
+            selection: name("zzzzz"),
             limit: None,
-            mode: None,
-            match_properties: None,
         })
     );
     assert!(out.matches.is_empty());
@@ -117,10 +135,8 @@ async fn exact_match_mode() -> Result<()> {
         t,
         SearchNodes(SearchNodesInput {
             timeline_id: tid.clone(),
-            pattern: Some("app".into()),
+            selection: name_mode("app", NameMatchMode::Exact),
             limit: None,
-            mode: Some(SearchMode::ExactMatch),
-            match_properties: None,
         })
     );
     snapshot!(names(&out.matches), "app");
@@ -130,10 +146,8 @@ async fn exact_match_mode() -> Result<()> {
         t,
         SearchNodes(SearchNodesInput {
             timeline_id: tid,
-            pattern: Some("nonexistent".into()),
+            selection: name_mode("nonexistent", NameMatchMode::Exact),
             limit: None,
-            mode: Some(SearchMode::ExactMatch),
-            match_properties: None,
         })
     );
     assert!(out.matches.is_empty());
@@ -151,13 +165,8 @@ async fn property_only_search() -> Result<()> {
         t,
         SearchNodes(SearchNodesInput {
             timeline_id: tid,
-            pattern: None,
+            selection: prop("type", Some("service")),
             limit: None,
-            mode: None,
-            match_properties: Some(BTreeMap::from([(
-                "type".to_string(),
-                "service".to_string()
-            ),])),
         })
     );
     snapshot!(
@@ -171,8 +180,10 @@ user_service
     Ok(())
 }
 
+/// An absent value means "carries this property at all" — a condition the old
+/// `BTreeMap<String, String>` shape couldn't express.
 #[tokio::test]
-async fn pattern_with_properties() -> Result<()> {
+async fn property_presence_search() -> Result<()> {
     let t = init_app();
     let handle = ingest_with_search_properties(&t).await?;
     let tid = TimelineID(handle);
@@ -181,13 +192,40 @@ async fn pattern_with_properties() -> Result<()> {
         t,
         SearchNodes(SearchNodesInput {
             timeline_id: tid,
-            pattern: Some("on".into()),
+            selection: prop("platform", None),
             limit: None,
-            mode: Some(SearchMode::Fuzzy),
-            match_properties: Some(BTreeMap::from([
-                ("type".to_string(), "component".to_string()),
-                ("platform".to_string(), "web".to_string()),
-            ])),
+        })
+    );
+    snapshot!(
+        names(&out.matches),
+        "
+button
+dialog
+"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn pattern_with_properties() -> Result<()> {
+    let t = init_app();
+    let handle = ingest_with_search_properties(&t).await?;
+    let tid = TimelineID(handle);
+
+    let mut selection = name_mode("on", NameMatchMode::Fuzzy);
+    selection.properties = [
+        ("type".to_string(), value("component")),
+        ("platform".to_string(), value("web")),
+    ]
+    .into();
+
+    let out = call_rpc!(
+        t,
+        SearchNodes(SearchNodesInput {
+            timeline_id: tid,
+            selection,
+            limit: None,
         })
     );
     snapshot!(names(&out.matches), "button");
@@ -205,13 +243,8 @@ async fn no_matches_with_properties() -> Result<()> {
         t,
         SearchNodes(SearchNodesInput {
             timeline_id: tid,
-            pattern: None,
+            selection: prop("type", Some("nonexistent")),
             limit: None,
-            mode: None,
-            match_properties: Some(BTreeMap::from([(
-                "type".to_string(),
-                "nonexistent".to_string()
-            ),])),
         })
     );
     assert!(out.matches.is_empty());
@@ -229,15 +262,38 @@ async fn wrong_property_value() -> Result<()> {
         t,
         SearchNodes(SearchNodesInput {
             timeline_id: tid,
-            pattern: None,
+            selection: prop("type", Some("widget")),
             limit: None,
-            mode: None,
-            match_properties: Some(BTreeMap::from(
-                [("type".to_string(), "widget".to_string()),]
-            )),
         })
     );
     assert!(out.matches.is_empty());
+
+    Ok(())
+}
+
+/// An empty selection matches everything — the "just list some nodes" case.
+#[tokio::test]
+async fn empty_selection_lists_nodes() -> Result<()> {
+    let t = init_app();
+    let handle = ingest_with_search_properties(&t).await?;
+    let tid = TimelineID(handle);
+
+    let out = call_rpc!(
+        t,
+        SearchNodes(SearchNodesInput {
+            timeline_id: tid,
+            selection: NodeSelection::default(),
+            limit: Some(3),
+        })
+    );
+    snapshot!(
+        names(&out.matches),
+        "
+auth_service
+button
+db
+"
+    );
 
     Ok(())
 }
@@ -252,10 +308,8 @@ async fn results_include_node_data() -> Result<()> {
         t,
         SearchNodes(SearchNodesInput {
             timeline_id: tid,
-            pattern: Some("button".into()),
+            selection: name_mode("button", NameMatchMode::Exact),
             limit: None,
-            mode: Some(SearchMode::ExactMatch),
-            match_properties: None,
         })
     );
     assert_eq!(out.matches.len(), 1);
@@ -287,6 +341,24 @@ fn names(matches: &[SearchNodeMatch]) -> String {
         .map(|m| m.name.as_str())
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+fn name(pattern: &str) -> NodeSelection {
+    name_mode(pattern, NameMatchMode::Substring)
+}
+
+fn name_mode(pattern: &str, mode: NameMatchMode) -> NodeSelection {
+    NodeSelection::by_name(pattern, mode)
+}
+
+fn prop(key: &str, expected: Option<&str>) -> NodeSelection {
+    NodeSelection::by_property(key, expected.map(str::to_string))
+}
+
+fn value(expected: &str) -> PropertyValueMatch {
+    PropertyValueMatch {
+        value: Some(expected.to_string()),
+    }
 }
 
 // ── Fixtures ─────────────────────────────────────────────────────

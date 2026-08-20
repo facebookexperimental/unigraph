@@ -16,6 +16,7 @@ use unigraph_core::graph_settings::GraphStructure;
 use unigraph_core::graph_settings::SortOrder;
 
 use crate::UnigraphCLIContext;
+use crate::graph::subgraph_args::NodeMatchArgs;
 
 /// Explore graph nodes and metrics.
 ///
@@ -33,6 +34,14 @@ use crate::UnigraphCLIContext;
 ///
 /// # Show all nodes sorted by a metric
 /// unigraph graph explore my_timeline --all-nodes --sort-by size~transitive
+///
+/// # Show every node carrying a property, or a specific value of it
+/// unigraph graph explore my_timeline --match-property type=budget
+/// unigraph graph explore my_timeline --match-property oncall
+///
+/// # Show every node whose name matches
+/// unigraph graph explore my_timeline --match-name comet
+/// unigraph graph explore my_timeline --match-name '^ads/' --match-mode regex
 ///
 /// # Specific metrics, limited output
 /// unigraph graph explore my_timeline --metric size --metric count~transitive --limit 20
@@ -55,6 +64,9 @@ pub struct GraphExplore {
     /// Show all reachable nodes instead of entry points.
     #[arg(long, conflicts_with = "node")]
     all_nodes: bool,
+
+    #[command(flatten)]
+    match_args: NodeMatchArgs,
 
     /// Edge structure to follow: forward, reverse, or dominator.
     #[arg(long, default_value = "forward")]
@@ -128,7 +140,7 @@ impl GraphExplore {
             .parse()
             .context("Failed to parse graph handle")?;
         let query = self.build_query_config(handle)?;
-        let target = self.build_target();
+        let target = self.build_target()?;
         let metrics = self.parse_metrics()?;
         let sort_by = self.parse_sort_by()?;
 
@@ -171,14 +183,17 @@ impl GraphExplore {
         })
     }
 
-    fn build_target(&self) -> ExploreGraphTarget {
-        if self.all_nodes {
+    fn build_target(&self) -> anyhow::Result<ExploreGraphTarget> {
+        if let Some(selection) = self.match_args.build()? {
+            return Ok(ExploreGraphTarget::Matching { selection });
+        }
+        Ok(if self.all_nodes {
             ExploreGraphTarget::AllNodes {}
         } else if let Some(ref name) = self.node {
             ExploreGraphTarget::Node { name: name.clone() }
         } else {
             ExploreGraphTarget::EntryPoints {}
-        }
+        })
     }
 
     fn parse_metrics(&self) -> anyhow::Result<Vec<MetricView>> {

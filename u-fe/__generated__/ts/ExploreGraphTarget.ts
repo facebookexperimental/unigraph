@@ -1,9 +1,11 @@
 /**
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
- * @generated SignedSource<<e524d52d3e549a61f4fb2c36c7e612c4>>
+ * @generated SignedSource<<0c34e49bb9fc6106c86dbf08518a80c5>>
  */
 
+
+import type { NodeSelection } from './NodeSelection.ts';
 
 /** What to explore. */
 export type ExploreGraphTarget =
@@ -12,6 +14,11 @@ export type ExploreGraphTarget =
   /** Drill into a specific node's children. */
   { "Node": { name: string } } |
   /** Flat list of all reachable nodes. */
-  { "AllNodes": {  } };
+  { "AllNodes": {  } } |
+  /**
+   * Flat list of the reachable nodes matching `selection` — by name,
+   * properties, or edge tags.
+   */
+  { "Matching": { selection: NodeSelection } };
 
-export type ExploreGraphTargetVariants = "EntryPoints" | "Node" | "AllNodes";
+export type ExploreGraphTargetVariants = "EntryPoints" | "Node" | "AllNodes" | "Matching";

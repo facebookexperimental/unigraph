@@ -10,12 +10,15 @@ use anyhow::Result;
 use unigraph_core::GraphSide;
 use unigraph_core::NodeDiff;
 use unigraph_core::NodeIDX;
+use unigraph_core::NodeSelection;
 use unigraph_core::TwinArrow;
 use unigraph_core::TwinGraph;
 use unigraph_core::graph_settings::GraphStructure;
 
 use super::ExploreDeltaEdge;
 use crate::rpc_req::ExploreGraphTarget;
+use crate::rpc_req::explore_graph::ENUMERATE_ALL;
+use crate::rpc_req::explore_graph::reject_top_k_name_mode;
 
 /// One row, before metrics are computed.
 pub struct DeltaRow {
@@ -32,9 +35,9 @@ pub struct ResolvedRows {
     /// The node being drilled into, if any.
     pub parent_idx: Option<NodeIDX>,
     pub rows: Vec<DeltaRow>,
-    /// Unchanged nodes filtered out of `rows`. Only non-zero for `AllNodes` in
-    /// changed-nodes-only mode — for `Node` targets the collapsing shows up as
-    /// per-row `skipped` counts instead.
+    /// Unchanged nodes filtered out of `rows`. Only non-zero for `AllNodes` and
+    /// `Matching` in changed-nodes-only mode — for `Node` targets the collapsing
+    /// shows up as per-row `skipped` counts instead.
     pub hidden_unchanged_count: usize,
 }
 
@@ -43,10 +46,14 @@ pub fn resolve(
     target: &ExploreGraphTarget,
     structure: GraphStructure,
     changed_nodes_only: bool,
+    task: &ll::Task,
 ) -> Result<ResolvedRows> {
     match target {
         ExploreGraphTarget::EntryPoints {} => Ok(no_parent(entry_point_rows(tg))),
         ExploreGraphTarget::AllNodes {} => Ok(all_node_rows(tg, changed_nodes_only)),
+        ExploreGraphTarget::Matching { selection } => {
+            matching_rows(tg, selection, changed_nodes_only, task)
+        }
         ExploreGraphTarget::Node { name } => child_rows(tg, name, structure, changed_nodes_only)
             .map(|(idx, rows)| ResolvedRows {
                 parent_idx: Some(idx),
@@ -94,6 +101,47 @@ fn all_node_rows(tg: &TwinGraph, changed_nodes_only: bool) -> ResolvedRows {
         hidden_unchanged_count: total - rows.len(),
         rows,
     }
+}
+
+/// Nodes matching `selection` on either side, in merged-namespace order.
+///
+/// Each side is matched against its own `ArrayGraph` — property indices and the
+/// name list are per-side — and the two results are unioned. A node added or
+/// removed between the graphs therefore still shows up, matched on whichever
+/// side it exists.
+///
+/// `Fuzzy` is rejected for the same reason as in `explore_graph` — it cannot
+/// produce a total row count.
+fn matching_rows(
+    tg: &TwinGraph,
+    selection: &NodeSelection,
+    changed_nodes_only: bool,
+    task: &ll::Task,
+) -> Result<ResolvedRows> {
+    reject_top_k_name_mode(selection)?;
+
+    let mut merged = BTreeSet::new();
+    for side in [GraphSide::Left, GraphSide::Right] {
+        merged.extend(
+            tg.graph(side)
+                .select_nodes(selection, &ENUMERATE_ALL, task)?
+                .into_iter()
+                .map(|local_idx| tg.to_merged(side, local_idx)),
+        );
+    }
+
+    let total = merged.len();
+    let rows: Vec<DeltaRow> = merged
+        .into_iter()
+        .filter(|&idx| !changed_nodes_only || tg.is_node_changed(idx))
+        .map(|idx| node_row(tg, idx))
+        .collect();
+
+    Ok(ResolvedRows {
+        parent_idx: None,
+        hidden_unchanged_count: total - rows.len(),
+        rows,
+    })
 }
 
 fn child_rows(

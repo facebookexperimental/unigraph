@@ -1,14 +1,14 @@
 /**
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
- * @generated SignedSource<<9da8a62df9a83966c351b8411cf63d2b>>
+ * @generated SignedSource<<f8d08bab9bb9bf4bfe1e4e4370469c1e>>
  */
 
 
 import type { ArrayGraphUISettingsTreeTableEntryPoints } from './ArrayGraphUISettingsTreeTableEntryPoints.ts';
 import type { ColumnSettings } from './ColumnSettings.ts';
-import type { EntryPointsFilter } from './EntryPointsFilter.ts';
 import type { GraphStructure } from './GraphStructure.ts';
+import type { NodeSelection } from './NodeSelection.ts';
 import type { OptionEnabledDependingOnRightGraph } from './OptionEnabledDependingOnRightGraph.ts';
 import type { SidebarPanel } from './SidebarPanel.ts';
 
@@ -66,5 +66,5 @@ export interface ArrayGraphUISettings {
    * `entry_points` for the same reason as `entry_points_specified`: so the
    * conditions survive switching to another entry point mode and back.
    */
-  entry_points_filter?: EntryPointsFilter | undefined;
+  entry_points_filter?: NodeSelection | undefined;
 }

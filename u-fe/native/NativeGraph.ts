@@ -35,7 +35,7 @@ import {
 } from "../../.build/wasm/unigraph_wasm";
 import type { ArrayGraphStats } from "../__generated__/ts/ArrayGraphStats";
 import type { CombinedMetricsForNodes } from "../__generated__/ts/CombinedMetricsForNodes";
-import type { EntryPointsFilter } from "../__generated__/ts/EntryPointsFilter";
+import type { NodeSelection } from "../__generated__/ts/NodeSelection";
 import type { ExportFormat } from "../__generated__/ts/ExportFormat";
 import type { ExportScope } from "../__generated__/ts/ExportScope";
 import type { FilterCandidates } from "../__generated__/ts/FilterCandidates";
@@ -282,7 +282,7 @@ export default class NativeGraph {
   /// point mode. Memoized on the serialized filter so re-renders with an
   /// unchanged filter never cross the WASM boundary. Traversal config changes
   /// are covered for free: they rebuild this whole NativeGraph.
-  filteredEntrypoints(filter: EntryPointsFilter): NodeIDXVecSet {
+  filteredEntrypoints(filter: NodeSelection): NodeIDXVecSet {
     const key = JSON.stringify(filter);
     if (this.filteredEntrypointsCache?.key === key) {
       return this.filteredEntrypointsCache.value;

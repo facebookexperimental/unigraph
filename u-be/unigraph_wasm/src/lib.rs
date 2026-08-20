@@ -15,7 +15,6 @@ use unigraph_core::ArrayGraphSerializable;
 use unigraph_core::ArrayGraphSerializablePackage;
 use unigraph_core::ArrayGraphSerializablePackageBase64;
 use unigraph_core::EdgeOverrides;
-use unigraph_core::EntryPointsFilter;
 use unigraph_core::ExportFormat;
 use unigraph_core::ExportScope;
 use unigraph_core::GraphNode;
@@ -23,6 +22,8 @@ use unigraph_core::GraphQueryConfig;
 use unigraph_core::MapGraph;
 use unigraph_core::MinCutResult;
 use unigraph_core::NameMatch;
+use unigraph_core::NodeSelection;
+use unigraph_core::SelectOptions;
 use unigraph_core::TraversalConfig;
 use unigraph_core::TraversalType;
 use unigraph_core::TwinGraph;
@@ -701,11 +702,16 @@ pub fn filtered_entry_points(
     entry_points_filter_json: String,
     side: u32,
 ) -> Result<Vec<u32>, WasmJSError> {
-    let filter: EntryPointsFilter = serde_json::from_str(&entry_points_filter_json)
+    let selection: NodeSelection = serde_json::from_str(&entry_points_filter_json)
         .context("Failed to parse entry points filter")?;
+    let opts = SelectOptions {
+        limit: None,
+        reachable_only: true,
+    };
+    let task = ll::Task::create_new("");
     let gs = GlobalGraphState::graph_state().get();
     let ag = gs.mode.graph(side)?;
-    ag.filter_entry_points(&filter)?
+    ag.select_nodes(&selection, &opts, &task)?
         .iter()
         .map(|&idx| Ok(gs.mode.to_ui(side, idx)?.0))
         .collect::<Result<Vec<u32>>>()

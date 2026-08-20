@@ -20,7 +20,7 @@ import {
   derive_gqc_delta,
 } from "../.build/wasm/unigraph_wasm";
 import type { ArrayGraphUISettingsTreeTableEntryPoints } from "./__generated__/ts/ArrayGraphUISettingsTreeTableEntryPoints";
-import type { EntryPointsFilter } from "./__generated__/ts/EntryPointsFilter";
+import type { NodeSelection } from "./__generated__/ts/NodeSelection";
 import type { GraphQueryConfig } from "./__generated__/ts/GraphQueryConfig";
 import type { GraphQueryOutput } from "./__generated__/ts/GraphQueryOutput";
 import type { TraversalConfig } from "./__generated__/ts/TraversalConfig";
@@ -447,7 +447,7 @@ function Page({
 type EntryPointsConfig = {
   entryPoints: ArrayGraphUISettingsTreeTableEntryPoints;
   specified: string[] | null;
-  filter: EntryPointsFilter | null;
+  filter: NodeSelection | null;
 };
 
 function getRoots(

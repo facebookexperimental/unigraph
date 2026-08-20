@@ -16,6 +16,7 @@ use unigraph_core::config_query::TraversalOverride;
 use crate::UnigraphCLIContext;
 use crate::graph::explore::SortOrderArg;
 use crate::graph::explore::StructureArg;
+use crate::graph::subgraph_args::NodeMatchArgs;
 
 /// Compare two graphs — the CLI equivalent of the UI's delta view.
 ///
@@ -64,6 +65,9 @@ pub struct GraphExploreDelta {
     /// Show all reachable nodes instead of entry points.
     #[arg(long, conflicts_with = "node")]
     all_nodes: bool,
+
+    #[command(flatten)]
+    match_args: NodeMatchArgs,
 
     /// Edge structure to follow: forward, reverse, or dominator.
     #[arg(long, default_value = "forward")]
@@ -163,7 +167,7 @@ impl GraphExploreDelta {
                 &self.right_roots,
                 &self.right_traversal,
             )?,
-            target: self.build_target(),
+            target: self.build_target()?,
             graph_structure: self.structure.into(),
             changed_nodes_only: self.changed_only,
             metrics: self.parse_metrics()?,
@@ -209,14 +213,17 @@ impl GraphExploreDelta {
         })
     }
 
-    fn build_target(&self) -> ExploreGraphTarget {
-        if self.all_nodes {
+    fn build_target(&self) -> anyhow::Result<ExploreGraphTarget> {
+        if let Some(selection) = self.match_args.build()? {
+            return Ok(ExploreGraphTarget::Matching { selection });
+        }
+        Ok(if self.all_nodes {
             ExploreGraphTarget::AllNodes {}
         } else if let Some(ref name) = self.node {
             ExploreGraphTarget::Node { name: name.clone() }
         } else {
             ExploreGraphTarget::EntryPoints {}
-        }
+        })
     }
 
     fn parse_metrics(&self) -> anyhow::Result<Option<Vec<MetricView>>> {

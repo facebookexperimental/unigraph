@@ -15,7 +15,10 @@ use unigraph_core::ArrayGraph;
 use unigraph_core::DynamicEdgeInfo;
 /// Re-export MetricView for use in ExploreGraphInput.
 pub use unigraph_core::MetricView;
+use unigraph_core::NameMatchMode;
 use unigraph_core::NodeIDX;
+use unigraph_core::NodeSelection;
+use unigraph_core::SelectOptions;
 use unigraph_core::config_query::GraphQueryConfig;
 use unigraph_core::graph_settings::GraphStructure;
 use unigraph_core::graph_settings::MetricFormat;
@@ -26,6 +29,7 @@ use unigraph_rpc::RpcExec;
 use crate::Unigraph;
 use crate::rpc_req::ascii_table::SORT_ARROW_DISPLAY_LEN;
 use crate::rpc_req::ascii_table::build_format_map;
+use crate::rpc_req::ascii_table::describe_selection;
 use crate::rpc_req::ascii_table::format_cell_value;
 use crate::rpc_req::ascii_table::sort_arrow;
 use crate::rpc_req::ascii_table::trim_trailing_spaces;
@@ -43,6 +47,9 @@ pub enum ExploreGraphTarget {
     Node { name: String },
     /// Flat list of all reachable nodes.
     AllNodes {},
+    /// Flat list of the reachable nodes matching `selection` — by name,
+    /// properties, or edge tags.
+    Matching { selection: NodeSelection },
 }
 
 impl Default for ExploreGraphTarget {
@@ -141,25 +148,35 @@ impl RpcExec<Unigraph> for ExploreGraphInput {
         let ttl = Duration::from_mins(5);
         let ag = ctx.graph_cache.get_explored(&self.query, task, ttl).await?;
         let input = self;
-        tokio::task::spawn_blocking(move || explore_node(ag, &input)).await?
+        task.spawn("explore_graph", |task| async move {
+            tokio::task::spawn_blocking(move || explore_node(ag, &input, &task))
+                .await
+                .context("spawn_blocking panicked")?
+        })
+        .await
     }
 }
 
 // ── Sync core logic (runs in spawn_blocking) ────────────────────
 
-fn explore_node(ag: Arc<ArrayGraph>, input: &ExploreGraphInput) -> Result<ExploreGraphOutput> {
+fn explore_node(
+    ag: Arc<ArrayGraph>,
+    input: &ExploreGraphInput,
+    task: &ll::Task,
+) -> Result<ExploreGraphOutput> {
     let metric_names = collect_metric_names(&ag);
     let tier_names = collect_tier_names(&ag);
     let metrics = resolve_metrics(&ag, &input.metrics, input.graph_structure)?;
 
-    let (parent_idx, arrow_data) = resolve_arrows(&ag, &input.target, input.graph_structure)?;
+    let offset = input.offset.unwrap_or(0);
+    let limit = input.limit.unwrap_or(50);
+
+    let (parent_idx, arrow_data) = resolve_arrows(&ag, input, task)?;
     let total_arrows_count = arrow_data.len();
 
     let sort_order = input.sort_order.unwrap_or(SortOrder::Desc);
     let sorted = sort_arrows(&ag, arrow_data, input.sort_by.as_ref(), sort_order)?;
 
-    let offset = input.offset.unwrap_or(0);
-    let limit = input.limit.unwrap_or(50);
     let page = paginate(&sorted, offset, limit);
 
     let arrows = build_explore_arrows(&ag, page, &metrics)?;
@@ -266,36 +283,47 @@ struct ArrowData {
     dynamic: Option<unigraph_core::DynamicEdgeInfo>,
 }
 
+/// Turn a node index into a bare row — no edge led here, so no tag or branch.
+fn node_arrow(node_idx: NodeIDX) -> ArrowData {
+    ArrowData {
+        node_idx,
+        tag: None,
+        dynamic: None,
+    }
+}
+
 fn resolve_arrows(
     ag: &ArrayGraph,
-    target: &ExploreGraphTarget,
-    graph_structure: GraphStructure,
+    input: &ExploreGraphInput,
+    task: &ll::Task,
 ) -> Result<(Option<NodeIDX>, Vec<ArrowData>)> {
-    match target {
+    let graph_structure = input.graph_structure;
+    match &input.target {
         ExploreGraphTarget::EntryPoints {} => {
             let arrows = ag
                 .determine_entrypoints()
                 .into_iter()
                 .filter(|&idx| !ag.is_node_unreachable(idx))
-                .map(|idx| ArrowData {
-                    node_idx: idx,
-                    tag: None,
-                    dynamic: None,
-                })
+                .map(node_arrow)
                 .collect();
-            Ok((None, arrows))
+            Ok(flat(arrows))
         }
         ExploreGraphTarget::AllNodes {} => {
             let arrows = ag
                 .all_reachable_node_idxs()
                 .into_iter()
-                .map(|idx| ArrowData {
-                    node_idx: idx,
-                    tag: None,
-                    dynamic: None,
-                })
+                .map(node_arrow)
                 .collect();
-            Ok((None, arrows))
+            Ok(flat(arrows))
+        }
+        ExploreGraphTarget::Matching { selection } => {
+            reject_top_k_name_mode(selection)?;
+            let arrows = ag
+                .select_nodes(selection, &ENUMERATE_ALL, task)?
+                .into_iter()
+                .map(node_arrow)
+                .collect();
+            Ok(flat(arrows))
         }
         ExploreGraphTarget::Node { name } => {
             let node_idx = ag
@@ -324,6 +352,36 @@ fn resolve_arrows(
             Ok((Some(node_idx), arrows))
         }
     }
+}
+
+/// A flat list of rows — nothing was drilled into, so there's no parent.
+fn flat(arrows: Vec<ArrowData>) -> (Option<NodeIDX>, Vec<ArrowData>) {
+    (None, arrows)
+}
+
+/// Explore always enumerates the whole match set: `total_arrows_count` is a
+/// real count, and sorting has to see every match, not just the current page.
+pub(crate) const ENUMERATE_ALL: SelectOptions = SelectOptions {
+    limit: None,
+    reachable_only: true,
+};
+
+/// `Fuzzy` is top-K by construction, so it can only ever enumerate a capped
+/// prefix — it cannot answer "how many nodes match", which is exactly what a
+/// paginated table with a row count needs. Rejecting it here keeps the total
+/// honest; `SearchNodes` is the surface that wants top-K.
+pub(crate) fn reject_top_k_name_mode(selection: &NodeSelection) -> Result<()> {
+    let is_fuzzy = selection
+        .name_condition()
+        .is_some_and(|name| name.mode == NameMatchMode::Fuzzy);
+    if is_fuzzy {
+        bail!(
+            "the Fuzzy name mode is not supported when exploring: it is top-K, \
+             so it cannot produce a total row count. Use Substring, Regex or \
+             Exact here, or the SearchNodes RPC for typeahead-style matching."
+        );
+    }
+    Ok(())
 }
 
 // ── Sorting ─────────────────────────────────────────────────────
@@ -513,6 +571,10 @@ fn write_summary(out: &mut String, target: &ExploreGraphTarget, graph_structure:
         }
         ExploreGraphTarget::AllNodes {} => {
             out.push_str("All reachable nodes\n\n");
+        }
+        ExploreGraphTarget::Matching { selection } => {
+            let _ = writeln!(out, "Nodes matching {}", describe_selection(selection));
+            out.push('\n');
         }
         ExploreGraphTarget::Node { name } => {
             let structure = match graph_structure {

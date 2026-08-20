@@ -29,6 +29,7 @@ use super::ExploreDeltaArrow;
 use super::ExploreDeltaEdge;
 use crate::rpc_req::ExploreGraphTarget;
 use crate::rpc_req::ascii_table::SORT_ARROW_DISPLAY_LEN;
+use crate::rpc_req::ascii_table::describe_selection;
 use crate::rpc_req::ascii_table::format_plain;
 use crate::rpc_req::ascii_table::sort_arrow;
 use crate::rpc_req::ascii_table::trim_trailing_spaces;
@@ -349,6 +350,13 @@ fn write_summary(out: &mut String, table: &Table<'_>) {
     match table.target {
         ExploreGraphTarget::EntryPoints {} => out.push_str("Delta: entry points\n"),
         ExploreGraphTarget::AllNodes {} => out.push_str("Delta: all reachable nodes\n"),
+        ExploreGraphTarget::Matching { selection } => {
+            let _ = writeln!(
+                out,
+                "Delta nodes matching {}",
+                describe_selection(selection)
+            );
+        }
         ExploreGraphTarget::Node { name } => {
             let structure = match table.graph_structure {
                 GraphStructure::Forward => "forward",
