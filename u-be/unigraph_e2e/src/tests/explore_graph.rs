@@ -972,6 +972,8 @@ tier
         "
 # Graph: explore_test
 
+Resolved to `explore_test~0` — pass that as the handle to pin this exact snapshot.
+
 ## Stats
 
 - **Nodes**: 12

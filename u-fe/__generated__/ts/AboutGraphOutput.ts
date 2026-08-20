@@ -1,15 +1,28 @@
 /**
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
- * @generated SignedSource<<1d27229e03f1e16732be95c0beb30aaf>>
+ * @generated SignedSource<<c39554c24258333e5d15d7b2f3695ebf>>
  */
 
 
 import type { AboutGraphMetricInfo } from './AboutGraphMetricInfo.ts';
 import type { ArrayGraphStats } from './ArrayGraphStats.ts';
+import type { GraphID } from './GraphID.ts';
 import type { GraphSettings } from './GraphSettings.ts';
+import type { TimelineID } from './TimelineID.ts';
 
 export interface AboutGraphOutput {
+  /** The timeline the graph the handle resolved to belongs to. */
+  timeline_id: TimelineID;
+  /**
+   * The concrete snapshot the handle resolved to, within `timeline_id`.
+   * 
+   * Only a `{timeline}~{id}` handle names this directly. A bare timeline
+   * means "latest" and a GQC key resolves through its embedded reference —
+   * both move as frames are ingested, so everything else in this response is
+   * only reproducible when read together with this id.
+   */
+  graph_id: GraphID;
   /** Graph description from settings, if available. */
   description?: string | undefined;
   /** Graph statistics (node/edge counts by kind, tier names, etc). */

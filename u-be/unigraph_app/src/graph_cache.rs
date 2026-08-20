@@ -191,6 +191,24 @@ impl GraphCache {
         task: &ll::Task,
         ttl: Duration,
     ) -> Result<Arc<ArrayGraph>> {
+        let (_graph_key, graph) = self
+            .get_latest_by_timeline_with_key(timeline_id, task, ttl)
+            .await?;
+        Ok(graph)
+    }
+
+    /// Like [`get_latest_by_timeline`](Self::get_latest_by_timeline), but also
+    /// returns the [`GraphKey`] of the snapshot "latest" resolved to.
+    ///
+    /// Which snapshot that is moves as frames are ingested, so a caller that
+    /// reports on a bare timeline needs the key to say *what it actually read*.
+    /// Available on cache hits too, since it is stored on the cache entry.
+    pub async fn get_latest_by_timeline_with_key(
+        &self,
+        timeline_id: &TimelineID,
+        task: &ll::Task,
+        ttl: Duration,
+    ) -> Result<(GraphKey, Arc<ArrayGraph>)> {
         let slot = get_or_create_slot(&self.by_timeline_latest, timeline_id).await;
         self.resolve_timeline_slot(slot, timeline_id, task, ttl)
             .await
@@ -252,23 +270,23 @@ impl GraphCache {
         timeline_id: &TimelineID,
         task: &ll::Task,
         ttl: Duration,
-    ) -> Result<Arc<ArrayGraph>> {
+    ) -> Result<(GraphKey, Arc<ArrayGraph>)> {
         let mut guard = slot.lock().await;
 
         if let Some(entry) = guard.as_ref() {
-            return Ok(Arc::clone(&entry.graph));
+            return Ok((entry.graph_key.clone(), Arc::clone(&entry.graph)));
         }
 
         let (graph_key, graph) = self.fetch_latest_graph(timeline_id, task).await?;
         let graph = Arc::new(graph);
         *guard = Some(ArrayGraphCacheEntry {
             graph: Arc::clone(&graph),
-            graph_key,
+            graph_key: graph_key.clone(),
         });
 
         schedule_eviction(&self.by_timeline_latest, timeline_id.clone(), ttl);
 
-        Ok(graph)
+        Ok((graph_key, graph))
     }
 }
 

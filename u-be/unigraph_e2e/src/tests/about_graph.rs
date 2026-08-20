@@ -88,6 +88,8 @@ async fn text_summary() -> Result<()> {
         "
 # Graph: explore_test
 
+Resolved to `explore_test~0` — pass that as the handle to pin this exact snapshot.
+
 ## Stats
 
 - **Nodes**: 12
@@ -154,6 +156,8 @@ async fn text_summary_with_properties() -> Result<()> {
         "
 # Graph: props_text_test
 
+Resolved to `props_text_test~0` — pass that as the handle to pin this exact snapshot.
+
 ## Stats
 
 - **Nodes**: 2
@@ -173,6 +177,60 @@ async fn text_summary_with_properties() -> Result<()> {
 - `node-count~dominated`
 
 "
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn reports_the_snapshot_a_bare_timeline_resolved_to() -> Result<()> {
+    let t = init_app();
+    let handle = ingest_explore_graph(&t).await?;
+
+    let out = call_rpc!(
+        t,
+        AboutGraph(AboutGraphInput {
+            handle: handle.parse()?,
+        })
+    );
+
+    // The fixture ingests one graph, at id 0, so "latest" is `explore_test~0`.
+    assert_eq!(
+        out.timeline_id.0, "explore_test",
+        "the bare handle names the timeline it resolved within"
+    );
+    assert_eq!(
+        out.graph_id.0, 0,
+        "the bare handle resolved to the only ingested snapshot"
+    );
+    assert!(
+        out.text.contains("Resolved to `explore_test~0`"),
+        "an indirect handle should say what it landed on, got:\n{}",
+        out.text
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn pinned_handle_reports_itself_and_adds_no_resolved_line() -> Result<()> {
+    let t = init_app();
+    ingest_explore_graph(&t).await?;
+
+    let out = call_rpc!(
+        t,
+        AboutGraph(AboutGraphInput {
+            handle: "explore_test~0".parse()?,
+        })
+    );
+
+    assert_eq!(out.timeline_id.0, "explore_test");
+    assert_eq!(out.graph_id.0, 0);
+    // Negative case: the handle already IS the key, so restating it is noise.
+    assert!(
+        !out.text.contains("Resolved to"),
+        "an already-pinned handle should not get a resolved line, got:\n{}",
+        out.text
     );
 
     Ok(())

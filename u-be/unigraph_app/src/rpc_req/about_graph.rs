@@ -15,10 +15,13 @@ use unigraph_core::ArrayGraph;
 use unigraph_core::GraphSettings;
 use unigraph_core::MetricView;
 use unigraph_rpc::RpcExec;
+use unigraph_storage_core::GraphID;
+use unigraph_storage_core::GraphKey;
+use unigraph_storage_core::TimelineID;
 
 use crate::Unigraph;
 use crate::graph_handle::GraphHandle;
-use crate::graph_handle::resolve_graph_handle;
+use crate::graph_handle::resolve_graph_handle_with_key;
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -31,6 +34,17 @@ pub struct AboutGraphInput {
 
 #[derive(Debug, Clone, Serialize, Deserialize, TypeGen)]
 pub struct AboutGraphOutput {
+    /// The timeline the graph the handle resolved to belongs to.
+    pub timeline_id: TimelineID,
+
+    /// The concrete snapshot the handle resolved to, within `timeline_id`.
+    ///
+    /// Only a `{timeline}~{id}` handle names this directly. A bare timeline
+    /// means "latest" and a GQC key resolves through its embedded reference —
+    /// both move as frames are ingested, so everything else in this response is
+    /// only reproducible when read together with this id.
+    pub graph_id: GraphID,
+
     /// Graph description from settings, if available.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
@@ -73,15 +87,16 @@ impl RpcExec<Unigraph> for AboutGraphInput {
 
     async fn exec(self, ctx: &Unigraph, task: &ll::Task) -> Result<AboutGraphOutput> {
         let ttl = Duration::from_secs(5 * 60);
-        let ag = resolve_graph_handle(&self.handle, ctx, task, ttl).await?;
+        let (key, ag) = resolve_graph_handle_with_key(&self.handle, ctx, task, ttl).await?;
+        task.data("resolved_graph_key", key.to_string());
         let handle_str = self.handle.to_string();
-        tokio::task::spawn_blocking(move || build_about(&ag, &handle_str)).await?
+        tokio::task::spawn_blocking(move || build_about(&ag, &handle_str, &key)).await?
     }
 }
 
 // ── Build output ────────────────────────────────────────────
 
-fn build_about(ag: &Arc<ArrayGraph>, handle: &str) -> Result<AboutGraphOutput> {
+fn build_about(ag: &Arc<ArrayGraph>, handle: &str, key: &GraphKey) -> Result<AboutGraphOutput> {
     let stats = ag.stats();
     let description = extract_description(ag);
     let available = ag.available_metric_views();
@@ -91,6 +106,7 @@ fn build_about(ag: &Arc<ArrayGraph>, handle: &str) -> Result<AboutGraphOutput> {
     let properties = ag.data.properties.clone();
     let text = render_markdown(
         handle,
+        key,
         description.as_deref(),
         &stats,
         &metrics,
@@ -98,6 +114,8 @@ fn build_about(ag: &Arc<ArrayGraph>, handle: &str) -> Result<AboutGraphOutput> {
     );
 
     Ok(AboutGraphOutput {
+        timeline_id: key.timeline_id.clone(),
+        graph_id: key.graph_id,
         description,
         stats,
         metrics,
@@ -150,6 +168,7 @@ fn collect_metric_infos(ag: &ArrayGraph, available: &[MetricView]) -> Vec<AboutG
 
 fn render_markdown(
     handle: &str,
+    key: &GraphKey,
     description: Option<&str>,
     stats: &unigraph_core::ArrayGraphStats,
     metrics: &[AboutGraphMetricInfo],
@@ -158,6 +177,7 @@ fn render_markdown(
     let mut out = String::with_capacity(512);
 
     write_heading(&mut out, handle);
+    write_resolved(&mut out, handle, key);
     write_description(&mut out, description);
     write_stats(&mut out, stats);
     write_metrics(&mut out, metrics);
@@ -169,6 +189,21 @@ fn render_markdown(
 
 fn write_heading(out: &mut String, handle: &str) {
     let _ = writeln!(out, "# Graph: {handle}");
+}
+
+/// Say which snapshot an indirect handle landed on, so the reader can pin it.
+///
+/// Skipped when the handle already *is* the key: it would be restating the
+/// heading, and the whole point is to answer the question a bare `www` leaves
+/// open.
+fn write_resolved(out: &mut String, handle: &str, key: &GraphKey) {
+    if handle == key.to_string() {
+        return;
+    }
+    let _ = writeln!(
+        out,
+        "\nResolved to `{key}` — pass that as the handle to pin this exact snapshot."
+    );
 }
 
 fn write_description(out: &mut String, description: Option<&str>) {
