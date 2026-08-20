@@ -34,7 +34,7 @@ pub fn extract_node_metrics(
 
         let mut snapshot = NodeMetricSnapshot::new();
         for (metric_name, values) in &graph.node_metadata.metrics {
-            let val = values[idx_raw] as f64;
+            let val = values[idx_raw];
             if val != 0.0 {
                 snapshot.insert(metric_name.clone(), val);
             }
