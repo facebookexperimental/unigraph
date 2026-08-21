@@ -17,7 +17,7 @@ use unigraph_storage_core::TimestampBounds;
 
 use super::GraphHistory;
 use super::HistoryDeleteReport;
-use super::progress::Throughput;
+use crate::namespaces::progress::Throughput;
 
 const DELETE_CHUNK_SIZE: i64 = 10_000;
 

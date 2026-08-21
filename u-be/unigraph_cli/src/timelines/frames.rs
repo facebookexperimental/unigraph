@@ -128,6 +128,7 @@ fn build_query(args: &TimelinesFrames) -> anyhow::Result<FrameQuery> {
         timestamp_bounds,
         graph_id_bounds,
         graph_ids: None,
+        with_manifest: None,
         with_data: None,
         before: None,
         expires_before: None,

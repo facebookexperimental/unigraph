@@ -5,7 +5,6 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use anyhow::Result;
-use k9::snapshot;
 use unigraph_core::Decision;
 use unigraph_core::TraversalConfig;
 use unigraph_core::config_key::ConfigKeyLike;
@@ -214,8 +213,10 @@ async fn large_config_goes_to_external_blob_storage() -> Result<()> {
 
     // Verify blob exists in external storage
     let blob_path = format!("configs/{}/{}", TraversalConfigKey::PREFIX, key);
-    let blob = sqlite.get_blob(&blob_path).await?;
-    assert!(blob.is_some(), "blob should exist in external storage");
+    assert!(
+        sqlite.has_blob(&blob_path).await?,
+        "blob should exist in external storage"
+    );
 
     // Fetch resolves correctly
     let fetched = db.configs.fetch_traversal_config(&key, &task).await?;
@@ -235,8 +236,10 @@ async fn small_config_stays_inline() -> Result<()> {
 
     // Verify no blob in external storage
     let blob_path = format!("configs/{}/{}", TraversalConfigKey::PREFIX, key);
-    let blob = sqlite.get_blob(&blob_path).await?;
-    assert!(blob.is_none(), "small config should be stored inline");
+    assert!(
+        !sqlite.has_blob(&blob_path).await?,
+        "small config should be stored inline"
+    );
 
     // Fetch still works
     let fetched = db.configs.fetch_traversal_config(&key, &task).await?;
@@ -256,9 +259,8 @@ async fn custom_threshold_forces_external_storage() -> Result<()> {
 
     // Even the small config should be in external storage with threshold=0
     let blob_path = format!("configs/{}/{}", TraversalConfigKey::PREFIX, key);
-    let blob = sqlite.get_blob(&blob_path).await?;
     assert!(
-        blob.is_some(),
+        sqlite.has_blob(&blob_path).await?,
         "with threshold=0, all blobs should be external"
     );
 

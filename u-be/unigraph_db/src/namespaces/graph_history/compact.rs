@@ -32,9 +32,6 @@ use super::HistoryCompactOptions;
 use super::HistoryCompactReport;
 use super::context::FrameContext;
 use super::context::within_bounds;
-use super::progress::PROGRESS_WINDOW;
-use super::progress::Throughput;
-use super::progress::windows;
 use crate::graph_history::CompactInput;
 use crate::graph_history::CompactRow;
 use crate::graph_history::FrameFlags;
@@ -42,6 +39,9 @@ use crate::graph_history::Segment;
 use crate::graph_history::compact_series;
 use crate::graph_history::decode_values;
 use crate::graph_history::segments;
+use crate::namespaces::progress::PROGRESS_WINDOW;
+use crate::namespaces::progress::Throughput;
+use crate::namespaces::progress::windows;
 
 impl GraphHistory {
     /// Delete the zero-reason rows in every stretch between barriers.

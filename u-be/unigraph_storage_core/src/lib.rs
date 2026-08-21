@@ -27,7 +27,6 @@ pub use config_key::ConfigRow;
 pub use config_key::GraphQueryConfigKey;
 pub use config_key::TraversalConfigKey;
 pub use frame::Frame;
-pub use frame::FrameData;
 pub use frame::FrameRow;
 pub use frame::format_frames_table;
 pub use history::ExclusiveGraphIDRange;

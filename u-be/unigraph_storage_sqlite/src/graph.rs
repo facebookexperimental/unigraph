@@ -12,7 +12,6 @@ use rusqlite::Connection;
 use unigraph_storage_core::ExclusiveGraphIDRange;
 use unigraph_storage_core::ExternalID;
 use unigraph_storage_core::ExternalIDNamespace;
-use unigraph_storage_core::FrameData;
 use unigraph_storage_core::FrameFlags;
 use unigraph_storage_core::FrameQuery;
 use unigraph_storage_core::FrameRow;
@@ -142,6 +141,22 @@ impl UnigraphGraphConnection for SqliteConnection {
         Ok(result)
     }
 
+    async fn delete_timeline(
+        &mut self,
+        timeline_id: &TimelineID,
+        _task: &ll::Task,
+    ) -> Result<bool> {
+        let conn = self.lock();
+        let sql = format!(
+            "DELETE FROM {} WHERE timeline_id = ?1",
+            TABLE_TIMELINE_CONFIGS
+        );
+        let deleted = conn
+            .execute(&sql, rusqlite::params![timeline_id.0])
+            .context("Failed to delete timeline config")?;
+        Ok(deleted > 0)
+    }
+
     async fn store_frame(
         &mut self,
         key: &GraphTimeKey,
@@ -235,19 +250,20 @@ impl UnigraphGraphConnection for SqliteConnection {
         _task: &ll::Task,
     ) -> Result<Vec<FrameRow>> {
         let with_data = query.with_data.unwrap_or(false);
+        let with_manifest = with_data || query.with_manifest.unwrap_or(false);
 
-        // Build SELECT columns.
-        let select = if with_data {
-            format!(
-                "SELECT graph_id, timestamp, frame_type, base_key_json, expires_at, manifest_json, inline_blobs FROM {}",
-                TABLE_GRAPHS
-            )
-        } else {
-            format!(
-                "SELECT graph_id, timestamp, frame_type, base_key_json, expires_at FROM {}",
-                TABLE_GRAPHS
-            )
+        // Build SELECT columns. `with_manifest` probes `inline_blobs` for
+        // presence instead of reading it — the column can hold the frame's
+        // whole compressed graph.
+        let payload_columns = match (with_manifest, with_data) {
+            (false, _) => "",
+            (true, false) => ", manifest_json, inline_blobs IS NOT NULL",
+            (true, true) => ", manifest_json, inline_blobs",
         };
+        let select = format!(
+            "SELECT graph_id, timestamp, frame_type, base_key_json, expires_at{} FROM {}",
+            payload_columns, TABLE_GRAPHS
+        );
 
         // Build WHERE clauses and collect params as strings.
         let mut conditions: Vec<String> = vec!["timeline_id = ?1".to_string()];
@@ -376,15 +392,14 @@ impl UnigraphGraphConnection for SqliteConnection {
             let base = parse_base_key(base_key_json.as_deref())?;
             let expires_at = expires_at_unix.map(Timestamp::from_unix_timestamp);
 
-            let data = if with_data {
-                let manifest_json: Option<String> = row.get(5)?;
-                let inline_blobs: Option<Vec<u8>> = row.get(6)?;
-                manifest_json.map(|mj| FrameData {
-                    manifest_json: mj,
-                    inline_blobs,
-                })
-            } else {
-                None
+            let (manifest_json, inline_blobs, blobs_are_inline) = match (with_manifest, with_data) {
+                (false, _) => (None, None, None),
+                (true, false) => (row.get(5)?, None, Some(row.get::<_, bool>(6)?)),
+                (true, true) => {
+                    let inline_blobs: Option<Vec<u8>> = row.get(6)?;
+                    let are_inline = inline_blobs.is_some();
+                    (row.get(5)?, inline_blobs, Some(are_inline))
+                }
             };
 
             result.push(FrameRow {
@@ -395,12 +410,24 @@ impl UnigraphGraphConnection for SqliteConnection {
                 timeline_id: query.timeline_id.clone(),
                 frame_type,
                 base,
-                data,
+                manifest_json,
+                inline_blobs,
+                blobs_are_inline,
                 expires_after: expires_at,
             });
         }
 
         Ok(result)
+    }
+
+    async fn count_frames(&mut self, timeline_id: &TimelineID, _task: &ll::Task) -> Result<i64> {
+        let conn = self.lock();
+        let sql = format!(
+            "SELECT COUNT(*) FROM {} WHERE timeline_id = ?1",
+            TABLE_GRAPHS
+        );
+        conn.query_row(&sql, rusqlite::params![timeline_id.0], |row| row.get(0))
+            .context("Failed to count frames")
     }
 
     async fn delete_frame(&mut self, key: &GraphKey, _task: &ll::Task) -> Result<bool> {
@@ -413,6 +440,34 @@ impl UnigraphGraphConnection for SqliteConnection {
             .execute(&sql, rusqlite::params![key.timeline_id.0, key.graph_id.0])
             .context("Failed to delete frame")?;
         Ok(deleted > 0)
+    }
+
+    async fn delete_frames(
+        &mut self,
+        timeline_id: &TimelineID,
+        graph_ids: &[GraphID],
+        _task: &ll::Task,
+    ) -> Result<u64> {
+        if graph_ids.is_empty() {
+            return Ok(0);
+        }
+
+        // Graph IDs are `i64`s read back from our own rows, so inlining them is
+        // safe and keeps a large batch clear of SQLITE_MAX_VARIABLE_NUMBER.
+        let id_list = graph_ids
+            .iter()
+            .map(|id| id.0.to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+        let sql = format!(
+            "DELETE FROM {TABLE_GRAPHS} WHERE timeline_id = ?1 AND graph_id IN ({id_list})"
+        );
+
+        let conn = self.lock();
+        let deleted = conn
+            .execute(&sql, rusqlite::params![timeline_id.0])
+            .context("Failed to delete frames")?;
+        Ok(deleted as u64)
     }
 
     async fn register_blobs_for_cleanup(
@@ -653,6 +708,22 @@ impl UnigraphGraphConnection for SqliteConnection {
         .transpose()
     }
 
+    async fn delete_external_id_mappings(
+        &mut self,
+        external_id_namespace: &ExternalIDNamespace,
+        _task: &ll::Task,
+    ) -> Result<u64> {
+        let conn = self.lock();
+        let sql = format!(
+            "DELETE FROM {} WHERE external_id_namespace = ?1",
+            TABLE_EXTERNAL_ID_MAPPINGS
+        );
+        let deleted = conn
+            .execute(&sql, rusqlite::params![external_id_namespace.0])
+            .context("Failed to delete external ID mappings")?;
+        Ok(deleted as u64)
+    }
+
     // -- Metric history --
 
     async fn ensure_metric_history_partitions_exist(
@@ -809,6 +880,47 @@ impl UnigraphGraphConnection for SqliteConnection {
             result.push((node_name, week_key, data));
         }
         Ok(result)
+    }
+
+    async fn list_metric_history_weeks(
+        &mut self,
+        timeline_id: &TimelineID,
+        _task: &ll::Task,
+    ) -> Result<Vec<String>> {
+        let conn = self.lock();
+        let sql = format!(
+            "SELECT DISTINCT week_key FROM {}
+             WHERE timeline_id = ?1
+             ORDER BY week_key",
+            TABLE_METRIC_HISTORY
+        );
+        let mut stmt = conn
+            .prepare(&sql)
+            .context("failed to prepare list_metric_history_weeks")?;
+
+        stmt.query_map(rusqlite::params![timeline_id.0], |row| {
+            row.get::<_, String>(0)
+        })
+        .context("failed to query metric_history weeks")?
+        .map(|row| row.context("failed to read metric_history week row"))
+        .collect()
+    }
+
+    async fn delete_metric_history_for_week(
+        &mut self,
+        timeline_id: &TimelineID,
+        week_key: &str,
+        _task: &ll::Task,
+    ) -> Result<u64> {
+        let conn = self.lock();
+        let sql = format!(
+            "DELETE FROM {} WHERE timeline_id = ?1 AND week_key = ?2",
+            TABLE_METRIC_HISTORY
+        );
+        let deleted = conn
+            .execute(&sql, rusqlite::params![timeline_id.0, week_key])
+            .context("failed to delete metric_history for week")?;
+        Ok(deleted as u64)
     }
 
     // -- Graph history (plain rows) --

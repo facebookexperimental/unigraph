@@ -1074,10 +1074,7 @@ async fn graph_history_stops_retrying_at_the_attempt_cap() -> Result<()> {
 async fn break_graph_fetch(sqlite: &Arc<SqliteStorage>) -> Result<Vec<(String, Vec<u8>)>> {
     let mut stashed = Vec::new();
     for key in sqlite.list_blobs("graphs/").await? {
-        let data = sqlite
-            .get_blob(&key)
-            .await?
-            .ok_or_else(|| anyhow::anyhow!("listed blob {key} is missing"))?;
+        let data = sqlite.get_blob(&key).await?;
         sqlite.delete_blob(&key).await?;
         stashed.push((key, data));
     }

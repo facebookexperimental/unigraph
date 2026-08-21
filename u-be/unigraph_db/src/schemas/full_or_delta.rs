@@ -11,6 +11,7 @@
 use anyhow::Context;
 use anyhow::Result;
 use unigraph_core::ArrayGraphSerializable;
+use unigraph_storage_core::FrameRow;
 use unigraph_storage_core::FrameType;
 use unigraph_storage_core::GraphKey;
 use unigraph_storage_core::GraphTimeKey;
@@ -178,19 +179,13 @@ pub async fn fetch_graph(
 
         match row.frame_type {
             FrameType::Full => {
-                let data = row
-                    .data
-                    .ok_or_else(|| anyhow::anyhow!("Full frame {:?} has no data", current_key))?;
-                chain.push((current_key, ChainEntry::Full(data)));
+                chain.push((current_key, ChainEntry::Full(row)));
                 break;
             }
             FrameType::Delta => {
-                let base = row.base.ok_or_else(|| {
+                let base = row.base.clone().ok_or_else(|| {
                     anyhow::anyhow!("Delta frame {:?} has no base key", current_key)
                 })?;
-                let data = row
-                    .data
-                    .ok_or_else(|| anyhow::anyhow!("Delta frame {:?} has no data", current_key))?;
 
                 // If base is in a different timeline, fetch it via schema dispatch
                 // and stop walking.
@@ -203,12 +198,12 @@ pub async fn fetch_graph(
                     })?;
                     chain.push((
                         current_key,
-                        ChainEntry::DeltaWithResolvedBase(data, Box::new(base_graph)),
+                        ChainEntry::DeltaWithResolvedBase(row, Box::new(base_graph)),
                     ));
                     break;
                 }
 
-                chain.push((current_key.clone(), ChainEntry::Delta(data)));
+                chain.push((current_key.clone(), ChainEntry::Delta(row)));
                 current_key = base;
             }
             FrameType::Empty | FrameType::Error => {
@@ -229,9 +224,9 @@ pub async fn fetch_graph(
     let (_, first_entry) = iter.next().expect("chain must have at least one entry");
 
     let mut current = match first_entry {
-        ChainEntry::Full(data) => storage.reconstruct_full_graph(&data, task).await?,
-        ChainEntry::DeltaWithResolvedBase(data, base_graph) => {
-            let delta = storage.reconstruct_delta(&data, task).await?;
+        ChainEntry::Full(row) => storage.reconstruct_full_graph(&row, task).await?,
+        ChainEntry::DeltaWithResolvedBase(row, base_graph) => {
+            let delta = storage.reconstruct_delta(&row, task).await?;
             unigraph_core::apply_delta(*base_graph, &delta)
                 .context("Failed to apply delta on cross-timeline base")?
         }
@@ -247,8 +242,8 @@ pub async fn fetch_graph(
             .iter()
             .map(|(entry_key, entry)| async move {
                 match entry {
-                    ChainEntry::Delta(data) => {
-                        let delta = storage.reconstruct_delta(data, task).await?;
+                    ChainEntry::Delta(row) => {
+                        let delta = storage.reconstruct_delta(row, task).await?;
                         Ok::<_, anyhow::Error>((entry_key.clone(), delta))
                     }
                     _ => unreachable!("only the first entry can be Full or DeltaWithResolvedBase"),
@@ -273,16 +268,16 @@ pub async fn fetch_graph(
 }
 
 /// A link in the delta chain during fetch reconstruction.
+///
+/// Each variant carries the `with_data` row it was built from — the manifest
+/// and inline blobs `reconstruct_*` needs.
 enum ChainEntry {
-    /// Full frame data — the base of the chain.
-    Full(unigraph_storage_core::FrameData),
-    /// Delta frame data — needs the preceding entry as base.
-    Delta(unigraph_storage_core::FrameData),
+    /// Full frame — the base of the chain.
+    Full(FrameRow),
+    /// Delta frame — needs the preceding entry as base.
+    Delta(FrameRow),
     /// Delta whose base is in another timeline — base already resolved.
-    DeltaWithResolvedBase(
-        unigraph_storage_core::FrameData,
-        Box<ArrayGraphSerializable>,
-    ),
+    DeltaWithResolvedBase(FrameRow, Box<ArrayGraphSerializable>),
 }
 
 // ---------------------------------------------------------------------------

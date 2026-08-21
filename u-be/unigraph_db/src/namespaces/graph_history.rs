@@ -53,7 +53,6 @@ mod compact;
 mod context;
 mod delete;
 mod ingest;
-mod progress;
 mod read;
 mod replay;
 

@@ -14,6 +14,7 @@ mod frames;
 mod graph;
 mod graph_history;
 mod metric_history;
+mod progress;
 mod timelines;
 mod utility;
 
@@ -31,6 +32,10 @@ pub use graph_history::HistoryIngestOptions;
 pub use graph_history::HistoryIngestReport;
 pub use graph_history::HistorySeriesRow;
 pub use metric_history::MetricHistory;
+pub use timelines::DEFAULT_DELETE_BATCH_SIZE;
+pub use timelines::DEFAULT_DELETE_SWEEP_MIN_AGE;
+pub use timelines::TimelineDeleteOptions;
+pub use timelines::TimelineDeleteReport;
 pub use timelines::Timelines;
 pub use utility::CleanupResult;
 pub use utility::Utility;

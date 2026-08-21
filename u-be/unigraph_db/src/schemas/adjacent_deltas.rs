@@ -307,14 +307,7 @@ async fn reconstruct_from_range(
         .expect("validate ensures at least one Full frame");
 
     let full_row = &entries[last_full_idx];
-    let data = full_row.data.as_ref().with_context(|| {
-        format!(
-            "full frame graph_id={} has no data",
-            full_row.frame.graph_id.0
-        )
-    })?;
-
-    let base_graph = storage.reconstruct_full_graph(data, &task).await?;
+    let base_graph = storage.reconstruct_full_graph(full_row, &task).await?;
 
     // If there are no deltas after the Full frame, we're done.
     let delta_rows = &entries[last_full_idx + 1..];
@@ -326,10 +319,7 @@ async fn reconstruct_from_range(
     let delta_futs: Vec<_> = delta_rows
         .iter()
         .map(|row| async {
-            let data = row.data.as_ref().with_context(|| {
-                format!("delta frame graph_id={} has no data", row.frame.graph_id.0)
-            })?;
-            let delta = storage.reconstruct_delta(data, &task).await?;
+            let delta = storage.reconstruct_delta(row, &task).await?;
             Ok::<_, anyhow::Error>(delta)
         })
         .collect();

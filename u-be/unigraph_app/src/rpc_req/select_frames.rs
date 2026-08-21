@@ -137,6 +137,7 @@ fn to_frame_query(input: &SelectFramesInput) -> Result<FrameQuery> {
             .graph_ids
             .as_ref()
             .map(|ids| ids.iter().copied().map(GraphID).collect()),
+        with_manifest: None,
         with_data: None,
         before: None,
         expires_before: None,

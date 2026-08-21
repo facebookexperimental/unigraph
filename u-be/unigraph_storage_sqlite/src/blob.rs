@@ -27,19 +27,17 @@ impl UnigraphBlobStorage for SqliteStorage {
         Ok(())
     }
 
-    async fn get_blob(&self, key: &str) -> Result<Option<Vec<u8>>> {
+    async fn get_blob(&self, key: &str) -> Result<Vec<u8>> {
         let conn = self.conn.lock().unwrap();
         let sql = format!("SELECT data FROM {} WHERE blob_key = ?1", TABLE_BLOBS);
         let mut stmt = conn
             .prepare(&sql)
             .context("Failed to prepare get_blob query")?;
 
-        let result = stmt
-            .query_row(rusqlite::params![key], |row| row.get::<_, Vec<u8>>(0))
+        stmt.query_row(rusqlite::params![key], |row| row.get::<_, Vec<u8>>(0))
             .optional()
-            .with_context(|| format!("Failed to get blob: {}", key))?;
-
-        Ok(result)
+            .with_context(|| format!("Failed to get blob: {}", key))?
+            .ok_or_else(|| anyhow::anyhow!("blob not found: {}", key))
     }
 
     async fn delete_blob(&self, key: &str) -> Result<()> {

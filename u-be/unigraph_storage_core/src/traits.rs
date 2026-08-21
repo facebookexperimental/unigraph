@@ -93,6 +93,15 @@ pub trait UnigraphGraphConnection: Send {
     /// List all timeline IDs.
     async fn list_timelines(&mut self, task: &ll::Task) -> Result<Vec<TimelineID>>;
 
+    /// Delete a timeline's configuration row.
+    ///
+    /// Only the one row. Frames, history, metric history and external ID
+    /// mappings all outlive it — deleting the config first would strand them,
+    /// since every one of those deletes locks this row. Call it last.
+    ///
+    /// Returns `true` if a row was deleted, `false` if the timeline didn't exist.
+    async fn delete_timeline(&mut self, timeline_id: &TimelineID, task: &ll::Task) -> Result<bool>;
+
     /// Store a frame with data (Full, Delta, or Error).
     ///
     /// - `key`: timeline + timestamp + graph ID
@@ -120,8 +129,18 @@ pub trait UnigraphGraphConnection: Send {
     ///
     /// The implementation compiles the [`FrameQuery`] into a single SQL
     /// statement with conditional WHERE clauses, ORDER BY, and LIMIT.
+    ///
+    /// Which payload columns come back is decided by the query's
+    /// `with_manifest` / `with_data` flags — see [`FrameRow`].
     async fn select_frames(&mut self, query: &FrameQuery, task: &ll::Task)
     -> Result<Vec<FrameRow>>;
+
+    /// Count a timeline's frames.
+    ///
+    /// One indexed range scan over the `(timeline_id, graph_id)` primary key.
+    /// Cheap enough to run once before a long job that wants a denominator for
+    /// its progress bar, not cheap enough to call in a loop.
+    async fn count_frames(&mut self, timeline_id: &TimelineID, task: &ll::Task) -> Result<i64>;
 
     /// Delete a frame row by its graph key.
     ///
@@ -131,6 +150,26 @@ pub trait UnigraphGraphConnection: Send {
     ///
     /// Returns `true` if a frame was deleted, `false` if it didn't exist.
     async fn delete_frame(&mut self, key: &GraphKey, task: &ll::Task) -> Result<bool>;
+
+    /// Delete the named frames of `timeline_id` in one statement. Returns the
+    /// row count.
+    ///
+    /// Same contract as [`delete_frame`](Self::delete_frame) on blobs: rows
+    /// only. The caller registers those frames' external blob keys for cleanup
+    /// first, inside the same transaction.
+    ///
+    /// Takes an explicit list rather than a `graph_id` range on purpose. A bulk
+    /// caller gets its batch from `select_frames`, which orders by
+    /// `(timestamp, graph_id)` — on a timeline written out of order those are
+    /// different orders, so the batch's `graph_id` span can cover frames the
+    /// batch never saw, and deleting by span would drop them without ever
+    /// registering their blobs.
+    async fn delete_frames(
+        &mut self,
+        timeline_id: &TimelineID,
+        graph_ids: &[GraphID],
+        task: &ll::Task,
+    ) -> Result<u64>;
 
     /// Register blob keys for deferred cleanup.
     ///
@@ -232,6 +271,17 @@ pub trait UnigraphGraphConnection: Send {
         task: &ll::Task,
     ) -> Result<Option<ExternalID>>;
 
+    /// Delete every mapping in a namespace. Returns the row count.
+    ///
+    /// Allocation is sequential from the highest existing `GraphID`, so this
+    /// resets the namespace's counter to zero. Only safe once nothing refers to
+    /// those IDs any more.
+    async fn delete_external_id_mappings(
+        &mut self,
+        external_id_namespace: &ExternalIDNamespace,
+        task: &ll::Task,
+    ) -> Result<u64>;
+
     // -- Metric history --
 
     /// Ensure metric_history rows exist for the given `(timeline, week, node_name)` combos.
@@ -284,6 +334,24 @@ pub trait UnigraphGraphConnection: Send {
         end_week: &str,
         task: &ll::Task,
     ) -> Result<Vec<(String, String, Vec<u8>)>>;
+
+    /// List the distinct ISO weeks a timeline has metric history for, ascending.
+    ///
+    /// The unit a bulk delete works in: rows are `nodes x weeks`, and the week
+    /// is the only column with an index that can bound the delete.
+    async fn list_metric_history_weeks(
+        &mut self,
+        timeline_id: &TimelineID,
+        task: &ll::Task,
+    ) -> Result<Vec<String>>;
+
+    /// Delete a timeline's metric history for one ISO week. Returns the row count.
+    async fn delete_metric_history_for_week(
+        &mut self,
+        timeline_id: &TimelineID,
+        week_key: &str,
+        task: &ll::Task,
+    ) -> Result<u64>;
 
     // -- Graph history (plain rows) --
     //
@@ -642,10 +710,28 @@ pub trait UnigraphBlobStorage: Send + Sync {
     /// Store a blob by key.
     async fn put_blob(&self, key: &str, data: &[u8]) -> Result<()>;
 
-    /// Retrieve a blob by key. Returns `None` if not found.
-    async fn get_blob(&self, key: &str) -> Result<Option<Vec<u8>>>;
+    /// Retrieve a blob by key. A missing key is an **error**, not an empty
+    /// result.
+    ///
+    /// Nothing reads a blob speculatively: a caller has a key because a
+    /// manifest, a config row or an alert row handed it one, so a key that
+    /// doesn't resolve means that reference is broken. Returning `Option` here
+    /// only moved the error one line down the call stack, made every caller
+    /// invent its own wording for it, and threw away the backend's context
+    /// (bucket, path, troubleshooting link) on the way. Use
+    /// [`has_blob`](Self::has_blob) when the question really is "is it there?".
+    async fn get_blob(&self, key: &str) -> Result<Vec<u8>>;
 
     /// Delete a blob by key.
+    ///
+    /// **Must be idempotent: deleting a key that isn't there is `Ok(())`,
+    /// not an error.** The cleanup queue routinely holds keys with no blob
+    /// behind them — the crash-safe store path registers a key before
+    /// uploading it, so a store that dies in between leaves a registration for
+    /// a blob that was never written — and
+    /// [`sweep_blobs`](crate::UnigraphGraphConnection) unregisters a batch only
+    /// if every delete in it succeeded. A backend that errors on a missing key
+    /// therefore wedges the sweep permanently.
     async fn delete_blob(&self, key: &str) -> Result<()>;
 
     /// Check if a blob exists.

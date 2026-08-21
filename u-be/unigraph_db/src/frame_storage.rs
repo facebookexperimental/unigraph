@@ -26,7 +26,6 @@ use unigraph_core::unpack_errors;
 use unigraph_serialization::ZSTDCompressionLevel;
 use unigraph_serialization::from_zstd;
 use unigraph_serialization::to_zstd;
-use unigraph_storage_core::FrameData;
 use unigraph_storage_core::FrameQuery;
 use unigraph_storage_core::FrameRow;
 use unigraph_storage_core::FrameType;
@@ -142,15 +141,16 @@ impl UnigraphStorage {
             anyhow::bail!("Frame {:?} is {:?}, not Error", key, row.frame_type);
         }
 
-        let data = row
-            .data
+        let manifest_json = row
+            .manifest_json
+            .as_deref()
             .ok_or_else(|| anyhow::anyhow!("Frame data missing for {:?}", key))?;
 
         let manifest: ErrorManifest =
-            serde_json::from_str(&data.manifest_json).context("Failed to parse ErrorManifest")?;
+            serde_json::from_str(manifest_json).context("Failed to parse ErrorManifest")?;
 
         let blobs = self
-            .resolve_blobs(&manifest.errors_blob, data.inline_blobs.as_deref(), task)
+            .resolve_blobs(&manifest.errors_blob, row.inline_blobs.as_deref(), task)
             .await?;
 
         let package = ErrorPackage { manifest, blobs };
@@ -163,7 +163,9 @@ impl UnigraphStorage {
     /// This method does NOT start/commit a transaction — the caller controls that.
     ///
     /// Steps:
-    /// 1. Fetch the frame (with data) to read the manifest
+    /// 1. Read the frame's manifest — not its payload; the inline blobs would
+    ///    be the frame's whole compressed graph, and inline blobs need no
+    ///    cleanup anyway
     /// 2. Extract external blob keys from the manifest
     /// 3. Register blob keys for cleanup (so the sweeper will delete them)
     /// 4. Delete the frame row
@@ -175,12 +177,12 @@ impl UnigraphStorage {
         key: &GraphKey,
         task: &ll::Task,
     ) -> Result<bool> {
-        let row = match get_frame_with_data_on_conn(conn, key, task).await? {
+        let row = match get_frame_manifest_on_conn(conn, key, task).await? {
             Some(row) => row,
             None => return Ok(false),
         };
 
-        let blob_keys = extract_external_blob_keys(&row)?;
+        let blob_keys = external_blob_keys(&row)?;
         if !blob_keys.is_empty() {
             conn.register_blobs_for_cleanup(&blob_keys, task).await?;
         }
@@ -316,22 +318,23 @@ impl UnigraphStorage {
         Ok(())
     }
 
-    /// Reconstruct a full graph from frame data.
+    /// Reconstruct a full graph from a `with_data` frame row.
     #[ll::task]
     pub(crate) async fn reconstruct_full_graph(
         &self,
-        data: &FrameData,
+        row: &FrameRow,
         task: &ll::Task,
     ) -> Result<ArrayGraphSerializable> {
-        let manifest: ArrayGraphSerializableManifest = serde_json::from_str(&data.manifest_json)
+        let manifest_json = require_manifest(row)?;
+        let manifest: ArrayGraphSerializableManifest = serde_json::from_str(manifest_json)
             .context("Failed to parse ArrayGraphSerializableManifest")?;
 
         let all_blob_ids = manifest.blobs.get_all_blob_ids();
         let blobs = self
-            .resolve_blobs(&all_blob_ids, data.inline_blobs.as_deref(), &task)
+            .resolve_blobs(&all_blob_ids, row.inline_blobs.as_deref(), &task)
             .await?;
 
-        let manifest_json_bytes = data.manifest_json.as_bytes().to_vec();
+        let manifest_json_bytes = manifest_json.as_bytes().to_vec();
 
         // CPU-heavy: decompress + deserialize → off the tokio thread
         let task = task.clone();
@@ -350,17 +353,17 @@ impl UnigraphStorage {
         .context("spawn_blocking panicked")?
     }
 
-    /// Reconstruct a delta from frame data.
+    /// Reconstruct a delta from a `with_data` frame row.
     pub(crate) async fn reconstruct_delta(
         &self,
-        data: &FrameData,
+        row: &FrameRow,
         task: &ll::Task,
     ) -> Result<unigraph_core::GraphDelta> {
-        let manifest: DeltaManifest =
-            serde_json::from_str(&data.manifest_json).context("Failed to parse DeltaManifest")?;
+        let manifest: DeltaManifest = serde_json::from_str(require_manifest(row)?)
+            .context("Failed to parse DeltaManifest")?;
 
         let blobs = self
-            .resolve_blobs(&manifest.delta_blob, data.inline_blobs.as_deref(), task)
+            .resolve_blobs(&manifest.delta_blob, row.inline_blobs.as_deref(), task)
             .await?;
 
         let task = task.clone();
@@ -405,10 +408,7 @@ impl UnigraphStorage {
                     let blob_store = &self.blob;
                     let id = blob_id.clone();
                     async move {
-                        let data = blob_store
-                            .get_blob(&id.0)
-                            .await?
-                            .ok_or_else(|| anyhow::anyhow!("Missing external blob: {}", id.0))?;
+                        let data = blob_store.get_blob(&id.0).await?;
                         Ok::<_, anyhow::Error>((id, data))
                     }
                 })
@@ -525,39 +525,50 @@ pub(crate) fn prepare_inline_blobs(
     }
 }
 
-/// Extract external blob keys from a frame row.
-///
-/// Returns an empty vec if blobs are inline (nothing to clean up externally)
-/// or if the frame has no data (Empty frames).
-fn extract_external_blob_keys(row: &FrameRow) -> Result<Vec<String>> {
-    let data = match &row.data {
-        Some(data) => data,
-        None => return Ok(vec![]),
-    };
+/// The manifest of a row that was read with `with_manifest` or `with_data`.
+fn require_manifest(row: &FrameRow) -> Result<&str> {
+    row.manifest_json.as_deref().ok_or_else(|| {
+        anyhow::anyhow!(
+            "{:?} frame graph_id={} has no manifest",
+            row.frame_type,
+            row.frame.graph_id.0,
+        )
+    })
+}
 
-    // Inline blobs are embedded in the row — nothing external to clean up.
-    if data.inline_blobs.is_some() {
+/// Every external blob key a frame's manifest references.
+///
+/// Empty when the frame's blobs are inline — those are embedded in the row and
+/// disappear with it — or when the frame carries no manifest at all.
+///
+/// Only meaningful on a row read with `with_manifest` or `with_data`: a
+/// metadata-only row knows neither the manifest nor where its blobs live, and
+/// reports no keys rather than guessing.
+pub(crate) fn external_blob_keys(row: &FrameRow) -> Result<Vec<String>> {
+    if row.blobs_are_inline != Some(false) {
         return Ok(vec![]);
     }
+    let Some(manifest_json) = row.manifest_json.as_deref() else {
+        return Ok(vec![]);
+    };
 
     let blob_ids = match row.frame_type {
         FrameType::Full => {
-            let manifest: ArrayGraphSerializableManifest =
-                serde_json::from_str(&data.manifest_json)
-                    .context("Failed to parse manifest for blob extraction")?;
+            let manifest: ArrayGraphSerializableManifest = serde_json::from_str(manifest_json)
+                .context("Failed to parse manifest for blob extraction")?;
             let mut ids = manifest.blobs.get_all_blob_ids();
             ids.push(manifest.self_reference);
             ids
         }
         FrameType::Delta => {
-            let manifest: DeltaManifest = serde_json::from_str(&data.manifest_json)
+            let manifest: DeltaManifest = serde_json::from_str(manifest_json)
                 .context("Failed to parse delta manifest for blob extraction")?;
             let mut ids = manifest.delta_blob;
             ids.push(manifest.self_reference);
             ids
         }
         FrameType::Error => {
-            let manifest: ErrorManifest = serde_json::from_str(&data.manifest_json)
+            let manifest: ErrorManifest = serde_json::from_str(manifest_json)
                 .context("Failed to parse error manifest for blob extraction")?;
             let mut ids = manifest.errors_blob;
             ids.push(manifest.self_reference);
@@ -575,16 +586,33 @@ async fn get_frame_with_data(
     key: &GraphKey,
     task: &ll::Task,
 ) -> Result<FrameRow> {
-    get_frame_with_data_on_conn(conn, key, task)
+    get_one_frame(conn, key, PayloadRead::Data, task)
         .await?
         .ok_or_else(|| anyhow::anyhow!("Frame not found: {:?}", key))
 }
 
-/// Fetch a single frame with data via `select_frames`.
+/// Fetch a single frame's manifest, without its inline payload.
 /// Returns `None` if the frame does not exist.
-async fn get_frame_with_data_on_conn(
+async fn get_frame_manifest_on_conn(
     conn: &mut dyn UnigraphGraphConnection,
     key: &GraphKey,
+    task: &ll::Task,
+) -> Result<Option<FrameRow>> {
+    get_one_frame(conn, key, PayloadRead::Manifest, task).await
+}
+
+/// How much of a frame's payload [`get_one_frame`] should read.
+enum PayloadRead {
+    Manifest,
+    Data,
+}
+
+/// Fetch one frame by key via `select_frames`.
+/// Returns `None` if the frame does not exist.
+async fn get_one_frame(
+    conn: &mut dyn UnigraphGraphConnection,
+    key: &GraphKey,
+    payload: PayloadRead,
     task: &ll::Task,
 ) -> Result<Option<FrameRow>> {
     let mut rows = conn
@@ -592,7 +620,8 @@ async fn get_frame_with_data_on_conn(
             &FrameQuery {
                 timeline_id: key.timeline_id.clone(),
                 graph_ids: Some(vec![key.graph_id]),
-                with_data: Some(true),
+                with_manifest: Some(true),
+                with_data: Some(matches!(payload, PayloadRead::Data)),
                 limit: Some(1),
                 before: None,
                 expires_before: None,

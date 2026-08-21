@@ -108,6 +108,7 @@ impl GraphHistory {
                     timestamp_bounds: None,
                     graph_id_bounds: Some((Some(*first), Some(*last))),
                     graph_ids: None,
+                    with_manifest: None,
                     with_data: Some(false),
                     before: None,
                     expires_before: None,

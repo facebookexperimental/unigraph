@@ -4,6 +4,7 @@ use clap::Parser;
 use clap::Subcommand;
 use unigraph_cli::UnigraphCLIContext;
 use unigraph_cli::UnigraphCLISubcommand;
+use unigraph_cli::timelines::TimelinesDelete;
 use unigraph_cli::timelines::TimelinesFrames;
 use unigraph_cli::timelines::TimelinesGet;
 use unigraph_cli::timelines::TimelinesList;
@@ -23,6 +24,7 @@ enum TimelinesCommands {
     Put(TimelinesPut),
     Frames(TimelinesFrames),
     Stats(TimelinesStats),
+    Delete(TimelinesDelete),
 }
 
 impl UnigraphCLISubcommand for Timelines {
@@ -33,6 +35,7 @@ impl UnigraphCLISubcommand for Timelines {
             TimelinesCommands::Put(cmd) => cmd.run(ctx, task).await,
             TimelinesCommands::Frames(cmd) => cmd.run(ctx, task).await,
             TimelinesCommands::Stats(cmd) => cmd.run(ctx, task).await,
+            TimelinesCommands::Delete(cmd) => cmd.run(ctx, task).await,
         }
     }
 }

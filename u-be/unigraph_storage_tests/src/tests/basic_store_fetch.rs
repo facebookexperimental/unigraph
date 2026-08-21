@@ -375,8 +375,13 @@ async fn get_frame_metadata_only() -> Result<()> {
 
     assert_eq!(row.frame_type, FrameType::Full);
     assert!(
-        row.data.is_none(),
-        "Data should be None for metadata-only fetch"
+        row.manifest_json.is_none() && row.inline_blobs.is_none(),
+        "Payload should be unpopulated for a metadata-only fetch"
+    );
+    assert!(
+        row.blobs_are_inline.is_none(),
+        "A metadata-only fetch never looks at the payload columns, so it cannot \
+         say whether the blobs are inline"
     );
 
     // Fetch with data
@@ -387,7 +392,15 @@ async fn get_frame_metadata_only() -> Result<()> {
         .expect("Frame should exist");
 
     assert_eq!(row.frame_type, FrameType::Full);
-    assert!(row.data.is_some(), "Data should be Some for full fetch");
+    assert!(
+        row.manifest_json.is_some(),
+        "Manifest should be Some for full fetch"
+    );
+    assert_eq!(
+        row.blobs_are_inline,
+        Some(true),
+        "The test timeline stores blobs inline, and a full fetch knows it"
+    );
 
     Ok(())
 }

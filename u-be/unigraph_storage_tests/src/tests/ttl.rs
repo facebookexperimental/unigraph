@@ -101,15 +101,15 @@ async fn ttl_expired_frames_and_configs_cleanup() -> Result<()> {
             .get(&key_a.graph_key(), true, &task)
             .await?
             .unwrap();
-        let data = frame.data.unwrap();
+        let manifest_json = frame.manifest_json.unwrap();
         let mut conn = db.graph_conn_write().await?;
         conn.delete_frame(&key_a.graph_key(), &task).await?;
         conn.store_frame(
             &key_a,
             FrameType::Full,
             None,
-            &data.manifest_json,
-            data.inline_blobs.as_deref(),
+            &manifest_json,
+            frame.inline_blobs.as_deref(),
             Some(expires_at),
             &task,
         )
@@ -229,7 +229,7 @@ async fn ttl_cleanup_with_external_blobs() -> Result<()> {
     // Re-insert with TTL (delete + store with expires_at)
     {
         let frame = db.frames.get(&key.graph_key(), true, &task).await?.unwrap();
-        let data = frame.data.unwrap();
+        let manifest_json = frame.manifest_json.unwrap();
         let mut conn = db.graph_conn_write().await?;
         conn.delete_frame(&key.graph_key(), &task).await?;
         // Unregister the blobs that were registered during delete — we're
@@ -246,7 +246,7 @@ async fn ttl_cleanup_with_external_blobs() -> Result<()> {
             &key,
             FrameType::Full,
             None,
-            &data.manifest_json,
+            &manifest_json,
             None, // blobs are external
             Some(expires_at),
             &task,

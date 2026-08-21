@@ -66,8 +66,8 @@ async fn resolve_config_blob<K: ConfigKeyLike>(
 
     blob_storage
         .get_blob(blob_id)
-        .await?
-        .with_context(|| format!("config blob not found in external storage: {blob_id}"))
+        .await
+        .with_context(|| format!("failed to read config blob from external storage: {blob_id}"))
 }
 
 // -- Store --

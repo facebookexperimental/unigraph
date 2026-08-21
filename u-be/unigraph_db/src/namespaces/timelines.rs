@@ -1,8 +1,14 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-//! Timeline management — create, configure, and list timelines.
+//! Timeline management — create, configure, list, and delete timelines.
+
+mod delete;
 
 use anyhow::Result;
+pub use delete::DEFAULT_DELETE_BATCH_SIZE;
+pub use delete::DEFAULT_DELETE_SWEEP_MIN_AGE;
+pub use delete::TimelineDeleteOptions;
+pub use delete::TimelineDeleteReport;
 use ll::task;
 use unigraph_storage_core::TimelineConfig;
 use unigraph_storage_core::TimelineID;

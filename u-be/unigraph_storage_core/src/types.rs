@@ -128,8 +128,19 @@ pub struct FrameQuery {
     pub graph_id_bounds: Option<(Option<GraphID>, Option<GraphID>)>,
     /// Only return frames with these specific graph_ids (SQL IN).
     pub graph_ids: Option<Vec<GraphID>>,
+    /// If true, fetch the frame's manifest but not its inline blobs.
+    ///
+    /// Cheap next to [`with_data`](Self::with_data): a manifest is a short JSON
+    /// string, where `inline_blobs` beside it can hold the frame's whole
+    /// compressed graph. Use this to read many frames' manifests at once —
+    /// e.g. to find which external blobs a range of frames references.
+    /// [`FrameRow::blobs_are_inline`](crate::frame::FrameRow::blobs_are_inline)
+    /// is still answered, so "does this frame own external blobs?" needs no
+    /// payload read. Implied by `with_data`.
+    pub with_manifest: Option<bool>,
     /// If true, fetch full row data (manifest + inline blobs).
-    /// If false/None, return metadata only (data = None).
+    /// If false/None, the payload columns are left unpopulated unless
+    /// [`with_manifest`](Self::with_manifest) asked for the manifest.
     pub with_data: Option<bool>,
     /// Select the frame immediately before this (timestamp, graph_id) point.
     /// Compiles to: `WHERE (timestamp < X OR (timestamp = X AND graph_id < Y))`

@@ -386,6 +386,7 @@ async fn validate_adjacency(
             &FrameQuery {
                 timeline_id: timeline_id.clone(),
                 graph_id_bounds: Some((Some(first_id), Some(last_id))),
+                with_manifest: None,
                 with_data: Some(false),
                 order: Some(unigraph_storage_core::Order::Asc),
                 limit: None,
