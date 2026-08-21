@@ -9,5 +9,6 @@ mod find_ancestors_and_paths;
 mod get_history;
 mod graph_caching;
 mod graph_query;
+mod min_cut;
 mod search_nodes;
 mod select_frames;

@@ -79,6 +79,9 @@ impl Unigraph {
                 UnigraphRequest::FindPath(input) => {
                     Ok(UnigraphResponse::FindPath(input.exec(self, &task).await?))
                 }
+                UnigraphRequest::MinCut(input) => {
+                    Ok(UnigraphResponse::MinCut(input.exec(self, &task).await?))
+                }
                 UnigraphRequest::SearchNodes(input) => Ok(UnigraphResponse::SearchNodes(
                     input.exec(self, &task).await?,
                 )),
@@ -136,6 +139,7 @@ unigraph_rpc::define_rpc_for_exec! {
         ExploreDelta(ExploreDeltaInput) -> ExploreDeltaOutput,
         FindAncestors(FindAncestorsInput) -> FindAncestorsOutput,
         FindPath(FindPathInput) -> FindPathOutput,
+        MinCut(MinCutInput) -> MinCutOutput,
         SearchNodes(SearchNodesInput) -> SearchNodesOutput,
         AboutGraph(AboutGraphInput) -> AboutGraphOutput,
         GetHistory(GetHistoryInput) -> GetHistoryOutput,

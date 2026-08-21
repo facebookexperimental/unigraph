@@ -1,7 +1,7 @@
 /**
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
- * @generated SignedSource<<6d1dd43d0d8caf191450724785ab8350>>
+ * @generated SignedSource<<730da84eaf89815d2c32865660da6f84>>
  */
 
 
@@ -15,6 +15,7 @@ import type { GetHistoryOutput } from './GetHistoryOutput.ts';
 import type { GraphQueryMapGraphOutput } from './GraphQueryMapGraphOutput.ts';
 import type { GraphQueryOutput } from './GraphQueryOutput.ts';
 import type { ListTimelinesOutput } from './ListTimelinesOutput.ts';
+import type { MinCutOutput } from './MinCutOutput.ts';
 import type { PutConfigsOutput } from './PutConfigsOutput.ts';
 import type { RpcError } from './RpcError.ts';
 import type { SearchNodesOutput } from './SearchNodesOutput.ts';
@@ -31,9 +32,10 @@ export type UnigraphResponse =
   { "ExploreDelta": ExploreDeltaOutput } |
   { "FindAncestors": FindAncestorsOutput } |
   { "FindPath": FindPathOutput } |
+  { "MinCut": MinCutOutput } |
   { "SearchNodes": SearchNodesOutput } |
   { "AboutGraph": AboutGraphOutput } |
   { "GetHistory": GetHistoryOutput } |
   { "Error": RpcError };
 
-export type UnigraphResponseVariants = "PutConfigs" | "GetConfigs" | "GraphQuery" | "GraphQueryMapGraph" | "ListTimelines" | "SelectFrames" | "ExploreGraph" | "ExploreDelta" | "FindAncestors" | "FindPath" | "SearchNodes" | "AboutGraph" | "GetHistory" | "Error";
+export type UnigraphResponseVariants = "PutConfigs" | "GetConfigs" | "GraphQuery" | "GraphQueryMapGraph" | "ListTimelines" | "SelectFrames" | "ExploreGraph" | "ExploreDelta" | "FindAncestors" | "FindPath" | "MinCut" | "SearchNodes" | "AboutGraph" | "GetHistory" | "Error";
