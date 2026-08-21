@@ -1,7 +1,7 @@
 /**
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
- * @generated SignedSource<<d4cbdd0f8490ec45c3248b7c87d350d3>>
+ * @generated SignedSource<<b817d8c84c9c3a47849ed5d146838b8f>>
  */
 
 
@@ -33,6 +33,14 @@ export interface ExploreGraphInput {
   offset?: number | undefined;
   /** Maximum number of arrows to return. Defaults to 50. */
   limit?: number | undefined;
+  /**
+   * When true, also return arrows the traversal did not follow, flagged via
+   * `excluded` / `unreachable`. Defaults to false, which drops them entirely.
+   * 
+   * Only meaningful for the `Node` target — the other targets enumerate
+   * nodes, not edges, and already return reachable nodes only.
+   */
+  include_excluded?: boolean | undefined;
   /**
    * When true, populate the `ascii` field in the response with a human-readable
    * ASCII table of the results (optimized for agent / LLM consumption).

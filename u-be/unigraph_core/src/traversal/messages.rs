@@ -44,6 +44,7 @@ impl Message {
         &self,
         ag: &array_graph::ArrayGraph,
         points_from: NodeIDX,
+        points_to: NodeIDX,
         edge_metadata: Option<&EdgeMeta>,
     ) -> Result<String> {
         let mut result = self.0.clone();
@@ -54,7 +55,7 @@ impl Message {
         }
 
         if result.contains(MESSAGE_TEMPLATE_POINTS_TO) {
-            let points_to_name = ag.idx_to_name(points_from);
+            let points_to_name = ag.idx_to_name(points_to);
             result = result.replace(MESSAGE_TEMPLATE_POINTS_TO, points_to_name);
         }
 
@@ -278,7 +279,7 @@ F -> H
 F -> I
    branch: b2
    properties: {"type_key": "ddd", "edge_name": "ddd_1"}
-   message: This edge was EXCLUDED because the node `F` was force excluded from the traversal using `force_nodes` config.
+   message: This edge was EXCLUDED because the node `I` was force excluded from the traversal using `force_nodes` config.
 J -> K
 L -> D
 L -> M

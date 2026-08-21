@@ -1,7 +1,7 @@
 /**
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
- * @generated SignedSource<<2bd795cbf6a5ad87701621dfe181ec4f>>
+ * @generated SignedSource<<7396051a142ddce64a7f4aacfc6b4c08>>
  */
 
 
@@ -24,4 +24,21 @@ export interface ExploreGraphArrow {
   tag?: string | undefined;
   /** Dynamic edge info, if this is a dynamic edge. */
   dynamic?: DynamicEdgeInfo | undefined;
+  /**
+   * True when the traversal did not follow this edge. A property of the
+   * *edge* — the node it points to may still be reachable by another path.
+   * Only ever true when `include_excluded` was requested.
+   */
+  excluded: boolean;
+  /**
+   * True when the node this arrow points to is not reachable from the entry
+   * points at all. A property of the *node*, so it can be true even for an
+   * edge that was followed (when the parent is itself unreachable).
+   */
+  unreachable: boolean;
+  /**
+   * Why the traversal skipped this edge, e.g. "tag `lazy` is above max
+   * tier". Only the winning rule is recorded, not a full audit trail.
+   */
+  exclusion_reason?: string | undefined;
 }

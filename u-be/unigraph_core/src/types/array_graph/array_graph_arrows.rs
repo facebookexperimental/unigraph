@@ -19,7 +19,12 @@ fn render_message(
 ) -> Result<Option<String>> {
     if let Some(message_idx) = edge.flags.get_message_idx() {
         if let Some(msg) = ag.runtime.state.indexed_messages.get_by_idx(message_idx) {
-            return Ok(Some(msg.render(ag, points_from, edge_metadata)?));
+            return Ok(Some(msg.render(
+                ag,
+                points_from,
+                edge.points_to,
+                edge_metadata,
+            )?));
         } else {
             return Ok(Some(format!(
                 "This edge contains a message about traversal with the index {message_idx},

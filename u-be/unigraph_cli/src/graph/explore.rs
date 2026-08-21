@@ -97,6 +97,12 @@ pub struct GraphExplore {
     #[arg(long)]
     limit: Option<usize>,
 
+    /// Also show edges the traversal did not follow, flagged in a `status`
+    /// column as `excluded` (the node is still reachable another way) or
+    /// `unreachable` (it is not reachable at all). Only applies with `--node`.
+    #[arg(long)]
+    include_excluded: bool,
+
     /// Override the root nodes of the subgraph (repeatable).
     #[arg(long = "root", num_args = 1)]
     roots: Vec<String>,
@@ -157,6 +163,7 @@ impl GraphExplore {
             sort_order: Some(self.sort_order.into()),
             offset: self.offset,
             limit: self.limit,
+            include_excluded: Some(self.include_excluded),
             include_ascii: Some(true),
         })
     }

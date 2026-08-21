@@ -94,6 +94,14 @@ pub struct ExploreGraphInput {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub limit: Option<usize>,
 
+    /// When true, also return arrows the traversal did not follow, flagged via
+    /// `excluded` / `unreachable`. Defaults to false, which drops them entirely.
+    ///
+    /// Only meaningful for the `Node` target — the other targets enumerate
+    /// nodes, not edges, and already return reachable nodes only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub include_excluded: Option<bool>,
+
     /// When true, populate the `ascii` field in the response with a human-readable
     /// ASCII table of the results (optimized for agent / LLM consumption).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -137,6 +145,24 @@ pub struct ExploreGraphArrow {
     /// Dynamic edge info, if this is a dynamic edge.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dynamic: Option<DynamicEdgeInfo>,
+
+    /// True when the traversal did not follow this edge. A property of the
+    /// *edge* — the node it points to may still be reachable by another path.
+    /// Only ever true when `include_excluded` was requested.
+    ///
+    /// `default` so a client built against this schema can still decode a
+    /// response from a service that predates the field.
+    #[serde(default)]
+    pub excluded: bool,
+    /// True when the node this arrow points to is not reachable from the entry
+    /// points at all. A property of the *node*, so it can be true even for an
+    /// edge that was followed (when the parent is itself unreachable).
+    #[serde(default)]
+    pub unreachable: bool,
+    /// Why the traversal skipped this edge, e.g. "tag `lazy` is above max
+    /// tier". Only the winning rule is recorded, not a full audit trail.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exclusion_reason: Option<String>,
 }
 
 // ── Handler ──────────────────────────────────────────────────
@@ -281,14 +307,22 @@ struct ArrowData {
     node_idx: NodeIDX,
     tag: Option<String>,
     dynamic: Option<unigraph_core::DynamicEdgeInfo>,
+    excluded: bool,
+    unreachable: bool,
+    exclusion_reason: Option<String>,
 }
 
-/// Turn a node index into a bare row — no edge led here, so no tag or branch.
+/// Turn a node index into a bare row — no edge led here, so no tag or branch,
+/// and nothing to exclude. Every target that uses this enumerates reachable
+/// nodes only, so `unreachable` is false by construction.
 fn node_arrow(node_idx: NodeIDX) -> ArrowData {
     ArrowData {
         node_idx,
         tag: None,
         dynamic: None,
+        excluded: false,
+        unreachable: false,
+        exclusion_reason: None,
     }
 }
 
@@ -331,14 +365,18 @@ fn resolve_arrows(
                 .node_names_ordered
                 .name_to_idx_log(name)
                 .with_context(|| format!("node '{name}' not found in graph"))?;
+            let include_excluded = input.include_excluded.unwrap_or(false);
             let mut arrows: Vec<ArrowData> = ag
                 .get_arrows(node_idx, graph_structure)?
                 .into_iter()
-                .filter(|a| !a.excluded)
+                .filter(|a| include_excluded || !a.excluded)
                 .map(|a| ArrowData {
                     node_idx: a.points_to,
                     tag: a.tag,
                     dynamic: a.dynamic,
+                    excluded: a.excluded,
+                    unreachable: ag.is_node_unreachable(a.points_to),
+                    exclusion_reason: a.message,
                 })
                 .collect();
 
@@ -425,6 +463,9 @@ fn placeholder_arrow() -> ArrowData {
         node_idx: NodeIDX::from(0u32),
         tag: None,
         dynamic: None,
+        excluded: false,
+        unreachable: false,
+        exclusion_reason: None,
     }
 }
 
@@ -466,6 +507,9 @@ fn build_explore_arrows(
                 metrics,
                 tag: ad.tag.clone(),
                 dynamic: ad.dynamic.clone(),
+                excluded: ad.excluded,
+                unreachable: ad.unreachable,
+                exclusion_reason: ad.exclusion_reason.clone(),
             })
         })
         .collect()
@@ -482,6 +526,9 @@ fn build_explore_arrow_for_node(
         metrics,
         tag: None,
         dynamic: None,
+        excluded: false,
+        unreachable: ag.is_node_unreachable(node_idx),
+        exclusion_reason: None,
     })
 }
 
@@ -507,6 +554,7 @@ fn render_ascii(
     let metric_cols = collect_metric_columns_from(&all_arrows);
     let has_tags = all_arrows.iter().any(|a| a.tag.is_some());
     let has_dynamic = all_arrows.iter().any(|a| a.dynamic.is_some());
+    let has_status = all_arrows.iter().any(|a| arrow_status(a).is_some());
 
     let formats = build_format_map(&metric_cols, metrics_config);
 
@@ -514,6 +562,7 @@ fn render_ascii(
         &metric_cols,
         has_tags,
         has_dynamic,
+        has_status,
         &all_arrows,
         sort_by_key,
         &formats,
@@ -527,6 +576,7 @@ fn render_ascii(
         &metric_cols,
         has_tags,
         has_dynamic,
+        has_status,
         &widths,
         sort_by_key,
         sort_order,
@@ -540,6 +590,7 @@ fn render_ascii(
             &metric_cols,
             has_tags,
             has_dynamic,
+            has_status,
             &widths,
             &formats,
             tier_names,
@@ -554,6 +605,7 @@ fn render_ascii(
             &metric_cols,
             has_tags,
             has_dynamic,
+            has_status,
             &widths,
             &formats,
             tier_names,
@@ -603,17 +655,50 @@ fn format_dynamic(d: &DynamicEdgeInfo) -> String {
     format!("{}:{}/{}", d.type_key, d.edge_name, d.branch)
 }
 
+/// Column header for the traversal-status column.
+const STATUS_HEADER: &str = "status";
+/// The edge was not followed, but the node it points to is still reachable
+/// through some other path.
+const STATUS_EXCLUDED: &str = "excluded";
+/// The node is not reachable from the entry points at all.
+const STATUS_UNREACHABLE: &str = "unreachable";
+
+/// The one-word traversal status for a row, or `None` for an ordinary followed
+/// edge to a reachable node.
+///
+/// `unreachable` wins over `excluded`: it is the strictly more severe fact, and
+/// it is a property of the node rather than of this particular edge — the same
+/// precedence the tree table UI uses.
+fn arrow_status(arrow: &ExploreGraphArrow) -> Option<&'static str> {
+    if arrow.unreachable {
+        return Some(STATUS_UNREACHABLE);
+    }
+    if arrow.excluded {
+        return Some(STATUS_EXCLUDED);
+    }
+    None
+}
+
 /// Column widths: [node_name, metric0, metric1, ..., tag?, edge?]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "ASCII rendering helper with many formatting options"
+)]
 fn compute_column_widths(
     metric_cols: &[String],
     has_tags: bool,
     has_dynamic: bool,
+    has_status: bool,
     arrows: &[&ExploreGraphArrow],
     sort_by_key: Option<&str>,
     formats: &BTreeMap<String, MetricFormat>,
     tier_names: &[String],
 ) -> Vec<usize> {
-    let num_cols = 1 + metric_cols.len() + usize::from(has_tags) + usize::from(has_dynamic);
+    let num_cols = 1
+        + metric_cols.len()
+        + usize::from(has_tags)
+        + usize::from(has_dynamic)
+        + usize::from(has_status);
     let mut widths = Vec::with_capacity(num_cols);
 
     // node_name column
@@ -661,14 +746,30 @@ fn compute_column_widths(
         widths.push(w);
     }
 
+    // traversal status column
+    if has_status {
+        let mut w = STATUS_HEADER.len();
+        for a in arrows {
+            if let Some(status) = arrow_status(a) {
+                w = w.max(status.len());
+            }
+        }
+        widths.push(w);
+    }
+
     widths
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "ASCII rendering helper with many formatting options"
+)]
 fn write_header(
     out: &mut String,
     metric_cols: &[String],
     has_tags: bool,
     has_dynamic: bool,
+    has_status: bool,
     widths: &[usize],
     sort_by_key: Option<&str>,
     sort_order: SortOrder,
@@ -699,6 +800,11 @@ fn write_header(
     if has_dynamic {
         let _ = write!(out, " | ");
         write_cell(out, "dynamic", widths[extra_idx], true);
+        extra_idx += 1;
+    }
+    if has_status {
+        let _ = write!(out, " | ");
+        write_cell(out, STATUS_HEADER, widths[extra_idx], true);
     }
     trim_trailing_spaces(out, start);
     out.push('\n');
@@ -714,6 +820,7 @@ fn write_row(
     metric_cols: &[String],
     has_tags: bool,
     has_dynamic: bool,
+    has_status: bool,
     widths: &[usize],
     formats: &BTreeMap<String, MetricFormat>,
     tier_names: &[String],
@@ -744,6 +851,16 @@ fn write_row(
             .map(format_dynamic)
             .unwrap_or_default();
         write_cell(out, &edge, widths[extra_idx], true);
+        extra_idx += 1;
+    }
+    if has_status {
+        let _ = write!(out, " | ");
+        write_cell(
+            out,
+            arrow_status(arrow).unwrap_or(""),
+            widths[extra_idx],
+            true,
+        );
     }
     trim_trailing_spaces(out, start);
     out.push('\n');

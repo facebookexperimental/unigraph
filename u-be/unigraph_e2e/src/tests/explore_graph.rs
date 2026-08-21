@@ -1257,7 +1257,113 @@ async fn about_graph_by_gqc_key() -> Result<()> {
     Ok(())
 }
 
+/// "Excluded" and "unreachable" are different answers to different questions,
+/// and the status column has to keep them apart: `ui -> shared` is skipped but
+/// `shared` survives via `core -> shared`, whereas `only_child` has no other
+/// parent and drops out of the graph entirely. Without `include_excluded`,
+/// neither row shows up at all.
+#[tokio::test]
+async fn include_excluded_distinguishes_excluded_from_unreachable() -> Result<()> {
+    let t = init_app();
+    let gqc_key = ingest_excluded_edges_graph(&t).await?;
+
+    let hidden = call_rpc!(
+        t,
+        ExploreGraph(
+            Explore::new(gqc_key.clone())
+                .node("ui")
+                .no_metrics()
+                .build()
+        )
+    );
+    let shown = call_rpc!(
+        t,
+        ExploreGraph(
+            Explore::new(gqc_key)
+                .node("ui")
+                .no_metrics()
+                .include_excluded()
+                .build()
+        )
+    );
+
+    // The ASCII carries only the one-word label; the structured payload carries
+    // the full breakdown, including the reason the traversal skipped the edge.
+    let breakdown = shown
+        .arrows
+        .iter()
+        .map(|a| {
+            format!(
+                "{}: excluded={} unreachable={} reason={:?}",
+                a.name, a.excluded, a.unreachable, a.exclusion_reason
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    let report = format!(
+        "── default ──\n{}\n── include_excluded ──\n{}\n── json ──\n{}",
+        hidden.ascii.unwrap(),
+        shown.ascii.unwrap(),
+        breakdown,
+    );
+    snapshot!(
+        report,
+        r#"
+── default ──
+Edges: forward
+Edges of: ui
+
+node_name
+=========
+ui
+---------
+
+── include_excluded ──
+Edges: forward
+Edges of: ui
+
+node_name  | status
+===========+============
+ui         |
+-----------+------------
+only_child | unreachable
+shared     | excluded
+
+── json ──
+only_child: excluded=true unreachable=true reason=Some("This edge from `ui` to `only_child` was EXCLUDED because it was force excluded from the traversal using `force_edges` config.")
+shared: excluded=true unreachable=false reason=Some("This edge from `ui` to `shared` was EXCLUDED because it was force excluded from the traversal using `force_edges` config.")
+"#
+    );
+
+    Ok(())
+}
+
 // ── Helpers ─────────────────────────────────────────────────────
+
+/// `ui`'s two edges are both force-excluded, but only `only_child` loses its
+/// last path to the entry point — `shared` is still held alive by `core`.
+async fn ingest_excluded_edges_graph(t: &TestApp) -> Result<GraphQueryConfigKey> {
+    let json = r#"{
+        "nodes": {
+            "app": { "edges_directed": ["ui", "core"] },
+            "ui": { "edges_directed": ["shared", "only_child"] },
+            "core": { "edges_directed": ["shared"] },
+            "shared": {},
+            "only_child": {}
+        },
+        "traversal_config": {
+            "force_edges": {
+                "ui": {
+                    "shared": { "include": false, "message_id": null },
+                    "only_child": { "include": false, "message_id": null }
+                }
+            }
+        },
+        "entry_points": ["app"]
+    }"#;
+    crate::support::fixtures::ingest_map_graph_json(t, "excluded_edges", json).await?;
+    store_gqc(t, "excluded_edges").await
+}
 
 fn parse_metrics(strs: &[&str]) -> Vec<MetricView> {
     strs.iter()
@@ -1362,6 +1468,7 @@ struct Explore {
     graph_structure: GraphStructure,
     offset: Option<usize>,
     limit: Option<usize>,
+    include_excluded: Option<bool>,
 }
 
 impl Explore {
@@ -1379,6 +1486,7 @@ impl Explore {
             graph_structure: GraphStructure::Forward,
             offset: None,
             limit: None,
+            include_excluded: None,
         }
     }
 
@@ -1448,6 +1556,11 @@ impl Explore {
         self
     }
 
+    fn include_excluded(mut self) -> Self {
+        self.include_excluded = Some(true);
+        self
+    }
+
     fn build(self) -> ExploreGraphInput {
         ExploreGraphInput {
             query: self.query,
@@ -1458,6 +1571,7 @@ impl Explore {
             sort_order: self.sort_order,
             offset: self.offset,
             limit: self.limit,
+            include_excluded: self.include_excluded,
             include_ascii: Some(true),
         }
     }
