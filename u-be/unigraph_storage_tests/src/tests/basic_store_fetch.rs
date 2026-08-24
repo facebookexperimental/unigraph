@@ -228,6 +228,82 @@ graph_id             timestamp                type       base       expires_at
     Ok(())
 }
 
+/// A store that loses the race must not condemn the winner's blobs.
+///
+/// The crash-safe store path registers a blob key for cleanup *before*
+/// uploading it and unregisters it only on commit, on the assumption that a
+/// rollback leaves nothing but its own orphans behind. Blob IDs are
+/// content-addressed and prefixed per frame, so before the per-attempt token
+/// that assumption was false: two writers packing the same graph at the same
+/// `graph_id` produced byte-identical keys, and the loser's rollback left the
+/// *winner's* live blobs queued for deletion. The sweeper then deleted them out
+/// from under a committed frame.
+///
+/// The second store here fails on the primary key — after `upload_blobs` has
+/// already registered and uploaded, which is exactly the shape of the real
+/// failure.
+#[tokio::test]
+async fn a_failed_store_does_not_queue_the_committed_store_s_blobs() -> Result<()> {
+    use unigraph_storage_core::UnigraphBlobStorage;
+
+    let sqlite = Arc::new(SqliteStorage::new_in_memory().unwrap());
+    let db = UnigraphDb::new(sqlite.clone(), sqlite.clone());
+    let task = ll::Task::create_new("test");
+    let timeline_id = TimelineID("test".to_string());
+
+    db.timelines
+        .create(
+            &timeline_id,
+            &TimelineConfig {
+                schema: TimelineSchema::AdjacentDeltas(AdjacentDeltasConfig {}),
+                external_id_namespace: None,
+                blob_storage: BlobStorageMode::External,
+                store_metric_history: None,
+            },
+            &task,
+        )
+        .await?;
+
+    let graph = TestGraphTimeline::get_nth(1);
+    let key = make_graph_time_key("test", 1, 1000);
+
+    // The winner: commits, and its blobs are the ones the frame now references.
+    db.graph.store(&key, &graph, None, &task).await?;
+    let live: Vec<String> = sqlite.list_blobs("").await?;
+    assert!(!live.is_empty(), "External mode should have uploaded blobs");
+
+    // The loser: same graph, same key, so byte-identical content. It uploads,
+    // then dies inserting the frame row.
+    let loser = db.graph.store(&key, &graph, None, &task).await;
+    assert!(
+        loser.is_err(),
+        "storing over an existing frame should fail, not silently overwrite"
+    );
+
+    // It left its own registrations behind, as designed.
+    let pending = db.blob_storage.get_pending_cleanup(&task).await?;
+    assert!(
+        !pending.is_empty(),
+        "the failed store's blobs should be queued for cleanup"
+    );
+
+    // But not one of them is a blob the committed frame depends on.
+    let overlap: Vec<&String> = pending.iter().filter(|k| live.contains(k)).collect();
+    assert!(
+        overlap.is_empty(),
+        "the failed store queued the committed frame's blobs: {overlap:?}"
+    );
+
+    // The proof of the whole thing: sweep the queue, then read the frame back.
+    db.blob_storage
+        .sweep(std::time::Duration::ZERO, None, &task)
+        .await?;
+    let fetched = db.graph.fetch(&key.graph_key(), &task).await?;
+    assert_graphs_equal(&graph, &fetched);
+
+    Ok(())
+}
+
 #[tokio::test]
 async fn delete_frame_with_external_blobs() -> Result<()> {
     use unigraph_storage_core::UnigraphBlobStorage;
@@ -273,18 +349,18 @@ graph_id             timestamp                type       base       expires_at
     snapshot!(
         format_blob_keys(&blobs),
         "
-graphs/test/1/_manifest.json
-graphs/test/1/csr_edges_6081454111982381661
-graphs/test/1/csr_offsets_5554658389978294871
-graphs/test/1/edge_metadata_7494857868300892803
-graphs/test/1/edge_metadata_map_15850574455260760061
-graphs/test/1/entry_points_9535545603450022154
-graphs/test/1/labels_8004798928044272053
-graphs/test/1/metrics_10211407828568219209
-graphs/test/1/node_names_2944712204298532354
-graphs/test/1/node_names_offsets_14475185708095569284
-graphs/test/1/properties_4370653166743570923
-graphs/test/1/traversal_config_9535545603450022154
+graphs/test/1/<attempt>/_manifest.json
+graphs/test/1/<attempt>/csr_edges_6081454111982381661
+graphs/test/1/<attempt>/csr_offsets_5554658389978294871
+graphs/test/1/<attempt>/edge_metadata_7494857868300892803
+graphs/test/1/<attempt>/edge_metadata_map_15850574455260760061
+graphs/test/1/<attempt>/entry_points_9535545603450022154
+graphs/test/1/<attempt>/labels_8004798928044272053
+graphs/test/1/<attempt>/metrics_10211407828568219209
+graphs/test/1/<attempt>/node_names_2944712204298532354
+graphs/test/1/<attempt>/node_names_offsets_14475185708095569284
+graphs/test/1/<attempt>/properties_4370653166743570923
+graphs/test/1/<attempt>/traversal_config_9535545603450022154
 "
     );
 
@@ -318,18 +394,18 @@ graph_id             timestamp                type       base       expires_at
     snapshot!(
         format_blob_keys(&blobs_after),
         "
-graphs/test/1/_manifest.json
-graphs/test/1/csr_edges_6081454111982381661
-graphs/test/1/csr_offsets_5554658389978294871
-graphs/test/1/edge_metadata_7494857868300892803
-graphs/test/1/edge_metadata_map_15850574455260760061
-graphs/test/1/entry_points_9535545603450022154
-graphs/test/1/labels_8004798928044272053
-graphs/test/1/metrics_10211407828568219209
-graphs/test/1/node_names_2944712204298532354
-graphs/test/1/node_names_offsets_14475185708095569284
-graphs/test/1/properties_4370653166743570923
-graphs/test/1/traversal_config_9535545603450022154
+graphs/test/1/<attempt>/_manifest.json
+graphs/test/1/<attempt>/csr_edges_6081454111982381661
+graphs/test/1/<attempt>/csr_offsets_5554658389978294871
+graphs/test/1/<attempt>/edge_metadata_7494857868300892803
+graphs/test/1/<attempt>/edge_metadata_map_15850574455260760061
+graphs/test/1/<attempt>/entry_points_9535545603450022154
+graphs/test/1/<attempt>/labels_8004798928044272053
+graphs/test/1/<attempt>/metrics_10211407828568219209
+graphs/test/1/<attempt>/node_names_2944712204298532354
+graphs/test/1/<attempt>/node_names_offsets_14475185708095569284
+graphs/test/1/<attempt>/properties_4370653166743570923
+graphs/test/1/<attempt>/traversal_config_9535545603450022154
 "
     );
 
@@ -338,18 +414,18 @@ graphs/test/1/traversal_config_9535545603450022154
     snapshot!(
         format_blob_keys(&pending),
         "
-graphs/test/1/_manifest.json
-graphs/test/1/csr_edges_6081454111982381661
-graphs/test/1/csr_offsets_5554658389978294871
-graphs/test/1/edge_metadata_7494857868300892803
-graphs/test/1/edge_metadata_map_15850574455260760061
-graphs/test/1/entry_points_9535545603450022154
-graphs/test/1/labels_8004798928044272053
-graphs/test/1/metrics_10211407828568219209
-graphs/test/1/node_names_2944712204298532354
-graphs/test/1/node_names_offsets_14475185708095569284
-graphs/test/1/properties_4370653166743570923
-graphs/test/1/traversal_config_9535545603450022154
+graphs/test/1/<attempt>/_manifest.json
+graphs/test/1/<attempt>/csr_edges_6081454111982381661
+graphs/test/1/<attempt>/csr_offsets_5554658389978294871
+graphs/test/1/<attempt>/edge_metadata_7494857868300892803
+graphs/test/1/<attempt>/edge_metadata_map_15850574455260760061
+graphs/test/1/<attempt>/entry_points_9535545603450022154
+graphs/test/1/<attempt>/labels_8004798928044272053
+graphs/test/1/<attempt>/metrics_10211407828568219209
+graphs/test/1/<attempt>/node_names_2944712204298532354
+graphs/test/1/<attempt>/node_names_offsets_14475185708095569284
+graphs/test/1/<attempt>/properties_4370653166743570923
+graphs/test/1/<attempt>/traversal_config_9535545603450022154
 "
     );
 
@@ -439,18 +515,18 @@ async fn sweep_deleted_blobs() -> Result<()> {
     snapshot!(
         format_blob_keys(&blobs),
         "
-graphs/test/1/_manifest.json
-graphs/test/1/csr_edges_6081454111982381661
-graphs/test/1/csr_offsets_5554658389978294871
-graphs/test/1/edge_metadata_7494857868300892803
-graphs/test/1/edge_metadata_map_15850574455260760061
-graphs/test/1/entry_points_9535545603450022154
-graphs/test/1/labels_8004798928044272053
-graphs/test/1/metrics_10211407828568219209
-graphs/test/1/node_names_2944712204298532354
-graphs/test/1/node_names_offsets_14475185708095569284
-graphs/test/1/properties_4370653166743570923
-graphs/test/1/traversal_config_9535545603450022154
+graphs/test/1/<attempt>/_manifest.json
+graphs/test/1/<attempt>/csr_edges_6081454111982381661
+graphs/test/1/<attempt>/csr_offsets_5554658389978294871
+graphs/test/1/<attempt>/edge_metadata_7494857868300892803
+graphs/test/1/<attempt>/edge_metadata_map_15850574455260760061
+graphs/test/1/<attempt>/entry_points_9535545603450022154
+graphs/test/1/<attempt>/labels_8004798928044272053
+graphs/test/1/<attempt>/metrics_10211407828568219209
+graphs/test/1/<attempt>/node_names_2944712204298532354
+graphs/test/1/<attempt>/node_names_offsets_14475185708095569284
+graphs/test/1/<attempt>/properties_4370653166743570923
+graphs/test/1/<attempt>/traversal_config_9535545603450022154
 "
     );
     let pending = db.blob_storage.get_pending_cleanup(&task).await?;
@@ -465,36 +541,36 @@ graphs/test/1/traversal_config_9535545603450022154
     snapshot!(
         format_blob_keys(&blobs_after_delete),
         "
-graphs/test/1/_manifest.json
-graphs/test/1/csr_edges_6081454111982381661
-graphs/test/1/csr_offsets_5554658389978294871
-graphs/test/1/edge_metadata_7494857868300892803
-graphs/test/1/edge_metadata_map_15850574455260760061
-graphs/test/1/entry_points_9535545603450022154
-graphs/test/1/labels_8004798928044272053
-graphs/test/1/metrics_10211407828568219209
-graphs/test/1/node_names_2944712204298532354
-graphs/test/1/node_names_offsets_14475185708095569284
-graphs/test/1/properties_4370653166743570923
-graphs/test/1/traversal_config_9535545603450022154
+graphs/test/1/<attempt>/_manifest.json
+graphs/test/1/<attempt>/csr_edges_6081454111982381661
+graphs/test/1/<attempt>/csr_offsets_5554658389978294871
+graphs/test/1/<attempt>/edge_metadata_7494857868300892803
+graphs/test/1/<attempt>/edge_metadata_map_15850574455260760061
+graphs/test/1/<attempt>/entry_points_9535545603450022154
+graphs/test/1/<attempt>/labels_8004798928044272053
+graphs/test/1/<attempt>/metrics_10211407828568219209
+graphs/test/1/<attempt>/node_names_2944712204298532354
+graphs/test/1/<attempt>/node_names_offsets_14475185708095569284
+graphs/test/1/<attempt>/properties_4370653166743570923
+graphs/test/1/<attempt>/traversal_config_9535545603450022154
 "
     );
     let pending = db.blob_storage.get_pending_cleanup(&task).await?;
     snapshot!(
         format_blob_keys(&pending),
         "
-graphs/test/1/_manifest.json
-graphs/test/1/csr_edges_6081454111982381661
-graphs/test/1/csr_offsets_5554658389978294871
-graphs/test/1/edge_metadata_7494857868300892803
-graphs/test/1/edge_metadata_map_15850574455260760061
-graphs/test/1/entry_points_9535545603450022154
-graphs/test/1/labels_8004798928044272053
-graphs/test/1/metrics_10211407828568219209
-graphs/test/1/node_names_2944712204298532354
-graphs/test/1/node_names_offsets_14475185708095569284
-graphs/test/1/properties_4370653166743570923
-graphs/test/1/traversal_config_9535545603450022154
+graphs/test/1/<attempt>/_manifest.json
+graphs/test/1/<attempt>/csr_edges_6081454111982381661
+graphs/test/1/<attempt>/csr_offsets_5554658389978294871
+graphs/test/1/<attempt>/edge_metadata_7494857868300892803
+graphs/test/1/<attempt>/edge_metadata_map_15850574455260760061
+graphs/test/1/<attempt>/entry_points_9535545603450022154
+graphs/test/1/<attempt>/labels_8004798928044272053
+graphs/test/1/<attempt>/metrics_10211407828568219209
+graphs/test/1/<attempt>/node_names_2944712204298532354
+graphs/test/1/<attempt>/node_names_offsets_14475185708095569284
+graphs/test/1/<attempt>/properties_4370653166743570923
+graphs/test/1/<attempt>/traversal_config_9535545603450022154
 "
     );
 
@@ -602,18 +678,18 @@ async fn sweep_respects_limit() -> Result<()> {
     snapshot!(
         format_blob_keys(&pending),
         "
-graphs/test/1/_manifest.json
-graphs/test/1/csr_edges_6081454111982381661
-graphs/test/1/csr_offsets_5554658389978294871
-graphs/test/1/edge_metadata_7494857868300892803
-graphs/test/1/edge_metadata_map_15850574455260760061
-graphs/test/1/entry_points_9535545603450022154
-graphs/test/1/labels_8004798928044272053
-graphs/test/1/metrics_10211407828568219209
-graphs/test/1/node_names_2944712204298532354
-graphs/test/1/node_names_offsets_14475185708095569284
-graphs/test/1/properties_4370653166743570923
-graphs/test/1/traversal_config_9535545603450022154
+graphs/test/1/<attempt>/_manifest.json
+graphs/test/1/<attempt>/csr_edges_6081454111982381661
+graphs/test/1/<attempt>/csr_offsets_5554658389978294871
+graphs/test/1/<attempt>/edge_metadata_7494857868300892803
+graphs/test/1/<attempt>/edge_metadata_map_15850574455260760061
+graphs/test/1/<attempt>/entry_points_9535545603450022154
+graphs/test/1/<attempt>/labels_8004798928044272053
+graphs/test/1/<attempt>/metrics_10211407828568219209
+graphs/test/1/<attempt>/node_names_2944712204298532354
+graphs/test/1/<attempt>/node_names_offsets_14475185708095569284
+graphs/test/1/<attempt>/properties_4370653166743570923
+graphs/test/1/<attempt>/traversal_config_9535545603450022154
 "
     );
 
@@ -627,13 +703,13 @@ graphs/test/1/traversal_config_9535545603450022154
     snapshot!(
         format_blob_keys(&pending),
         "
-graphs/test/1/entry_points_9535545603450022154
-graphs/test/1/labels_8004798928044272053
-graphs/test/1/metrics_10211407828568219209
-graphs/test/1/node_names_2944712204298532354
-graphs/test/1/node_names_offsets_14475185708095569284
-graphs/test/1/properties_4370653166743570923
-graphs/test/1/traversal_config_9535545603450022154
+graphs/test/1/<attempt>/entry_points_9535545603450022154
+graphs/test/1/<attempt>/labels_8004798928044272053
+graphs/test/1/<attempt>/metrics_10211407828568219209
+graphs/test/1/<attempt>/node_names_2944712204298532354
+graphs/test/1/<attempt>/node_names_offsets_14475185708095569284
+graphs/test/1/<attempt>/properties_4370653166743570923
+graphs/test/1/<attempt>/traversal_config_9535545603450022154
 "
     );
 
@@ -647,8 +723,8 @@ graphs/test/1/traversal_config_9535545603450022154
     snapshot!(
         format_blob_keys(&pending),
         "
-graphs/test/1/properties_4370653166743570923
-graphs/test/1/traversal_config_9535545603450022154
+graphs/test/1/<attempt>/properties_4370653166743570923
+graphs/test/1/<attempt>/traversal_config_9535545603450022154
 "
     );
 

@@ -181,10 +181,36 @@ impl XorShift64 {
 }
 
 /// Format a list of blob keys for snapshot testing.
+///
+/// Replaces the per-attempt token in `graphs/{timeline}/{graph_id}/{attempt}/`
+/// with a placeholder. The token is 64 random bits by design — the whole point
+/// is that two store attempts never agree on it — so a snapshot that pinned it
+/// would fail on every run.
+///
+/// Redacting it costs nothing that these snapshots were testing. They exist to
+/// pin *which* blobs a frame produces and what happens to them across
+/// store/delete/sweep, and every blob of one frame shares one token, so both
+/// the set and its ordering survive the substitution intact.
 pub fn format_blob_keys(keys: &[String]) -> String {
-    let mut sorted = keys.to_vec();
+    let mut sorted: Vec<String> = keys.iter().map(|key| redact_attempt(key)).collect();
     sorted.sort();
     sorted.join("\n")
+}
+
+/// Swap the attempt token out of one blob key, if it has one.
+fn redact_attempt(key: &str) -> String {
+    let parts: Vec<&str> = key.split('/').collect();
+    // graphs / {timeline} / {graph_id} / {attempt} / {blob_id}
+    match parts.as_slice() {
+        ["graphs", timeline, graph_id, attempt, blob_id] if is_attempt_token(attempt) => {
+            format!("graphs/{timeline}/{graph_id}/<attempt>/{blob_id}")
+        }
+        _ => key.to_owned(),
+    }
+}
+
+fn is_attempt_token(segment: &str) -> bool {
+    segment.len() == 16 && segment.chars().all(|c| c.is_ascii_hexdigit())
 }
 
 /// Assert two graphs are equal using their JSON representations.

@@ -14,6 +14,7 @@ anyhow = "1.0.104"
 async-trait = "0.1.92"
 futures = { version = "0.3.34", features = ["async-await", "compat"] }
 ll = "10.0.0"
+rand = "0.10.2"
 rayon = "1.11.0"
 serde = { version = "1.0.229", features = ["derive", "rc"] }
 serde_json = { version = "1.0.151", features = ["alloc", "float_roundtrip", "raw_value", "unbounded_depth"] }

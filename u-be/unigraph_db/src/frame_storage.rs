@@ -184,6 +184,11 @@ impl UnigraphStorage {
 
         let blob_keys = external_blob_keys(&row)?;
         if !blob_keys.is_empty() {
+            // The other half of the sweep's audit trail: this is where a key
+            // is condemned, `delete_swept_blob` is where it dies. Without the
+            // frame that scheduled it, a deletion event has no explanation.
+            task.data("cleanup_registered", blob_keys.len());
+            task.data("cleanup_registered_for", key.to_string());
             conn.register_blobs_for_cleanup(&blob_keys, task).await?;
         }
 
@@ -204,6 +209,7 @@ impl UnigraphStorage {
     /// the batch and starve cleanup of newly-registered blobs under the cap.
     ///
     /// Returns the number of blobs swept.
+    #[ll::task]
     pub async fn sweep_blobs(
         &self,
         min_age: std::time::Duration,
@@ -215,26 +221,51 @@ impl UnigraphStorage {
 
         let mut conn = self.graph.conn().await?;
         let blob_keys = conn
-            .get_blobs_pending_cleanup_older_than(cutoff, limit, task)
+            .get_blobs_pending_cleanup_older_than(cutoff, limit, &task)
             .await?;
         drop(conn);
 
         if blob_keys.is_empty() {
             return Ok(0);
         }
+        task.data("candidates", blob_keys.len());
 
         // Delete from external blob storage in parallel (outside any transaction).
         let delete_futs: Vec<_> = blob_keys
             .iter()
-            .map(|key| self.blob.delete_blob(key))
+            .map(|key| self.delete_swept_blob(key, &task))
             .collect();
         futures::future::try_join_all(delete_futs).await?;
 
         // Unregister from cleanup table (separate short-lived connection).
         let mut conn = self.graph.conn_write().await?;
-        conn.unregister_blobs_for_cleanup(&blob_keys, task).await?;
+        conn.unregister_blobs_for_cleanup(&blob_keys, &task).await?;
 
+        task.data("swept", blob_keys.len());
         Ok(blob_keys.len())
+    }
+
+    /// Delete one swept blob, writing down which key went.
+    ///
+    /// One event per key, deliberately, because a blob deletion is the one
+    /// thing in this system that cannot be undone and the sweep's own tally
+    /// only ever says *how many*. When a frame turns up with its blobs missing,
+    /// this is the only record of what took them — and until it existed there
+    /// was none: nothing on the OSS path logged a key, so the whole question
+    /// had to be answered by inference from the sweep's failures.
+    ///
+    /// Volume is bounded by the sweep's own `limit` (200 on the piggybacked
+    /// path), and a sweep with nothing to do emits nothing at all.
+    async fn delete_swept_blob(&self, key: &str, task: &ll::Task) -> Result<()> {
+        task.spawn("delete_swept_blob", |task| async move {
+            task.data("key", key);
+            let result = self.blob.delete_blob(key).await;
+            if let Err(ref error) = result {
+                task.data("delete_error", format!("{error:#}"));
+            }
+            result
+        })
+        .await
     }
 
     // --- internal helpers ---
