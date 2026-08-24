@@ -13,6 +13,7 @@ use crate::types::array_graph::offset_graph::DFSConfigured;
 use crate::types::array_graph::offset_graph::EdgeOverrides;
 use crate::types::array_graph::offset_graph::edge_flags::EdgeFlags;
 use crate::types::array_graph::tiers::MAX_TIERS;
+use crate::types::twin_graph::GraphSide;
 use crate::types::twin_graph::NodeDiff;
 
 /// This struct is used to compute transitive deltas in delta view.
@@ -62,6 +63,13 @@ use crate::types::twin_graph::NodeDiff;
 /// calculation, because then did not change.
 /// This way the delta for the node D will be:
 /// Delta with exclusion: 1 (0 on the left, 1 on the right, which is its self size)
+///
+/// # Why the exclusion is safe
+///
+/// Skipping a node subtracts it from *both* sides, so it cancels and the delta
+/// still adds up to the real difference. That only holds while the node lands
+/// in the same bucket on both sides — see [`CountChangedNodesMetricsForDelta`],
+/// which has to treat a tier move as a change for exactly this reason.
 pub trait ShouldCount {
     fn should_count(&self, node_idx: NodeIDX) -> bool;
 }
@@ -71,7 +79,7 @@ pub struct CountChangedNodesCountsForDelta<'a> {
     pub l: &'a ArrayGraph,
     pub r: &'a ArrayGraph,
     /// Which side's DFS is calling should_count.
-    pub dfs_side: crate::types::twin_graph::GraphSide,
+    pub dfs_side: GraphSide,
     /// Remap tables for translating between sides.
     pub remap: &'a crate::TwinRemap,
 }
@@ -87,33 +95,8 @@ impl ShouldCount for CountAllNodes {
 
 impl<'a> ShouldCount for CountChangedNodesCountsForDelta<'a> {
     fn should_count(&self, node_idx: NodeIDX) -> bool {
-        use crate::types::twin_graph::GraphSide;
-
-        let (l_unreachable, r_unreachable) = match self.dfs_side {
-            GraphSide::Left => {
-                let l_unreach = self.l.is_node_unreachable(node_idx);
-                let merged = self.remap.l_to_twin[usize::from(node_idx)];
-                let r_idx = self.remap.twin_to_r[merged];
-                let r_unreach = r_idx
-                    .map(|idx| self.r.is_node_unreachable(idx))
-                    .unwrap_or(true);
-                (l_unreach, r_unreach)
-            }
-            GraphSide::Right => {
-                let r_unreach = self.r.is_node_unreachable(node_idx);
-                let merged = self.remap.r_to_twin[usize::from(node_idx)];
-                let l_idx = self.remap.twin_to_l[merged];
-                let l_unreach = l_idx
-                    .map(|idx| self.l.is_node_unreachable(idx))
-                    .unwrap_or(true);
-                (l_unreach, r_unreach)
-            }
-        };
-
-        matches!(
-            (l_unreachable, r_unreachable),
-            (true, false) | (false, true)
-        )
+        let sides = SideIndices::of(self.remap, self.dfs_side, node_idx);
+        reachability_changed(self.l, self.r, &sides)
     }
 }
 
@@ -122,49 +105,74 @@ pub struct CountChangedNodesMetricsForDelta<'a> {
     pub l: &'a ArrayGraph,
     pub r: &'a ArrayGraph,
     pub node_diff: &'a [NodeDiff],
-    pub dfs_side: crate::types::twin_graph::GraphSide,
+    pub dfs_side: GraphSide,
     pub remap: &'a crate::TwinRemap,
 }
 
 impl<'a> ShouldCount for CountChangedNodesMetricsForDelta<'a> {
     fn should_count(&self, node_idx: NodeIDX) -> bool {
-        use crate::types::twin_graph::GraphSide;
+        let sides = SideIndices::of(self.remap, self.dfs_side, node_idx);
+        self.node_diff[sides.merged].has_changed_metrics()
+            || reachability_changed(self.l, self.r, &sides)
+            || tier_changed(self.l, self.r, &sides)
+    }
+}
 
-        // Translate to merged IDX for node_diff lookup
-        let merged = match self.dfs_side {
-            GraphSide::Left => self.remap.l_to_twin[usize::from(node_idx)],
-            GraphSide::Right => self.remap.r_to_twin[usize::from(node_idx)],
-        };
+/// Where one node lives on each side, plus its merged index.
+struct SideIndices {
+    merged: NodeIDX,
+    l: Option<NodeIDX>,
+    r: Option<NodeIDX>,
+}
 
-        let metric_changed = self.node_diff[merged].has_changed_metrics();
-        if metric_changed {
-            return true;
-        }
-
-        let (l_unreachable, r_unreachable) = match self.dfs_side {
+impl SideIndices {
+    fn of(remap: &crate::TwinRemap, dfs_side: GraphSide, node_idx: NodeIDX) -> Self {
+        match dfs_side {
             GraphSide::Left => {
-                let l_unreach = self.l.is_node_unreachable(node_idx);
-                let r_idx = self.remap.twin_to_r[merged];
-                let r_unreach = r_idx
-                    .map(|idx| self.r.is_node_unreachable(idx))
-                    .unwrap_or(true);
-                (l_unreach, r_unreach)
+                let merged = remap.l_to_twin[usize::from(node_idx)];
+                Self {
+                    merged,
+                    l: Some(node_idx),
+                    r: remap.twin_to_r[merged],
+                }
             }
             GraphSide::Right => {
-                let r_unreach = self.r.is_node_unreachable(node_idx);
-                let l_idx = self.remap.twin_to_l[merged];
-                let l_unreach = l_idx
-                    .map(|idx| self.l.is_node_unreachable(idx))
-                    .unwrap_or(true);
-                (l_unreach, r_unreach)
+                let merged = remap.r_to_twin[usize::from(node_idx)];
+                Self {
+                    merged,
+                    l: remap.twin_to_l[merged],
+                    r: Some(node_idx),
+                }
             }
-        };
-
-        matches!(
-            (l_unreachable, r_unreachable),
-            (true, false) | (false, true)
-        )
+        }
     }
+}
+
+/// A node missing from a side counts as unreachable there.
+fn reachability_changed(l: &ArrayGraph, r: &ArrayGraph, sides: &SideIndices) -> bool {
+    let l_unreachable = sides.l.is_none_or(|idx| l.is_node_unreachable(idx));
+    let r_unreachable = sides.r.is_none_or(|idx| r.is_node_unreachable(idx));
+    l_unreachable != r_unreachable
+}
+
+/// A node whose metric never moved still moves *value between tiers* when its
+/// own tier changes — e.g. an eagerly-loaded dep that became lazy.
+///
+/// Skipping such a node is only safe because the two sides' contributions
+/// cancel, and they cancel per *tier bucket*. Once the buckets differ the
+/// cancellation is wrong in both directions at once, so a tier move has to be
+/// counted even though nothing about the node itself changed.
+///
+/// Compares tier *indices*, which is what decides the bucket; the surrounding
+/// delta already assumes both sides run the same tier list.
+///
+/// The www explorer this was ported from spells the same predicate
+/// `tierLRaw !== tierRRaw`, in
+/// `www/html/intern/js/unigraph/3/explorer/plugins/graph/UnigraphWWWTieredSizeMetrics.js`.
+fn tier_changed(l: &ArrayGraph, r: &ArrayGraph, sides: &SideIndices) -> bool {
+    let l_tier = sides.l.and_then(|idx| l.node_tier_idx(idx));
+    let r_tier = sides.r.and_then(|idx| r.node_tier_idx(idx));
+    l_tier != r_tier
 }
 
 pub fn get_transitive_tiered_metric_values(

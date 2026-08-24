@@ -232,7 +232,7 @@ mod tests {
     "Delta:",
     {
         "T1": 2.0,
-        "T2": 5.0,
+        "T2": 6.0,
         "T3": 5.0,
         "T4": 5.0,
     },
@@ -275,5 +275,108 @@ mod tests {
         );
 
         Ok(())
+    }
+}
+
+/// The delta skips nodes that didn't change, which is only sound because their
+/// two sides cancel. A node whose tier moved does *not* cancel — it lands in a
+/// different cumulative bucket on each side — so the tiered delta must stay
+/// equal to `right - left` for every tier.
+///
+/// In this fixture the edge `B -> J` is tagged `RD` on the left and `RDFD` on
+/// the right, which moves `J` from T3 to T2 without touching its metric.
+#[cfg(test)]
+mod tier_move_tests {
+    use k9::snapshot;
+
+    use super::*;
+    use crate::tests::test_graphs::make_twin_graph_with_tier_config;
+
+    #[test]
+    fn test_tier_moves_are_not_cancelled_out() -> Result<()> {
+        let tg = make_twin_graph_with_tier_config()?;
+        let nodes = ["A", "B", "D", "J", "T"];
+
+        let mut rows = Vec::new();
+        for name in nodes {
+            rows.push((name, tiered_row(&tg, name)?));
+        }
+
+        snapshot!(
+            format_table(&rows),
+            "
+node  tier         left      right      delta   right-left
+A     T1              7          9          2            2
+A     T2              9         15          6            6
+A     T3             10         15          5            5
+A     T4             11         16          5            5
+B     T1              1          1          0            0
+B     T2              2          6          4            4
+B     T3              3          6          3            3
+B     T4              4          7          3            3
+D     T1              5          5          0            0
+D     T2              7          7          0            0
+D     T3              7          7          0            0
+D     T4              7          7          0            0
+J     T1              0          0          0            0
+J     T2              1          5          4            4
+J     T3              2          5          3            3
+J     T4              2          5          3            3
+T     T1              0          6          1            6
+T     T2              0          8          1            8
+T     T3              0          8          1            8
+T     T4              0          8          1            8
+
+"
+        );
+        Ok(())
+    }
+
+    /// `(tier, left, right, delta)` for every tier of `size` on one node.
+    fn tiered_row(tg: &TwinGraph, name: &str) -> Result<Vec<(String, f64, f64, f64)>> {
+        let m = "size";
+        let r_idx = tg.r.data.node_names_ordered.name_to_idx_log(name).unwrap();
+        let merged = tg.to_merged(GraphSide::Right, r_idx);
+        let l_idx = tg.to_local(GraphSide::Left, merged);
+
+        let left = match l_idx {
+            Some(idx) => tg.l.get_transitive_tiered_metric_values(idx, m, false)?,
+            None => BTreeMap::new(),
+        };
+        let right = tg.r.get_transitive_tiered_metric_values(r_idx, m, false)?;
+        let delta = tg.get_transitive_tiered_delta(merged, m)?;
+
+        Ok(tg
+            .r
+            .runtime
+            .state
+            .tiers
+            .iter()
+            .map(|(tier, _)| {
+                let get = |map: &BTreeMap<String, f64>| *map.get(tier).unwrap_or(&0.0);
+                (tier.clone(), get(&left), get(&right), get(&delta))
+            })
+            .collect())
+    }
+
+    fn format_table(rows: &[(&str, Vec<(String, f64, f64, f64)>)]) -> String {
+        let mut out = format!(
+            "{:<5} {:<8} {:>8} {:>10} {:>10} {:>12}\n",
+            "node", "tier", "left", "right", "delta", "right-left"
+        );
+        for (name, tiers) in rows {
+            for (tier, left, right, delta) in tiers {
+                out.push_str(&format!(
+                    "{:<5} {:<8} {:>8} {:>10} {:>10} {:>12}\n",
+                    name,
+                    tier,
+                    left,
+                    right,
+                    delta,
+                    right - left
+                ));
+            }
+        }
+        out
     }
 }
