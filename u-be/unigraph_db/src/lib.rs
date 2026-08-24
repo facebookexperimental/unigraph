@@ -37,6 +37,7 @@ use std::sync::Arc;
 use anyhow::Result;
 pub use context::DEFAULT_CONFIG_INLINE_BLOB_THRESHOLD;
 use context::UnigraphDbContext;
+pub use frame_storage::ErrorFrameStored;
 pub use graph_range::GraphRange;
 pub use graph_range::GraphRangeBuilder;
 pub use namespaces::AdjacentDeltasOps;

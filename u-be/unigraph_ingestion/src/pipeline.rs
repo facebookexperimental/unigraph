@@ -257,5 +257,9 @@ async fn store_error(
         timestamp: unigraph_timestamp::Timestamp::now(),
         message: message.to_string(),
     }];
-    db.graph.store_error(key, &errors, task).await
+    // The outcome is deliberately dropped: this pipeline records one failure
+    // per commit and never retries, so it has nothing to do with a frame that
+    // someone else built in the meantime.
+    db.graph.store_error(key, &errors, task).await?;
+    Ok(())
 }

@@ -37,6 +37,22 @@ use unigraph_storage_core::UnigraphGraphConnection;
 
 use crate::storage::UnigraphStorage;
 
+/// What [`UnigraphStorage::store_error`] did with the failure it was handed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ErrorFrameStored {
+    /// The Error frame was written, replacing an Empty or Error frame if one
+    /// was there. Its recorded attempt list is the frame's attempt count.
+    Stored,
+    /// The frame had already been built, so the failure was discarded rather
+    /// than clobbering a good graph. Someone else won; nothing to record.
+    SupersededBy(FrameType),
+}
+
+/// Frame types an Error frame may replace: the ones holding no graph.
+fn is_unbuilt(frame_type: &FrameType) -> bool {
+    matches!(frame_type, FrameType::Empty | FrameType::Error)
+}
+
 /// Pre-processed blobs ready for storage — either compressed inline bytes
 /// or external blob keys (already uploaded).
 pub(crate) struct PreparedBlobs {
@@ -49,16 +65,43 @@ pub(crate) struct PreparedBlobs {
 }
 
 impl UnigraphStorage {
-    /// Store error data for a failed graph computation.
+    /// Store error data for a failed graph computation, replacing whatever
+    /// unbuilt frame is already at `key`.
     ///
     /// Schema-agnostic — no validation, no history.
+    ///
+    /// # Replacing an Error frame is the retry policy, not an edge case
+    ///
+    /// The ingestion jobs record each failure as an Error frame carrying every
+    /// attempt so far, so the stored list's length *is* the attempt count and
+    /// `--max-attempts` is what eventually retires an unbuildable frame. The
+    /// backends' `store_frame` only clears an `Empty` row before inserting, so
+    /// without the delete below the second failure collides on the primary key.
+    /// That is not a rare path: it pinned every frame's count at one, made
+    /// `--max-attempts` unreachable, and left `www` and `www-budget` retrying
+    /// 2,150 permanently-broken frames on every run.
+    ///
+    /// # Why the frame is re-read here
+    ///
+    /// A frame that failed for *this* worker may have been built by another one
+    /// in the meantime, and a stale failure must never clobber a good graph.
+    /// The read happens after `get_timeline_config_and_lock`, which is
+    /// `SELECT ... FOR UPDATE` on MySQL and `BEGIN EXCLUSIVE` on SQLite and is
+    /// taken by every frame writer on the timeline — so between this read and
+    /// the write below, nothing else can change the frame.
+    ///
+    /// Finding a Full or Delta frame is not an error. It means the graph got
+    /// built and the failure is stale news, so it is reported as
+    /// [`ErrorFrameStored::SupersededBy`] and the transaction rolls back. The
+    /// blobs already uploaded for the discarded Error frame stay registered for
+    /// cleanup and get swept, which is exactly what that registration is for.
     pub async fn store_error(
         &self,
         key: &GraphTimeKey,
         errors: &[TimestampedError],
         config: &ArrayGraphSerializablePackageConfig,
         task: &ll::Task,
-    ) -> Result<()> {
+    ) -> Result<ErrorFrameStored> {
         let error_count = errors.len() as u32;
         let errors_vec = errors.to_vec();
         let package =
@@ -75,6 +118,18 @@ impl UnigraphStorage {
         conn.get_timeline_config_and_lock(&key.timeline_id, task)
             .await?;
 
+        let graph_key = key.graph_key();
+        if let Some(existing) = get_frame_manifest_on_conn(&mut *conn, &graph_key, task).await? {
+            if !is_unbuilt(&existing.frame_type) {
+                task.data("superseded_by", format!("{:?}", existing.frame_type));
+                return Ok(ErrorFrameStored::SupersededBy(existing.frame_type));
+            }
+            // Delete before store: the delete registers the outgoing frame's
+            // blobs for cleanup and the store unregisters the incoming ones.
+            self.delete_frame_on_conn(&mut *conn, &graph_key, task)
+                .await?;
+        }
+
         self.store_package_on_conn(
             &mut *conn,
             key,
@@ -89,7 +144,7 @@ impl UnigraphStorage {
         .await?;
 
         conn.commit_transaction(task).await?;
-        Ok(())
+        Ok(ErrorFrameStored::Stored)
     }
 
     /// Fetch and reconstruct a graph from storage.

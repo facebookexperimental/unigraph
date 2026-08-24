@@ -21,6 +21,7 @@ use unigraph_storage_core::TimestampedError;
 
 use super::AdjacentDeltasOps;
 use crate::context::UnigraphDbContext;
+use crate::frame_storage::ErrorFrameStored;
 use crate::schemas::adjacent_deltas;
 use crate::schemas::full_or_delta;
 
@@ -101,13 +102,18 @@ impl Graph {
     }
 
     /// Store error data for a failed graph computation.
+    ///
+    /// Replaces an Empty or Error frame at the same key; refuses to clobber one
+    /// that has since been built. See [`UnigraphStorage::store_error`].
+    ///
+    /// [`UnigraphStorage::store_error`]: crate::UnigraphStorage::store_error
     #[task(tags(l3))]
     pub async fn store_error(
         &self,
         key: &GraphTimeKey,
         errors: &[TimestampedError],
         task: &ll::Task,
-    ) -> Result<()> {
+    ) -> Result<ErrorFrameStored> {
         let config = self.ctx.pack_config_for_key(key);
         self.ctx
             .storage

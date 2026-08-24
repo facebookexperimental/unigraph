@@ -283,7 +283,8 @@ async fn store_errors(
         .db
         .graph
         .store_error(&key(tid, graph_id, unix_ts), &errors, &t.task)
-        .await
+        .await?;
+    Ok(())
 }
 
 fn key(tid: &TimelineID, graph_id: i64, unix_ts: i64) -> GraphTimeKey {

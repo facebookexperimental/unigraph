@@ -10,6 +10,7 @@ mod graph_range;
 mod metric_history;
 mod put_new_empty_frames;
 mod randomized;
+mod store_error_replace;
 mod sweep_poison;
 mod timeline_delete;
 mod timeline_management;
