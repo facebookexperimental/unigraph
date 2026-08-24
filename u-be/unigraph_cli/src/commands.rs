@@ -3,6 +3,5 @@
 pub mod compact;
 pub mod graph;
 pub mod history;
-pub mod ingest;
 pub mod serve;
 pub mod timelines;

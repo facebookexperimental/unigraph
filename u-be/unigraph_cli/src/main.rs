@@ -2,7 +2,6 @@
 
 mod commands;
 
-use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -12,7 +11,6 @@ use commands::compact::Compact;
 use commands::graph::Graph;
 use commands::graph::GraphCommands;
 use commands::history::History;
-use commands::ingest::Ingest;
 use commands::serve::Serve;
 use commands::timelines::Timelines;
 use crossterm::tty::IsTty;
@@ -50,7 +48,6 @@ async fn run(args: Args) -> anyhow::Result<()> {
 
     let result = match args.command {
         Commands::Serve(cmd) => cmd.run(&ctx, &task).await,
-        Commands::Ingest(cmd) => cmd.run(&ctx, &task).await,
         Commands::Timelines(cmd) => cmd.run(&ctx, &task).await,
         Commands::Compact(cmd) => cmd.run(&ctx, &task).await,
         Commands::History(cmd) => cmd.run(&ctx, &task).await,
@@ -84,7 +81,6 @@ struct Args {
 #[derive(Subcommand)]
 enum Commands {
     Serve(Serve),
-    Ingest(Ingest),
     /// Timeline operations: list, inspect frames, collect stats
     Timelines(Timelines),
     Compact(Compact),
@@ -102,16 +98,6 @@ pub(crate) fn default_sqlite_path() -> PathBuf {
         .expect("could not determine home directory")
         .join(".unigraph")
         .join("sqlite")
-}
-
-pub(crate) fn expand_tilde(path: &Path) -> PathBuf {
-    if let Ok(rest) = path.strip_prefix("~") {
-        dirs::home_dir()
-            .expect("could not determine home directory")
-            .join(rest)
-    } else {
-        path.to_path_buf()
-    }
 }
 
 pub(crate) fn parse_timestamp(
