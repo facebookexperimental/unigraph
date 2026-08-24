@@ -728,10 +728,13 @@ pub trait UnigraphBlobStorage: Send + Sync {
     /// not an error.** The cleanup queue routinely holds keys with no blob
     /// behind them — the crash-safe store path registers a key before
     /// uploading it, so a store that dies in between leaves a registration for
-    /// a blob that was never written — and
-    /// [`sweep_blobs`](crate::UnigraphGraphConnection) unregisters a batch only
-    /// if every delete in it succeeded. A backend that errors on a missing key
-    /// therefore wedges the sweep permanently.
+    /// a blob that was never written. A backend that errors on those never
+    /// clears them: the sweep keeps every failed key queued and retries it on
+    /// the next pass, so a stale key would be reported as a failure forever.
+    ///
+    /// It no longer takes the rest of the batch down with it — the sweep
+    /// unregisters the keys that did delete regardless — but "permanently
+    /// failing, permanently retried" is not a state to design for.
     async fn delete_blob(&self, key: &str) -> Result<()>;
 
     /// Check if a blob exists.

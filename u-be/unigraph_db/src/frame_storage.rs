@@ -205,10 +205,28 @@ impl UnigraphStorage {
     ///
     /// `limit` caps how many blobs a single sweep processes (`None` = no cap),
     /// so a large backlog can be drained incrementally without unbounded work.
-    /// Draining newest-first means a persistently-failing old blob can't wedge
-    /// the batch and starve cleanup of newly-registered blobs under the cap.
     ///
-    /// Returns the number of blobs swept.
+    /// # A failed delete costs one key, not the queue
+    ///
+    /// Deleting and unregistering are separate steps, and only the first is
+    /// per-key: the blobs go one at a time, the crossing-off used to be one
+    /// batch. So a single undeletable key aborted the batch before it could
+    /// unregister — while the other deletes, running concurrently, had already
+    /// landed. The blobs were gone and the queue still listed them, so the next
+    /// sweep pulled the same keys, hit the same bad one, and crossed nothing
+    /// off again. One key could stall cleanup permanently, for every timeline.
+    ///
+    /// That is not a stalled queue, it is a *grinding* one: every sweep
+    /// re-deletes everything in the window. Since blob keys used to be
+    /// reproducible, a job that rebuilt a queued frame landed on the same keys
+    /// and had its live blobs deleted again minutes later. Between 2026-07-31
+    /// and 08-21 that ran ~17k jammed sweeps a day and cost `www` 664 frames.
+    ///
+    /// So the successes are unregistered even when siblings fail. Progress is
+    /// durable; only the genuinely-undeletable keys stay queued, and the call
+    /// still returns `Err` so the failure is not silent.
+    ///
+    /// Returns the number of blobs actually deleted.
     #[ll::task]
     pub async fn sweep_blobs(
         &self,
@@ -230,19 +248,38 @@ impl UnigraphStorage {
         }
         task.data("candidates", blob_keys.len());
 
-        // Delete from external blob storage in parallel (outside any transaction).
-        let delete_futs: Vec<_> = blob_keys
-            .iter()
-            .map(|key| self.delete_swept_blob(key, &task))
-            .collect();
-        futures::future::try_join_all(delete_futs).await?;
+        // Delete from external blob storage in parallel (outside any
+        // transaction). `join_all`, not `try_join_all`: a key that cannot be
+        // deleted must not decide the fate of the other 199.
+        let outcomes = futures::future::join_all(
+            blob_keys
+                .iter()
+                .map(|key| self.delete_swept_blob(key, &task)),
+        )
+        .await;
+        let (deleted, failures) = split_sweep_outcomes(&blob_keys, outcomes);
 
         // Unregister from cleanup table (separate short-lived connection).
-        let mut conn = self.graph.conn_write().await?;
-        conn.unregister_blobs_for_cleanup(&blob_keys, &task).await?;
+        // Only the keys that are actually gone, and *even when others failed* —
+        // see the doc comment.
+        if !deleted.is_empty() {
+            let mut conn = self.graph.conn_write().await?;
+            conn.unregister_blobs_for_cleanup(&deleted, &task).await?;
+        }
 
-        task.data("swept", blob_keys.len());
-        Ok(blob_keys.len())
+        task.data("swept", deleted.len());
+        if !failures.is_empty() {
+            task.data("failed", failures.len());
+            task.data("first_failure", &failures[0]);
+            anyhow::bail!(
+                "swept {} of {} blobs; {} could not be deleted and stay queued. First: {}",
+                deleted.len(),
+                blob_keys.len(),
+                failures.len(),
+                failures[0]
+            );
+        }
+        Ok(deleted.len())
     }
 
     /// Delete one swept blob, writing down which key went.
@@ -554,6 +591,26 @@ pub(crate) fn prepare_inline_blobs(
     } else {
         Ok(None)
     }
+}
+
+/// Split a sweep's per-key outcomes into the keys that are gone and the ones
+/// that are still there.
+///
+/// Failures come back rendered rather than as errors: the caller only reports
+/// them, and pairing the message with its key is what makes that report worth
+/// reading.
+fn split_sweep_outcomes(keys: &[String], outcomes: Vec<Result<()>>) -> (Vec<String>, Vec<String>) {
+    let mut deleted = Vec::with_capacity(keys.len());
+    let mut failures = Vec::new();
+
+    for (key, outcome) in keys.iter().zip(outcomes) {
+        match outcome {
+            Ok(()) => deleted.push(key.clone()),
+            Err(error) => failures.push(format!("{key}: {error:#}")),
+        }
+    }
+
+    (deleted, failures)
 }
 
 /// The manifest of a row that was read with `with_manifest` or `with_data`.
