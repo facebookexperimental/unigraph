@@ -72,6 +72,12 @@ impl UnigraphDbContext {
     /// names all the others. `modify_blob_id` is applied to chunk IDs and
     /// manifest IDs alike, so putting it here covers both by construction.
     ///
+    /// Renaming the manifest is safe because nothing reconstructs its key by
+    /// convention: `store_package_on_conn` keeps the authoritative manifest in
+    /// the frame row's `manifest_json` column, and the stored blob's key is
+    /// whatever `self_reference` inside it says. The blob is a self-describing
+    /// copy, never something the reader goes looking for by name.
+    ///
     /// The cost is that a failed store leaks a full set of blobs instead of
     /// being overwritten in place by the retry, so this leans harder on the
     /// sweeper actually working.
@@ -81,13 +87,30 @@ impl UnigraphDbContext {
         let graph_id = key.graph_id;
         config.modify_blob_id = Some(Arc::new(move |id| {
             BlobID(format!(
-                "graphs/{}/{}/{}_{:016x}",
+                "graphs/{}/{}/{}",
                 timeline_id.0,
                 graph_id.0,
-                id,
-                rand::rng().random::<u64>()
+                with_random_suffix(id)
             ))
         }));
         config
     }
 }
+
+/// Append 64 random bits to a blob ID, before the extension if it has one.
+///
+/// `csr_edges_chunk_3` -> `csr_edges_chunk_3_1f4a09c6b73e5d82`
+/// `_delta_manifest.json` -> `_delta_manifest_1f4a09c6b73e5d82.json`
+///
+/// Only the manifests carry an extension, and keeping `.json` on the end of
+/// them is worth the two lines: it is what tells you the blob is readable
+/// without fetching it.
+fn with_random_suffix(id: &str) -> String {
+    let random = rand::rng().random::<u64>();
+    match id.strip_suffix(JSON_EXTENSION) {
+        Some(stem) => format!("{stem}_{random:016x}{JSON_EXTENSION}"),
+        None => format!("{id}_{random:016x}"),
+    }
+}
+
+const JSON_EXTENSION: &str = ".json";

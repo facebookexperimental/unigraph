@@ -196,13 +196,20 @@ pub fn format_blob_keys(keys: &[String]) -> String {
     sorted.join("\n")
 }
 
-/// Swap a blob key's trailing `_{16 hex}` for `_<rand>`, if it has one.
+/// Swap a blob key's random suffix for `_<rand>`, if it has one.
+///
+/// Handles both shapes the storage layer produces — `csr_edges_{rand}` and
+/// `_delta_manifest_{rand}.json`, the latter keeping its extension.
 ///
 /// No false positives to worry about: the rest of a blob ID is a fixed field
 /// name plus an optional decimal `_chunk_N`, never sixteen hex digits.
 fn redact_random_suffix(key: &str) -> String {
-    match key.rsplit_once('_') {
-        Some((head, suffix)) if is_random_suffix(suffix) => format!("{head}_<rand>"),
+    let (stem, extension) = match key.strip_suffix(".json") {
+        Some(stem) => (stem, ".json"),
+        None => (key, ""),
+    };
+    match stem.rsplit_once('_') {
+        Some((head, suffix)) if is_random_suffix(suffix) => format!("{head}_<rand>{extension}"),
         _ => key.to_owned(),
     }
 }

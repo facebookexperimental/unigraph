@@ -349,7 +349,7 @@ graph_id             timestamp                type       base       expires_at
     snapshot!(
         format_blob_keys(&blobs),
         "
-graphs/test/1/_manifest.json_<rand>
+graphs/test/1/_manifest_<rand>.json
 graphs/test/1/csr_edges_<rand>
 graphs/test/1/csr_offsets_<rand>
 graphs/test/1/edge_metadata_<rand>
@@ -394,7 +394,7 @@ graph_id             timestamp                type       base       expires_at
     snapshot!(
         format_blob_keys(&blobs_after),
         "
-graphs/test/1/_manifest.json_<rand>
+graphs/test/1/_manifest_<rand>.json
 graphs/test/1/csr_edges_<rand>
 graphs/test/1/csr_offsets_<rand>
 graphs/test/1/edge_metadata_<rand>
@@ -414,7 +414,7 @@ graphs/test/1/traversal_config_<rand>
     snapshot!(
         format_blob_keys(&pending),
         "
-graphs/test/1/_manifest.json_<rand>
+graphs/test/1/_manifest_<rand>.json
 graphs/test/1/csr_edges_<rand>
 graphs/test/1/csr_offsets_<rand>
 graphs/test/1/edge_metadata_<rand>
@@ -515,7 +515,7 @@ async fn sweep_deleted_blobs() -> Result<()> {
     snapshot!(
         format_blob_keys(&blobs),
         "
-graphs/test/1/_manifest.json_<rand>
+graphs/test/1/_manifest_<rand>.json
 graphs/test/1/csr_edges_<rand>
 graphs/test/1/csr_offsets_<rand>
 graphs/test/1/edge_metadata_<rand>
@@ -541,7 +541,7 @@ graphs/test/1/traversal_config_<rand>
     snapshot!(
         format_blob_keys(&blobs_after_delete),
         "
-graphs/test/1/_manifest.json_<rand>
+graphs/test/1/_manifest_<rand>.json
 graphs/test/1/csr_edges_<rand>
 graphs/test/1/csr_offsets_<rand>
 graphs/test/1/edge_metadata_<rand>
@@ -559,7 +559,7 @@ graphs/test/1/traversal_config_<rand>
     snapshot!(
         format_blob_keys(&pending),
         "
-graphs/test/1/_manifest.json_<rand>
+graphs/test/1/_manifest_<rand>.json
 graphs/test/1/csr_edges_<rand>
 graphs/test/1/csr_offsets_<rand>
 graphs/test/1/edge_metadata_<rand>
@@ -678,7 +678,7 @@ async fn sweep_respects_limit() -> Result<()> {
     snapshot!(
         format_blob_keys(&pending),
         "
-graphs/test/1/_manifest.json_<rand>
+graphs/test/1/_manifest_<rand>.json
 graphs/test/1/csr_edges_<rand>
 graphs/test/1/csr_offsets_<rand>
 graphs/test/1/edge_metadata_<rand>
