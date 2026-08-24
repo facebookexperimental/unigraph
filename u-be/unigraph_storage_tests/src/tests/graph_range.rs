@@ -392,8 +392,9 @@ async fn retry_registers_error_blobs_for_cleanup() -> Result<()> {
     // Exactly the overwritten Error frame's blobs are now awaiting the sweeper.
     let pending = db.blob_storage.get_pending_cleanup(&task).await?;
     let prefix = format!("graphs/{}/0/", tl);
+    // Blob IDs carry a random suffix, so match on the part that names the blob.
     assert!(
-        pending.iter().any(|k| k.ends_with("_error_manifest.json")),
+        pending.iter().any(|k| k.contains("_error_manifest.json")),
         "error manifest blob should be pending cleanup, got {:?}",
         pending,
     );
@@ -405,7 +406,7 @@ async fn retry_registers_error_blobs_for_cleanup() -> Result<()> {
     // The retry's own Full-frame blobs must NOT be queued for deletion.
     let manifest = format!("{}_manifest.json", prefix);
     assert!(
-        !pending.contains(&manifest),
+        !pending.iter().any(|k| k.starts_with(&manifest)),
         "the new Full frame's manifest must stay live, got {:?}",
         pending,
     );

@@ -7,8 +7,10 @@
 //! offsets) use raw little-endian bytes; structured fields (tagged edges,
 //! metrics, labels, etc.) use JSON.
 //!
-//! The result is a set of content-addressed blobs plus a [`ArrayGraphSerializableManifest`]
-//! that records which blobs belong to which field.
+//! The result is a set of blobs plus a [`ArrayGraphSerializableManifest`] that
+//! records which blobs belong to which field. Blob IDs name the field and chunk
+//! only; making them unique is the storage layer's job, via
+//! [`modify_blob_id`](ArrayGraphSerializablePackageConfig::modify_blob_id).
 //!
 //! ## Pack / Unpack
 //!
@@ -33,7 +35,6 @@ use unigraph_serialization::from_base64;
 use unigraph_serialization::from_zstd;
 use unigraph_serialization::to_base_64;
 use unigraph_serialization::to_zstd;
-use xxhash_rust::xxh3::xxh3_64;
 
 use crate::ArrayGraphNodes;
 use crate::ArrayGraphSerializable;
@@ -1118,7 +1119,20 @@ fn into_blobs_streaming<T: BlobCodec + Sync>(
     collect_blob_ids(indexed, name, all_blobs, cfg)
 }
 
-/// Assign content-addressed blob IDs to a list of compressed chunks.
+/// Assign blob IDs to a list of compressed chunks.
+///
+/// The ID is `{field}` or `{field}_chunk_{i}` — what the blob *is*, and nothing
+/// about what it contains. Making a blob ID unique is
+/// [`modify_blob_id`](ArrayGraphSerializablePackageConfig::modify_blob_id)'s
+/// job, because uniqueness is a property of where the package is being stored,
+/// not of the package.
+///
+/// These used to end in an `xxh3_64` of the compressed chunk. It bought no
+/// deduplication — every storage prefix in use scopes IDs to a single frame
+/// already — and content-addressing turned out to be actively harmful there:
+/// two writers packing the same graph produced byte-identical IDs, and the
+/// storage layer's cleanup queue cannot tell one writer's blob from another's.
+/// See `unigraph_db`'s `pack_config_for_key`.
 fn collect_blob_ids(
     compressed: Vec<Result<Vec<u8>>>,
     name: &str,
@@ -1130,14 +1144,13 @@ fn collect_blob_ids(
 
     for (i, data) in compressed.into_iter().enumerate() {
         let data = data?;
-        let xx = xxh3_64(&data);
         let chunk_suffix = if multiple {
             format!("_chunk_{i}")
         } else {
             String::new()
         };
 
-        let mut blob_id = BlobID(format!("{name}{chunk_suffix}_{xx}"));
+        let mut blob_id = BlobID(format!("{name}{chunk_suffix}"));
         if let Some(f) = cfg.modify_blob_id.as_ref() {
             blob_id = f(&blob_id.0);
         }
@@ -1249,72 +1262,72 @@ mod tests {
     "total_blobs": 20,
     "total_size_bytes": 682,
     "blob_sizes_bytes": {
-      "csr_edges_chunk_0_13017817825874431918": 36,
-      "csr_edges_chunk_1_2523710346433144811": 26,
-      "csr_offsets_chunk_0_17559266066580165799": 35,
-      "csr_offsets_chunk_1_13805269574729633339": 27,
-      "edge_metadata_chunk_0_16084556951524676445": 48,
-      "edge_metadata_chunk_1_9863927180112377564": 59,
-      "edge_metadata_chunk_2_1965837674461600173": 56,
-      "edge_metadata_chunk_3_17445830827167043826": 59,
-      "edge_metadata_chunk_4_73754102999377250": 38,
-      "edge_metadata_map_6498678976514958291": 46,
-      "entry_points_9535545603450022154": 13,
-      "labels_chunk_0_15787273898998467666": 59,
-      "labels_chunk_1_16684219789371696493": 22,
-      "metrics_chunk_0_5289880619835925526": 29,
-      "metrics_chunk_1_6943866561601348189": 21,
-      "node_names_7792959244734820584": 25,
-      "node_names_offsets_chunk_0_8844594067930830932": 32,
-      "node_names_offsets_chunk_1_15706661496525575030": 27,
-      "properties_4370653166743570923": 11,
-      "traversal_config_9535545603450022154": 13
+      "csr_edges_chunk_0": 36,
+      "csr_edges_chunk_1": 26,
+      "csr_offsets_chunk_0": 35,
+      "csr_offsets_chunk_1": 27,
+      "edge_metadata_chunk_0": 48,
+      "edge_metadata_chunk_1": 59,
+      "edge_metadata_chunk_2": 56,
+      "edge_metadata_chunk_3": 59,
+      "edge_metadata_chunk_4": 38,
+      "edge_metadata_map": 46,
+      "entry_points": 13,
+      "labels_chunk_0": 59,
+      "labels_chunk_1": 22,
+      "metrics_chunk_0": 29,
+      "metrics_chunk_1": 21,
+      "node_names": 25,
+      "node_names_offsets_chunk_0": 32,
+      "node_names_offsets_chunk_1": 27,
+      "properties": 11,
+      "traversal_config": 13
     },
     "node_count": 16,
     "directed_edge_count": 18
   },
   "blobs": {
     "node_names": [
-      "node_names_7792959244734820584"
+      "node_names"
     ],
     "node_names_offsets": [
-      "node_names_offsets_chunk_0_8844594067930830932",
-      "node_names_offsets_chunk_1_15706661496525575030"
+      "node_names_offsets_chunk_0",
+      "node_names_offsets_chunk_1"
     ],
     "directed": [
-      "csr_edges_chunk_0_13017817825874431918",
-      "csr_edges_chunk_1_2523710346433144811"
+      "csr_edges_chunk_0",
+      "csr_edges_chunk_1"
     ],
     "directed_offsets": [
-      "csr_offsets_chunk_0_17559266066580165799",
-      "csr_offsets_chunk_1_13805269574729633339"
+      "csr_offsets_chunk_0",
+      "csr_offsets_chunk_1"
     ],
     "tagged": [
-      "edge_metadata_chunk_0_16084556951524676445",
-      "edge_metadata_chunk_1_9863927180112377564",
-      "edge_metadata_chunk_2_1965837674461600173",
-      "edge_metadata_chunk_3_17445830827167043826",
-      "edge_metadata_chunk_4_73754102999377250"
+      "edge_metadata_chunk_0",
+      "edge_metadata_chunk_1",
+      "edge_metadata_chunk_2",
+      "edge_metadata_chunk_3",
+      "edge_metadata_chunk_4"
     ],
     "dynamic": [
-      "edge_metadata_map_6498678976514958291"
+      "edge_metadata_map"
     ],
     "metrics": [
-      "metrics_chunk_0_5289880619835925526",
-      "metrics_chunk_1_6943866561601348189"
+      "metrics_chunk_0",
+      "metrics_chunk_1"
     ],
     "labels": [
-      "labels_chunk_0_15787273898998467666",
-      "labels_chunk_1_16684219789371696493"
+      "labels_chunk_0",
+      "labels_chunk_1"
     ],
     "properties": [
-      "properties_4370653166743570923"
+      "properties"
     ],
     "traversal_config": [
-      "traversal_config_9535545603450022154"
+      "traversal_config"
     ],
     "entry_points": [
-      "entry_points_9535545603450022154"
+      "entry_points"
     ],
     "graph_properties": []
   },
@@ -1333,26 +1346,26 @@ mod tests {
             r#"
 [
     "_manifest.json",
-    "csr_edges_chunk_0_13017817825874431918",
-    "csr_edges_chunk_1_2523710346433144811",
-    "csr_offsets_chunk_0_17559266066580165799",
-    "csr_offsets_chunk_1_13805269574729633339",
-    "edge_metadata_chunk_0_16084556951524676445",
-    "edge_metadata_chunk_1_9863927180112377564",
-    "edge_metadata_chunk_2_1965837674461600173",
-    "edge_metadata_chunk_3_17445830827167043826",
-    "edge_metadata_chunk_4_73754102999377250",
-    "edge_metadata_map_6498678976514958291",
-    "entry_points_9535545603450022154",
-    "labels_chunk_0_15787273898998467666",
-    "labels_chunk_1_16684219789371696493",
-    "metrics_chunk_0_5289880619835925526",
-    "metrics_chunk_1_6943866561601348189",
-    "node_names_7792959244734820584",
-    "node_names_offsets_chunk_0_8844594067930830932",
-    "node_names_offsets_chunk_1_15706661496525575030",
-    "properties_4370653166743570923",
-    "traversal_config_9535545603450022154",
+    "csr_edges_chunk_0",
+    "csr_edges_chunk_1",
+    "csr_offsets_chunk_0",
+    "csr_offsets_chunk_1",
+    "edge_metadata_chunk_0",
+    "edge_metadata_chunk_1",
+    "edge_metadata_chunk_2",
+    "edge_metadata_chunk_3",
+    "edge_metadata_chunk_4",
+    "edge_metadata_map",
+    "entry_points",
+    "labels_chunk_0",
+    "labels_chunk_1",
+    "metrics_chunk_0",
+    "metrics_chunk_1",
+    "node_names",
+    "node_names_offsets_chunk_0",
+    "node_names_offsets_chunk_1",
+    "properties",
+    "traversal_config",
 ]
 "#
         );

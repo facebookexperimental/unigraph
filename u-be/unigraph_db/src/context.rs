@@ -31,59 +31,63 @@ pub(crate) struct UnigraphDbContext {
 }
 
 impl UnigraphDbContext {
-    /// Create a per-frame pack config with blob ID prefixing.
+    /// Create a per-frame pack config that gives every blob a unique ID.
     ///
-    /// Clones the base config and sets `modify_blob_id` to prefix all blob IDs
-    /// with `graphs/{timeline_id}/{graph_id}/{attempt}/`, where `attempt` is a
-    /// fresh random token per call — that is, per packed frame, since every
-    /// call site uses the returned config for exactly one `pack`.
+    /// Blob IDs come out as `graphs/{timeline_id}/{graph_id}/{blob}_{random}`,
+    /// where `blob` says what the thing is (`csr_edges_chunk_3`,
+    /// `_delta_manifest.json`) and `random` is 64 fresh bits per blob.
     ///
-    /// # Why the attempt token exists
+    /// # Why the random suffix
     ///
-    /// Blob IDs are content-addressed (`xxh3_64` of the compressed chunk) and
-    /// the prefix is per frame, so without the token two writers packing the
-    /// *same* graph at the *same* `graph_id` produce byte-identical keys. That
-    /// collides with the crash-safe store path in the worst possible way. That
-    /// path registers a blob key for cleanup *before* uploading it and
-    /// unregisters it only on commit, on the stated assumption that "if my
-    /// transaction rolls back, my blobs are orphans". With shared keys the
-    /// assumption is false: the loser's rollback leaves the *winner's* live
-    /// blobs scheduled for deletion, and the sweeper duly deletes them out from
-    /// under a committed frame. No race window is required — a store that
-    /// re-packs a frame some earlier delete already queued hits the same thing.
+    /// Without it a blob ID is a pure function of the frame and its contents,
+    /// so two writers packing the same graph at the same `graph_id` produce
+    /// byte-identical IDs. That breaks the crash-safe store path, which
+    /// registers a blob key for cleanup *before* uploading and unregisters it
+    /// only on commit, on the stated assumption that "if my transaction rolls
+    /// back, my blobs are orphans". With shared IDs the assumption is false:
+    /// the loser's rollback leaves the *winner's* live blobs queued, and the
+    /// sweeper deletes them out from under a committed frame. No race window is
+    /// needed either — a store re-packing a frame that some earlier delete
+    /// already queued lands in the same place.
     ///
-    /// A token per attempt makes every attempt's blobs its own, so a rollback
-    /// can only ever condemn blobs nobody else is referencing.
+    /// Randomness rather than a counter or a timestamp because the writers
+    /// cannot coordinate: different hosts, different jobs, no shared state. The
+    /// cases that collide are exactly the ones that start together.
     ///
-    /// The content hash stays: it costs nothing and it is what makes a blob's
-    /// contents self-describing. It was never buying deduplication — the prefix
-    /// already scoped keys to one frame.
+    /// # Why every blob and not one token per store
     ///
-    /// The cost is that a failed attempt now leaks a full set of blobs instead
-    /// of being overwritten in place by the retry, so it leans harder on the
+    /// A token per store would do — uniqueness is all that is required, and a
+    /// shared token would group an attempt's blobs together. It is not worth a
+    /// second concept: per blob is one `format!`, needs nothing threaded
+    /// through `unigraph_core`, and an abandoned attempt is already enumerable
+    /// from the cleanup queue rather than by eyeballing prefixes.
+    ///
+    /// # The suffix must reach the manifests too
+    ///
+    /// This is the part that makes `modify_blob_id` the only correct home for
+    /// it. Chunk IDs have a natural slot for a suffix, but `_manifest.json`,
+    /// `_delta_manifest.json` and `_error_manifest.json` are fixed names with
+    /// no slot at all. Randomising only the chunk IDs would leave two
+    /// concurrent writers colliding on the manifest — the single blob that
+    /// names all the others. `modify_blob_id` is applied to chunk IDs and
+    /// manifest IDs alike, so putting it here covers both by construction.
+    ///
+    /// The cost is that a failed store leaks a full set of blobs instead of
+    /// being overwritten in place by the retry, so this leans harder on the
     /// sweeper actually working.
     pub fn pack_config_for_key(&self, key: &GraphTimeKey) -> ArrayGraphSerializablePackageConfig {
         let mut config = self.base_pack_config.clone();
         let timeline_id = key.timeline_id.clone();
         let graph_id = key.graph_id;
-        let attempt = new_attempt_token();
         config.modify_blob_id = Some(Arc::new(move |id| {
             BlobID(format!(
-                "graphs/{}/{}/{}/{}",
-                timeline_id.0, graph_id.0, attempt, id
+                "graphs/{}/{}/{}_{:016x}",
+                timeline_id.0,
+                graph_id.0,
+                id,
+                rand::rng().random::<u64>()
             ))
         }));
         config
     }
-}
-
-/// A token identifying one store attempt, unique across processes and hosts.
-///
-/// 64 random bits. The only requirement is that two attempts never agree, and
-/// they cannot coordinate — they may be on different hosts, in jobs that know
-/// nothing about each other — so randomness is the only thing that works. A
-/// counter or a timestamp would collide exactly when two writers start
-/// together, which is the case this exists for.
-fn new_attempt_token() -> String {
-    format!("{:016x}", rand::rng().random::<u64>())
 }

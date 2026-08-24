@@ -182,34 +182,32 @@ impl XorShift64 {
 
 /// Format a list of blob keys for snapshot testing.
 ///
-/// Replaces the per-attempt token in `graphs/{timeline}/{graph_id}/{attempt}/`
-/// with a placeholder. The token is 64 random bits by design — the whole point
-/// is that two store attempts never agree on it — so a snapshot that pinned it
-/// would fail on every run.
+/// Replaces each key's trailing random suffix with a placeholder. Those 64 bits
+/// are random by design — the whole point is that two writers never agree on
+/// them — so a snapshot pinning them would fail on every run.
 ///
-/// Redacting it costs nothing that these snapshots were testing. They exist to
-/// pin *which* blobs a frame produces and what happens to them across
-/// store/delete/sweep, and every blob of one frame shares one token, so both
-/// the set and its ordering survive the substitution intact.
+/// Redacting costs nothing these snapshots were testing. They exist to pin
+/// *which* blobs a frame produces and what happens to them across
+/// store/delete/sweep, and the part of the key that says which blob it is
+/// survives untouched.
 pub fn format_blob_keys(keys: &[String]) -> String {
-    let mut sorted: Vec<String> = keys.iter().map(|key| redact_attempt(key)).collect();
+    let mut sorted: Vec<String> = keys.iter().map(|key| redact_random_suffix(key)).collect();
     sorted.sort();
     sorted.join("\n")
 }
 
-/// Swap the attempt token out of one blob key, if it has one.
-fn redact_attempt(key: &str) -> String {
-    let parts: Vec<&str> = key.split('/').collect();
-    // graphs / {timeline} / {graph_id} / {attempt} / {blob_id}
-    match parts.as_slice() {
-        ["graphs", timeline, graph_id, attempt, blob_id] if is_attempt_token(attempt) => {
-            format!("graphs/{timeline}/{graph_id}/<attempt>/{blob_id}")
-        }
+/// Swap a blob key's trailing `_{16 hex}` for `_<rand>`, if it has one.
+///
+/// No false positives to worry about: the rest of a blob ID is a fixed field
+/// name plus an optional decimal `_chunk_N`, never sixteen hex digits.
+fn redact_random_suffix(key: &str) -> String {
+    match key.rsplit_once('_') {
+        Some((head, suffix)) if is_random_suffix(suffix) => format!("{head}_<rand>"),
         _ => key.to_owned(),
     }
 }
 
-fn is_attempt_token(segment: &str) -> bool {
+fn is_random_suffix(segment: &str) -> bool {
     segment.len() == 16 && segment.chars().all(|c| c.is_ascii_hexdigit())
 }
 
