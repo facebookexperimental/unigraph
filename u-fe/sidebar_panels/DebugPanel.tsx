@@ -4,21 +4,21 @@ import { useMemo, useState } from "react";
 import { Button } from "../components/ui/button";
 import { useGraphSettings } from "../context/GraphSettingsContext";
 import { useMetricViewState } from "../context/MetricViewStateContext";
-import { useTVC } from "../context/TraversalConfigContext";
 import { Pre } from "../Typography";
 import { SidebarPanel, SidebarPanelHeader } from "./SidebarPanel";
 
-type Tab = "tvc" | "graph_settings" | "available" | "visible";
+/// No `tvc` tab — the traversal config has a real editor in its own panel,
+/// and a `JSON.stringify` of the same thing is only ever worse.
+type Tab = "graph_settings" | "available" | "visible";
 
 export default function DebugPanel() {
-  const [activeTab, setActiveTab] = useState<Tab>("tvc");
+  const [activeTab, setActiveTab] = useState<Tab>("graph_settings");
 
   return (
     <SidebarPanel storageKey="debug">
       <SidebarPanelHeader text="Debug" />
       <TabBar activeTab={activeTab} setActiveTab={setActiveTab} />
       <div className="mt-4">
-        {activeTab === "tvc" && <TVCTab />}
         {activeTab === "graph_settings" && <GraphSettingsTab />}
         {activeTab === "available" && <AvailableMetricsTab />}
         {activeTab === "visible" && <VisibleMetricsTab />}
@@ -35,7 +35,6 @@ function TabBar({
   setActiveTab: (tab: Tab) => void;
 }) {
   const tabs: { id: Tab; label: string }[] = [
-    { id: "tvc", label: "TVC" },
     { id: "graph_settings", label: "Graph Settings" },
     { id: "available", label: "Available Metrics" },
     { id: "visible", label: "Visible Metrics" },
@@ -56,14 +55,6 @@ function TabBar({
       ))}
     </div>
   );
-}
-
-function TVCTab() {
-  const { tvcR } = useTVC();
-
-  const json = useMemo(() => JSON.stringify(tvcR, null, 2), [tvcR]);
-
-  return <Pre text={json} className="text-xs" />;
 }
 
 function GraphSettingsTab() {
