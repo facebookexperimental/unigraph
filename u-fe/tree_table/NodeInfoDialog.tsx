@@ -1,25 +1,13 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-import clsx from "clsx";
-import { ChevronDown, ChevronRight } from "lucide-react";
-import { Fragment, useState } from "react";
+import { Fragment } from "react";
 import type { Arrow } from "../__generated__/ts/Arrow";
 import type { TwinArrow } from "../__generated__/ts/TwinArrow";
 import CopyToClipboard from "../components/CopyToClipboard";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "../components/ui/collapsible";
 import { useDebugMode } from "../context/DebugModeContext";
 import { useTwinGraph } from "../context/NativeGraphContext";
-import type { DiffLine } from "../lib/unifiedDiff";
-import {
-  renderDiffText,
-  stableStringify,
-  type UnifiedDiff,
-  unifiedJsonDiff,
-} from "../lib/unifiedDiff";
+import { formatJson } from "../json_diff/JsonDiffModel";
+import UJSONDiff from "../json_diff/UJSONDiff";
 import { displayNodeName } from "../lib/utils";
 import type NativeGraph from "../native/NativeGraph";
 import {
@@ -80,6 +68,11 @@ export default function NodeInfoDialog({
 
 // ── Node data ───────────────────────────────────────────────────
 
+/// The node's `MapGraph` form. In delta mode this is a structural JSON diff
+/// rather than two panes of raw text: a `GraphNode` is mostly edges, nearly all
+/// of which are identical between two versions of a graph, so two panes leave
+/// the reader doing the comparison by eye. `UJSONDiff` renders both sides into
+/// one scroll container, so they cannot drift apart.
 function NodeDataSection({
   twinGraph,
   nodeIDX,
@@ -93,7 +86,7 @@ function NodeDataSection({
     return (
       <Section title="Node data">
         <Pre
-          text={stableStringify(twinGraph.r.getMapNode(nodeIDX))}
+          text={formatJson(twinGraph.r.getMapNode(nodeIDX))}
           className="max-h-[28rem] text-[11px] leading-tight"
         />
       </Section>
@@ -101,132 +94,18 @@ function NodeDataSection({
   }
 
   return (
-    <NodeDataDiffSection
-      left={left}
-      right={twinGraph.r}
-      nodeIDX={nodeIDX}
-      diff={unifiedJsonDiff(
-        left.getMapNode(nodeIDX),
-        twinGraph.r.getMapNode(nodeIDX),
-      )}
-    />
-  );
-}
-
-function NodeDataDiffSection({
-  left,
-  right,
-  nodeIDX,
-  diff,
-}: {
-  left: NativeGraph;
-  right: NativeGraph;
-  nodeIDX: NodeIDX;
-  diff: UnifiedDiff;
-}) {
-  switch (diff.t) {
-    case "identical":
-      return (
-        <Section title="Node data (left → right)">
-          <Empty text="identical on both sides" />
-          <RawSides left={left} right={right} nodeIDX={nodeIDX} />
-        </Section>
-      );
-    case "too_large":
-      return (
-        <Section title="Node data (left → right)">
-          <Empty
-            text={`too large to diff — ${diff.leftLines} vs ${diff.rightLines} lines`}
-          />
-          <RawSides left={left} right={right} nodeIDX={nodeIDX} />
-        </Section>
-      );
-    case "diff":
-      return (
-        <Section
-          title="Node data (left → right)"
-          action={<CopyToClipboard text={renderDiffText(diff.lines)} />}
-        >
-          <DiffPane lines={diff.lines} />
-          <RawSides left={left} right={right} nodeIDX={nodeIDX} />
-        </Section>
-      );
-  }
-}
-
-function DiffPane({ lines }: { lines: readonly DiffLine[] }) {
-  return (
-    <pre className="max-h-[28rem] overflow-auto rounded bg-muted/40 p-2 font-mono text-[11px] leading-tight">
-      {lines.map((line, idx) => (
-        // Lines repeat, so the index is the only stable identity here.
-        // biome-ignore lint/suspicious/noArrayIndexKey: diff lines are positional
-        <DiffLineRow key={idx} line={line} />
-      ))}
-    </pre>
-  );
-}
-
-function DiffLineRow({ line }: { line: DiffLine }) {
-  if (line.kind === "gap") {
-    return (
-      <div className="text-foreground/40 italic px-1 select-none">
-        {`⋯ ${line.count} unchanged line${line.count === 1 ? "" : "s"}`}
+    <Section title="Node data">
+      {/* UJSONDiff virtualizes against its scroll container, so it needs a
+          bounded height rather than growing with the content. */}
+      <div className="h-[28rem]">
+        <UJSONDiff
+          left={left.getMapNode(nodeIDX)}
+          right={twinGraph.r.getMapNode(nodeIDX)}
+          leftLabel="Left (before)"
+          rightLabel="Right (after)"
+        />
       </div>
-    );
-  }
-
-  const marker =
-    line.kind === "added" ? "+" : line.kind === "removed" ? "-" : " ";
-
-  return (
-    <div
-      className={clsx(
-        "whitespace-pre px-1",
-        line.kind === "added" && "bg-added",
-        line.kind === "removed" && "bg-removed",
-        line.kind === "context" && "text-foreground/70",
-      )}
-    >
-      {marker}
-      {line.text}
-    </div>
-  );
-}
-
-/// The unified diff is the answer to "what changed"; the untouched JSON of
-/// each side is still worth having when you want to read or copy one whole.
-function RawSides({
-  left,
-  right,
-  nodeIDX,
-}: {
-  left: NativeGraph;
-  right: NativeGraph;
-  nodeIDX: NodeIDX;
-}) {
-  const [open, setOpen] = useState(false);
-
-  return (
-    <Collapsible open={open} onOpenChange={setOpen}>
-      <CollapsibleTrigger className="w-full">
-        <div className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-foreground/50 pt-1">
-          {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-          Raw JSON per side
-        </div>
-      </CollapsibleTrigger>
-      <CollapsibleContent>
-        <div className="grid grid-cols-2 gap-2 mt-1">
-          <Pre
-            text={stableStringify(left.getMapNode(nodeIDX))}
-            className="max-h-80 text-[11px] leading-tight"
-          />
-          <Pre
-            text={stableStringify(right.getMapNode(nodeIDX))}
-            className="max-h-80 text-[11px] leading-tight"
-          />
-        </div>
-      </CollapsibleContent>
-    </Collapsible>
+    </Section>
   );
 }
 
