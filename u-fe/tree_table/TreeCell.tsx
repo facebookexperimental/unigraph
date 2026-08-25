@@ -25,6 +25,7 @@ import { useSelectedPath } from "../context/SelectedPathContext";
 import { displayNodeName } from "../lib/utils";
 import { nodeEdgesChanged, nodeMetricsChanged } from "../native/NodeDiff";
 import type TwinGraph from "../native/TwinGraph";
+import { skippedNodeCount } from "../native/TwinArrowUtils";
 import { H2, P } from "../Typography";
 import NodeDebugDialog from "./NodeDebugDialog";
 import type { Row } from "./TreeTableRows";
@@ -507,9 +508,9 @@ function SkippedNodes({
     });
   };
 
-  const min = Math.min(twinArrow.l?.skipped ?? 0, twinArrow.r?.skipped ?? 0);
+  const skipped = skippedNodeCount(twinArrow);
 
-  if (min > 0) {
+  if (skipped > 0) {
     return (
       <UHoverCard
         asChild
@@ -517,7 +518,7 @@ function SkippedNodes({
           <SkippedNodesHovercardContent
             twinGraph={twinGraph}
             twinArrow={twinArrow}
-            skipped={min}
+            skipped={skipped}
           />
         }
       >
@@ -525,7 +526,7 @@ function SkippedNodes({
           className="bg-primary text-background text-xs py-0.5 px-3 me-1 rounded-lg cursor-pointer"
           onClick={onClick}
         >
-          {`+${min}`}
+          {`+${skipped}`}
         </span>
       </UHoverCard>
     );
