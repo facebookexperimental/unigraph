@@ -89,9 +89,10 @@ pub struct GraphExploreDelta {
     #[arg(long)]
     sort_by: Option<String>,
 
-    /// Sort direction.
-    #[arg(long, default_value = "desc")]
-    sort_order: SortOrderArg,
+    /// Sort direction. Defaults to the graph's stored order when `--sort-by`
+    /// is omitted, and to `desc` otherwise.
+    #[arg(long)]
+    sort_order: Option<SortOrderArg>,
 
     /// Sort `@delta` columns by their signed value instead of their magnitude.
     /// By default the biggest change wins regardless of direction.
@@ -172,7 +173,7 @@ impl GraphExploreDelta {
             changed_nodes_only: self.changed_only,
             metrics: self.parse_metrics()?,
             sort_by: self.parse_sort_by()?,
-            sort_order: Some(self.sort_order.into()),
+            sort_order: self.sort_order.map(Into::into),
             sort_delta_by_magnitude: Some(!self.signed_delta_sort),
             offset: self.offset,
             limit: self.limit,

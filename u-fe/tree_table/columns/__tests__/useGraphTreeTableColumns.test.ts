@@ -59,8 +59,25 @@ const GRAPH_SETTINGS: GraphSettings = {
 
 const TVC: TraversalConfig = {};
 
-function ctx(): ColumnsCtx {
-  return new ColumnsCtx(GRAPH_SETTINGS, () => {}, TVC, new Set<string>());
+function ctx(
+  settings: GraphSettings = GRAPH_SETTINGS,
+  isDelta = false,
+): ColumnsCtx {
+  return new ColumnsCtx(settings, () => {}, TVC, new Set<string>(), isDelta);
+}
+
+function withStoredSort(key: string): GraphSettings {
+  return {
+    ...GRAPH_SETTINGS,
+    ui_settings: {
+      columns: {
+        graph_table_sort: {
+          column: { MetricView: { key } },
+          order: "Desc",
+        },
+      },
+    },
+  };
 }
 
 function columnIDsFor(
@@ -119,5 +136,80 @@ describe("ColumnsCtx.isEnum", () => {
     expect(ctx().isEnum("node_type")).toBe(true);
     expect(ctx().isEnum("size")).toBe(false);
     expect(ctx().isEnum("nonexistent")).toBe(false);
+  });
+});
+
+/// A graph stores one sort preference and it has to mean something in both
+/// views. `ColumnsCtx.sort()` is the single place every column reads it, so
+/// this is where the per-mode rule has to hold.
+///
+/// Mirrors `sort_key_resolves_per_mode` in
+/// `u-be/unigraph_core/src/types/array_graph/graph_settings.rs`.
+describe("stored sort resolves per mode", () => {
+  function resolved(key: string, isDelta: boolean): string | null {
+    const sort = ctx(withStoredSort(key), isDelta).sort();
+    if (sort == null || !("MetricView" in sort.column)) return null;
+    return sort.column.MetricView.key;
+  }
+
+  it("drops the side outside delta mode, and never adds one", () => {
+    const keys = [
+      "size",
+      "size~transitive",
+      "size#T2",
+      "size#T2~dominated",
+      "node-count~transitive",
+      "size~transitive@left",
+      "size~transitive@delta",
+      "size#T2@delta",
+      "node-count~transitive@delta",
+    ];
+
+    const table = keys
+      .map(
+        (key) =>
+          `${key.padEnd(30)} ${String(resolved(key, true)).padEnd(28)} ${resolved(key, false)}`,
+      )
+      .join("\n");
+
+    expect(
+      `${"stored".padEnd(30)} ${"delta view".padEnd(28)} single graph\n${table}`,
+    ).toMatchInlineSnapshot(`
+        "stored                         delta view                   single graph
+        size                           size                         size
+        size~transitive                size~transitive              size~transitive
+        size#T2                        size#T2                      size#T2
+        size#T2~dominated              size#T2~dominated            size#T2~dominated
+        node-count~transitive          node-count~transitive        node-count~transitive
+        size~transitive@left           size~transitive@left         size~transitive
+        size~transitive@delta          size~transitive@delta        size~transitive
+        size#T2@delta                  size#T2@delta                size#T2
+        node-count~transitive@delta    node-count~transitive@delta  node-count~transitive"
+      `);
+  });
+
+  it("carries the order through untouched", () => {
+    expect(ctx(withStoredSort("size#T2@delta"), false).sort()?.order).toBe(
+      "Desc",
+    );
+  });
+
+  it("leaves a NodeName sort alone", () => {
+    const settings: GraphSettings = {
+      ...GRAPH_SETTINGS,
+      ui_settings: {
+        columns: {
+          graph_table_sort: { column: { NodeName: {} }, order: "Asc" },
+        },
+      },
+    };
+    expect(ctx(settings, false).sort()).toEqual({
+      column: { NodeName: {} },
+      order: "Asc",
+    });
+  });
+
+  it("is null when the graph stores nothing", () => {
+    expect(ctx(GRAPH_SETTINGS, true).sort()).toBeNull();
   });
 });

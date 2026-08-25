@@ -39,6 +39,8 @@ use unigraph_core::NodeIDX;
 use unigraph_core::TwinGraph;
 use unigraph_core::config_query::GraphQueryConfig;
 use unigraph_core::graph_settings::GraphStructure;
+use unigraph_core::graph_settings::GraphTableSort;
+use unigraph_core::graph_settings::SortColumn;
 use unigraph_core::graph_settings::SortOrder;
 use unigraph_rpc::RpcExec;
 
@@ -220,8 +222,9 @@ fn explore_delta(
     )?;
     let total_arrows_count = resolved.rows.len();
 
-    let sort_order = input.sort_order.unwrap_or(SortOrder::Desc);
-    let sorted = sort_rows(&tg, resolved.rows, input, sort_order)?;
+    let sort = resolve_sort(&tg, input);
+    let sort_order = sort.as_ref().map_or(SortOrder::Desc, |s| s.order);
+    let sorted = sort_rows(&tg, resolved.rows, input, sort.as_ref())?;
 
     let page = paginate(&sorted, offset, limit);
 
@@ -246,7 +249,12 @@ fn explore_delta(
                 total_count: total_arrows_count,
                 hidden_unchanged_count: resolved.hidden_unchanged_count,
                 offset,
-                sort_by_key: input.sort_by.as_ref().map(|c| c.to_string()),
+                // The effective key, not the requested one — a sort that came
+                // from the graph's own settings still marks its column.
+                sort_by_key: sort
+                    .as_ref()
+                    .and_then(|s| s.column.metric_view())
+                    .map(|c| c.to_string()),
                 sort_order,
                 tier_names: &tier_names,
             },
@@ -290,11 +298,29 @@ fn sort_rows(
     tg: &TwinGraph,
     rows: Vec<rows::DeltaRow>,
     input: &ExploreDeltaInput,
-    sort_order: SortOrder,
+    sort: Option<&GraphTableSort>,
 ) -> Result<Vec<rows::DeltaRow>> {
-    let Some(sort_by) = input.sort_by.as_ref() else {
+    let Some(sort) = sort else {
         return Ok(rows);
     };
+
+    let sort_by = match &sort.column {
+        SortColumn::MetricView { key } => key,
+        SortColumn::NodeName {} => {
+            let mut rows = rows;
+            rows.sort_by(|a, b| {
+                let ordering = tg
+                    .merged_idx_to_name(a.node_idx)
+                    .cmp(tg.merged_idx_to_name(b.node_idx));
+                match sort.order {
+                    SortOrder::Asc => ordering,
+                    SortOrder::Desc => ordering.reverse(),
+                }
+            });
+            return Ok(rows);
+        }
+    };
+
     let by_magnitude = sort_by.is_delta() && input.sort_delta_by_magnitude.unwrap_or(true);
 
     let mut valued: Vec<(f64, rows::DeltaRow)> = rows
@@ -305,12 +331,43 @@ fn sort_rows(
         })
         .collect::<Result<Vec<_>>>()?;
 
-    valued.sort_by(|a, b| match sort_order {
+    valued.sort_by(|a, b| match sort.order {
         SortOrder::Asc => a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal),
         SortOrder::Desc => b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal),
     });
 
     Ok(valued.into_iter().map(|(_, row)| row).collect())
+}
+
+/// The sort to apply: the caller's, else whatever the graph stores.
+///
+/// Read from the **right** graph, which is the side the explorer's settings
+/// come from too (`Explorer.tsx` hands `right.nativeGraph` to
+/// `MetricViewStateProvider`). Two graphs can carry two different preferences;
+/// the "after" graph wins, and the two views must not disagree about that.
+///
+/// Resolved for a delta view, so a stored `@delta` key stands as written rather
+/// than being flattened to the right-hand value column.
+fn resolve_sort(tg: &TwinGraph, input: &ExploreDeltaInput) -> Option<GraphTableSort> {
+    if let Some(view) = input.sort_by.as_ref() {
+        return Some(GraphTableSort {
+            column: SortColumn::MetricView { key: view.clone() }.resolve_for_mode(true),
+            order: input.sort_order.unwrap_or(SortOrder::Desc),
+        });
+    }
+
+    let stored =
+        tg.r.graph_settings()
+            .and_then(|gs| gs.ui_settings.as_ref())
+            .and_then(|ui| ui.columns.as_ref())
+            .and_then(|columns| columns.graph_table_sort.as_ref())?
+            .resolve_for_mode(true);
+
+    Some(GraphTableSort {
+        // An explicit --sort-order still overrides the stored one.
+        order: input.sort_order.unwrap_or(stored.order),
+        column: stored.column,
+    })
 }
 
 fn paginate(rows: &[rows::DeltaRow], offset: usize, limit: usize) -> &[rows::DeltaRow] {

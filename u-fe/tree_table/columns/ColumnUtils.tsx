@@ -26,7 +26,31 @@ export const MV = {
 
   left: (key: string) => `${key}${SIDE_SEP}left`,
   delta: (key: string) => `${key}${SIDE_SEP}delta`,
+
+  /// Inverse of `left` / `delta`. Mirrors Rust's `MetricView::base()`.
+  base: (key: string) => key.split(SIDE_SEP)[0] ?? key,
 };
+
+/// The column a stored sort preference actually lands on in this view.
+///
+/// `@delta` and `@left` name columns that only exist while two graphs are
+/// being compared. A graph stores one preference, so the stored key is the
+/// *more specific* one and the side is dropped where it cannot apply:
+/// `size#T2@delta` sorts a delta table by `∆ T2` and a single-graph table by
+/// `size#T2`, rather than leaving the latter silently unsorted — no
+/// single-graph column carries a `@delta` key, and an unclaimed sort renders
+/// as no sort at all.
+///
+/// Deliberately not symmetric: a bare key in delta mode keeps meaning the
+/// right-hand value column, which is a legitimate thing to sort by. Only
+/// side-dropping is automatic, never side-adding.
+///
+/// Mirrors `SortColumn::resolve_for_mode` in
+/// `u-be/unigraph_core/src/types/array_graph/graph_settings.rs`. Hand-kept in
+/// step — the two are not generated from one source.
+export function sortKeyForMode(key: string, isDelta: boolean): string {
+  return isDelta ? key : MV.base(key);
+}
 
 // ── Visibility helpers ─────────────────────────────────────────
 

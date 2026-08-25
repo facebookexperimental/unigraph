@@ -21,8 +21,10 @@ use unigraph_core::NodeSelection;
 use unigraph_core::SelectOptions;
 use unigraph_core::config_query::GraphQueryConfig;
 use unigraph_core::graph_settings::GraphStructure;
+use unigraph_core::graph_settings::GraphTableSort;
 use unigraph_core::graph_settings::MetricFormat;
 use unigraph_core::graph_settings::MetricsConfig;
+use unigraph_core::graph_settings::SortColumn;
 use unigraph_core::graph_settings::SortOrder;
 use unigraph_rpc::RpcExec;
 
@@ -200,8 +202,9 @@ fn explore_node(
     let (parent_idx, arrow_data) = resolve_arrows(&ag, input, task)?;
     let total_arrows_count = arrow_data.len();
 
-    let sort_order = input.sort_order.unwrap_or(SortOrder::Desc);
-    let sorted = sort_arrows(&ag, arrow_data, input.sort_by.as_ref(), sort_order)?;
+    let sort = resolve_sort(&ag, input);
+    let sort_order = sort.as_ref().map_or(SortOrder::Desc, |s| s.order);
+    let sorted = sort_arrows(&ag, arrow_data, sort.as_ref())?;
 
     let page = paginate(&sorted, offset, limit);
 
@@ -212,7 +215,12 @@ fn explore_node(
         .transpose()?;
 
     let include_ascii = input.include_ascii.unwrap_or(false);
-    let sort_by_key = input.sort_by.as_ref().map(|m| m.to_string());
+    // The effective key, not the requested one — a sort that came from the
+    // graph's own settings still has to mark its column in the header.
+    let sort_by_key = sort
+        .as_ref()
+        .and_then(|s| s.column.metric_view())
+        .map(|m| m.to_string());
     let metrics_config = ag
         .graph_settings()
         .and_then(|gs| gs.metrics_config.as_ref());
@@ -424,16 +432,57 @@ pub(crate) fn reject_top_k_name_mode(selection: &NodeSelection) -> Result<()> {
 
 // ── Sorting ─────────────────────────────────────────────────────
 
+/// The sort to apply: the caller's, else whatever the graph stores.
+///
+/// `sort_by` wins outright. When it is absent the graph's own
+/// `graph_table_sort` applies — the same preference the explorer reads, so the
+/// CLI and the UI agree on what a graph looks like by default.
+///
+/// Resolved for a single-graph view either way: a stored (or requested)
+/// `@delta` key names a column that only exists in a comparison, so it degrades
+/// to its side-less form rather than to no sort at all.
+fn resolve_sort(ag: &ArrayGraph, input: &ExploreGraphInput) -> Option<GraphTableSort> {
+    if let Some(view) = input.sort_by.as_ref() {
+        return Some(GraphTableSort {
+            column: SortColumn::MetricView { key: view.clone() }.resolve_for_mode(false),
+            order: input.sort_order.unwrap_or(SortOrder::Desc),
+        });
+    }
+
+    let stored = ag
+        .graph_settings()
+        .and_then(|gs| gs.ui_settings.as_ref())
+        .and_then(|ui| ui.columns.as_ref())
+        .and_then(|columns| columns.graph_table_sort.as_ref())?
+        .resolve_for_mode(false);
+
+    Some(GraphTableSort {
+        // An explicit --sort-order still overrides the stored one.
+        order: input.sort_order.unwrap_or(stored.order),
+        column: stored.column,
+    })
+}
+
 fn sort_arrows(
     ag: &ArrayGraph,
     mut arrows: Vec<ArrowData>,
-    sort_by: Option<&MetricView>,
-    sort_order: SortOrder,
+    sort: Option<&GraphTableSort>,
 ) -> Result<Vec<ArrowData>> {
-    let sort_by = match sort_by {
-        Some(metric) => metric,
-        None => {
-            // No sort requested — return in natural order (entry points order, or edge order)
+    let Some(sort) = sort else {
+        // No sort at all — natural order (entry points order, or edge order).
+        return Ok(arrows);
+    };
+
+    let metric = match &sort.column {
+        SortColumn::MetricView { key } => key,
+        SortColumn::NodeName {} => {
+            arrows.sort_by(|a, b| {
+                let ordering = ag.idx_to_name(a.node_idx).cmp(ag.idx_to_name(b.node_idx));
+                match sort.order {
+                    SortOrder::Asc => ordering,
+                    SortOrder::Desc => ordering.reverse(),
+                }
+            });
             return Ok(arrows);
         }
     };
@@ -442,10 +491,10 @@ fn sort_arrows(
     let mut valued: Vec<(usize, f64)> = arrows
         .iter()
         .enumerate()
-        .map(|(i, ad)| Ok((i, ag.metric_value(ad.node_idx, sort_by)?)))
+        .map(|(i, ad)| Ok((i, ag.metric_value(ad.node_idx, metric)?)))
         .collect::<Result<Vec<_>>>()?;
 
-    valued.sort_by(|a, b| match sort_order {
+    valued.sort_by(|a, b| match sort.order {
         SortOrder::Asc => a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal),
         SortOrder::Desc => b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal),
     });

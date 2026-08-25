@@ -934,6 +934,46 @@ impl Default for SortColumn {
     }
 }
 
+impl SortColumn {
+    /// The column this sort actually lands on in a given view.
+    ///
+    /// `@delta` and `@left` name columns that only exist while two graphs are
+    /// being compared. A graph stores one preference, so the stored key is the
+    /// *more specific* one and the side is dropped where it cannot apply:
+    /// `size#T2@delta` sorts a delta table by `∆ T2` and a single-graph table
+    /// by `size#T2`, rather than leaving the latter silently unsorted.
+    ///
+    /// Deliberately not symmetric. A bare key in delta mode keeps meaning the
+    /// right-hand value column, which is a legitimate thing to sort by — only
+    /// side-dropping is automatic, never side-adding.
+    pub fn resolve_for_mode(&self, is_delta: bool) -> SortColumn {
+        match self {
+            SortColumn::MetricView { key } if !is_delta => {
+                SortColumn::MetricView { key: key.base() }
+            }
+            other => other.clone(),
+        }
+    }
+
+    /// The metric view this sort names, or `None` for the tree column.
+    pub fn metric_view(&self) -> Option<&MetricView> {
+        match self {
+            SortColumn::MetricView { key } => Some(key),
+            SortColumn::NodeName {} => None,
+        }
+    }
+}
+
+impl GraphTableSort {
+    /// [`SortColumn::resolve_for_mode`], carrying the order along.
+    pub fn resolve_for_mode(&self, is_delta: bool) -> GraphTableSort {
+        GraphTableSort {
+            column: self.column.resolve_for_mode(is_delta),
+            order: self.order,
+        }
+    }
+}
+
 /// Hand-written so an unrecognized key degrades to "unsorted" instead of
 /// failing the deserialization.
 ///
@@ -1086,6 +1126,83 @@ too many parts         <node name / unsorted>             {"NodeName":{}}
 
 "#
         );
+    }
+
+    /// A graph stores one sort preference, and it has to mean something in
+    /// both views. One table over every stored spelling × mode.
+    ///
+    /// The `@delta` rows are the point: in delta mode the key stands, and in
+    /// single-graph mode — where no column carries that key — it degrades to
+    /// the side-less view instead of leaving the table unsorted. The bare rows
+    /// are the other half: they are NOT promoted to `@delta`, because sorting
+    /// a delta table by the right-hand value is a thing you can want.
+    #[test]
+    fn sort_key_resolves_per_mode() {
+        let keys = [
+            "size",
+            "size~transitive",
+            "size#T2",
+            "size#T2~dominated",
+            "node-count~transitive",
+            "size~transitive@left",
+            "size~transitive@delta",
+            "size#T2@delta",
+            "node-count~transitive@delta",
+        ];
+
+        let mut out = format!("{:<30} {:<24} {}\n", "stored", "delta view", "single graph");
+        for key in keys {
+            let stored = SortColumn::MetricView {
+                key: key.parse().unwrap_or_else(|e| panic!("{key}: {e}")),
+            };
+            out.push_str(&format!(
+                "{:<30} {:<24} {}\n",
+                key,
+                describe(&stored.resolve_for_mode(true)),
+                describe(&stored.resolve_for_mode(false)),
+            ));
+        }
+
+        // The tree column has no side to drop, so it is the same either way.
+        out.push_str(&format!(
+            "{:<30} {:<24} {}\n",
+            "<NodeName>",
+            describe(&SortColumn::NodeName {}.resolve_for_mode(true)),
+            describe(&SortColumn::NodeName {}.resolve_for_mode(false)),
+        ));
+
+        snapshot!(
+            out,
+            "
+stored                         delta view               single graph
+size                           size                     size
+size~transitive                size~transitive          size~transitive
+size#T2                        size#T2                  size#T2
+size#T2~dominated              size#T2~dominated        size#T2~dominated
+node-count~transitive          node-count~transitive    node-count~transitive
+size~transitive@left           size~transitive@left     size~transitive
+size~transitive@delta          size~transitive@delta    size~transitive
+size#T2@delta                  size#T2@delta            size#T2
+node-count~transitive@delta    node-count~transitive@delta node-count~transitive
+<NodeName>                     <node name / unsorted>   <node name / unsorted>
+
+"
+        );
+    }
+
+    /// The order rides along untouched — only the column is mode-dependent.
+    #[test]
+    fn resolving_keeps_the_order() {
+        let sort = GraphTableSort {
+            column: SortColumn::MetricView {
+                key: "size#T2@delta".parse().unwrap(),
+            },
+            order: SortOrder::Asc,
+        };
+
+        let single = sort.resolve_for_mode(false);
+        assert_eq!(single.order, SortOrder::Asc);
+        assert_eq!(describe(&single.column), "size#T2");
     }
 
     /// The reported failure, reproduced at the level it actually occurred:

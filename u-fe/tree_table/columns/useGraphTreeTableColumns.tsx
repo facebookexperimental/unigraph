@@ -17,6 +17,7 @@ import { useTVC } from "../../context/TraversalConfigContext";
 import type TwinGraph from "../../native/TwinGraph";
 import type { NodeIDX } from "../../types";
 import ContextMenuCell from "../ContextMenuCell";
+import { sortKeyForMode } from "./ColumnUtils";
 import type {
   ColumnDefinitions,
   ColumnID,
@@ -160,17 +161,22 @@ export class ColumnsCtx {
   showMetrics: boolean;
   showCounts: boolean;
   graphStructure: GraphStructure;
+  /// Whether two graphs are being compared. Only affects which columns a
+  /// stored sort key can land on — see `sort()`.
+  isDelta: boolean;
 
   constructor(
     graphSettings: GraphSettings,
     setGraphSettings: (gs: GraphSettings) => void,
     tvc: TraversalConfig,
     visibleViews: Set<string>,
+    isDelta: boolean,
   ) {
     this.graphSettings = graphSettings;
     this.setGraphSettings = setGraphSettings;
     this.tvc = tvc;
     this.visibleViews = visibleViews;
+    this.isDelta = isDelta;
 
     this.showMetrics =
       graphSettings.ui_settings?.columns?.hide_metrics !== true;
@@ -219,8 +225,25 @@ export class ColumnsCtx {
     };
   }
 
+  /// The stored sort, resolved for the view being built.
+  ///
+  /// Every column compares its own key against this, so applying
+  /// `sortKeyForMode` here is what makes a `@delta` preference degrade to its
+  /// side-less form in a single-graph table instead of matching nothing.
   sort(): GraphTableSort | null {
-    return this.graphSettings.ui_settings?.columns?.graph_table_sort ?? null;
+    const stored =
+      this.graphSettings.ui_settings?.columns?.graph_table_sort ?? null;
+    if (stored == null || !("MetricView" in stored.column)) {
+      return stored;
+    }
+    return {
+      order: stored.order,
+      column: {
+        MetricView: {
+          key: sortKeyForMode(stored.column.MetricView.key, this.isDelta),
+        },
+      },
+    };
   }
 
   onSortChange(order: SortOrder | null, column: SortColumn) {
@@ -261,6 +284,7 @@ export class SingleGraphColumnsBuilder {
       setGraphSettings,
       tvc,
       visibleViews,
+      false,
     );
     this.columns = [];
   }
@@ -319,6 +343,7 @@ export class DeltaGraphColumnsBuilder {
       setGraphSettings,
       tvc,
       visibleViews,
+      true,
     );
   }
 

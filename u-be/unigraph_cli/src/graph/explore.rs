@@ -85,9 +85,10 @@ pub struct GraphExplore {
     #[arg(long)]
     sort_by: Option<String>,
 
-    /// Sort direction.
-    #[arg(long, default_value = "desc")]
-    sort_order: SortOrderArg,
+    /// Sort direction. Defaults to the graph's stored order when `--sort-by`
+    /// is omitted, and to `desc` otherwise.
+    #[arg(long)]
+    sort_order: Option<SortOrderArg>,
 
     /// Skip first N results (pagination).
     #[arg(long)]
@@ -160,7 +161,7 @@ impl GraphExplore {
                 Some(metrics)
             },
             sort_by,
-            sort_order: Some(self.sort_order.into()),
+            sort_order: self.sort_order.map(Into::into),
             offset: self.offset,
             limit: self.limit,
             include_excluded: Some(self.include_excluded),
