@@ -58,7 +58,11 @@ export default function NodeInfoDialog({
       ) : (
         <ArrowSection title="Edge" arrow={twinArrow.r} />
       )}
-      <NodeDataSection twinGraph={twinGraph} nodeIDX={nodeIDX} />
+      <NodeDataSection
+        twinGraph={twinGraph}
+        nodeIDX={nodeIDX}
+        arrowDiff={arrowDiff}
+      />
       {debugMode && (
         <InternalsSection twinGraph={twinGraph} twinArrow={twinArrow} />
       )}
@@ -68,17 +72,20 @@ export default function NodeInfoDialog({
 
 // ── Node data ───────────────────────────────────────────────────
 
-/// The node's `MapGraph` form. In delta mode this is a structural JSON diff
-/// rather than two panes of raw text: a `GraphNode` is mostly edges, nearly all
-/// of which are identical between two versions of a graph, so two panes leave
-/// the reader doing the comparison by eye. `UJSONDiff` renders both sides into
-/// one scroll container, so they cannot drift apart.
+/// The node **as authored** — its `MapGraph` form, which is what the two
+/// graphs actually store. In delta mode that is a structural JSON diff rather
+/// than two panes of raw text: a `GraphNode` is mostly edges, nearly all of
+/// which are identical between two versions of a graph, so two panes leave the
+/// reader doing the comparison by eye. `UJSONDiff` renders both sides into one
+/// scroll container, so they cannot drift apart.
 function NodeDataSection({
   twinGraph,
   nodeIDX,
+  arrowDiff,
 }: {
   twinGraph: TwinGraph;
   nodeIDX: NodeIDX;
+  arrowDiff: ArrowDiff;
 }) {
   const left = twinGraph.l;
 
@@ -87,25 +94,62 @@ function NodeDataSection({
       <Section title="Node data">
         <Pre
           text={formatJson(twinGraph.r.getMapNode(nodeIDX))}
-          className="max-h-[28rem] text-[11px] leading-tight"
+          className="max-h-[55vh] text-[11px] leading-tight"
         />
       </Section>
     );
   }
 
   return (
-    <Section title="Node data">
+    <Section title="Node data (as authored)">
       {/* UJSONDiff virtualizes against its scroll container, so it needs a
           bounded height rather than growing with the content. */}
-      <div className="h-[28rem]">
+      <div className="h-[55vh] min-h-80">
         <UJSONDiff
           left={left.getMapNode(nodeIDX)}
           right={twinGraph.r.getMapNode(nodeIDX)}
           leftLabel="Left (before)"
           rightLabel="Right (after)"
+          identicalNote={
+            sidesDiffer(twinGraph, nodeIDX, arrowDiff) ? (
+              <TraversalOnlyNote />
+            ) : undefined
+          }
         />
       </div>
     </Section>
+  );
+}
+
+/// A row can be painted as changed while the node itself is untouched: the two
+/// graphs can hold the same nodes and edges and differ only in their traversal
+/// configs, so a different branch gets followed. Saying "identical" with no
+/// explanation next to a green or red row reads like a bug.
+function TraversalOnlyNote() {
+  return (
+    <p className="text-muted-foreground text-xs">
+      This row is marked as changed, but the node is defined the same way in
+      both graphs — same metrics, same edges. What differs is which of those
+      edges the traversal followed. Check the edge sections above, and the
+      traversal config diff.
+    </p>
+  );
+}
+
+/// Whether the twin reports any difference for this node, whatever its data
+/// says. Reachability and tier come from the traversal, not from the node.
+function sidesDiffer(
+  twinGraph: TwinGraph,
+  nodeIDX: NodeIDX,
+  arrowDiff: ArrowDiff,
+): boolean {
+  const left = twinGraph.l;
+  if (left == null) return false;
+
+  return (
+    arrowDiff !== "no_change" ||
+    left.isNodeReachable(nodeIDX) !== twinGraph.r.isNodeReachable(nodeIDX) ||
+    tierLabel(left, nodeIDX) !== tierLabel(twinGraph.r, nodeIDX)
   );
 }
 

@@ -117,7 +117,10 @@ function NodeInfoButton({ twinArrow }: { twinArrow: TwinArrow }) {
   return (
     <UDialog
       title="Node info"
-      className="sm:max-w-4xl max-h-[80vh] overflow-hidden"
+      // 80% of the viewport. `grid-rows` so the body — not the header — takes
+      // the slack, and `minmax(0,1fr)` so it can actually shrink and scroll
+      // rather than pushing the dialog past its own height.
+      className="h-[80vh] w-[80vw] max-w-[80vw] grid-rows-[auto_minmax(0,1fr)] overflow-hidden sm:max-w-[80vw]"
       trigger={
         // Stop propagation so opening the dialog doesn't also select the row.
         <BadgeInfo

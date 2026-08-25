@@ -58,6 +58,7 @@ export default function UJSONDiff({
   right,
   leftLabel = "Left",
   rightLabel = "Right",
+  identicalNote,
   opts,
   className,
 }: {
@@ -65,6 +66,10 @@ export default function UJSONDiff({
   right: unknown;
   leftLabel?: string;
   rightLabel?: string;
+  /// Shown alongside "identical on both sides". Two equal values can still sit
+  /// under a row the surrounding view marks as changed, and only the caller
+  /// knows why.
+  identicalNote?: React.ReactNode;
   opts?: JsonDiffOpts;
   className?: string;
 }) {
@@ -143,8 +148,11 @@ export default function UJSONDiff({
         onJump={jump}
       />
       {identical && (
-        <div className="text-muted-foreground text-xs italic">
-          identical on both sides
+        <div className="flex flex-col gap-1">
+          <div className="text-muted-foreground text-xs italic">
+            identical on both sides
+          </div>
+          {identicalNote}
         </div>
       )}
       <PaneHeader leftLabel={leftLabel} rightLabel={rightLabel} />
