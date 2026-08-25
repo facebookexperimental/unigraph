@@ -83,7 +83,7 @@ const TIER_COLORS = [
   "bg-red-500/35",
 ] as const;
 
-function TierBadge({
+export function TierBadge({
   className,
   tier,
 }: {

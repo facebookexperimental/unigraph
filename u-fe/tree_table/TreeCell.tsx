@@ -8,7 +8,7 @@ import {
   ChevronRight,
   RefreshCw,
 } from "lucide-react";
-import { Fragment, useState } from "react";
+import { Fragment } from "react";
 import type { Arrow } from "../__generated__/ts/Arrow";
 import type { DynamicEdgeInfo } from "../__generated__/ts/DynamicEdgeInfo";
 import type { TwinArrow } from "../__generated__/ts/TwinArrow";
@@ -46,7 +46,6 @@ type Props = {
 export default function TreeCell(props: Props) {
   const twinGraph = useTwinGraph();
   const twinArrow = props.row.twinArrow;
-  const [isHovered, setIsHovered] = useState(false);
 
   const padding = [];
   const PaddingComponent = props.paddingComponent;
@@ -68,11 +67,12 @@ export default function TreeCell(props: Props) {
   }
 
   return (
-    <div
-      className={clsx("flex items-center w-full h-full gap-2", color)}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-    >
+    // Hover reveal is CSS, not state. Mounting the info button on hover put
+    // the dialog inside a conditional: leaving the row — or Cmd-Tabbing away —
+    // unmounted the button and took the open dialog with it. Keeping both
+    // mounted and only changing opacity also drops a re-render per row on
+    // every pointer move across a 60k-row table.
+    <div className={clsx("group flex items-center w-full h-full gap-2", color)}>
       {padding}
       <RowChevron
         canExpand={props.canExpand}
@@ -92,12 +92,10 @@ export default function TreeCell(props: Props) {
       </span>
       <NodeNameAfterPlugin twinArrow={twinArrow} />
       <ArrowDiffBadges twinArrow={twinArrow} arrowDiff={arrowDiff} />
-      {isHovered && (
-        <>
-          <NodeInfoButton twinArrow={twinArrow} />
-          <CopyToClipboard text={props.nodeName} className="ml-2" />
-        </>
-      )}
+      <span className="flex items-center opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+        <NodeInfoButton twinArrow={twinArrow} />
+        <CopyToClipboard text={props.nodeName} className="ml-2" />
+      </span>
     </div>
   );
 }

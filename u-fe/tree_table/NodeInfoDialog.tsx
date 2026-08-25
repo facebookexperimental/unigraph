@@ -1,7 +1,7 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-import { Fragment } from "react";
 import type { Arrow } from "../__generated__/ts/Arrow";
+import type { DynamicEdgeInfo } from "../__generated__/ts/DynamicEdgeInfo";
 import type { TwinArrow } from "../__generated__/ts/TwinArrow";
 import CopyToClipboard from "../components/CopyToClipboard";
 import { useDebugMode } from "../context/DebugModeContext";
@@ -19,6 +19,9 @@ import {
 import type TwinGraph from "../native/TwinGraph";
 import type { NodeIDX } from "../types";
 import { Pre } from "../Typography";
+import type { CompareRow } from "./CompareTable";
+import { Absent, CompareTable, textRow } from "./CompareTable";
+import { TierBadge } from "./columns/tiers";
 import type { ArrowDiff } from "./arrowDiff";
 import { getArrowDiff, getArrowDiffExplanation } from "./arrowDiff";
 
@@ -50,14 +53,7 @@ export default function NodeInfoDialog({
     <div className="flex flex-col gap-3 text-xs overflow-auto min-h-0">
       <NodeSection twinGraph={twinGraph} nodeIDX={nodeIDX} />
       <WhatChangedSection twinArrow={twinArrow} arrowDiff={arrowDiff} />
-      {twinGraph.isDeltaGraph() ? (
-        <>
-          <ArrowSection title="Edge (left)" arrow={twinArrow.l} />
-          <ArrowSection title="Edge (right)" arrow={twinArrow.r} />
-        </>
-      ) : (
-        <ArrowSection title="Edge" arrow={twinArrow.r} />
-      )}
+      <EdgeSection twinGraph={twinGraph} twinArrow={twinArrow} />
       <NodeDataSection
         twinGraph={twinGraph}
         nodeIDX={nodeIDX}
@@ -153,7 +149,7 @@ function sidesDiffer(
   );
 }
 
-// ── Node / change / edge ────────────────────────────────────────
+// ── Node / state / edge ─────────────────────────────────────────
 
 function NodeSection({
   twinGraph,
@@ -163,15 +159,25 @@ function NodeSection({
   nodeIDX: NodeIDX;
 }) {
   const name = twinGraph.getNodeName(nodeIDX);
-  const rows: Row[] = twinGraph.isDeltaGraph()
-    ? [
-        ["reachable", sideBySide(twinGraph, nodeIDX, reachableLabel)],
-        ["tier", sideBySide(twinGraph, nodeIDX, tierLabel)],
-      ]
-    : [
-        ["reachable", reachableLabel(twinGraph.r, nodeIDX)],
-        ["tier", tierLabel(twinGraph.r, nodeIDX)],
-      ];
+  const left = twinGraph.l;
+  const right = twinGraph.r;
+
+  const leftTier = left?.getNodeTierName(nodeIDX) ?? null;
+  const rightTier = right.getNodeTierName(nodeIDX) ?? null;
+
+  const rows: CompareRow[] = [
+    textRow(
+      "reachable",
+      left == null ? null : String(left.isNodeReachable(nodeIDX)),
+      String(right.isNodeReachable(nodeIDX)),
+    ),
+    {
+      label: "tier",
+      left: leftTier == null ? <Absent /> : <TierBadge tier={leftTier} />,
+      right: rightTier == null ? <Absent /> : <TierBadge tier={rightTier} />,
+      changed: leftTier?.[1] !== rightTier?.[1],
+    },
+  ];
 
   return (
     <Section title="Node">
@@ -179,29 +185,13 @@ function NodeSection({
         <span className="font-mono break-all">{displayNodeName(name)}</span>
         <CopyToClipboard text={name} />
       </div>
-      <DefinitionList rows={rows} />
+      <CompareTable rows={rows} isDelta={twinGraph.isDeltaGraph()} />
     </Section>
   );
 }
 
-/// `left → right` on one line, or a single value when both sides agree.
-function sideBySide(
-  twinGraph: TwinGraph,
-  nodeIDX: NodeIDX,
-  label: (graph: NativeGraph, nodeIDX: NodeIDX) => string,
-): string {
-  const left = twinGraph.l;
-  if (left == null) {
-    return label(twinGraph.r, nodeIDX);
-  }
-  const l = label(left, nodeIDX);
-  const r = label(twinGraph.r, nodeIDX);
-  return l === r ? l : `${l} → ${r}`;
-}
-
-/// The prose that used to live in the row's hovercard: why this row is
-/// coloured the way it is, plus whatever the traversal had to say about the
-/// edge on each side.
+/// Why this row is coloured the way it is. One statement about the row, so it
+/// spans both columns rather than sitting in the comparison.
 function WhatChangedSection({
   twinArrow,
   arrowDiff,
@@ -218,15 +208,7 @@ function WhatChangedSection({
     nodeMetricsChanged(diff) && "metrics changed",
   ].filter((flag): flag is string => flag !== false);
 
-  const messages: Array<[string, string]> = [];
-  if (twinArrow.l?.message != null) {
-    messages.push(["Left", twinArrow.l.message]);
-  }
-  if (twinArrow.r?.message != null) {
-    messages.push(["Right", twinArrow.r.message]);
-  }
-
-  if (explanation == null && flags.length === 0 && messages.length === 0) {
+  if (explanation == null && flags.length === 0) {
     return null;
   }
 
@@ -239,59 +221,140 @@ function WhatChangedSection({
         </div>
       )}
       {flags.length > 0 && (
-        <DefinitionList rows={[["node", flags.join(", ")]]} />
-      )}
-      {messages.map(([side, message]) => (
-        <div key={side} className="flex flex-col gap-0.5">
-          <div className="font-semibold">{`Traversal note (${side.toLowerCase()})`}</div>
-          <p className="break-words text-foreground/80">{message}</p>
+        <div className="flex gap-1 font-mono">
+          {flags.map((flag) => (
+            <span
+              key={flag}
+              className="border-accent-foreground/40 bg-accent rounded border px-1.5"
+            >
+              {flag}
+            </span>
+          ))}
         </div>
-      ))}
+      )}
     </Section>
   );
 }
 
-/// The raw edge as it exists on one side of the graph. Note that an `Arrow`'s
-/// own `points_from`/`points_to` are side-local indices, unlike the merged
-/// indices on the enclosing `TwinArrow`.
-function ArrowSection({
-  title,
-  arrow,
+/// The edge leading to this node, both sides on one row per field.
+///
+/// An `Arrow`'s own `points_from`/`points_to` are side-local indices, unlike
+/// the merged indices on the enclosing `TwinArrow` — those live under
+/// Internals, behind debug mode.
+function EdgeSection({
+  twinGraph,
+  twinArrow,
 }: {
-  title: string;
-  arrow: Arrow | undefined;
+  twinGraph: TwinGraph;
+  twinArrow: TwinArrow;
 }) {
-  if (arrow == null) {
+  const isDelta = twinGraph.isDeltaGraph();
+  const l = twinArrow.l;
+  const r = twinArrow.r;
+
+  if (l == null && r == null) {
     return (
-      <Section title={title}>
-        <Empty text="edge does not exist on this side" />
+      <Section title="Edge">
+        <Empty text="this row is not reached via an edge" />
       </Section>
     );
   }
 
-  const rows: Row[] = [
-    ["kind", edgeKind(arrow)],
-    ["excluded", String(arrow.excluded)],
-    ["skipped", String(arrow.skipped)],
+  const rows: CompareRow[] = [
+    textRow("kind", edgeKind(l), edgeKind(r)),
+    textRow(
+      "excluded",
+      boolField(l, (a) => a.excluded),
+      boolField(r, (a) => a.excluded),
+    ),
+    textRow(
+      "skipped",
+      numField(l, (a) => a.skipped),
+      numField(r, (a) => a.skipped),
+    ),
   ];
 
-  const dynamic = arrow.dynamic;
-  if (dynamic != null) {
+  for (const key of dynamicKeys(l?.dynamic, r?.dynamic)) {
     rows.push(
-      ["type_key", dynamic.type_key],
-      ["edge_name", dynamic.edge_name],
-      ["branch", dynamic.branch],
-      ...Object.entries(dynamic.metadata ?? {}).map(
-        ([key, value]): Row => [`metadata.${key}`, value],
+      textRow(
+        key,
+        dynamicField(l?.dynamic, key),
+        dynamicField(r?.dynamic, key),
       ),
     );
   }
 
+  // The traversal's own explanation of why it did or did not follow this edge.
+  // Long prose, and the two sides usually differ only in one word, so it reads
+  // far better on one row than stacked.
+  if (l?.message != null || r?.message != null) {
+    rows.push(textRow("message", l?.message ?? null, r?.message ?? null));
+  }
+
   return (
-    <Section title={title}>
-      <DefinitionList rows={rows} />
+    <Section title={isDelta ? "Edge (left → right)" : "Edge"}>
+      {isDelta && (l == null || r == null) && (
+        <p className="text-muted-foreground">
+          {`This edge exists only in the ${l == null ? "right" : "left"} graph.`}
+        </p>
+      )}
+      <CompareTable rows={rows} isDelta={isDelta} />
     </Section>
   );
+}
+
+function edgeKind(arrow: Arrow | undefined): string | null {
+  if (arrow == null) return null;
+  if (arrow.tag != null) return `tagged (${arrow.tag})`;
+  if (arrow.dynamic != null) return "dynamic";
+  return "directed";
+}
+
+function boolField(
+  arrow: Arrow | undefined,
+  read: (arrow: Arrow) => boolean,
+): string | null {
+  return arrow == null ? null : String(read(arrow));
+}
+
+function numField(
+  arrow: Arrow | undefined,
+  read: (arrow: Arrow) => number,
+): string | null {
+  return arrow == null ? null : String(read(arrow));
+}
+
+/// Union of the dynamic-edge fields present on either side, so a field that
+/// appears on only one of them still gets a row.
+function dynamicKeys(
+  left: DynamicEdgeInfo | undefined,
+  right: DynamicEdgeInfo | undefined,
+): string[] {
+  if (left == null && right == null) return [];
+  const metadata = new Set([
+    ...Object.keys(left?.metadata ?? {}),
+    ...Object.keys(right?.metadata ?? {}),
+  ]);
+  return [
+    "type_key",
+    "edge_name",
+    "branch",
+    ...[...metadata].sort().map((key) => `metadata.${key}`),
+  ];
+}
+
+function dynamicField(
+  dynamic: DynamicEdgeInfo | undefined,
+  key: string,
+): string | null {
+  if (dynamic == null) return null;
+  if (key.startsWith("metadata.")) {
+    return dynamic.metadata?.[key.slice("metadata.".length)] ?? null;
+  }
+  if (key === "type_key") return dynamic.type_key;
+  if (key === "edge_name") return dynamic.edge_name;
+  if (key === "branch") return dynamic.branch;
+  return null;
 }
 
 /// Index-space plumbing. Useful when something looks wrong with the merge
@@ -304,53 +367,41 @@ function InternalsSection({
   twinArrow: TwinArrow;
 }) {
   const diff = twinArrow.node_diff;
-  const rows: Row[] = [
-    ["merged IDX", String(twinArrow.points_to)],
-    ["points_from (merged)", String(twinArrow.points_from)],
-    ["node_diff bits", `0b${diff.toString(2).padStart(4, "0")}`],
+  const rows: CompareRow[] = [
+    {
+      label: "merged IDX",
+      left: String(twinArrow.points_to),
+      right: String(twinArrow.points_to),
+    },
+    {
+      label: "points_from (merged)",
+      left: String(twinArrow.points_from),
+      right: String(twinArrow.points_from),
+    },
+    {
+      label: "node_diff bits",
+      left: `0b${diff.toString(2).padStart(4, "0")}`,
+      right: `0b${diff.toString(2).padStart(4, "0")}`,
+    },
+    textRow(
+      "edge (side-local)",
+      localEdge(twinArrow.l),
+      localEdge(twinArrow.r),
+    ),
   ];
-
-  if (twinGraph.isDeltaGraph()) {
-    rows.push(
-      ["left edge (local)", localEdge(twinArrow.l)],
-      ["right edge (local)", localEdge(twinArrow.r)],
-    );
-  }
 
   return (
     <Section title="Internals">
-      <DefinitionList rows={rows} />
+      <CompareTable rows={rows} isDelta={twinGraph.isDeltaGraph()} />
     </Section>
   );
 }
 
-function localEdge(arrow: Arrow | undefined): string {
-  if (arrow == null) {
-    return NONE;
-  }
-  return `${arrow.points_from} → ${arrow.points_to}`;
+function localEdge(arrow: Arrow | undefined): string | null {
+  return arrow == null ? null : `${arrow.points_from} → ${arrow.points_to}`;
 }
 
 // ── Presentation ────────────────────────────────────────────────
-
-type Row = [key: string, value: string];
-
-function DefinitionList({ rows }: { rows: Row[] }) {
-  if (rows.length === 0) {
-    return <Empty text="none" />;
-  }
-
-  return (
-    <dl className="grid grid-cols-[minmax(0,auto)_minmax(0,1fr)] gap-x-3 gap-y-0.5 font-mono">
-      {rows.map(([key, value]) => (
-        <Fragment key={key}>
-          <dt className="text-foreground/60 break-all">{key}</dt>
-          <dd className="break-all">{value}</dd>
-        </Fragment>
-      ))}
-    </dl>
-  );
-}
 
 function Section({
   title,
@@ -374,16 +425,6 @@ function Section({
 
 function Empty({ text }: { text: string }) {
   return <div className="text-foreground/40 italic">{text}</div>;
-}
-
-function edgeKind(arrow: Arrow): string {
-  if (arrow.tag != null) return `tagged (${arrow.tag})`;
-  if (arrow.dynamic != null) return "dynamic";
-  return "directed";
-}
-
-function reachableLabel(graph: NativeGraph, nodeIDX: NodeIDX): string {
-  return String(graph.isNodeReachable(nodeIDX));
 }
 
 function tierLabel(graph: NativeGraph, nodeIDX: NodeIDX): string {
