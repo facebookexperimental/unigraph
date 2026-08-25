@@ -69,6 +69,20 @@ export class NodeTierColumn implements Column {
   }
 }
 
+/// One colour per tier index, up to `MAX_TIERS`. Spelled out rather than
+/// built from a template because Tailwind only emits classes it can see as
+/// whole strings in the source.
+const TIER_COLORS = [
+  "bg-yellow-500/35",
+  "bg-blue-500/35",
+  "bg-green-500/35",
+  "bg-purple-500/35",
+  "bg-orange-500/35",
+  "bg-pink-500/35",
+  "bg-teal-500/35",
+  "bg-red-500/35",
+] as const;
+
 function TierBadge({
   className,
   tier,
@@ -76,24 +90,10 @@ function TierBadge({
   className?: string;
   tier: [string, TierIDX] | null;
 }) {
-  let bgColor = "border-accent-foreground/50";
-  switch (tier?.[1] ?? null) {
-    case 0:
-      bgColor = "bg-yellow-500/35";
-      break;
-    case 1:
-      bgColor = "bg-blue-500/35";
-      break;
-    case 2:
-      bgColor = "bg-green-500/35";
-      break;
-    case 3:
-      bgColor = "bg-purple-500/35";
-      break;
-    case null:
-      bgColor = "bg-graph-500/50";
-      break;
-  }
+  const bgColor =
+    tier == null
+      ? "bg-graph-500/50"
+      : (TIER_COLORS[tier[1]] ?? "border-accent-foreground/50");
 
   return (
     <span
