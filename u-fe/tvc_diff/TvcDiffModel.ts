@@ -26,6 +26,16 @@
  *
  * The one shape collapsing can't help with is a wholly-added section (nothing
  * is unchanged, so nothing collapses); `maxRowsPerSection` caps that case.
+ *
+ * ## What counts as an entry
+ *
+ * Two sections nest, and for both of them the *inner* level is where the
+ * entries are: `force_edges` is from → to → decision, and `force_dynamic` is
+ * type key → per-edge-name override. Both flatten to a composite key so a
+ * single `rc:gk` holding a thousand gatekeeper overrides produces a thousand
+ * rows rather than one row with a thousand-entry value. Diffing at the type
+ * level would report "`rc:gk` changed" and hand you two blobs to compare by
+ * eye, which is the failure this whole model exists to avoid.
  */
 
 import type { TraversalConfig } from "../__generated__/ts/TraversalConfig";
@@ -236,10 +246,12 @@ export function findNextChange(
 // Section extraction
 // ---------------------------------------------------------------------------
 
-/// Separator for the composite keys `force_edges` is flattened with. A NUL so
-/// it can't collide with a node name — including one containing the arrow the
-/// label is rendered with.
-const EDGE_SEP = "\u0000";
+/// Separator for the composite keys the two-level sections are flattened with
+/// (`force_edges`, `force_dynamic`). A NUL so it can't collide with a node
+/// name, a type key or an edge name — including one containing the arrow or
+/// the middot the labels are rendered with. It also sorts before every real
+/// character, which is what keeps a type's own row above its overrides.
+const COMPOSITE_SEP = "\u0000";
 
 function readSection(
   section: SectionName,
@@ -252,7 +264,7 @@ function readSection(
     keys: unionKeys(sortedKeys(l), sortedKeys(r)),
     left: l,
     right: r,
-    label: section === "force_edges" ? edgeLabel : identity,
+    label: sectionLabel(section),
   };
 }
 
@@ -273,7 +285,32 @@ function flattenSection(
   if (section === "force_edges") {
     for (const [from, targets] of Object.entries(tvc.force_edges ?? {})) {
       for (const [to, decision] of Object.entries(targets)) {
-        out.set(from + EDGE_SEP + to, canonicalJson(decision));
+        out.set(from + COMPOSITE_SEP + to, canonicalJson(decision));
+      }
+    }
+    return out;
+  }
+
+  // `force_dynamic` is two levels deep, and the second one is where the
+  // entries actually are: a single `rc:gk` holds an override per gatekeeper,
+  // thousands of them. Keyed by type alone it is ONE row whose value is a
+  // canonical-JSON blob of the whole thing, so flipping one gatekeeper renders
+  // as two truncated strings that differ somewhere off the right edge of the
+  // screen. Flattened per override, that same flip is one `changed` row and
+  // the rest collapse into a gap.
+  if (section === "force_dynamic") {
+    for (const [typeKey, config] of Object.entries(tvc.force_dynamic ?? {})) {
+      // The type's own row carries everything except the overrides. It is
+      // emitted even when empty, so a type that exists but configures nothing
+      // is still visible.
+      out.set(
+        typeKey + COMPOSITE_SEP,
+        canonicalJson({ default_branches: config.default_branches }),
+      );
+      for (const [edgeName, override] of Object.entries(
+        config.overrides ?? {},
+      )) {
+        out.set(typeKey + COMPOSITE_SEP + edgeName, canonicalJson(override));
       }
     }
     return out;
@@ -285,8 +322,31 @@ function flattenSection(
   return out;
 }
 
+function sectionLabel(section: SectionName): (key: string) => string {
+  switch (section) {
+    case "force_edges":
+      return edgeLabel;
+    case "force_dynamic":
+      return dynamicLabel;
+    default:
+      return identity;
+  }
+}
+
 function edgeLabel(key: string): string {
-  return key.replace(EDGE_SEP, " → ");
+  return key.replace(COMPOSITE_SEP, " → ");
+}
+
+/// `rc:gk · some_gatekeeper` for an override, `rc:gk · (type defaults)` for the
+/// type's own row.
+function dynamicLabel(key: string): string {
+  const at = key.indexOf(COMPOSITE_SEP);
+  if (at === -1) return key;
+  const typeKey = key.slice(0, at);
+  const edgeName = key.slice(at + COMPOSITE_SEP.length);
+  return edgeName === ""
+    ? `${typeKey} · (type defaults)`
+    : `${typeKey} · ${edgeName}`;
 }
 
 function identity(key: string): string {

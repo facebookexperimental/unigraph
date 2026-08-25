@@ -414,6 +414,144 @@ test("all sections render together", () => {
 });
 
 // ---------------------------------------------------------------------------
+// force_dynamic
+// ---------------------------------------------------------------------------
+
+/// A `TraversalConfig` whose `rc:gk` holds `count` gatekeeper overrides.
+/// `flipped` names the one whose branch filter differs.
+function gkConfig(count: number, flipped?: string): TraversalConfig {
+  const overrides: Record<string, { branches: { Include: string[] } }> = {};
+  for (let i = 0; i < count; i++) {
+    const name = `gk_${String(i).padStart(4, "0")}`;
+    overrides[name] = {
+      branches: { Include: [name === flipped ? "true" : "false"] },
+    };
+  }
+  return {
+    force_dynamic: {
+      "rc:gk": { default_branches: { Include: ["false"] }, overrides },
+      "rc:MetaConfig.number": {},
+    },
+  };
+}
+
+/// The shape that made this section useless: one type key holds a thousand
+/// gatekeeper overrides. Keyed by type alone that is a single row whose value
+/// is the whole blob, so flipping one gatekeeper renders as two truncated
+/// strings differing somewhere off the right edge of the screen.
+///
+/// Flattened per override it is one `changed` row, named, with the rest
+/// collapsed into gaps.
+test("force_dynamic: one flipped gatekeeper is one named row", () => {
+  const diff = buildTvcDiff(gkConfig(1000), gkConfig(1000, "gk_0500"));
+
+  expect(lines(diff.rows)).toMatchInlineSnapshot(`
+    [
+      "## force_dynamic +0 -0 ~1",
+      "⋯ 499 @0",
+      "  rc:gk · gk_0497 | {"branches":{"Include":["false"]}}",
+      "  rc:gk · gk_0498 | {"branches":{"Include":["false"]}}",
+      "  rc:gk · gk_0499 | {"branches":{"Include":["false"]}}",
+      "~ rc:gk · gk_0500 | {"branches":{"Include":["false"]}} -> {"branches":{"Include":["true"]}}",
+      "  rc:gk · gk_0501 | {"branches":{"Include":["false"]}}",
+      "  rc:gk · gk_0502 | {"branches":{"Include":["false"]}}",
+      "  rc:gk · gk_0503 | {"branches":{"Include":["false"]}}",
+      "⋯ 496 @506",
+    ]
+  `);
+});
+
+/// The type's own row is emitted even when it configures nothing, so a type
+/// that exists stays visible rather than vanishing into its (absent) overrides.
+test("force_dynamic: a type with no overrides still gets a row", () => {
+  const diff = buildTvcDiff(
+    { force_dynamic: { "rc:MetaConfig.number": {} } },
+    { force_dynamic: { "rc:MetaConfig.number": {} } },
+  );
+
+  expect(lines(diff.rows)).toMatchInlineSnapshot(`
+    [
+      "## force_dynamic +0 -0 ~0",
+      "⋯ 1 @0",
+    ]
+  `);
+});
+
+/// Adding and removing a single gatekeeper are their own rows too, not a
+/// wholesale rewrite of the type.
+test("force_dynamic: added and removed overrides are separate rows", () => {
+  const left: TraversalConfig = {
+    force_dynamic: {
+      "rc:gk": {
+        default_branches: { Include: ["false"] },
+        overrides: { only_in_left: { branches: { Include: ["true"] } } },
+      },
+    },
+  };
+  const right: TraversalConfig = {
+    force_dynamic: {
+      "rc:gk": {
+        default_branches: { Include: ["false"] },
+        overrides: { only_in_right: { branches: { Include: ["true"] } } },
+      },
+    },
+  };
+
+  expect(lines(buildTvcDiff(left, right).rows)).toMatchInlineSnapshot(`
+    [
+      "## force_dynamic +1 -1 ~0",
+      "  rc:gk · (type defaults) | {"default_branches":{"Include":["false"]}}",
+      "- rc:gk · only_in_left | {"branches":{"Include":["true"]}}",
+      "+ rc:gk · only_in_right | {"branches":{"Include":["true"]}}",
+    ]
+  `);
+});
+
+/// A change to the type's defaults is distinct from a change to any override.
+test("force_dynamic: the type's own defaults change on their own row", () => {
+  const left: TraversalConfig = {
+    force_dynamic: {
+      "rc:gk": {
+        default_branches: { Include: ["false"] },
+        overrides: { steady: { branches: { Include: ["true"] } } },
+      },
+    },
+  };
+  const right: TraversalConfig = {
+    force_dynamic: {
+      "rc:gk": {
+        default_branches: { Include: ["true"] },
+        overrides: { steady: { branches: { Include: ["true"] } } },
+      },
+    },
+  };
+
+  expect(lines(buildTvcDiff(left, right).rows)).toMatchInlineSnapshot(`
+    [
+      "## force_dynamic +0 -0 ~1",
+      "~ rc:gk · (type defaults) | {"default_branches":{"Include":["false"]}} -> {"default_branches":{"Include":["true"]}}",
+      "  rc:gk · steady | {"branches":{"Include":["true"]}}",
+    ]
+  `);
+});
+
+/// Search has to reach a gatekeeper by name, which is the whole reason the
+/// name is a key rather than a substring of one giant value.
+test("force_dynamic: a gatekeeper is findable by name inside a gap", () => {
+  const diff = buildTvcDiff(gkConfig(1000), gkConfig(1000, "gk_0500"));
+
+  const collapsed = lines(diff.rows).join("\n");
+  expect(collapsed).not.toContain("gk_0123");
+
+  expect(lines(searchTvcDiff(diff, "gk_0123"))).toMatchInlineSnapshot(`
+    [
+      "## force_dynamic +0 -0 ~1",
+      "  rc:gk · gk_0123 | {"branches":{"Include":["false"]}}",
+    ]
+  `);
+});
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
