@@ -13,9 +13,21 @@ export const NO_PRECISION_FORMAT: MetricFormat = {
   },
 };
 
-export function MissingMetric() {
+/// Props a cell passes straight through to its `<span>`.
+///
+/// These cells are routinely handed to a Radix `asChild` trigger — a
+/// hovercard, a tooltip — which works by cloning the element and merging its
+/// own `ref`, `className` and pointer handlers into the child's props. A cell
+/// that destructures only what it uses drops all of that on the floor, and the
+/// trigger silently does nothing: no error, no missing element, just a
+/// hovercard that never opens. Spreading the rest is what makes `asChild` work.
+type CellProps = Omit<React.ComponentProps<"span">, "children">;
+
+const CELL_CLASS = "px-4 text-right tabular-nums w-full whitespace-nowrap";
+
+export function MissingMetric({ className, ...rest }: CellProps) {
   return (
-    <span className="px-4 text-right tabular-nums w-full whitespace-nowrap">
+    <span {...rest} className={clsx(CELL_CLASS, className)}>
       -
     </span>
   );
@@ -25,18 +37,18 @@ export function MetricCell({
   value,
   format,
   muted,
+  className,
+  ...rest
 }: {
   value: number;
   format?: MetricFormat;
   // Dim the value when the node is unreachable/excluded from the graph.
   muted?: boolean;
-}) {
+} & CellProps) {
   return (
     <span
-      className={clsx(
-        "px-4 text-right tabular-nums w-full whitespace-nowrap",
-        muted && "text-muted-foreground",
-      )}
+      {...rest}
+      className={clsx(CELL_CLASS, muted && "text-muted-foreground", className)}
     >
       {formatMetric(value, format)}
     </span>
@@ -46,20 +58,24 @@ export function MetricCell({
 export function DeltaMetricCell({
   value,
   format,
+  className,
+  ...rest
 }: {
   value: number;
   format?: MetricFormat;
-}) {
+} & CellProps) {
   const isPositive = value > 0;
   const isNegative = value < 0;
   const sign = isPositive ? "+" : ""; // Negative sign is included in the number itself
 
   return (
     <span
+      {...rest}
       className={clsx(
-        "px-4 text-right tabular-nums w-full whitespace-nowrap",
+        CELL_CLASS,
         isPositive && "font-semibold text-red-600",
         isNegative && "font-semibold text-green-600",
+        className,
       )}
     >
       {sign}
