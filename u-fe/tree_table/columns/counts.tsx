@@ -21,7 +21,7 @@ import {
   WouldBeDeltaMetricCell,
 } from "./Cells";
 import { MV } from "./ColumnUtils";
-import { MetricDeltaRightHovercard } from "./hovercards";
+import { LazyMetricComparisonHovercard } from "./hovercards";
 import type { Column, ColumnsCtx } from "./useGraphTreeTableColumns";
 
 export class TransitiveCountColumn implements Column {
@@ -259,16 +259,32 @@ export class TransitiveCountDeltaColumn implements Column {
     const getValues = this.getValuesFn();
     const getValuesForSorting = this.getValuesFnForSorting();
     const columnID = this.getID();
+    const l = this.twinGraph.leftGraphX();
+    const r = this.twinGraph.r;
 
     const definition: NumericValueColumnDefinition = {
       t: "numeric_value_column",
       label: columnID,
       renderer: (row: Readonly<Row>) => {
+        const idx = row.twinArrow.points_to;
         return (
-          <DeltaMetricCell
-            value={getValues([row.twinArrow.points_to])[0] ?? 0}
-            format={NO_PRECISION_FORMAT}
-          />
+          <UHoverCard
+            triggerClassname="w-full"
+            asChild
+            content={
+              <LazyMetricComparisonHovercard
+                getLeft={() => l.getTransitiveCount([idx])[0] ?? 0}
+                getRight={() => r.getTransitiveCount([idx])[0] ?? 0}
+                getDelta={() => getValues([idx])[0] ?? 0}
+                format={NO_PRECISION_FORMAT}
+              />
+            }
+          >
+            <DeltaMetricCell
+              value={getValues([idx])[0] ?? 0}
+              format={NO_PRECISION_FORMAT}
+            />
+          </UHoverCard>
         );
       },
       getNumericValues: getValuesForSorting,
@@ -342,6 +358,8 @@ export class TransitiveCountRightInDeltaViewColumn implements Column {
   definition(): [string, NumericValueColumnDefinition] {
     const getValues = this.getValuesFn(GRAPH_SIDE.R);
     const getValuesLeft = this.getValuesFn(GRAPH_SIDE.L);
+    const getDelta = (idxs: NodeIDX[]) =>
+      this.twinGraph.getTransitiveCountDelta(idxs);
     const columnID = this.getID();
     const r = this.twinGraph.r;
 
@@ -349,27 +367,30 @@ export class TransitiveCountRightInDeltaViewColumn implements Column {
       t: "numeric_value_column",
       label: columnID,
       renderer: (row: Readonly<Row>) => {
-        if (r.isNodeReachable(row.twinArrow.points_to)) {
-          return (
-            <UHoverCard
-              triggerClassname="w-full"
-              content={
-                <MetricDeltaRightHovercard
-                  valueLeft={getValuesLeft([row.twinArrow.points_to])[0] ?? 0}
-                  valueRight={getValues([row.twinArrow.points_to])[0] ?? 0}
-                  format={NO_PRECISION_FORMAT}
-                />
-              }
-            >
-              <MetricCell
-                value={getValues([row.twinArrow.points_to])[0] ?? 0}
+        const idx = row.twinArrow.points_to;
+        return (
+          <UHoverCard
+            triggerClassname="w-full"
+            asChild
+            content={
+              <LazyMetricComparisonHovercard
+                getLeft={() => getValuesLeft([idx])[0] ?? 0}
+                getRight={() => getValues([idx])[0] ?? 0}
+                getDelta={() => getDelta([idx])[0] ?? 0}
                 format={NO_PRECISION_FORMAT}
               />
-            </UHoverCard>
-          );
-        } else {
-          return <MissingMetric />;
-        }
+            }
+          >
+            {r.isNodeReachable(idx) ? (
+              <MetricCell
+                value={getValues([idx])[0] ?? 0}
+                format={NO_PRECISION_FORMAT}
+              />
+            ) : (
+              <MissingMetric />
+            )}
+          </UHoverCard>
+        );
       },
       getNumericValues: getValues,
       sortable: this.sortable(),

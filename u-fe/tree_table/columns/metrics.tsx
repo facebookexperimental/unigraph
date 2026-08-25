@@ -18,7 +18,7 @@ import {
   WouldBeDeltaMetricCell,
 } from "./Cells";
 import { MV } from "./ColumnUtils";
-import { MetricDeltaRightHovercard } from "./hovercards";
+import { LazyMetricComparisonHovercard } from "./hovercards";
 import type { Column, ColumnsCtx } from "./useGraphTreeTableColumns";
 
 // ── Helpers ────────────────────────────────────────────────────
@@ -529,21 +529,49 @@ export class TransitiveTieredMetricDeltaColumn implements Column {
       Float64Array.from(this.getValuesFn()(idxs).map((n) => Math.abs(n)));
   }
 
+  /// Same shape as `TransitiveTieredMetricRightDeltaColumn.getValuesFn` — the
+  /// per-side tiered values the `∆` is built from, which the hovercard shows.
+  getSideValuesFn(side: GraphSide): (idxs: NodeIDX[]) => number[] {
+    const g =
+      side === GRAPH_SIDE.L ? this.twinGraph.leftGraphX() : this.twinGraph.r;
+
+    return (idxs: NodeIDX[]) =>
+      g
+        .getTieredTransitiveMetricsBatched(idxs, this.metricName)
+        .map((m) => m[this.tierName] ?? 0);
+  }
+
   definition(): [string, NumericValueColumnDefinition] {
     const columnID = this.getID();
     const getValues = this.getValuesFn();
     const getValuesFnForSorting = this.getValuesFnForSorting();
+    const getValuesL = this.getSideValuesFn(GRAPH_SIDE.L);
+    const getValuesR = this.getSideValuesFn(GRAPH_SIDE.R);
     const format = this.ctx.format(this.metricName);
 
     const definition: NumericValueColumnDefinition = {
       t: "numeric_value_column",
       label: columnID,
       renderer: (row: Readonly<Row>) => {
+        const idx = row.twinArrow.points_to;
         return (
-          <DeltaMetricCell
-            value={getValues([row.twinArrow.points_to])[0] as number}
-            format={format}
-          />
+          <UHoverCard
+            triggerClassname="w-full"
+            asChild
+            content={
+              <LazyMetricComparisonHovercard
+                getLeft={() => getValuesL([idx])[0] ?? 0}
+                getRight={() => getValuesR([idx])[0] ?? 0}
+                getDelta={() => getValues([idx])[0] ?? 0}
+                format={format}
+              />
+            }
+          >
+            <DeltaMetricCell
+              value={getValues([idx])[0] as number}
+              format={format}
+            />
+          </UHoverCard>
         );
       },
       getNumericValues: getValuesFnForSorting,
@@ -618,6 +646,10 @@ export class TransitiveTieredMetricRightDeltaColumn implements Column {
     const columnID = this.getID();
     const getValuesL = this.getValuesFn(GRAPH_SIDE.L);
     const getValuesR = this.getValuesFn(GRAPH_SIDE.R);
+    const getDelta = (idxs: NodeIDX[]) =>
+      this.twinGraph
+        .getTieredTransitiveMetricsDeltaBatched(idxs, this.metricName)
+        .map((m) => m[this.tierName] ?? 0);
     const format = this.ctx.format(this.metricName);
     const r = this.twinGraph.r;
 
@@ -625,21 +657,23 @@ export class TransitiveTieredMetricRightDeltaColumn implements Column {
       t: "numeric_value_column",
       label: columnID,
       renderer: (row: Readonly<Row>) => {
+        const idx = row.twinArrow.points_to;
         return (
           <UHoverCard
             triggerClassname="w-full"
             asChild
             content={
-              <MetricDeltaRightHovercard
-                valueLeft={getValuesL([row.twinArrow.points_to])[0] ?? 0}
-                valueRight={getValuesR([row.twinArrow.points_to])[0] ?? 0}
+              <LazyMetricComparisonHovercard
+                getLeft={() => getValuesL([idx])[0] ?? 0}
+                getRight={() => getValuesR([idx])[0] ?? 0}
+                getDelta={() => getDelta([idx])[0] ?? 0}
                 format={format}
               />
             }
           >
-            {r.isNodeReachable(row.twinArrow.points_to) ? (
+            {r.isNodeReachable(idx) ? (
               <MetricCell
-                value={getValuesR([row.twinArrow.points_to])[0] as number}
+                value={getValuesR([idx])[0] as number}
                 format={format}
               />
             ) : (
@@ -702,31 +736,29 @@ export class MetricRightInDeltaViewColumn implements Column {
       t: "numeric_value_column",
       label: columnID,
       renderer: (row: Readonly<Row>) => {
-        if (r.isNodeReachable(row.twinArrow.points_to)) {
-          return (
-            <UHoverCard
-              triggerClassname="w-full"
-              asChild
-              content={
-                <MetricDeltaRightHovercard
-                  valueLeft={getValuesL([row.twinArrow.points_to])[0] ?? 0}
-                  valueRight={getValuesR([row.twinArrow.points_to])[0] ?? 0}
-                  format={format}
-                />
-              }
-            >
-              <MetricCell
-                value={r.getNodeMetric(
-                  row.twinArrow.points_to,
-                  this.metricName,
-                )}
+        const idx = row.twinArrow.points_to;
+        return (
+          <UHoverCard
+            triggerClassname="w-full"
+            asChild
+            content={
+              <LazyMetricComparisonHovercard
+                getLeft={() => getValuesL([idx])[0] ?? 0}
+                getRight={() => getValuesR([idx])[0] ?? 0}
                 format={format}
               />
-            </UHoverCard>
-          );
-        } else {
-          return <MissingMetric />;
-        }
+            }
+          >
+            {r.isNodeReachable(idx) ? (
+              <MetricCell
+                value={r.getNodeMetric(idx, this.metricName)}
+                format={format}
+              />
+            ) : (
+              <MissingMetric />
+            )}
+          </UHoverCard>
+        );
       },
       getNumericValues: (idxs: NodeIDX[]) =>
         r.getNodeMetricBatched(idxs, this.metricName),
@@ -791,6 +823,7 @@ export class MetricDeltaViewColumn implements Column {
 
   definition(): [string, NumericValueColumnDefinition] {
     const r = this.twinGraph.r;
+    const l = this.twinGraph.leftGraphX();
     const columnID = this.getID();
     const format = this.ctx.format(this.metricName);
     const getValues = this.getValuesFn();
@@ -799,16 +832,33 @@ export class MetricDeltaViewColumn implements Column {
       t: "numeric_value_column",
       label: columnID,
       renderer: (row: Readonly<Row>) => {
-        if (r.isNodeReachable(row.twinArrow.points_to)) {
-          return (
-            <DeltaMetricCell
-              value={getValues([row.twinArrow.points_to])[0] ?? 0}
-              format={format}
-            />
-          );
-        } else {
-          return <MissingMetric />;
-        }
+        const idx = row.twinArrow.points_to;
+        return (
+          <UHoverCard
+            triggerClassname="w-full"
+            asChild
+            content={
+              <LazyMetricComparisonHovercard
+                getLeft={() =>
+                  l.getNodeMetricBatched([idx], this.metricName)[0] ?? 0
+                }
+                getRight={() =>
+                  r.getNodeMetricBatched([idx], this.metricName)[0] ?? 0
+                }
+                format={format}
+              />
+            }
+          >
+            {r.isNodeReachable(idx) ? (
+              <DeltaMetricCell
+                value={getValues([idx])[0] ?? 0}
+                format={format}
+              />
+            ) : (
+              <MissingMetric />
+            )}
+          </UHoverCard>
+        );
       },
       getNumericValues: this.getValuesFnForSorting(),
       sortable: this.sortable(),
@@ -864,28 +914,29 @@ export class TransitiveMetricRightInDeltaViewColumn implements Column {
       t: "numeric_value_column",
       label: columnID,
       renderer: (row: Readonly<Row>) => {
-        if (r.isNodeReachable(row.twinArrow.points_to)) {
-          return (
-            <UHoverCard
-              triggerClassname="w-full"
-              asChild
-              content={
-                <MetricDeltaRightHovercard
-                  valueLeft={getValuesL([row.twinArrow.points_to])[0] ?? 0}
-                  valueRight={getValuesR([row.twinArrow.points_to])[0] ?? 0}
-                  format={format}
-                />
-              }
-            >
-              <MetricCell
-                value={getValuesR([row.twinArrow.points_to])[0] as number}
+        const idx = row.twinArrow.points_to;
+        return (
+          <UHoverCard
+            triggerClassname="w-full"
+            asChild
+            content={
+              <LazyMetricComparisonHovercard
+                getLeft={() => getValuesL([idx])[0] ?? 0}
+                getRight={() => getValuesR([idx])[0] ?? 0}
                 format={format}
               />
-            </UHoverCard>
-          );
-        } else {
-          return <MissingMetric />;
-        }
+            }
+          >
+            {r.isNodeReachable(idx) ? (
+              <MetricCell
+                value={getValuesR([idx])[0] as number}
+                format={format}
+              />
+            ) : (
+              <MissingMetric />
+            )}
+          </UHoverCard>
+        );
       },
       getNumericValues: (idxs: NodeIDX[]) => getValuesR(idxs),
       sortable: this.sortable(),
@@ -949,6 +1000,7 @@ export class TransitiveMetricDeltaColumn implements Column {
 
   definition(): [string, NumericValueColumnDefinition] {
     const r = this.twinGraph.r;
+    const l = this.twinGraph.leftGraphX();
     const columnID = this.getID();
     const format = this.ctx.format(this.metricName);
     const getValues = this.getValuesFn();
@@ -957,16 +1009,33 @@ export class TransitiveMetricDeltaColumn implements Column {
       t: "numeric_value_column",
       label: columnID,
       renderer: (row: Readonly<Row>) => {
-        if (r.isNodeReachable(row.twinArrow.points_to)) {
-          return (
-            <DeltaMetricCell
-              value={getValues([row.twinArrow.points_to])[0] ?? 0}
-              format={format}
-            />
-          );
-        } else {
-          return <MissingMetric />;
-        }
+        const idx = row.twinArrow.points_to;
+        return (
+          <UHoverCard
+            triggerClassname="w-full"
+            asChild
+            content={
+              <LazyMetricComparisonHovercard
+                getLeft={() =>
+                  l.getTransitiveMetricsBatched([idx], this.metricName)[0] ?? 0
+                }
+                getRight={() =>
+                  r.getTransitiveMetricsBatched([idx], this.metricName)[0] ?? 0
+                }
+                format={format}
+              />
+            }
+          >
+            {r.isNodeReachable(idx) ? (
+              <DeltaMetricCell
+                value={getValues([idx])[0] ?? 0}
+                format={format}
+              />
+            ) : (
+              <MissingMetric />
+            )}
+          </UHoverCard>
+        );
       },
       getNumericValues: this.getValuesFnForSorting(),
       sortable: this.sortable(),
