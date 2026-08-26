@@ -3,12 +3,14 @@
 //! [`UnigraphGraphStorage`] and [`UnigraphGraphConnection`] implementation for SQLite.
 
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::sync::MutexGuard;
 
 use anyhow::Context;
 use anyhow::Result;
 use async_trait::async_trait;
 use rusqlite::Connection;
+use unigraph_storage_core::ConfigWrite;
 use unigraph_storage_core::ExclusiveGraphIDRange;
 use unigraph_storage_core::ExternalID;
 use unigraph_storage_core::ExternalIDNamespace;
@@ -1123,15 +1125,16 @@ impl UnigraphGraphConnection for SqliteConnection {
 
     // -- Config storage --
 
-    async fn store_traversal_config(
+    async fn store_configs(&mut self, rows: &[ConfigWrite], _task: &ll::Task) -> Result<()> {
+        store_config_rows(&self.lock(), rows)
+    }
+
+    async fn select_stored_config_keys(
         &mut self,
-        key: &TraversalConfigKey,
-        blob_inline: Option<&[u8]>,
-        blob_id: Option<&str>,
-        expires_at: Option<Timestamp>,
+        keys: &[String],
         _task: &ll::Task,
-    ) -> Result<()> {
-        store_config_row(&self.lock(), key, blob_inline, blob_id, expires_at)
+    ) -> Result<BTreeSet<String>> {
+        select_stored_config_keys_impl(&self.lock(), keys)
     }
 
     async fn get_traversal_config(
@@ -1140,17 +1143,6 @@ impl UnigraphGraphConnection for SqliteConnection {
         _task: &ll::Task,
     ) -> Result<Option<ConfigRow<TraversalConfigKey>>> {
         get_config_row(&self.lock(), key)
-    }
-
-    async fn store_graph_query_config(
-        &mut self,
-        key: &GraphQueryConfigKey,
-        blob_inline: Option<&[u8]>,
-        blob_id: Option<&str>,
-        expires_at: Option<Timestamp>,
-        _task: &ll::Task,
-    ) -> Result<()> {
-        store_config_row(&self.lock(), key, blob_inline, blob_id, expires_at)
     }
 
     async fn get_graph_query_config(
@@ -1268,34 +1260,63 @@ impl<T> OptionalExt<T> for Result<T, rusqlite::Error> {
 
 // -- Config storage helpers --
 
-/// Store a config row with `INSERT OR IGNORE` (content-addressed dedup).
-fn store_config_row<K: ConfigKeyLike>(
-    conn: &MutexGuard<'_, Connection>,
-    key: &K,
-    blob_inline: Option<&[u8]>,
-    blob_id: Option<&str>,
-    expires_at: Option<Timestamp>,
-) -> Result<()> {
+/// Write config rows with `INSERT OR IGNORE` (content-addressed dedup).
+fn store_config_rows(conn: &MutexGuard<'_, Connection>, rows: &[ConfigWrite]) -> Result<()> {
+    if rows.is_empty() {
+        return Ok(());
+    }
+
     let now = Timestamp::now().to_unix_timestamp();
-    let expires_at_unix = expires_at.map(|t| t.to_unix_timestamp());
     let sql = format!(
         "INSERT OR IGNORE INTO {} (key, config_type, blob_inline, blob_id, base_key, created_at, expires_at)
          VALUES (?1, ?2, ?3, ?4, NULL, ?5, ?6)",
         TABLE_CONFIGS
     );
-    conn.execute(
-        &sql,
-        rusqlite::params![
-            key.as_str(),
-            K::PREFIX,
-            blob_inline,
-            blob_id,
+    let mut stmt = conn
+        .prepare(&sql)
+        .context("failed to prepare store_configs")?;
+
+    for row in rows {
+        stmt.execute(rusqlite::params![
+            row.key,
+            row.config_type,
+            row.blob_inline,
+            row.blob_id,
             now,
-            expires_at_unix,
-        ],
-    )
-    .context("failed to store config")?;
+            row.expires_at.map(|t| t.to_unix_timestamp()),
+        ])
+        .context("failed to store config")?;
+    }
+
     Ok(())
+}
+
+/// Of `keys`, the subset already present in the configs table.
+fn select_stored_config_keys_impl(
+    conn: &MutexGuard<'_, Connection>,
+    keys: &[String],
+) -> Result<BTreeSet<String>> {
+    if keys.is_empty() {
+        return Ok(BTreeSet::new());
+    }
+
+    let placeholders = (1..=keys.len())
+        .map(|i| format!("?{i}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let sql = format!("SELECT key FROM {TABLE_CONFIGS} WHERE key IN ({placeholders})");
+    let mut stmt = conn
+        .prepare(&sql)
+        .context("failed to prepare select_stored_config_keys")?;
+
+    let params = rusqlite::params_from_iter(keys.iter());
+    let stored = stmt
+        .query_map(params, |row| row.get::<_, String>(0))
+        .context("failed to query stored config keys")?
+        .collect::<rusqlite::Result<BTreeSet<String>>>()
+        .context("failed to read stored config keys")?;
+
+    Ok(stored)
 }
 
 /// Fetch a config row by key. Returns `None` if not found.

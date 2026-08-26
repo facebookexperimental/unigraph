@@ -44,6 +44,7 @@ pub use traits::UnigraphGraphConnection;
 pub use traits::UnigraphGraphStorage;
 pub use types::AdjacentDeltasConfig;
 pub use types::BlobStorageMode;
+pub use types::ConfigWrite;
 pub use types::DEFAULT_INLINE_BLOB_THRESHOLD_BYTES;
 pub use types::ExternalID;
 pub use types::ExternalIDNamespace;

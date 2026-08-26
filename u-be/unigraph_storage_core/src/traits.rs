@@ -7,6 +7,7 @@
 //! [`UnigraphBlobStorage`] handles external blob storage for large payloads.
 
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -25,6 +26,7 @@ use crate::history::HistorySampleRow;
 use crate::history::HistoryStatusRow;
 use crate::history::IngestState;
 use crate::history::Reasons;
+use crate::types::ConfigWrite;
 use crate::types::ExternalID;
 use crate::types::ExternalIDNamespace;
 use crate::types::FrameQuery;
@@ -586,18 +588,29 @@ pub trait UnigraphGraphConnection: Send {
 
     // -- Config storage --
 
-    /// Store a traversal config blob by its content-addressed key.
+    /// Write config rows, of any mix of config kinds.
     ///
-    /// Uses `INSERT OR IGNORE` semantics — if the key already exists, the write
-    /// is silently skipped (deduplication).
-    async fn store_traversal_config(
+    /// Uses `INSERT OR IGNORE` semantics — a key that already exists is left
+    /// alone. That is deduplication rather than a lost update: config keys are
+    /// hashes of the compressed bytes, so an existing row holds exactly what
+    /// this write was going to put there.
+    ///
+    /// Callers pass rows sorted by key. A batch is one statement per chunk, so
+    /// ordering only matters once a batch is large enough to be chunked — but
+    /// consistent ordering across writers is what keeps concurrent batches from
+    /// deadlocking on each other, and it costs nothing to hold to.
+    async fn store_configs(&mut self, rows: &[ConfigWrite], task: &ll::Task) -> Result<()>;
+
+    /// Of `keys`, the subset that is already stored.
+    ///
+    /// One round trip for the whole batch. Returns only the keys, never the
+    /// blobs — this answers "do I need to write this?", and pulling inline
+    /// blobs back to answer it would defeat the point.
+    async fn select_stored_config_keys(
         &mut self,
-        key: &TraversalConfigKey,
-        blob_inline: Option<&[u8]>,
-        blob_id: Option<&str>,
-        expires_at: Option<Timestamp>,
+        keys: &[String],
         task: &ll::Task,
-    ) -> Result<()>;
+    ) -> Result<BTreeSet<String>>;
 
     /// Fetch a traversal config row by key. Returns `None` if not found.
     async fn get_traversal_config(
@@ -605,16 +618,6 @@ pub trait UnigraphGraphConnection: Send {
         key: &TraversalConfigKey,
         task: &ll::Task,
     ) -> Result<Option<ConfigRow<TraversalConfigKey>>>;
-
-    /// Store a graph query config blob by its content-addressed key.
-    async fn store_graph_query_config(
-        &mut self,
-        key: &GraphQueryConfigKey,
-        blob_inline: Option<&[u8]>,
-        blob_id: Option<&str>,
-        expires_at: Option<Timestamp>,
-        task: &ll::Task,
-    ) -> Result<()>;
 
     /// Fetch a graph query config row by key. Returns `None` if not found.
     async fn get_graph_query_config(

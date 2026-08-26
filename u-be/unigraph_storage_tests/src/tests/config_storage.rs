@@ -270,6 +270,197 @@ async fn custom_threshold_forces_external_storage() -> Result<()> {
     Ok(())
 }
 
+// -- Batch storage --
+
+fn traversal_config_with(module: &str) -> TraversalConfig {
+    let mut force_nodes = BTreeMap::new();
+    force_nodes.insert(module.to_string(), Decision::include());
+    TraversalConfig {
+        force_nodes: Some(force_nodes),
+        force_edges: None,
+        force_tagged: None,
+        label_predicates: None,
+        force_dynamic: None,
+        tiered_traversal: None,
+        messages: None,
+    }
+}
+
+/// Keys come back one per input, in input order, and every one of them fetches
+/// back the config that was at that position.
+#[tokio::test]
+async fn batch_returns_a_key_per_input_in_order() -> Result<()> {
+    let db = make_db();
+    let task = ll::Task::create_new("test");
+
+    let configs: Vec<TraversalConfig> = (0..5)
+        .map(|i| traversal_config_with(&format!("module_{i}")))
+        .collect();
+    let refs: Vec<&TraversalConfig> = configs.iter().collect();
+
+    let keys = db.configs.store_traversal_configs(&refs, &task).await?;
+
+    assert_eq!(keys.len(), configs.len());
+    for (key, config) in keys.iter().zip(&configs) {
+        assert_eq!(
+            &db.configs.fetch_traversal_config(key, &task).await?,
+            config
+        );
+    }
+
+    Ok(())
+}
+
+/// Repeats inside one batch collapse to a single write but still get their own
+/// slot in the result. The WWW build hits this constantly — different budget
+/// projects routinely produce identical patched TVCs.
+#[tokio::test]
+async fn batch_dedups_repeats_and_still_answers_every_slot() -> Result<()> {
+    let db = make_db();
+    let task = ll::Task::create_new("test");
+
+    let a = traversal_config_with("a");
+    let b = traversal_config_with("b");
+    let refs = vec![&a, &b, &a, &a, &b];
+
+    let keys = db.configs.store_traversal_configs(&refs, &task).await?;
+
+    assert_eq!(keys.len(), 5);
+    assert_eq!(keys[0], keys[2], "same config, same key");
+    assert_eq!(keys[0], keys[3]);
+    assert_eq!(keys[1], keys[4]);
+    assert_ne!(keys[0], keys[1], "different configs, different keys");
+
+    assert_eq!(db.configs.fetch_traversal_config(&keys[0], &task).await?, a);
+    assert_eq!(db.configs.fetch_traversal_config(&keys[1], &task).await?, b);
+
+    Ok(())
+}
+
+/// A batch of configs that are all already stored writes nothing at all.
+///
+/// Deleting the blobs out from under the second batch is the only way to
+/// observe from outside that it did no work — and that write amplification is
+/// what put ~50 transactions a build onto the shared `configs` table.
+#[tokio::test]
+async fn batch_skips_configs_that_are_already_stored() -> Result<()> {
+    let sqlite = Arc::new(SqliteStorage::new_in_memory().unwrap());
+    let db = UnigraphDb::new(sqlite.clone(), sqlite.clone()).with_config_inline_blob_threshold(0);
+    let task = ll::Task::create_new("test");
+
+    let configs: Vec<TraversalConfig> = (0..3)
+        .map(|i| traversal_config_with(&format!("module_{i}")))
+        .collect();
+    let refs: Vec<&TraversalConfig> = configs.iter().collect();
+
+    let keys = db.configs.store_traversal_configs(&refs, &task).await?;
+    let paths: Vec<String> = keys
+        .iter()
+        .map(|key| format!("configs/{}/{}", TraversalConfigKey::PREFIX, key))
+        .collect();
+    for path in &paths {
+        sqlite.delete_blob(path).await?;
+    }
+
+    let keys_again = db.configs.store_traversal_configs(&refs, &task).await?;
+
+    assert_eq!(keys_again, keys, "content-addressed keys must be stable");
+    for path in &paths {
+        assert!(
+            !sqlite.has_blob(path).await?,
+            "re-store uploaded {path} again instead of skipping it"
+        );
+    }
+
+    Ok(())
+}
+
+/// A batch of a mix — some stored, some new — writes only the new ones.
+#[tokio::test]
+async fn batch_writes_only_the_new_configs() -> Result<()> {
+    let sqlite = Arc::new(SqliteStorage::new_in_memory().unwrap());
+    let db = UnigraphDb::new(sqlite.clone(), sqlite.clone()).with_config_inline_blob_threshold(0);
+    let task = ll::Task::create_new("test");
+
+    let old = traversal_config_with("old");
+    let new = traversal_config_with("new");
+
+    let old_key = db.configs.store_traversal_config(&old, &task).await?;
+    let old_path = format!("configs/{}/{}", TraversalConfigKey::PREFIX, old_key);
+    sqlite.delete_blob(&old_path).await?;
+
+    let keys = db
+        .configs
+        .store_traversal_configs(&[&old, &new], &task)
+        .await?;
+
+    assert_eq!(keys[0], old_key);
+    assert!(
+        !sqlite.has_blob(&old_path).await?,
+        "the already-stored config was rewritten"
+    );
+
+    let new_path = format!("configs/{}/{}", TraversalConfigKey::PREFIX, keys[1]);
+    assert!(
+        sqlite.has_blob(&new_path).await?,
+        "the new config was not stored"
+    );
+    assert_eq!(
+        db.configs.fetch_traversal_config(&keys[1], &task).await?,
+        new
+    );
+
+    Ok(())
+}
+
+/// Storing a config never puts its blob on the sweeper's list.
+///
+/// Config blob paths are `configs/{prefix}/{content hash}` with no random
+/// suffix, so every writer of a config registers the *same* key — registering
+/// them at all is how a loser's failed store gets a winner's live blob deleted.
+#[tokio::test]
+async fn storing_configs_queues_nothing_for_cleanup() -> Result<()> {
+    let sqlite = Arc::new(SqliteStorage::new_in_memory().unwrap());
+    let db = UnigraphDb::new(sqlite.clone(), sqlite.clone()).with_config_inline_blob_threshold(0);
+    let task = ll::Task::create_new("test");
+
+    let configs: Vec<TraversalConfig> = (0..3)
+        .map(|i| traversal_config_with(&format!("module_{i}")))
+        .collect();
+    let refs: Vec<&TraversalConfig> = configs.iter().collect();
+
+    let keys = db.configs.store_traversal_configs(&refs, &task).await?;
+
+    assert_eq!(
+        db.blob_storage.get_pending_cleanup(&task).await?,
+        Vec::<String>::new(),
+        "config blobs must never be registered for cleanup"
+    );
+
+    // A sweep with no deferral would have taken them if they had been.
+    db.blob_storage
+        .sweep(std::time::Duration::ZERO, None, &task)
+        .await?;
+    assert_eq!(
+        db.configs.fetch_traversal_config(&keys[0], &task).await?,
+        configs[0]
+    );
+
+    Ok(())
+}
+
+/// An empty batch does no work and returns nothing.
+#[tokio::test]
+async fn empty_batch_is_a_no_op() -> Result<()> {
+    let db = make_db();
+    let task = ll::Task::create_new("test");
+
+    let keys = db.configs.store_traversal_configs(&[], &task).await?;
+
+    assert!(keys.is_empty());
+    Ok(())
+}
+
 // -- Not found --
 
 #[tokio::test]

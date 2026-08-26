@@ -11,6 +11,7 @@
 
 use anyhow::Context;
 use anyhow::Result;
+use rayon::prelude::*;
 use unigraph_core::config_key::ConfigKeyLike;
 use unigraph_core::config_key::ConfigRow;
 use unigraph_serialization::ZSTDCompressionLevel;
@@ -18,7 +19,6 @@ use unigraph_serialization::from_zstd;
 use unigraph_serialization::to_zstd;
 use unigraph_storage_core::UnigraphBlobStorage;
 use unigraph_storage_core::UnigraphGraphConnection;
-use unigraph_timestamp::Timestamp;
 
 // -- Blob preparation --
 
@@ -38,6 +38,22 @@ where
     let blob = to_zstd(&json, ZSTDCompressionLevel::Best).context("failed to compress config")?;
     let key = K::from_blob(&blob);
     Ok(PreparedConfigBlob { key, blob })
+}
+
+/// Prepare a whole batch, in input order.
+///
+/// Parallel because the per-config work is `serde_json` plus zstd at `Best`,
+/// and a batch is ~50 traversal configs — enough that doing them one at a time
+/// is the slowest part of the store.
+pub(crate) fn prepare_config_blobs<T, K>(values: &[&T]) -> Result<Vec<PreparedConfigBlob<K>>>
+where
+    T: serde::Serialize + Sync,
+    K: ConfigKeyLike + Send,
+{
+    values
+        .par_iter()
+        .map(|value| prepare_config_blob(*value))
+        .collect()
 }
 
 /// External blob storage path for a config key: `configs/{PREFIX}/{key}`.
@@ -70,27 +86,6 @@ async fn resolve_config_blob<K: ConfigKeyLike>(
         .with_context(|| format!("failed to read config blob from external storage: {blob_id}"))
 }
 
-// -- Store --
-
-/// Write a config row to the database. The caller decides inline vs external
-/// and passes the appropriate combination of `blob_inline` / `blob_id`.
-pub(crate) async fn store_config<K>(
-    conn: &mut dyn UnigraphGraphConnection,
-    key: &K,
-    blob_inline: Option<&[u8]>,
-    blob_id: Option<&str>,
-    store_fn: impl AsyncStoreFn<K>,
-    expires_at: Option<Timestamp>,
-    task: &ll::Task,
-) -> Result<()>
-where
-    K: ConfigKeyLike,
-{
-    store_fn
-        .call(conn, key, blob_inline, blob_id, expires_at, task)
-        .await
-}
-
 // -- Fetch --
 
 /// Fetch a config value by key, deserializing from the stored blob.
@@ -117,20 +112,6 @@ where
 }
 
 // -- Async function traits for passing trait methods as callbacks --
-
-/// Trait for async store functions (wraps the typed trait methods).
-#[async_trait::async_trait]
-pub(crate) trait AsyncStoreFn<K: ConfigKeyLike>: Send + Sync {
-    async fn call(
-        &self,
-        conn: &mut dyn UnigraphGraphConnection,
-        key: &K,
-        blob_inline: Option<&[u8]>,
-        blob_id: Option<&str>,
-        expires_at: Option<Timestamp>,
-        task: &ll::Task,
-    ) -> Result<()>;
-}
 
 /// Trait for async get functions (wraps the typed trait methods).
 #[async_trait::async_trait]

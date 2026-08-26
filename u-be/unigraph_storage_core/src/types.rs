@@ -252,6 +252,26 @@ impl TimelineConfig {
     }
 }
 
+/// A config row on its way into the configs table.
+///
+/// Type-erased on purpose: the storage layer needs the string key and the type
+/// tag, not the key's Rust type. That lets one batch carry `tvc_` and `gqc_`
+/// rows together, and keeps the backends to a single write method instead of
+/// one per config kind.
+///
+/// Exactly one of `blob_inline` / `blob_id` is set — inline for small configs,
+/// an external blob path for large ones.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConfigWrite {
+    /// Content-addressed key, e.g. `tvc_1f4a09c6b73e5d82`.
+    pub key: String,
+    /// Config kind, from `ConfigKeyLike::PREFIX`.
+    pub config_type: String,
+    pub blob_inline: Option<Vec<u8>>,
+    pub blob_id: Option<String>,
+    pub expires_at: Option<Timestamp>,
+}
+
 /// Default total blob size threshold (in bytes) below which blobs are stored
 /// inline in the frames table rather than in external blob storage.
 pub const DEFAULT_INLINE_BLOB_THRESHOLD_BYTES: usize = 50_000; // 50 KB

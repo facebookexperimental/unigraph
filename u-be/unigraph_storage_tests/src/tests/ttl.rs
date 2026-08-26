@@ -125,11 +125,14 @@ async fn ttl_expired_frames_and_configs_cleanup() -> Result<()> {
     {
         let mut conn = db.graph_conn_write().await?;
         let config_key = test_config_key();
-        conn.store_traversal_config(
-            &config_key,
-            Some(b"test-blob-data"),
-            None,
-            Some(expires_at),
+        conn.store_configs(
+            &[ConfigWrite {
+                key: config_key.as_str().to_owned(),
+                config_type: TraversalConfigKey::PREFIX.to_owned(),
+                blob_inline: Some(b"test-blob-data".to_vec()),
+                blob_id: None,
+                expires_at: Some(expires_at),
+            }],
             &task,
         )
         .await?;
