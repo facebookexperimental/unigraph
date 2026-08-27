@@ -11,7 +11,7 @@ license = "MIT"
 
 [dependencies]
 anyhow = "1.0.104"
-lru = { version = "0.16.4", default-features = false }
+lru = { version = "0.17.0", default-features = false }
 tokio = { version = "1.53.1", features = ["full", "test-util", "tracing"] }
 
 [dev-dependencies]
