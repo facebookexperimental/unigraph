@@ -13,7 +13,7 @@ license = "MIT"
 anyhow = "1.0.104"
 bitflags = { version = "2.13.1", features = ["serde", "std"], default-features = false }
 bytemuck = { version = "1.25", features = ["const_zeroed", "derive", "min_const_generics", "must_cast", "nightly_portable_simd", "nightly_stdsimd"] }
-glam = { version = "0.30.10", features = ["bytemuck", "serde"] }
+glam = { version = "0.32.1", features = ["bytemuck", "serde"] }
 ll = "10.0.0"
 serde = { version = "1.0.229", features = ["derive", "rc"] }
 serde_json = { version = "1.0.151", features = ["alloc", "float_roundtrip", "raw_value", "unbounded_depth"] }
