@@ -30,6 +30,8 @@ use tracing::warn;
 use unigraph_app::Unigraph;
 use unigraph_app::UnigraphRequest;
 use unigraph_core::ArrayGraphSerializable;
+use unigraph_core::ExplorerUrl;
+use unigraph_core::GraphHandle;
 use unigraph_core::MapGraph;
 use unigraph_db::UnigraphDb;
 use unigraph_storage_core::BlobStorageMode;
@@ -124,7 +126,7 @@ pub async fn start(
     let listener = tokio::net::TcpListener::bind(addr).await?;
     info!(
         "Listening on http://{addr}{}",
-        landing_path(graphs.as_ref())
+        landing_path(graphs.as_ref())?
     );
     let trace_layer = TraceLayer::new_for_http()
         .make_span_with(|req: &http::Request<Body>| {
@@ -336,15 +338,22 @@ async fn open_db(
 
 /// Where to point the user on startup: straight at the ingested graphs when there
 /// are any, otherwise the timeline list.
-fn landing_path(graphs: Option<&LocalGraphs>) -> String {
+fn landing_path(graphs: Option<&LocalGraphs>) -> Result<String> {
     let Some(graphs) = graphs else {
-        return "/".to_owned();
+        return Ok("/".to_owned());
     };
-    let right = format!("/{LOCAL_TIMELINE_ID}~{}", LOCAL_RIGHT_GRAPH_ID.0);
+    let right = local_handle(LOCAL_RIGHT_GRAPH_ID)?;
     match graphs.left {
-        Some(_) => format!("/{LOCAL_TIMELINE_ID}~{}{right}", LOCAL_LEFT_GRAPH_ID.0),
-        None => right,
+        Some(_) => ExplorerUrl::compare(local_handle(LOCAL_LEFT_GRAPH_ID)?, right),
+        None => ExplorerUrl::single(right),
     }
+    .to_url()
+}
+
+fn local_handle(graph_id: GraphID) -> Result<GraphHandle> {
+    format!("{LOCAL_TIMELINE_ID}~{}", graph_id.0)
+        .parse()
+        .context("failed to build the local graph handle")
 }
 
 async fn ingest_local_timeline(
@@ -466,8 +475,8 @@ local~1   local~1   A,B,C
             ),
         ]
         .iter()
-        .map(|(label, graphs)| format!("{label:<14}  {}", landing_path(graphs.as_ref())))
-        .collect::<Vec<_>>();
+        .map(|(label, graphs)| Ok(format!("{label:<14}  {}", landing_path(graphs.as_ref())?)))
+        .collect::<Result<Vec<_>>>()?;
 
         snapshot!(
             rows.join("\n"),
