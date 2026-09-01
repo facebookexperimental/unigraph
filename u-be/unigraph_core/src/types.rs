@@ -1,6 +1,7 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 pub(crate) mod array_graph;
+pub mod explorer_url_params;
 pub mod map_graph;
 pub(crate) mod twin_graph;
 pub mod ui_types;

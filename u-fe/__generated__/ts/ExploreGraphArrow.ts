@@ -1,7 +1,7 @@
 /**
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
- * @generated SignedSource<<7396051a142ddce64a7f4aacfc6b4c08>>
+ * @generated SignedSource<<fca6893d532c9af6596eb3e427f640f6>>
  */
 
 
@@ -28,6 +28,9 @@ export interface ExploreGraphArrow {
    * True when the traversal did not follow this edge. A property of the
    * *edge* — the node it points to may still be reachable by another path.
    * Only ever true when `include_excluded` was requested.
+   * 
+   * `default` so a client built against this schema can still decode a
+   * response from a service that predates the field.
    */
   excluded: boolean;
   /**

@@ -24,7 +24,6 @@ import type { NodeSelection } from "./__generated__/ts/NodeSelection";
 import type { GraphQueryConfig } from "./__generated__/ts/GraphQueryConfig";
 import type { GraphQueryOutput } from "./__generated__/ts/GraphQueryOutput";
 import type { TraversalConfig } from "./__generated__/ts/TraversalConfig";
-import type { TraversalOverride } from "./__generated__/ts/TraversalOverride";
 import type { TwinArrow } from "./__generated__/ts/TwinArrow";
 import { useRpc, type UnigraphRpc } from "./api/rpc";
 
@@ -103,11 +102,12 @@ export interface ExplorerPlugins {
   table_node_name_after_component?: TableNodeNameAfterComponent;
 }
 
-export interface ExplorerGraphHandle {
-  handle: string;
-  roots?: string[];
-  traversal?: TraversalOverride;
-}
+/**
+ * A graph plus its overrides — structurally the generated `GraphQueryConfig`,
+ * re-exported under the name the Explorer API uses. Do not redeclare this
+ * shape; it has to stay in step with the Rust type the RPC expects.
+ */
+export type ExplorerGraphHandle = GraphQueryConfig;
 
 export type ExplorerGraphSource = {
   type: "handle";
@@ -274,10 +274,14 @@ function ExplorerImpl(props: {
 
   const left = useResolvedSide(
     base_gqc_l,
-    "gqc_deltaL",
+    "gqc_delta_left",
     nativeGraphNoTVCL ?? null,
   );
-  const right = useResolvedSide(base_gqc_r, "gqc_deltaR", nativeGraphNoTVCR);
+  const right = useResolvedSide(
+    base_gqc_r,
+    "gqc_delta_right",
+    nativeGraphNoTVCR,
+  );
 
   const BUILTIN_PANELS: ResolvedPanel[] = useMemo(
     () => [
