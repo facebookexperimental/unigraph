@@ -1,6 +1,5 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-use std::any::type_name;
 use std::io::BufRead;
 use std::io::BufReader;
 use std::path::Path;
@@ -31,12 +30,8 @@ use tracing::warn;
 use unigraph_app::Unigraph;
 use unigraph_app::UnigraphRequest;
 use unigraph_core::ArrayGraphSerializable;
-use unigraph_core::ArrayGraphSerializablePackage;
-use unigraph_core::ArrayGraphSerializablePackageConfig;
 use unigraph_core::MapGraph;
-use unigraph_core::ui_types::ExplorerComponentInputGraph;
 use unigraph_db::UnigraphDb;
-use unigraph_serialization::SerializationFormat;
 use unigraph_storage_core::BlobStorageMode;
 use unigraph_storage_core::FullOrDeltaConfig;
 use unigraph_storage_core::GraphID;
@@ -68,31 +63,24 @@ pub enum ServeMode {
 
 #[derive(Clone)]
 struct AppState {
-    right_graph: Arc<String>,
-    left_graph: Arc<Option<String>>,
-    db: Option<Unigraph>,
+    db: Unigraph,
 }
 
 pub async fn start(
     graph_file_path: &Option<PathBuf>,
     comparison_file_path: &Option<PathBuf>,
-    sqlite_path: &Option<PathBuf>,
+    sqlite_path: &Path,
     mode: ServeMode,
     task: &ll::Task,
 ) -> Result<()> {
     let graphs = load_local_graphs(graph_file_path, comparison_file_path, task)?;
-    let db = open_db(&graphs, sqlite_path, task).await?;
+    let db = open_db(graphs.as_ref(), sqlite_path, task).await?;
 
-    let state = AppState {
-        right_graph: Arc::new(array_graph_to_json(&graphs.right)?),
-        left_graph: Arc::new(graphs.left.as_ref().map(array_graph_to_json).transpose()?),
-        db,
-    };
+    let state = AppState { db };
 
     let api = Router::new()
         .route("/favicon.ico", get(favicon_ico))
         .route("/favicon-192.png", get(favicon_png))
-        .route("/api/local_graphs", get(api_local_graphs))
         .route("/api/rpc", post(api_rpc))
         .with_state(state);
 
@@ -134,11 +122,10 @@ pub async fn start(
     let addr = "localhost:3000";
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    if graph_file_path.is_some() {
-        info!("Listening on http://{addr}/local");
-    } else {
-        info!("Listening on http://{addr}");
-    }
+    info!(
+        "Listening on http://{addr}{}",
+        landing_path(graphs.as_ref())
+    );
     let trace_layer = TraceLayer::new_for_http()
         .make_span_with(|req: &http::Request<Body>| {
             tracing::info_span!("req", method = %req.method(), uri = %req.uri())
@@ -175,26 +162,15 @@ async fn favicon_png() -> Response {
     ([(http::header::CONTENT_TYPE, "image/png")], FAVICON_PNG).into_response()
 }
 
-// --- File-based graph endpoint ---
-
-async fn api_local_graphs(State(state): State<AppState>) -> impl IntoResponse {
-    let mut body = format!(r#"{{"right":{}"#, *state.right_graph);
-    if let Some(ref left) = *state.left_graph {
-        body.push_str(&format!(r#","left":{left}"#));
-    }
-    body.push('}');
-    ([(http::header::CONTENT_TYPE, "application/json")], body)
-}
-
 // --- RPC endpoint ---
 
 async fn api_rpc(
     State(state): State<AppState>,
     axum::Json(req): axum::Json<UnigraphRequest>,
 ) -> Result<impl IntoResponse, http::StatusCode> {
-    let app = state.db.as_ref().ok_or(http::StatusCode::NOT_FOUND)?;
     let task = ll::Task::create_new("api_rpc");
-    let response = app
+    let response = state
+        .db
         .exec_rpc(req, &task)
         .await
         .map_err(|_| http::StatusCode::INTERNAL_SERVER_ERROR)?;
@@ -302,38 +278,29 @@ async fn wait_for_vite(port: u16) -> Result<()> {
 
 // --- Local (file-backed) graphs ---
 
-/// The graphs the server was started with. Always populated — with no
-/// `--file-path` the built-in test graph stands in.
+/// Graphs passed on the command line with `--file-path` / `--left`.
 struct LocalGraphs {
-    /// The primary ("after") graph.
+    /// The `--file-path` primary ("after") graph.
     right: ArrayGraphSerializable,
     /// The `--left` comparison ("before") graph, for delta view.
     left: Option<ArrayGraphSerializable>,
-    /// Whether these came from `--file-path` rather than being the test graph.
-    from_files: bool,
 }
 
 fn load_local_graphs(
     graph_file_path: &Option<PathBuf>,
     comparison_file_path: &Option<PathBuf>,
     task: &ll::Task,
-) -> Result<LocalGraphs> {
+) -> Result<Option<LocalGraphs>> {
     match (graph_file_path, comparison_file_path) {
-        (Some(r), Some(l)) => Ok(LocalGraphs {
+        (Some(r), Some(l)) => Ok(Some(LocalGraphs {
             right: load_array_graph(r, task)?,
             left: Some(load_array_graph(l, task)?),
-            from_files: true,
-        }),
-        (Some(r), None) => Ok(LocalGraphs {
+        })),
+        (Some(r), None) => Ok(Some(LocalGraphs {
             right: load_array_graph(r, task)?,
             left: None,
-            from_files: true,
-        }),
-        (None, None) => Ok(LocalGraphs {
-            right: into_serializable(&unigraph_core::make_test_graph()?, task)?,
-            left: None,
-            from_files: false,
-        }),
+        })),
+        (None, None) => Ok(None),
         (None, Some(_)) => {
             bail!("Primary graph must be present if comparison graph is passed");
         }
@@ -342,29 +309,42 @@ fn load_local_graphs(
 
 /// Build the database the RPC layer runs against.
 ///
-/// Serving graphs from `--file-path` gets a throwaway in-memory SQLite with those
+/// Graphs passed with `--file-path` get a throwaway in-memory SQLite with those
 /// graphs ingested as the `local` timeline. That way they resolve through the same
 /// handle pipeline as stored timelines — traversal configs, deltas, node search and
 /// shareable URLs all work — without writing scratch graphs into the user's real
 /// database on every `serve`. The cost is that stored timelines are not reachable
 /// in the same session, which already matched how file-backed serving behaved.
+///
+/// With no `--file-path`, the configured database is opened as-is and the UI lands
+/// on the timeline list.
 async fn open_db(
-    graphs: &LocalGraphs,
-    sqlite_path: &Option<PathBuf>,
+    graphs: Option<&LocalGraphs>,
+    sqlite_path: &Path,
     task: &ll::Task,
-) -> Result<Option<Unigraph>> {
-    if graphs.from_files {
-        let sqlite = Arc::new(SqliteStorage::new_in_memory()?);
-        let db = UnigraphDb::new(sqlite.clone(), sqlite);
-        ingest_local_timeline(&db, graphs, task).await?;
-        return Ok(Some(Unigraph::new(db)));
-    }
-
-    let Some(path) = sqlite_path else {
-        return Ok(None);
+) -> Result<Unigraph> {
+    let Some(graphs) = graphs else {
+        let sqlite = Arc::new(SqliteStorage::new(sqlite_path)?);
+        return Ok(Unigraph::new(UnigraphDb::new(sqlite.clone(), sqlite)));
     };
-    let sqlite = Arc::new(SqliteStorage::new(path)?);
-    Ok(Some(Unigraph::new(UnigraphDb::new(sqlite.clone(), sqlite))))
+
+    let sqlite = Arc::new(SqliteStorage::new_in_memory()?);
+    let db = UnigraphDb::new(sqlite.clone(), sqlite);
+    ingest_local_timeline(&db, graphs, task).await?;
+    Ok(Unigraph::new(db))
+}
+
+/// Where to point the user on startup: straight at the ingested graphs when there
+/// are any, otherwise the timeline list.
+fn landing_path(graphs: Option<&LocalGraphs>) -> String {
+    let Some(graphs) = graphs else {
+        return "/".to_owned();
+    };
+    let right = format!("/{LOCAL_TIMELINE_ID}~{}", LOCAL_RIGHT_GRAPH_ID.0);
+    match graphs.left {
+        Some(_) => format!("/{LOCAL_TIMELINE_ID}~{}{right}", LOCAL_LEFT_GRAPH_ID.0),
+        None => right,
+    }
 }
 
 async fn ingest_local_timeline(
@@ -410,30 +390,12 @@ fn local_timeline_config() -> TimelineConfig {
     }
 }
 
-// --- Graph serialization helpers ---
-
-fn array_graph_to_json(ag: &ArrayGraphSerializable) -> Result<String> {
-    let task = ll::Task::create_new("");
-    let package_base64 = ag
-        .pack(&ArrayGraphSerializablePackageConfig::default(), &task)?
-        .into_base_64();
-    let serialized_str = SerializationFormat::Json.to_serialized_str(
-        &package_base64,
-        Some(type_name::<ArrayGraphSerializablePackage>().into()),
-    )?;
-
-    SerializationFormat::Json
-        .to_string(&ExplorerComponentInputGraph::ArrayGraphSerializedPackageBase64(serialized_str))
-}
-
-fn into_serializable(map_graph: &MapGraph, task: &ll::Task) -> Result<ArrayGraphSerializable> {
-    Ok(map_graph.to_array_graph(task)?.into_serializable())
-}
+// --- Graph loading helpers ---
 
 fn load_array_graph(p: &Path, task: &ll::Task) -> Result<ArrayGraphSerializable> {
     let file_string_content = std::fs::read_to_string(p).context("Failed to read file")?;
     let map_graph = MapGraph::from_json(&file_string_content).context("Failed to parse JSON")?;
-    into_serializable(&map_graph, task)
+    Ok(map_graph.to_array_graph(task)?.into_serializable())
 }
 
 #[cfg(test)]
@@ -445,8 +407,9 @@ mod tests {
 
     use super::*;
 
-    /// `--file-path` graphs must be reachable through the ordinary handle pipeline,
-    /// not just `/api/local_graphs` — that is the whole point of ingesting them.
+    /// `--file-path` graphs must be reachable through the ordinary handle pipeline —
+    /// that is the whole point of ingesting them, and the frontend now has no other
+    /// way to reach them.
     #[tokio::test]
     async fn local_files_resolve_through_handle_pipeline() -> Result<()> {
         let task = ll::Task::create_new("test");
@@ -455,9 +418,7 @@ mod tests {
         let left = write_graph(&dir, "left.json", &["A", "B"])?;
 
         let graphs = load_local_graphs(&Some(right), &Some(left), &task)?;
-        let app = open_db(&graphs, &None, &task)
-            .await?
-            .expect("serving local files always yields a db");
+        let app = open_db(graphs.as_ref(), &dir.join("unused.sqlite"), &task).await?;
 
         // A bare `local` handle must land on the primary graph, not the comparison one.
         let mut rows = vec![format!("{:<8}  {:<8}  {}", "handle", "resolved", "nodes")];
@@ -475,23 +436,71 @@ local~1   local~1   A,B,C
 "
         );
 
+        // The configured sqlite path must be untouched — scratch graphs never reach it.
+        assert!(
+            !dir.join("unused.sqlite").exists(),
+            "serving local files must not create the configured database"
+        );
+
         std::fs::remove_dir_all(&dir)?;
         Ok(())
     }
 
-    /// Without `--file-path` nothing is ingested and the configured db is used as-is,
-    /// so the built-in test graph keeps its existing `/api/local_graphs` behaviour.
+    /// The landing path is what `serve` prints and what the UI is expected to open.
     #[tokio::test]
-    async fn test_graph_does_not_open_an_in_memory_db() -> Result<()> {
+    async fn landing_path_matches_what_was_passed() -> Result<()> {
         let task = ll::Task::create_new("test");
-        let graphs = load_local_graphs(&None, &None, &task)?;
+        let dir = temp_dir("landing_path")?;
+        let right = write_graph(&dir, "right.json", &["A"])?;
+        let left = write_graph(&dir, "left.json", &["B"])?;
 
-        assert!(!graphs.from_files, "test graph is not file-backed");
-        assert!(
-            open_db(&graphs, &None, &task).await?.is_none(),
-            "no sqlite path and no local files means no db"
+        let rows = [
+            ("no graphs", load_local_graphs(&None, &None, &task)?),
+            (
+                "primary only",
+                load_local_graphs(&Some(right.clone()), &None, &task)?,
+            ),
+            (
+                "primary + left",
+                load_local_graphs(&Some(right), &Some(left), &task)?,
+            ),
+        ]
+        .iter()
+        .map(|(label, graphs)| format!("{label:<14}  {}", landing_path(graphs.as_ref())))
+        .collect::<Vec<_>>();
+
+        snapshot!(
+            rows.join("\n"),
+            "
+no graphs       /
+primary only    /local~1
+primary + left  /local~0/local~1
+"
         );
 
+        std::fs::remove_dir_all(&dir)?;
+        Ok(())
+    }
+
+    /// Without `--file-path` nothing is ingested — the configured db is opened as-is
+    /// so the UI lands on the real timeline list.
+    #[tokio::test]
+    async fn no_graphs_opens_the_configured_db() -> Result<()> {
+        let task = ll::Task::create_new("test");
+        let dir = temp_dir("configured_db")?;
+        let sqlite_path = dir.join("db.sqlite");
+
+        let graphs = load_local_graphs(&None, &None, &task)?;
+        assert!(graphs.is_none(), "no paths means no local graphs");
+
+        let app = open_db(graphs.as_ref(), &sqlite_path, &task).await?;
+        assert!(sqlite_path.exists(), "the configured database is opened");
+        assert!(
+            app.db.timelines.list(&task).await?.is_empty(),
+            "a fresh db has no timelines — no test graph is ingested"
+        );
+
+        std::fs::remove_dir_all(&dir)?;
         Ok(())
     }
 

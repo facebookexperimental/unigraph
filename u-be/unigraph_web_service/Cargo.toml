@@ -21,7 +21,6 @@ tracing = { version = "0.1.41", features = ["attributes", "valuable"] }
 unigraph_app = { version = "0.1.1-alpha.0", path = "../unigraph_app" }
 unigraph_core = { version = "0.1.1-alpha.0", path = "../unigraph_core" }
 unigraph_db = { version = "0.1.1-alpha.0", path = "../unigraph_db" }
-unigraph_serialization = { version = "0.1.1-alpha.0", path = "../unigraph_serialization" }
 unigraph_storage_core = { version = "0.1.1-alpha.0", path = "../unigraph_storage_core" }
 unigraph_storage_sqlite = { version = "0.1.1-alpha.0", path = "../unigraph_storage_sqlite" }
 

@@ -19,21 +19,11 @@ export default function Home() {
   useEffect(() => {
     rpc
       .call("ListTimelines", {})
-      .then((data) => {
-        if (data.timeline_ids.length === 0) {
-          navigate("/explorer/local", { replace: true });
-          return;
-        }
-        setTimelineIds(data.timeline_ids);
-      })
-      .catch((e: unknown) => {
-        if (e instanceof Error && e.message.includes("HTTP 404")) {
-          navigate("/explorer/local", { replace: true });
-          return;
-        }
-        setError(e instanceof Error ? e.message : String(e));
-      });
-  }, [navigate, rpc]);
+      .then((data) => setTimelineIds(data.timeline_ids))
+      .catch((e: unknown) =>
+        setError(e instanceof Error ? e.message : String(e)),
+      );
+  }, [rpc]);
 
   if (error != null) {
     return (
@@ -52,20 +42,28 @@ export default function Home() {
   return (
     <div className="p-8 max-w-4xl mx-auto">
       <h1 className="text-2xl font-semibold tracking-tight mb-6">Timelines</h1>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {timelineIds.map((id) => (
-          <Card
-            key={id}
-            className="cursor-pointer hover:border-primary/50 transition-colors"
-            onClick={() => navigate(`/timelines/${id}`)}
-          >
-            <CardHeader>
-              <CardTitle>{id}</CardTitle>
-              <CardDescription>Timeline</CardDescription>
-            </CardHeader>
-          </Card>
-        ))}
-      </div>
+      {timelineIds.length === 0 ? (
+        <p className="text-muted-foreground text-sm">
+          No timelines yet. Ingest one, or run{" "}
+          <code className="font-mono">unigraph serve -f graph.json</code> to
+          explore a graph file.
+        </p>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {timelineIds.map((id) => (
+            <Card
+              key={id}
+              className="cursor-pointer hover:border-primary/50 transition-colors"
+              onClick={() => navigate(`/timelines/${id}`)}
+            >
+              <CardHeader>
+                <CardTitle>{id}</CardTitle>
+                <CardDescription>Timeline</CardDescription>
+              </CardHeader>
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

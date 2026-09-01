@@ -109,9 +109,11 @@ export interface ExplorerGraphHandle {
   traversal?: TraversalOverride;
 }
 
-export type ExplorerGraphSource =
-  | { type: "local" }
-  | { type: "handle"; right: ExplorerGraphHandle; left?: ExplorerGraphHandle };
+export type ExplorerGraphSource = {
+  type: "handle";
+  right: ExplorerGraphHandle;
+  left?: ExplorerGraphHandle;
+};
 
 export interface ExplorerProps {
   source: ExplorerGraphSource;
@@ -603,26 +605,7 @@ async function fetchGraphSource(
   rpc: UnigraphRpc,
   source: ExplorerGraphSource,
 ): Promise<FetchResult> {
-  if (source.type === "local") {
-    return fetchLocalGraphs();
-  }
   return fetchHandleGraphs(rpc, source.right, source.left);
-}
-
-interface LocalGraphsApiResponse {
-  left?: ExplorerComponentInputGraph;
-  right: ExplorerComponentInputGraph;
-}
-
-async function fetchLocalGraphs(): Promise<FetchResult> {
-  const r = await fetch("/api/local_graphs");
-  if (!r.ok) throw new Error(`HTTP ${r.status}`);
-  const data: LocalGraphsApiResponse = await r.json();
-  return {
-    graphs: { right: data.right, left: data.left },
-    baseGqcL: null,
-    baseGqcR: null,
-  };
 }
 
 function graphQueryOutputToInputGraph(

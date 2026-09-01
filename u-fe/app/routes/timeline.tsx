@@ -115,7 +115,7 @@ export default function TimelinePage() {
                         variant="outline"
                         size="sm"
                         onClick={() =>
-                          navigate(`/explorer/${timelineId}~${frame.graph_id}`)
+                          navigate(`/${timelineId}~${frame.graph_id}`)
                         }
                       >
                         Explore
@@ -125,8 +125,10 @@ export default function TimelinePage() {
                         compareGraphId={compareGraphId}
                         onCompare={setCompareGraphId}
                         onConfirm={(rightGraphId) => {
+                          // `compareGraphId` was picked first and is the baseline,
+                          // so it goes in the left (before) slot.
                           navigate(
-                            `/explorer/${timelineId}~${compareGraphId}/${timelineId}~${rightGraphId}`,
+                            `/${timelineId}~${compareGraphId}/${timelineId}~${rightGraphId}`,
                           );
                         }}
                       />

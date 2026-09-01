@@ -27,7 +27,6 @@ impl UnigraphCLISubcommand for Serve {
         } else {
             ServeMode::Dev
         };
-        let sqlite_path = Some(ctx.sqlite_path.clone());
-        unigraph_web_service::start(&self.file_path, &self.left, &sqlite_path, mode, task).await
+        unigraph_web_service::start(&self.file_path, &self.left, &ctx.sqlite_path, mode, task).await
     }
 }
