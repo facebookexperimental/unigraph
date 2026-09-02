@@ -38,7 +38,33 @@ export type {
   ExplorerProps,
   PanelTabPlugin,
   BuiltinSidebarPanel,
+  ExplorerGraphHandle,
+  ExplorerGraphSource,
 } from "./Explorer";
+
+// ---------------------------------------------------------------------------
+// Extensions — plugins and panels, either passed statically or resolved once
+// the handles have landed on a concrete timeline.
+//
+//   <Explorer
+//     source={{type: "handle", right: {handle: "gqc_1a2b3c"}}}
+//     resolve_extensions={({right}) => EXTENSIONS_BY_TIMELINE[right.timeline_id] ?? {}}
+//   />
+//
+// Inside a panel or plugin, `useResolvedSource()` reports what the handles
+// actually resolved to (timeline ID, graph ID, canonical graph key).
+// ---------------------------------------------------------------------------
+
+export type {
+  ExplorerPlugins,
+  ExplorerExtensions,
+  ExplorerExtensionsResolver,
+  ResolvedGraphRef,
+  ResolvedGraphSource,
+  TableNodeNameAfterComponent,
+  TableNodeNameAfterProps,
+} from "./Explorer";
+export { useResolvedSource } from "./context/ResolvedSourceContext";
 
 // ---------------------------------------------------------------------------
 // RPC — typed client, React context, and Suspense hook

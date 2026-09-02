@@ -53,6 +53,13 @@ utils
 "
     );
 
+    // The anonymous `gqc_…` handle carries no timeline of its own, so the
+    // resolved key is the only way a client learns what it is looking at.
+    assert_eq!(
+        out.graph_key, "explore_test~0",
+        "gqc handle should resolve to the concrete graph key"
+    );
+
     Ok(())
 }
 
@@ -158,6 +165,10 @@ async fn packed_and_map_graph_variants_agree() -> Result<()> {
     assert_eq!(
         packed.graph_query_config, mapped.graph_query_config,
         "both variants should echo back the same resolved query config"
+    );
+    assert_eq!(
+        packed.graph_key, mapped.graph_key,
+        "both variants should surface the same resolved graph key"
     );
     assert_eq!(
         mapped.graph_key, "explore_test~0",

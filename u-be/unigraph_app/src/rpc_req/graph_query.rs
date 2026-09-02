@@ -28,6 +28,14 @@ pub struct GraphQueryInput {
 pub struct GraphQueryOutput {
     pub package: ArrayGraphSerializablePackageBase64,
     pub graph_query_config: GraphQueryConfig,
+    /// The resolved graph key of the snapshot this query landed on, formatted as
+    /// `"{timeline}~{graph_id}"` (e.g. `"www-budget~223"`). Unlike
+    /// `graph_query_config.handle` — which merely echoes the input handle — this
+    /// always carries the concrete timeline and `graph_id`, even when an
+    /// anonymous `gqc_…` or bare (latest) handle was sent. Lets clients pin
+    /// follow-up links to the exact version rendered, and resolve
+    /// timeline-specific behaviour once the graph is known.
+    pub graph_key: String,
 }
 
 // ── Handler ──────────────────────────────────────────────────
@@ -37,7 +45,10 @@ impl RpcExec<Unigraph> for GraphQueryInput {
 
     async fn exec(self, ctx: &Unigraph, task: &ll::Task) -> Result<GraphQueryOutput> {
         let ttl = Duration::from_mins(5);
-        let ag = ctx.graph_cache.get_explored(&self.query, task, ttl).await?;
+        let (graph_key, ag) = ctx
+            .graph_cache
+            .get_explored_with_key(&self.query, task, ttl)
+            .await?;
 
         let resolved_gqc = resolve_query_config(self.query, &ag);
 
@@ -55,9 +66,12 @@ impl RpcExec<Unigraph> for GraphQueryInput {
             })
             .await?;
 
+        // `GraphKey`'s `Display` renders the canonical `"{timeline}~{graph_id}"`
+        // handle (e.g. `www-budget~223`) used across the app.
         Ok(GraphQueryOutput {
             package: package.into_base_64(),
             graph_query_config: resolved_gqc,
+            graph_key: graph_key.to_string(),
         })
     }
 }

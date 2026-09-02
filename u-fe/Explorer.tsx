@@ -102,6 +102,58 @@ export interface ExplorerPlugins {
   table_node_name_after_component?: TableNodeNameAfterComponent;
 }
 
+// ---------------------------------------------------------------------------
+// Dynamic extensions — plugins/panels chosen once the handles have resolved.
+//
+// Consumers usually only know a handle up front, and it may be anonymous
+// (`gqc_1a2b…`) or floating (`my-timeline` = latest). The timeline and graph
+// IDs are only known after the graph is fetched, so anything that depends on
+// *which* timeline is being explored has to be resolved at that point.
+//
+//   handle ──fetch──> graph_key ("my-timeline~223") ──resolve──> extensions
+// ---------------------------------------------------------------------------
+
+/** A graph handle plus the concrete snapshot the server resolved it to. */
+export interface ResolvedGraphRef {
+  /** The handle as passed in — possibly anonymous or floating. */
+  handle: string;
+  /** Canonical `"{timeline}~{graph_id}"` key of the snapshot actually loaded. */
+  graph_key: string;
+  timeline_id: string;
+  graph_id: number;
+}
+
+export interface ResolvedGraphSource {
+  right: ResolvedGraphRef;
+  left?: ResolvedGraphRef;
+}
+
+/**
+ * Everything a consumer can contribute to the Explorer UI. The same shape can
+ * be passed statically through `ExplorerProps` or returned from
+ * `resolve_extensions` — the two are merged, with the resolved ones winning on
+ * per-slot conflicts.
+ */
+export interface ExplorerExtensions {
+  plugins?: ExplorerPlugins;
+  panels?: PanelTabPlugin[];
+  hidden_panels?: BuiltinSidebarPanel[];
+}
+
+/**
+ * Picks the extensions to use for a given resolved source. Called on every
+ * render, so it must be cheap and pure — return referentially stable component
+ * identities (module-level constants or a lookup table), not fresh closures,
+ * or the panels will remount on each render.
+ *
+ * Both sides are supplied; in compare mode they may sit on different timelines,
+ * so it is up to the consumer to decide which one drives the choice (usually
+ * `right`).
+ */
+export type ExplorerExtensionsResolver = (
+  source: ResolvedGraphSource,
+) => ExplorerExtensions;
+
 /**
  * A graph plus its overrides — structurally the generated `GraphQueryConfig`,
  * re-exported under the name the Explorer API uses. Do not redeclare this
@@ -122,6 +174,11 @@ export interface ExplorerProps {
   panels?: PanelTabPlugin[];
   hidden_panels?: BuiltinSidebarPanel[];
   plugins?: ExplorerPlugins;
+  /**
+   * Contributes further extensions once the handles have resolved to concrete
+   * timelines. Merged on top of the static `plugins`/`panels`/`hidden_panels`.
+   */
+  resolve_extensions?: ExplorerExtensionsResolver;
   initialSearchParams?: Record<string, string>;
   onSearchParamsChange?: (params: Record<string, string>) => void;
 }
@@ -154,6 +211,8 @@ import {
   useNativeGraphs,
 } from "./context/NativeGraphContext";
 import { PluginsContextProvider } from "./context/PluginsContext";
+import { ResolvedSourceContextProvider } from "./context/ResolvedSourceContext";
+import { parseGraphKey } from "./lib/graphKey";
 import {
   SelectedNodesContextProvider,
   useSelectedNodes,
@@ -209,11 +268,21 @@ export function Explorer(props: ExplorerProps) {
 
 function ExplorerFetcher(props: ExplorerProps) {
   const rpc = useRpc();
+  const { plugins, panels, hidden_panels, resolve_extensions } = props;
 
   const { data: result } = useSuspenseQuery({
     queryKey: ["graphSource", props.source],
     queryFn: () => fetchGraphSource(rpc, props.source),
   });
+
+  const extensions = useMemo(
+    () =>
+      mergeExtensions(
+        { plugins, panels, hidden_panels },
+        resolve_extensions?.(result.resolved),
+      ),
+    [plugins, panels, hidden_panels, resolve_extensions, result.resolved],
+  );
 
   const baseGqcLJson = useMemo(
     () =>
@@ -229,7 +298,9 @@ function ExplorerFetcher(props: ExplorerProps) {
   return (
     <ExplorerImpl
       {...props}
+      {...extensions}
       graphs={result.graphs}
+      resolvedSource={result.resolved}
       config={{
         ...props.config,
         base_gqc_l: baseGqcLJson ?? props.config?.base_gqc_l,
@@ -239,6 +310,24 @@ function ExplorerFetcher(props: ExplorerProps) {
   );
 }
 
+/** Static extensions first, resolved ones on top — last writer wins per slot. */
+function mergeExtensions(
+  base: ExplorerExtensions,
+  resolved: ExplorerExtensions | undefined,
+): ExplorerExtensions {
+  if (resolved == null) {
+    return base;
+  }
+  return {
+    plugins: { ...base.plugins, ...resolved.plugins },
+    panels: [...(base.panels ?? []), ...(resolved.panels ?? [])],
+    hidden_panels: [
+      ...(base.hidden_panels ?? []),
+      ...(resolved.hidden_panels ?? []),
+    ],
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Implementation — renders the explorer UI given resolved graphs
 // ---------------------------------------------------------------------------
@@ -246,6 +335,7 @@ function ExplorerFetcher(props: ExplorerProps) {
 function ExplorerImpl(props: {
   source: ExplorerGraphSource;
   graphs: ExplorerComponentInputGraphs;
+  resolvedSource: ResolvedGraphSource;
   config?: ExplorerConfig;
   home_href?: string | undefined;
   panels?: PanelTabPlugin[];
@@ -255,6 +345,7 @@ function ExplorerImpl(props: {
   const {
     source,
     graphs: rawGraphs,
+    resolvedSource,
     config,
     home_href,
     panels: customPanels,
@@ -343,35 +434,39 @@ function ExplorerImpl(props: {
       <DebugModeContextProvider>
         <GlobalElementRefsContextProvider>
           <ErrorBoundary>
-            <PluginsContextProvider plugins={plugins}>
-              <NativeGraphContextProvider
-                nativeGraphL={left.nativeGraph}
-                nativeGraphR={right.nativeGraph!}
-              >
-                <TraversalConfigContextProvider
-                  tvcL={left.tvc}
-                  setTvcL={left.setTvc}
-                  tvcR={right.tvc!}
-                  setTvcR={right.setTvc}
+            <ResolvedSourceContextProvider source={resolvedSource}>
+              <PluginsContextProvider plugins={plugins}>
+                <NativeGraphContextProvider
+                  nativeGraphL={left.nativeGraph}
+                  nativeGraphR={right.nativeGraph!}
                 >
-                  <SimulationParamsContextProvider>
-                    <SelectedNodesContextProvider>
-                      <MetricViewStateProvider nativeGraph={right.nativeGraph!}>
-                        <SelectedPathContextProvider syncToURL={true}>
-                          <MinCutContextProvider>
-                            <Page
-                              homeHref={home_href}
-                              panels={resolvedPanels}
-                              source={source}
-                            />
-                          </MinCutContextProvider>
-                        </SelectedPathContextProvider>
-                      </MetricViewStateProvider>
-                    </SelectedNodesContextProvider>
-                  </SimulationParamsContextProvider>
-                </TraversalConfigContextProvider>
-              </NativeGraphContextProvider>
-            </PluginsContextProvider>
+                  <TraversalConfigContextProvider
+                    tvcL={left.tvc}
+                    setTvcL={left.setTvc}
+                    tvcR={right.tvc!}
+                    setTvcR={right.setTvc}
+                  >
+                    <SimulationParamsContextProvider>
+                      <SelectedNodesContextProvider>
+                        <MetricViewStateProvider
+                          nativeGraph={right.nativeGraph!}
+                        >
+                          <SelectedPathContextProvider syncToURL={true}>
+                            <MinCutContextProvider>
+                              <Page
+                                homeHref={home_href}
+                                panels={resolvedPanels}
+                                source={source}
+                              />
+                            </MinCutContextProvider>
+                          </SelectedPathContextProvider>
+                        </MetricViewStateProvider>
+                      </SelectedNodesContextProvider>
+                    </SimulationParamsContextProvider>
+                  </TraversalConfigContextProvider>
+                </NativeGraphContextProvider>
+              </PluginsContextProvider>
+            </ResolvedSourceContextProvider>
           </ErrorBoundary>
         </GlobalElementRefsContextProvider>
       </DebugModeContextProvider>
@@ -601,6 +696,7 @@ function getGraphData(
 
 interface FetchResult {
   graphs: ExplorerComponentInputGraphs;
+  resolved: ResolvedGraphSource;
   baseGqcL: GraphQueryConfig | null;
   baseGqcR: GraphQueryConfig | null;
 }
@@ -658,7 +754,30 @@ async function fetchHandleGraphs(
           ? graphQueryOutputToInputGraph(leftResult)
           : undefined,
     },
+    resolved: {
+      right: resolveGraphRef(right, rightResult),
+      left:
+        left != null && leftResult != null
+          ? resolveGraphRef(left, leftResult)
+          : undefined,
+    },
     baseGqcL: leftResult?.graph_query_config ?? null,
     baseGqcR: rightResult.graph_query_config,
+  };
+}
+
+/**
+ * Pair the handle we asked for with the concrete snapshot the server landed on.
+ * `output.graph_key` is authoritative — `gh.handle` may be an anonymous
+ * `gqc_…` key or a bare timeline meaning "latest".
+ */
+function resolveGraphRef(
+  gh: ExplorerGraphHandle,
+  output: GraphQueryOutput,
+): ResolvedGraphRef {
+  return {
+    handle: gh.handle,
+    graph_key: output.graph_key,
+    ...parseGraphKey(output.graph_key),
   };
 }
