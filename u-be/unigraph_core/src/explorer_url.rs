@@ -9,6 +9,7 @@
 //!   /{right}                     single graph
 //!   /{left}/{right}              delta view, left first (as they sit on screen)
 //!   /{right}?roots=%5B%22a%22%5D  with overrides
+//!   /{right}#{node}              opened on one node
 //! ```
 //!
 //! No scheme or host — the explorer is mounted at the root of whatever app is
@@ -35,6 +36,7 @@ use percent_encoding::utf8_percent_encode;
 use serde::Serialize;
 
 use crate::graph_handle::GraphHandle;
+use crate::types::NodeName;
 use crate::types::explorer_url_params::ExplorerUrlParams;
 
 /// A complete explorer link: handles in the path, overrides in the query.
@@ -46,6 +48,13 @@ pub struct ExplorerUrl {
     /// The comparison ("before") graph. `Some` turns this into a delta view.
     pub left: Option<GraphHandle>,
     pub params: ExplorerUrlParams,
+    /// A node to open on, rendered as the fragment.
+    ///
+    /// In the fragment rather than the query because it never needs to reach
+    /// the server: it cannot change which graph loads, only where to look once
+    /// it has. That also keeps it out of [`ExplorerUrlParams`], which is the
+    /// search-param surface.
+    pub node: Option<NodeName>,
 }
 
 impl ExplorerUrl {
@@ -55,6 +64,7 @@ impl ExplorerUrl {
             right,
             left: None,
             params: ExplorerUrlParams::default(),
+            node: None,
         }
     }
 
@@ -64,12 +74,19 @@ impl ExplorerUrl {
             right,
             left: Some(left),
             params: ExplorerUrlParams::default(),
+            node: None,
         }
     }
 
     /// Attach query params.
     pub fn with_params(mut self, params: ExplorerUrlParams) -> Self {
         self.params = params;
+        self
+    }
+
+    /// Open the link on one node.
+    pub fn with_node(mut self, node: impl Into<NodeName>) -> Self {
+        self.node = Some(node.into());
         self
     }
 
@@ -82,10 +99,14 @@ impl ExplorerUrl {
     pub fn to_url(&self) -> Result<String> {
         let path = self.path();
         let query = self.query()?;
+        let fragment = match &self.node {
+            Some(node) => format!("#{}", encode_segment(node)),
+            None => String::new(),
+        };
         if query.is_empty() {
-            return Ok(path);
+            return Ok(format!("{path}{fragment}"));
         }
-        Ok(format!("{path}?{query}"))
+        Ok(format!("{path}?{query}{fragment}"))
     }
 }
 
@@ -265,6 +286,16 @@ mod tests {
                 })),
             ),
             (
+                "opened on a node",
+                ExplorerUrl::single(handle("www~1")).with_node("pkg/Mod.js"),
+            ),
+            (
+                "node fragment after query",
+                ExplorerUrl::single(handle("www~1"))
+                    .with_params(params(|p| p.roots = roots(&["app"])))
+                    .with_node("pkg/Mod.js"),
+            ),
+            (
                 "every param at once",
                 ExplorerUrl::compare(handle("www~1"), handle("www~2")).with_params(params(|p| {
                     p.roots = roots(&["a"]);
@@ -294,6 +325,8 @@ explicitly empty roots          /www~1?roots=%5B%5D
 traversal by key                /www~1?traversal=%7B%22Key%22%3A%22tvc_00ff%22%7D
 traversal inline                /www~1?traversal=%7B%22Inline%22%3A%7B%22force_nodes%22%3A%7B%22a%22%3A%7B%22include%22%3Atrue%2C%22message_id%22%3Anull%7D%7D%7D%7D
 opaque params pass through      /www~1?graph_settings=H4sIAAAA-_w&gqc_delta_right=KLUv_QBY
+opened on a node                /www~1#pkg%2FMod.js
+node fragment after query       /www~1?roots=%5B%22app%22%5D#pkg%2FMod.js
 every param at once             /www~1/www~2?roots=%5B%22a%22%5D&roots_left=%5B%22b%22%5D&roots_right=%5B%22c%22%5D&traversal=%7B%22Key%22%3A%22tvc_1%22%7D&traversal_left=%7B%22Key%22%3A%22tvc_2%22%7D&traversal_right=%7B%22Key%22%3A%22tvc_3%22%7D&graph_settings=gs&gqc_delta_left=dl&gqc_delta_right=dr
 "
         );
