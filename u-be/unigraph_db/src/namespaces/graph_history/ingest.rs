@@ -27,6 +27,7 @@
 //! no anchor would ever be written at all.
 
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::collections::HashSet;
 
 use anyhow::Result;
@@ -72,6 +73,29 @@ pub(super) struct RunState {
     /// lock, and after the first frame it has nothing to do — the dictionary is
     /// a handful of names that never change.
     pub(super) metric_ids: BTreeMap<String, u32>,
+    /// The run's metric allowlist. See [`HistoryIngestOptions::metrics`].
+    pub(super) metrics: Option<BTreeSet<String>>,
+}
+
+impl RunState {
+    /// Does this run record `metric_name`? Everything, unless it named some.
+    pub(super) fn records(&self, metric_name: &str) -> bool {
+        self.metrics
+            .as_ref()
+            .is_none_or(|names| names.contains(metric_name))
+    }
+
+    /// The recorded metric names present anywhere in `extracted`.
+    pub(super) fn recorded_names(&self, extracted: &NodeMetrics) -> Vec<String> {
+        extracted
+            .values()
+            .flat_map(BTreeMap::keys)
+            .filter(|name| self.records(name))
+            .cloned()
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect()
+    }
 }
 
 /// The previous built frame, as far as this run knows it.
@@ -123,6 +147,7 @@ impl GraphHistory {
         let mut run = RunState {
             previous: None,
             metric_ids: BTreeMap::new(),
+            metrics: options.metrics.clone(),
         };
         let mut done = 0i64;
 

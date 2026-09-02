@@ -17,6 +17,7 @@
 //!   outage must still be picked up, however long ago it was.
 
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::sync::Arc;
 use std::sync::LazyLock;
 
@@ -206,6 +207,7 @@ fn ingest_opts(threshold: f64) -> HistoryIngestOptions {
         lookback_hours: None,
         threshold,
         graph_id_bounds: (None, None),
+        metrics: None,
     }
 }
 
@@ -416,6 +418,35 @@ async fn register_empty_frames(
     Ok(())
 }
 
+/// Four frames of a node carrying both a `size` that steps +5/+5/+60 and a
+/// `load_count` that jumps by thousands every frame — the shape a WWW budget
+/// node has now that route load counts ride alongside tier sizes.
+async fn fill_size_and_counter(
+    db: &UnigraphDb,
+    timeline_id: &TimelineID,
+    task: &ll::Task,
+) -> Result<()> {
+    let frames = [
+        (100.0, 10_000.0),
+        (105.0, 23_000.0),
+        (110.0, 4_000.0),
+        (170.0, 51_000.0),
+    ];
+    for (index, (size, load_count)) in frames.iter().enumerate() {
+        let graph_id = i64::try_from(index)? + 1;
+        store_metric_graph(
+            db,
+            timeline_id,
+            graph_id,
+            recent_timestamp(u64::try_from(graph_id)?)?,
+            &[("load_count", *load_count), ("size", *size)],
+            task,
+        )
+        .await?;
+    }
+    Ok(())
+}
+
 /// Fill one already-registered placeholder with a real graph.
 async fn fill_frame(
     db: &UnigraphDb,
@@ -524,6 +555,60 @@ async fn graph_history_records_the_worked_example_from_the_design() -> Result<()
   6  20     OVER_THRESHOLD         attributable
  11  24     ANCHOR                 —
  12  29     OVER_THRESHOLD|LATEST  attributable
+"
+    );
+    Ok(())
+}
+
+/// The threshold is an OR across metrics, so a metric that churns for reasons
+/// no diff caused defeats it on its own: WWW budget nodes carry a route's
+/// 30-day load count next to its tier sizes, and no size threshold can be set
+/// high enough to survive a counter in the tens of thousands.
+///
+/// `metrics` names what the series is about. Here `size` steps +5/+5/+60
+/// against a bar of 50 — one crossing, at frame 4 — while `load_count` jumps by
+/// thousands at every frame. Judged on both, every frame is a crossing and the
+/// series is the whole timeline; judged on `size` alone it is the three rows
+/// that mean something. The unrecorded metric is also absent from the stored
+/// values, which is what the single-value rows below show.
+#[tokio::test]
+async fn graph_history_judges_only_the_metrics_it_was_told_to_record() -> Result<()> {
+    let task = ll::Task::create_new("test");
+    let db = make_db();
+
+    // Every metric, which is what the option exists to escape.
+    let noisy = setup_timeline(&db, "history_metrics_all", &task).await?;
+    fill_size_and_counter(&db, &noisy, &task).await?;
+    ingest(&db, &noisy, 50.0, &task).await?;
+    k9::snapshot!(
+        series_summary(&db, &noisy, "app", &task).await?,
+        "
+  1  10000/100 FIRST|ANCHOR           —
+  2  23000/105 OVER_THRESHOLD|ANCHOR  attributable
+  3  4000/110 OVER_THRESHOLD|ANCHOR  attributable
+  4  51000/170 OVER_THRESHOLD|LATEST  attributable
+"
+    );
+
+    // Size only. Same graphs, same threshold.
+    let quiet = setup_timeline(&db, "history_metrics_size", &task).await?;
+    fill_size_and_counter(&db, &quiet, &task).await?;
+    db.graph_history
+        .ingest(
+            &quiet,
+            &HistoryIngestOptions {
+                metrics: Some(BTreeSet::from(["size".to_owned()])),
+                ..ingest_opts(50.0)
+            },
+            &task,
+        )
+        .await?;
+    k9::snapshot!(
+        series_summary(&db, &quiet, "app", &task).await?,
+        "
+  1  100    FIRST                  —
+  3  110    ANCHOR                 —
+  4  170    OVER_THRESHOLD|LATEST  attributable
 "
     );
     Ok(())

@@ -28,11 +28,24 @@ use crate::UnigraphCLIContext;
 /// bound, so an outage is a delay rather than a hole. `--lookback-hours` only
 /// caps how much of that backlog one run will chew through.
 ///
+/// `--metric` narrows what is judged and stored. The threshold is an OR across
+/// metrics, so one metric that moves for reasons no diff caused is enough to
+/// pull every node's row in at nearly every frame — a WWW budget node's 30-day
+/// route load count sits next to its tier sizes and does exactly that. Name the
+/// metrics the series is about and the rest cost nothing: they are dropped
+/// before interning, so no dictionary entry, no stored value, no verdict.
+///
 /// Already-ingested frames are skipped, so re-running with a different
-/// `--threshold` does nothing to them — use `history compact` for that.
+/// `--threshold` or `--metric` does nothing to them — use `history compact` for
+/// a threshold. Compaction cannot narrow metrics, since it re-judges from the
+/// values already stored; that takes a `history delete` and a re-ingest.
 ///
 /// ```sh
 /// unigraph history ingest --timeline-id my_timeline --threshold 1000
+///
+/// # Judge on bundle size only, ignoring the prod counters on the same nodes
+/// unigraph history ingest --timeline-id www-budget --threshold 1000 \
+///   --metric t1 --metric t2 --metric t3 --metric startup
 /// ```
 #[derive(Parser, Debug)]
 pub struct HistoryIngest {
@@ -59,6 +72,11 @@ pub struct HistoryIngest {
     /// Only ingest frames with graph ID <= this value (inclusive)
     #[arg(long)]
     max_id: Option<i64>,
+
+    /// Record only this metric. Repeat for more. Defaults to every metric the
+    /// graph carries.
+    #[arg(long = "metric")]
+    metrics: Vec<String>,
 }
 
 impl HistoryIngest {
@@ -72,6 +90,11 @@ impl HistoryIngest {
                     lookback_hours: self.lookback_hours,
                     threshold: self.threshold,
                     graph_id_bounds: (self.min_id.map(GraphID), self.max_id.map(GraphID)),
+                    // No `--metric` means every metric, not none of them.
+                    metrics: match self.metrics.is_empty() {
+                        true => None,
+                        false => Some(self.metrics.iter().cloned().collect()),
+                    },
                 },
                 task,
             )

@@ -26,6 +26,7 @@ use unigraph_storage_core::TimestampBounds;
 use super::GraphHistory;
 use super::NodeMetrics;
 use super::NodeValues;
+use super::Values;
 use super::ingest::RunState;
 
 impl GraphHistory {
@@ -195,18 +196,18 @@ impl GraphHistory {
         let complete = extracted
             .values()
             .flat_map(BTreeMap::keys)
+            .filter(|name| run.records(name))
             .all(|name| run.metric_ids.contains_key(name));
         if complete {
             return Ok(());
         }
-        run.metric_ids = self
-            .intern_metric_names(timeline_id, extracted, task)
-            .await?;
+        let names = run.recorded_names(extracted);
+        run.metric_ids = self.intern_metric_names(timeline_id, &names, task).await?;
         Ok(())
     }
 
-    /// Assign a stable id to every metric name present in `extracted`, and
-    /// return the timeline's full `name -> metric_id` dictionary.
+    /// Assign a stable id to every name in `names`, and return the timeline's
+    /// full `name -> metric_id` dictionary.
     ///
     /// Runs in its own short transaction. New ids are allocated as
     /// `MAX(metric_id) + 1` *at statement execution time*, so two writers
@@ -224,48 +225,49 @@ impl GraphHistory {
     async fn intern_metric_names(
         &self,
         timeline_id: &TimelineID,
-        extracted: &NodeMetrics,
+        names: &[String],
         task: &ll::Task,
     ) -> Result<BTreeMap<String, u32>> {
-        let names = extracted
-            .values()
-            .flat_map(|metrics| metrics.keys().cloned())
-            .collect::<BTreeSet<_>>()
-            .into_iter()
-            .collect::<Vec<_>>();
-
         let mut conn = self.ctx.storage.graph.conn_write().await?;
         conn.start_transaction(task).await?;
         conn.get_timeline_config_and_lock(timeline_id, task)
             .await?
             .ok_or_else(|| anyhow::anyhow!("Timeline not found: {}", timeline_id))?;
         let metric_ids = conn
-            .intern_history_metrics(timeline_id, &names, task)
+            .intern_history_metrics(timeline_id, names, task)
             .await?;
         conn.commit_transaction(task).await?;
         Ok(metric_ids)
     }
 
-    /// Swap metric names for their interned ids.
+    /// Swap metric names for their interned ids, dropping the metrics this run
+    /// does not record.
     pub(super) fn to_node_values(
         &self,
         extracted: &NodeMetrics,
         run: &RunState,
     ) -> Result<NodeValues> {
-        extracted
-            .iter()
-            .map(|(node_name, metrics)| {
-                let values = metrics
-                    .iter()
-                    .map(|(metric_name, value)| {
-                        let metric_id = run.metric_ids.get(metric_name).ok_or_else(|| {
-                            anyhow::anyhow!("metric was not interned: {metric_name}")
-                        })?;
-                        Ok((*metric_id, *value))
-                    })
-                    .collect::<Result<BTreeMap<_, _>>>()?;
-                Ok((node_name.clone(), values))
-            })
-            .collect()
+        let mut result = NodeValues::new();
+
+        for (node_name, metrics) in extracted {
+            let mut values = Values::new();
+            for (metric_name, value) in metrics.iter().filter(|(name, _)| run.records(name)) {
+                let metric_id = run
+                    .metric_ids
+                    .get(metric_name)
+                    .ok_or_else(|| anyhow::anyhow!("metric was not interned: {metric_name}"))?;
+                values.insert(*metric_id, *value);
+            }
+
+            // A node left with nothing recorded is dropped, exactly as
+            // `extract_node_metrics` drops an all-zero one. Keeping it would put
+            // an empty row on every node at every frame the moment its only
+            // metric stopped being recorded.
+            if !values.is_empty() {
+                result.insert(node_name.clone(), values);
+            }
+        }
+
+        Ok(result)
     }
 }

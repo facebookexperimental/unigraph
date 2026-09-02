@@ -388,6 +388,7 @@ async fn ingest_history(t: &TestApp) -> Result<String> {
                 lookback_hours: None,
                 threshold: 1.0,
                 graph_id_bounds: (None, None),
+                metrics: None,
             },
             &t.task,
         )
@@ -424,6 +425,7 @@ async fn ingest_sparse_history(t: &TestApp) -> Result<String> {
                 lookback_hours: None,
                 threshold: 50.0,
                 graph_id_bounds: (None, None),
+                metrics: None,
             },
             &t.task,
         )

@@ -57,6 +57,7 @@ mod read;
 mod replay;
 
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 
 use anyhow::Result;
 use ll::task;
@@ -94,6 +95,25 @@ pub struct HistoryIngestOptions {
     pub threshold: f64,
     /// Optional graph-ID restriction, for repairing a specific range.
     pub graph_id_bounds: GraphIDBounds,
+    /// Which metric names to record. `None` records every metric the graph
+    /// carries, which is the behaviour this option was added to escape.
+    ///
+    /// The threshold is an OR across metrics — one crossing is enough — so a
+    /// single metric that moves for reasons no diff caused drags every node's
+    /// row in with it. WWW budget nodes carry a route's 30-day load count
+    /// beside its tier sizes, and that count changes at essentially every
+    /// frame, at a scale no size threshold can be set against. Naming the
+    /// metrics that answer *"which diff moved this?"* keeps the series about
+    /// them.
+    ///
+    /// Applied before interning, so an unrecorded metric costs nothing at all:
+    /// no dictionary entry, no stored value, no verdict.
+    ///
+    /// Only governs frames this run ingests. `history compact` re-judges from
+    /// the values already stored and cannot remove a metric from them, so
+    /// narrowing this on a timeline with history behind it takes a
+    /// `history delete` and a re-ingest.
+    pub metrics: Option<BTreeSet<String>>,
 }
 
 /// What `compact` should reclaim and re-threshold.

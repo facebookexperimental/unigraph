@@ -214,6 +214,7 @@ async fn deletes_everything_the_timeline_owns_and_nothing_else() -> Result<()> {
                 lookback_hours: None,
                 threshold: 0.0,
                 graph_id_bounds: (None, None),
+                metrics: None,
             },
             &task,
         )
