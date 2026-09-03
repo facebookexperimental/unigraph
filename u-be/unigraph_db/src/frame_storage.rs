@@ -209,7 +209,7 @@ impl UnigraphStorage {
             .await?;
 
         let package = ErrorPackage { manifest, blobs };
-        unpack_errors(&package).context("Failed to unpack errors")
+        unpack_errors(&package, task).context("Failed to unpack errors")
     }
 
     /// Delete a frame and register its external blobs for cleanup.

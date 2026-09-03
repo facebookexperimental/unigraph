@@ -113,11 +113,16 @@ pub fn pack_errors<T: serde::Serialize + Sync>(
 }
 
 /// Unpack an [`ErrorPackage`] back into the original error data.
+///
+/// Takes the caller's task rather than creating one. A fabricated task is a
+/// *root*, not a child, so it logs with no name and no parent — and callers
+/// unpack one package per Error frame, which turned a job that read a few dozen
+/// error frames into a few dozen blank lines in the task tree.
 pub fn unpack_errors<T: serde::de::DeserializeOwned + Default + Send>(
     package: &ErrorPackage,
+    task: &ll::Task,
 ) -> Result<T> {
-    let task = ll::Task::create_new("");
-    from_blobs_json(&package.manifest.errors_blob, &package.blobs, &task)
+    from_blobs_json(&package.manifest.errors_blob, &package.blobs, task)
         .context("Failed to unpack errors")
         .with_context(|| {
             format!(
@@ -148,7 +153,7 @@ mod tests {
 
         assert_eq!(package.manifest.stats.error_count, 3);
 
-        let roundtripped: Vec<String> = unpack_errors(&package)?;
+        let roundtripped: Vec<String> = unpack_errors(&package, &ll::Task::create_new("test"))?;
         assert_eq!(errors, roundtripped);
 
         Ok(())
