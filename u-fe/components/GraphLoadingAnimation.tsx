@@ -10,16 +10,15 @@ const SHADER = /* wgsl */ `
 // SOURCE: https://github.com/XorDev/Singularity/blob/main/Shaders/shadertoy-version.glsl
 // LICENSE: https://github.com/XorDev/Singularity/blob/main/LICENSE
 
-// Uniforms passed from JS each frame
 struct Uniforms {
-  time: f32,        // elapsed seconds
-  _pad: f32,        // alignment padding
+  time: f32,         // elapsed seconds
+  _pad: f32,         // alignment padding
   resolution: vec2f, // canvas pixel dimensions
 }
 @group(0) @binding(0) var<uniform> u: Uniforms;
 
-// Fullscreen triangle — 3 vertices that cover the entire clip space.
-// No vertex buffer needed; positions are computed from vertex index.
+// Fullscreen triangle — 3 vertices covering all of clip space. No vertex
+// buffer needed; positions come from the vertex index.
 @vertex
 fn vs(@builtin(vertex_index) idx: u32) -> @builtin(position) vec4f {
   var pos = array<vec2f, 3>(
@@ -30,106 +29,113 @@ fn vs(@builtin(vertex_index) idx: u32) -> @builtin(position) vec4f {
   return vec4f(pos[idx], 0.0, 1.0);
 }
 
+// Near-black maroon -> deep crimson -> scarlet -> hot scarlet, cross-faded
+// with smoothstep so the ramp has no banding. Every colour in the image
+// comes from here or from the rim tint below.
+fn palette(x: f32) -> vec3f {
+  let s: f32 = clamp(x, 0.0, 1.0);
+  var c: vec3f = mix(vec3f(0.020, 0.002, 0.006), vec3f(0.180, 0.010, 0.022),
+                     smoothstep(0.00, 0.34, s));
+  c = mix(c, vec3f(0.480, 0.035, 0.055), smoothstep(0.32, 0.62, s));
+  c = mix(c, vec3f(0.880, 0.110, 0.080), smoothstep(0.60, 0.84, s));
+  c = mix(c, vec3f(1.000, 0.280, 0.160), smoothstep(0.86, 1.00, s));
+  return c;
+}
+
 @fragment
 fn fs(@builtin(position) pos: vec4f) -> @location(0) vec4f {
+  let r: vec2f = u.resolution;
+  // WebGPU's fragment position is y-down; flip to match the GLSL original.
+  let FC: vec2f = vec2f(pos.x, r.y - pos.y);
+  let t: f32 = u.time * 0.35;
 
-  // ── Coordinate setup ──────────────────────────────────────────────
-  // Center pixel coords at origin, normalize by height for aspect ratio,
-  // then divide by scale factor (smaller = smaller render, more whitespace).
-  let p = (pos.xy * 2.0 - u.resolution) / u.resolution.y / 0.5;
+  // Camera at the origin looking down -z; the volume is centred at z = -8.
+  let rd: vec3f = normalize(vec3f((FC * 2.0 - r) / r.y, -1.027));
 
-  // Diagonal vector — used later for asymmetric disk scaling.
-  let d = vec2f(-1.0, 1.0);
+  // The domain warp is axis-aligned, so the field is spun in its own frame.
+  // Rotation preserves length, leaving the envelope round as it tumbles.
+  let th: f32 = u.time * 0.22;
+  let cth: f32 = cos(th);
+  let sth: f32 = sin(th);
+  let lightDir: vec3f = normalize(vec3f(-0.4, 0.7, 0.55));
 
-  // Working position — no perspective skew, just centered coords.
-  let c = p;
+  var col = vec3f(0.0, 0.0, 0.0);
+  var trans: f32 = 1.0; // transmittance, accumulated front-to-back
+  var z: f32 = 1.0;
 
-  // ── Spiral coordinate transform ───────────────────────────────────
-  // Squared distance from center — controls radial brightness falloff.
-  let a = dot(c, c);
+  for (var i: f32 = 0.0; i < 50.0; i += 1.0) {
+    var p: vec3f = z * rd;
+    p.z += 8.0;
+    let rr: f32 = length(p);
 
-  // Rotation angle: log(a) maps distance into log-polar space (creates spiral),
-  // time term adds continuous rotation.
-  let angle = 0.5 * log(a) + u.time * 0.1;
+    // Density envelope: a compact core plus a wide thin atmosphere that
+    // reaches past the rim.
+    let env: f32 = exp(-pow(rr / 2.3, 2.2)) + 0.8 * exp(-pow(rr / 3.35, 3.0));
+    if (env > 0.001) {
+      var a: vec3f = vec3f(p.x * cth + p.z * sth, p.y, -p.x * sth + p.z * cth);
 
-  // Rotation matrix via cosine phase trick (avoids calling sin()):
-  //   cos(angle + 0)  ≈  cos(angle)
-  //   cos(angle + 33) ≈ -sin(angle)   [33 rad ≈ 10.5π, phase-shifted]
-  //   cos(angle + 30) ≈  sin(angle)   [30 rad ≈  9.5π, phase-shifted]
-  // Result: approximate 2D rotation matrix.
-  let cv = cos(vec4f(angle, angle + 33.0, angle + 30.0, angle));
-  let spiral_rot = mat2x2f(cv.x, cv.y, cv.z, cv.w);
+      // Domain warp — 11 octaves of decreasing amplitude. The phase does not
+      // vary with i; a per-step offset would decorrelate the samples along
+      // each ray and average the field into flat haze.
+      var d: f32 = 2.0;
+      for (var k: i32 = 0; k < 11; k = k + 1) {
+        a += sin(a * d + vec3f(t)).yzx / d;
+        d += 1.0;
+      }
 
-  // Apply spiral rotation, scale up for detail.
-  var v = (c * spiral_rot) / 0.18;
+      // Filament noise. length(sin(..)+1) spans [0, 2*sqrt(3)]; normalise,
+      // gamma up for contrast, then floor so the silhouette follows the
+      // round envelope rather than the filaments.
+      var n: f32 = length(sin(a / 0.26 + vec3f(z)) + vec3f(1.0)) / 3.4641;
+      n = 0.08 + 0.92 * pow(n, 2.9);
 
-  // Wave accumulator — each iteration adds a sine wave layer.
-  var w = vec2f(0.0);
+      let dens: f32 = env * n * 2.0;
+      // Hot scarlet through the middle, falling to near-black crimson at
+      // the edge, with the filaments shifting it either way.
+      let hue: f32 = 1.02 - 0.5 * pow(rr / 3.35, 2.6) + (n - 0.4) * 0.35;
+      // Extra radiance in the core, plus a directional light so the volume
+      // reads as a sphere rather than a flat disc.
+      let core: f32 = 1.0 + 0.75 * exp(-pow(rr / 2.0, 2.0));
+      let ndl: f32 = dot(p / max(rr, 1e-4), lightDir);
+      let shade: f32 = 0.72 + 0.48 * (0.5 + 0.5 * ndl);
 
-  // ── Wave generation loop ──────────────────────────────────────────
-  // 8 iterations of domain warping. Each pass:
-  //   1. Distorts v with frequency-scaled sine (v.yx swaps axes → rotation)
-  //   2. Divides by i for 1/f noise (lower frequencies dominate)
-  //   3. Accumulates wave heights into w
-  // The result: complex organic flow patterns in v, brightness map in w.
-  var i: f32 = 0.2;
-  loop {
-    let prev = i;
-    i += 1.0;
-    if (prev >= 8.0) { break; }
-    v += 0.7 * sin(v.yx * i + u.time) / i + 0.45;
-    w += 1.0 + sin(v);
+      col += palette(hue) * (dens * trans * 0.28 * 0.9 * core * shade);
+      trans *= exp(-dens * 0.28 * 0.6);
+    }
+    z += 0.28;
   }
 
-  // ── Accretion disk radius ─────────────────────────────────────────
-  // High-frequency oscillation from the flow field (sin(v/0.3)),
-  // combined with asymmetrically scaled position (c * (3+d) = c * vec2(2,4)).
-  // The length gives distance to the warped disk shape.
-  i = length(sin(v / 0.3) * 0.4 + c * (3.0 + d));
+  let rad: f32 = length((FC - 0.5 * r) / r.y);
+  let R: f32 = 0.22;
 
-  // ── Final color assembly ──────────────────────────────────────────
-  // Each divisor in this chain controls a different visual aspect:
+  // Contain the volume within the disc, plus a soft exponential term that
+  // lets some plasma through past the rim.
+  let hard: f32 = 1.0 - smoothstep(R, R * 1.10, rad);
+  let spill: f32 = 0.85 * exp(-max(rad - R, 0.0) * 8.0);
+  col *= min(hard + spill, 1.0);
 
-  // Horizontal color gradient: red grows rightward (+0.6),
-  // green/blue decrease (−0.4, −0.7). Creates warm↔cool split.
-  let color_gradient = exp(c.x * vec4f(0.6, -0.4, -0.7, 0.0));
+  // Rim highlight: sharply peaked at R but continuous, so the circle reads
+  // crisp without a hard edge. Tinted hotter and lighter than the plasma so
+  // it separates by luminance, everything being one hue. The exponential
+  // carries it outward into a bloom.
+  let limb: f32 = 0.011 / (0.010 + abs(rad - R));
+  let bloom: f32 = exp(-max(rad - R, 0.0) * 17.0);
+  col += vec3f(1.00, 0.44, 0.30) * limb * 1.85
+    + vec3f(0.50, 0.07, 0.05) * bloom * 0.18;
 
-  // Wave texture: bright in wave gaps (small w), dark in wave peaks.
-  // .xyyx swizzle maps 2D waves → 4 color channels with crossover.
-  let wave_texture = w.xyyx;
+  // The rim's 1/|r-R| tail decays too slowly to reach black on its own,
+  // which would show the canvas as a grey square. Force it to exactly zero
+  // inside the canvas bounds.
+  col *= 1.0 - smoothstep(0.34, 0.47, rad);
 
-  // Disk brightness: quadratic in disk distance.
-  // Bright ring where i is small, dark further away.
-  let disk_brightness = vec4f(8.0 + i * i / 5.0 - i);
+  // Hue-preserving tone map: compress the magnitude and keep the channel
+  // ratio, so the hot core stays scarlet instead of clipping to white.
+  let m: f32 = max(col.r, max(col.g, col.b));
+  let compressed: f32 = tanh(m * 0.6);
 
-  // Radial falloff — creates the donut-on-white shape:
-  //   0.5/a → huge near center → divides energy to zero → white center
-  //   a*1.0 → grows outward → divides energy to zero → white edges
-  //   5.0   → base offset controlling overall brightness
-  let radial_falloff = vec4f(5.0 + 0.5 / a + a * 1.0);
-
-  // Rim highlight at radius 0.9 — the accretion disk itself.
-  // Denominator is tiny right at length(p)=0.9, creating a bright ring.
-  let rim = vec4f(0.018 + abs(length(p) - 0.9));
-
-  // Multiply all energy contributions together via chained division.
-  let energy = color_gradient / wave_texture / disk_brightness / radial_falloff / rim;
-
-  // Soft-clamp via 1−exp(−x): maps [0,∞) → [0,1). More energy → brighter.
-  let col = vec4f(1.0) - exp(-energy);
-
-  // ── Brand color blend ─────────────────────────────────────────────
-  // Compute luminance to identify dark vs bright areas.
-  let lum = dot(col.rgb, vec3f(1.0, 0.1, 0.1));
-
-  let brand = vec3f(0.98, 0.17, 0.21);
-  let colored = mix(brand, vec3f(1.0), smoothstep(0.0, 0.6, lum));
-
-  // Where luminance is near zero (outside the effect), output pure white.
-  let mask = smoothstep(0.01, 0.08, lum);
-  let final_color = mix(vec3f(1.0), colored, mask);
-
-  return vec4f(final_color, 1.0);
+  // Alpha tracks content, so empty pixels are transparent and the canvas
+  // never reads as a box. Premultiplied — the context is configured to match.
+  return vec4f(col * (compressed / max(m, 1e-5)), compressed);
 }
 `;
 
@@ -154,12 +160,15 @@ async function initWebGPU(
   const ctx = canvas.getContext("webgpu") as any;
   if (!ctx) return null;
 
-  const dpr = Math.min(window.devicePixelRatio ?? 1, 2);
-  canvas.width = W * dpr;
-  canvas.height = H * dpr;
+  // The volume march is the expensive part; cap the ratio so a retina
+  // display doesn't more than double the cost for a loading screen.
+  const dpr = Math.min(window.devicePixelRatio ?? 1, 1.5);
+  canvas.width = Math.round(W * dpr);
+  canvas.height = Math.round(H * dpr);
 
   const format = nav.gpu.getPreferredCanvasFormat();
-  ctx.configure({ device, format, alphaMode: "opaque" });
+  // Premultiplied, to match the shader's content-driven alpha.
+  ctx.configure({ device, format, alphaMode: "premultiplied" });
 
   const module = device.createShaderModule({ code: SHADER });
 
@@ -199,7 +208,7 @@ async function initWebGPU(
           view: ctx.getCurrentTexture().createView(),
           loadOp: "clear",
           storeOp: "store",
-          clearValue: { r: 1, g: 1, b: 1, a: 1 },
+          clearValue: { r: 0, g: 0, b: 0, a: 0 },
         },
       ],
     });
@@ -254,19 +263,22 @@ export function GraphLoadingAnimation() {
   }, []);
 
   return (
-    <div className="h-screen flex flex-col items-center justify-center gap-6 bg-white">
-      <canvas ref={ref} style={{ width: W, height: H }} />
+    <div className="h-screen flex flex-col items-center justify-center gap-6 bg-black">
+      <canvas ref={ref} aria-hidden="true" style={{ width: W, height: H }} />
       <div
         ref={fallbackRef}
         style={{ display: "none" }}
         className="flex-col items-center justify-center gap-6"
       >
         <div
+          aria-hidden="true"
           className="rounded-full border-4 border-primary/30 border-t-primary animate-spin"
           style={{ width: 48, height: 48 }}
         />
       </div>
-      <p className="text-sm text-neutral-400 animate-pulse">Loading graph…</p>
+      <p role="status" className="text-sm text-neutral-400 animate-pulse">
+        Loading graph…
+      </p>
     </div>
   );
 }
