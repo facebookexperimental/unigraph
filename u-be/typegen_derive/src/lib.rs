@@ -12,8 +12,8 @@ use syn::parse::Parse;
 use syn::parse::ParseStream;
 use syn::parse_macro_input;
 
-/// Declare a named group of string constants mirrored into every configured
-/// target language.
+/// Declare a named group of constants mirrored into every configured target
+/// language.
 ///
 /// ```ignore
 /// typegen_consts! {
@@ -29,6 +29,11 @@ use syn::parse_macro_input;
 /// Rust and Hack both get `Timelines::MY_TIMELINE`, TypeScript gets
 /// `Timelines.MY_TIMELINE`. Flow gets the union of the values only, because
 /// `.js.flow` files are declarations and cannot carry runtime values.
+///
+/// Values are string or integer literals. An integer group becomes `i64` in
+/// Rust and a Hack `enum ...: int as int`, so a threshold can be declared here
+/// and compared against without going through a string. A group may not mix the
+/// two — a Hack enum has a single base type.
 ///
 /// Group-level `#[typegen(skip(..))]` and `#[typegen(Hack("..")]`-style
 /// overrides work exactly as they do on `#[derive(TypeGen)]`.
@@ -402,11 +407,28 @@ struct ConstGroup {
     entries: Vec<ConstGroupEntry>,
 }
 
-/// A single `NAME = "value"` line within a [`ConstGroup`]
+/// A single `NAME = <literal>` line within a [`ConstGroup`]
 struct ConstGroupEntry {
     attrs: Vec<syn::Attribute>,
     name: syn::Ident,
-    value: syn::LitStr,
+    value: ConstGroupValue,
+}
+
+/// The literal on the right of a [`ConstGroupEntry`].
+///
+/// Strings and integers only: they are the two kinds every target language
+/// spells the same way, and the two a Hack enum can be based on. An integer is
+/// normalized to `i64` here rather than carried as its `LitInt`, so a suffixed
+/// `1000u32` cannot end up on the right of a generated `const NAME: i64`.
+enum ConstGroupValue {
+    Str(syn::LitStr),
+    Int(i64),
+}
+
+impl ConstGroupValue {
+    fn is_int(&self) -> bool {
+        matches!(self, ConstGroupValue::Int(_))
+    }
 }
 
 impl Parse for ConstGroup {
@@ -436,9 +458,28 @@ impl Parse for ConstGroupEntry {
         let attrs = input.call(syn::Attribute::parse_outer)?;
         let name: syn::Ident = input.parse()?;
         input.parse::<syn::Token![=]>()?;
-        let value: syn::LitStr = input.parse()?;
+        let value: ConstGroupValue = input.parse()?;
 
         Ok(ConstGroupEntry { attrs, name, value })
+    }
+}
+
+impl Parse for ConstGroupValue {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        match input.parse::<syn::Lit>()? {
+            syn::Lit::Str(value) => Ok(ConstGroupValue::Str(value)),
+            // Overflow is reported here, against the literal, rather than
+            // surfacing later as a type error inside the generated `const`.
+            syn::Lit::Int(value) => {
+                let parsed: i64 = value.base10_parse()?;
+                reject_unsafe_integer(parsed, &value)?;
+                Ok(ConstGroupValue::Int(parsed))
+            }
+            other => Err(syn::Error::new_spanned(
+                other,
+                "typegen_consts! values must be a string or an integer literal",
+            )),
+        }
     }
 }
 
@@ -461,6 +502,7 @@ fn expand_const_group(group: ConstGroup) -> syn::Result<proc_macro2::TokenStream
     for entry in &entries {
         reject_unknown_attrs(&entry.attrs, &["doc"])?;
     }
+    reject_mixed_values(&entries)?;
 
     let group_name = name.to_string();
     // Only `#[doc]` survives onto the generated struct — `#[typegen(..)]` is a
@@ -478,10 +520,15 @@ fn expand_const_group(group: ConstGroup) -> syn::Result<proc_macro2::TokenStream
         .map(|entry| {
             let entry_docs = &entry.attrs;
             let entry_name = &entry.name;
-            let value = &entry.value;
-            quote! {
-                #(#entry_docs)*
-                #visibility const #entry_name: &'static str = #value;
+            match &entry.value {
+                ConstGroupValue::Str(value) => quote! {
+                    #(#entry_docs)*
+                    #visibility const #entry_name: &'static str = #value;
+                },
+                ConstGroupValue::Int(value) => quote! {
+                    #(#entry_docs)*
+                    #visibility const #entry_name: i64 = #value;
+                },
             }
         })
         .collect::<Vec<_>>();
@@ -490,12 +537,18 @@ fn expand_const_group(group: ConstGroup) -> syn::Result<proc_macro2::TokenStream
         .iter()
         .map(|entry| {
             let entry_name = entry.name.to_string();
-            let value = entry.value.value();
+            let value = match &entry.value {
+                ConstGroupValue::Str(value) => {
+                    let value = value.value();
+                    quote! { ::typegen::ConstValue::Str(#value.to_string()) }
+                }
+                ConstGroupValue::Int(value) => quote! { ::typegen::ConstValue::Int(#value) },
+            };
             let entry_docs_token = docs_token(extract_docs(&entry.attrs));
             quote! {
                 ::typegen::ConstEntry {
                     name: #entry_name.to_string(),
-                    value: #value.to_string(),
+                    value: #value,
                     docs: #entry_docs_token,
                 }
             }
@@ -544,6 +597,59 @@ fn expand_const_group(group: ConstGroup) -> syn::Result<proc_macro2::TokenStream
             type_decl.write_to_file().expect("Failed to write const files");
         }
     })
+}
+
+/// Largest integer a JS `number` holds exactly — `Number.MAX_SAFE_INTEGER`.
+const MAX_SAFE_INTEGER: i64 = 9_007_199_254_740_991;
+
+/// Reject an integer the JS targets could not represent exactly.
+///
+/// Rust and Hack carry the full `i64`, but Flow and TypeScript get a `number`,
+/// which is a double. Above this the emitted literal rounds to a *different*
+/// value, and nothing downstream fails — the constant is simply not the same
+/// number in two of the four languages, which is the exact failure this crate
+/// exists to prevent.
+fn reject_unsafe_integer(value: i64, literal: &syn::LitInt) -> syn::Result<()> {
+    if value.unsigned_abs() > MAX_SAFE_INTEGER as u64 {
+        return Err(syn::Error::new_spanned(
+            literal,
+            format!(
+                "typegen_consts! integer {value} is outside the range a JS number \
+                 holds exactly (±{MAX_SAFE_INTEGER}); it would round to a different \
+                 value in the Flow and TypeScript output",
+            ),
+        ));
+    }
+
+    Ok(())
+}
+
+/// Reject a group that mixes string and integer values.
+///
+/// A Hack enum has one base type and there is no `string|int` to widen to, so a
+/// mixed group has no legal Hack spelling. Caught here, against the offending
+/// line, rather than emitting an enum whose values do not match its base type —
+/// which the Hack typechecker would report far from the `typegen_consts!` that
+/// caused it.
+fn reject_mixed_values(entries: &[ConstGroupEntry]) -> syn::Result<()> {
+    let Some(first) = entries.first() else {
+        return Ok(());
+    };
+
+    for entry in entries {
+        if entry.value.is_int() != first.value.is_int() {
+            return Err(syn::Error::new(
+                entry.name.span(),
+                format!(
+                    "typegen_consts! group mixes string and integer values \
+                     (`{}` disagrees with `{}`); split them into two groups",
+                    entry.name, first.name,
+                ),
+            ));
+        }
+    }
+
+    Ok(())
 }
 
 /// Reject attributes the macro would otherwise drop on the floor.

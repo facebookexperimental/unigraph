@@ -133,22 +133,52 @@ pub struct EnumDecl {
     pub variants: Vec<EnumVariant>,
 }
 
-/// Abstract representation of a named group of string constants.
+/// Abstract representation of a named group of constants.
 ///
 /// Unlike the other declarations this one carries *values*, not just types.
-/// It exists so a table of well-known strings can be declared once in Rust and
-/// mirrored verbatim into every target language.
+/// It exists so a table of well-known strings or numbers can be declared once in
+/// Rust and mirrored verbatim into every target language.
 #[derive(Debug, Clone)]
 pub struct ConstDecl {
     pub entries: Vec<ConstEntry>,
+}
+
+impl ConstDecl {
+    /// Whether this group's values are integers rather than strings.
+    ///
+    /// Read off the first entry alone, because a group is homogeneous:
+    /// `typegen_consts!` rejects one that mixes the two, since a Hack enum has a
+    /// single base type and there is no `string|int` to fall back on.
+    pub fn is_int(&self) -> bool {
+        matches!(self.entries.first(), Some(entry) if entry.value.is_int())
+    }
 }
 
 /// A single constant within a [`ConstDecl`]
 #[derive(Debug, Clone)]
 pub struct ConstEntry {
     pub name: String,
-    pub value: String,
+    pub value: ConstValue,
     pub docs: Option<String>,
+}
+
+/// The value of a [`ConstEntry`].
+///
+/// Only these two, because they are the kinds every target language spells the
+/// same way: a quoted string, or the digits themselves. `i64` rather than a
+/// float — Hack enums admit `string` and `int` and nothing else, and a decimal
+/// would not survive the round trip through three languages' literal syntax
+/// unchanged.
+#[derive(Debug, Clone)]
+pub enum ConstValue {
+    Str(String),
+    Int(i64),
+}
+
+impl ConstValue {
+    pub fn is_int(&self) -> bool {
+        matches!(self, ConstValue::Int(_))
+    }
 }
 
 /// Abstract representation of a field in a struct

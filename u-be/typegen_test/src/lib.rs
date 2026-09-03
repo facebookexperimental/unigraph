@@ -152,6 +152,19 @@ typegen_consts! {
 }
 
 typegen_consts! {
+    /// Integer constants: unquoted in every target language, and a Hack `int`
+    /// enum rather than a `string` one.
+    pub Thresholds {
+        /// Smallest change worth reporting, in bytes.
+        SIGNIFICANT_BYTES = 1000,
+        ZERO = 0,
+        /// The largest value a JS `number` holds exactly. One more than this is
+        /// a compile error, because it would round in the Flow and TS output.
+        MAX_SAFE = 9007199254740991,
+    }
+}
+
+typegen_consts! {
     /// Const group that opts out of Flow and overrides the Hack output.
     #[typegen(skip(Flow), Hack("string"))]
     pub PartialConsts {
@@ -678,14 +691,18 @@ TypeGenGeneratedType {
             entries: [
                 ConstEntry {
                     name: "MY_TIMELINE",
-                    value: "timeline-123",
+                    value: Str(
+                        "timeline-123",
+                    ),
                     docs: Some(
                         "The main timeline.",
                     ),
                 },
                 ConstEntry {
                     name: "OTHER_TIMELINE",
-                    value: "timeline-456",
+                    value: Str(
+                        "timeline-456",
+                    ),
                     docs: None,
                 },
             ],
@@ -706,28 +723,79 @@ TypeGenGeneratedType {
             entries: [
                 ConstEntry {
                     name: "QUOTED",
-                    value: "say \\"hi\\" \\\\ bye",
+                    value: Str(
+                        "say \\"hi\\" \\\\ bye",
+                    ),
                     docs: Some(
                         "Double quotes and backslashes.",
                     ),
                 },
                 ConstEntry {
                     name: "DOLLAR",
-                    value: "{$notAVariable}",
+                    value: Str(
+                        "{$notAVariable}",
+                    ),
                     docs: Some(
                         "Hack interpolates `$name` inside double-quoted strings.",
                     ),
                 },
                 ConstEntry {
                     name: "APOSTROPHE",
-                    value: "it's",
+                    value: Str(
+                        "it's",
+                    ),
                     docs: None,
                 },
                 ConstEntry {
                     name: "NEWLINE",
-                    value: "line1\
+                    value: Str(
+                        "line1\
 line2",
+                    ),
                     docs: None,
+                },
+            ],
+        },
+    ),
+    overrides: None,
+    skip: None,
+}
+
+TypeGenGeneratedType {
+    original_type_name: "Thresholds",
+    docs: Some(
+        "Integer constants: unquoted in every target language, and a Hack `int`\
+enum rather than a `string` one.",
+    ),
+    file_path: <SANITIZED>
+    declaration: ConstDecl(
+        ConstDecl {
+            entries: [
+                ConstEntry {
+                    name: "SIGNIFICANT_BYTES",
+                    value: Int(
+                        1000,
+                    ),
+                    docs: Some(
+                        "Smallest change worth reporting, in bytes.",
+                    ),
+                },
+                ConstEntry {
+                    name: "ZERO",
+                    value: Int(
+                        0,
+                    ),
+                    docs: None,
+                },
+                ConstEntry {
+                    name: "MAX_SAFE",
+                    value: Int(
+                        9007199254740991,
+                    ),
+                    docs: Some(
+                        "The largest value a JS `number` holds exactly. One more than this is\
+a compile error, because it would round in the Flow and TS output.",
+                    ),
                 },
             ],
         },
@@ -747,7 +815,9 @@ TypeGenGeneratedType {
             entries: [
                 ConstEntry {
                     name: "ONLY_SOME_LANGUAGES",
-                    value: "value",
+                    value: Str(
+                        "value",
+                    ),
                     docs: None,
                 },
             ],
@@ -785,7 +855,9 @@ declaration file rather than becoming a `.js` module.",
             entries: [
                 ConstEntry {
                     name: "SOME_VALUE",
-                    value: "value",
+                    value: Str(
+                        "value",
+                    ),
                     docs: None,
                 },
             ],

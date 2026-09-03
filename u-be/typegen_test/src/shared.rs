@@ -22,6 +22,7 @@ use crate::Point;
 use crate::Shape;
 use crate::SkipAndOverrideTest;
 use crate::SkipTest;
+use crate::Thresholds;
 use crate::Timelines;
 use crate::TrickyConsts;
 use crate::Unit;
@@ -44,6 +45,7 @@ pub fn get_all_declarations() -> Vec<TypeGenGeneratedType> {
         SkipAndOverrideTest::to_type_decl(),
         Timelines::to_type_decl(),
         TrickyConsts::to_type_decl(),
+        Thresholds::to_type_decl(),
         PartialConsts::to_type_decl(),
         FlowOverriddenConsts::to_type_decl(),
     ]

@@ -1,11 +1,30 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-//! String-literal escaping for generated code.
+//! Literal rendering and string escaping for generated code.
 //!
-//! Constant values come straight from Rust string literals, so they can contain
+//! Constant values come straight from Rust literals, so a string can contain
 //! quotes, backslashes and control characters that would otherwise terminate or
-//! corrupt the literal we emit. Every generator renders values through one of
-//! these two functions.
+//! corrupt the literal we emit. Every generator renders values through
+//! [`js_literal`] or [`hack_literal`], which quote-and-escape a string and pass
+//! an integer through as its digits.
+
+use crate::types::ConstValue;
+
+/// Render a constant as a JavaScript/TypeScript/Flow literal, quoted if needed.
+pub(crate) fn js_literal(value: &ConstValue) -> String {
+    match value {
+        ConstValue::Str(value) => format!("\"{}\"", escape_js_string(value)),
+        ConstValue::Int(value) => value.to_string(),
+    }
+}
+
+/// Render a constant as a Hack literal, quoted if needed.
+pub(crate) fn hack_literal(value: &ConstValue) -> String {
+    match value {
+        ConstValue::Str(value) => format!("\"{}\"", escape_hack_string(value)),
+        ConstValue::Int(value) => value.to_string(),
+    }
+}
 
 /// Escape a value for a double-quoted JavaScript/TypeScript/Flow literal.
 pub(crate) fn escape_js_string(value: &str) -> String {

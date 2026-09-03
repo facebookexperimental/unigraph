@@ -4,7 +4,7 @@ use crate::Lang;
 use crate::TypeGenConfig;
 use crate::docs::DocFormat;
 use crate::docs::render_docs;
-use crate::escape::escape_hack_string;
+use crate::escape::hack_literal;
 use crate::types::ConstDecl;
 use crate::types::EnumDecl;
 use crate::types::EnumVariant;
@@ -275,7 +275,12 @@ impl<'a> HackGenerator<'a> {
         result
     }
 
-    /// Generate a string enum carrying a const group's values.
+    /// Generate an enum carrying a const group's values.
+    ///
+    /// The base type comes from the group's own values — `int` for an integer
+    /// group, `string` otherwise. `as <base>` on top of it is what makes the
+    /// enum implicitly usable wherever the raw value is expected, which is how
+    /// callers use these without unwrapping.
     ///
     /// Constant names are emitted verbatim rather than run through
     /// [`to_screaming_snake_case`] — they are already written as constants on the
@@ -290,14 +295,15 @@ impl<'a> HackGenerator<'a> {
             0,
         ));
 
-        result.push_str(&format!("enum {}: string as string {{\n", type_name));
+        let base = if const_decl.is_int() { "int" } else { "string" };
+        result.push_str(&format!("enum {}: {base} as {base} {{\n", type_name));
 
         for entry in &const_decl.entries {
             result.push_str(&render_docs(&entry.docs, DocFormat::TwoSlash, 2));
             result.push_str(&format!(
-                "  {} = \"{}\";\n",
+                "  {} = {};\n",
                 entry.name,
-                escape_hack_string(&entry.value)
+                hack_literal(&entry.value)
             ));
         }
 

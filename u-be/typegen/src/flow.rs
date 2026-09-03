@@ -4,7 +4,7 @@ use crate::Lang;
 use crate::TypeGenConfig;
 use crate::docs::DocFormat;
 use crate::docs::render_docs;
-use crate::escape::escape_js_string;
+use crate::escape::js_literal;
 use crate::types::ConstDecl;
 use crate::types::EnumDecl;
 use crate::types::EnumVariant;
@@ -254,7 +254,8 @@ impl FlowGenerator {
     /// `.js` file rather than a `.js.flow` (see `TypeGenConfig::make_decl_file_name`).
     /// `Object.freeze` is load-bearing twice over: it makes the table immutable at
     /// runtime, and Flow special-cases it to infer singleton literal types for the
-    /// properties, so `Values` yields the value union rather than `string`.
+    /// properties, so `Values` yields the value union rather than the widened
+    /// `string` or `number`.
     ///
     /// The value union is suffixed `Value` rather than sharing the group's name.
     /// TypeScript can reuse the name because it keeps type and value namespaces
@@ -275,9 +276,9 @@ impl FlowGenerator {
         for entry in &const_decl.entries {
             result.push_str(&render_docs(&entry.docs, DocFormat::Block, 2));
             result.push_str(&format!(
-                "  {}: \"{}\",\n",
+                "  {}: {},\n",
                 entry.name,
-                escape_js_string(&entry.value)
+                js_literal(&entry.value)
             ));
         }
 

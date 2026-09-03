@@ -4,7 +4,7 @@ use crate::Lang;
 use crate::TypeGenConfig;
 use crate::docs::DocFormat;
 use crate::docs::render_docs;
-use crate::escape::escape_js_string;
+use crate::escape::js_literal;
 use crate::types::ConstDecl;
 use crate::types::EnumDecl;
 use crate::types::EnumVariant;
@@ -305,9 +305,9 @@ impl TypeScriptGenerator {
         for entry in &const_decl.entries {
             result.push_str(&render_docs(&entry.docs, DocFormat::Block, 2));
             result.push_str(&format!(
-                "  {}: \"{}\",\n",
+                "  {}: {},\n",
                 entry.name,
-                escape_js_string(&entry.value)
+                js_literal(&entry.value)
             ));
         }
 
