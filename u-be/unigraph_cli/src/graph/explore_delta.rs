@@ -112,11 +112,11 @@ pub struct GraphExploreDelta {
     roots: Vec<String>,
 
     /// Override the root nodes of the left subgraph only (repeatable).
-    #[arg(long = "left-root", num_args = 1)]
+    #[arg(long = "root-left", num_args = 1)]
     left_roots: Vec<String>,
 
     /// Override the root nodes of the right subgraph only (repeatable).
-    #[arg(long = "right-root", num_args = 1)]
+    #[arg(long = "root-right", num_args = 1)]
     right_roots: Vec<String>,
 
     /// Traversal config key (`tvc_{hash}`) applied to both graphs.
@@ -182,7 +182,7 @@ impl GraphExploreDelta {
     }
 
     /// Side-specific overrides are merged with the shared `--root` /
-    /// `--traversal` ones, so `--root x --right-root y` roots the right graph
+    /// `--traversal` ones, so `--root x --root-right y` roots the right graph
     /// at both.
     fn build_query_config(
         &self,
