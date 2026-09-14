@@ -11,7 +11,6 @@ use unigraph_cli::graph::GraphGet;
 use unigraph_cli::graph::GraphGetError;
 use unigraph_cli::graph::GraphPut;
 use unigraph_cli::graph::GraphScc;
-use unigraph_cli::graph::GraphUpload;
 
 #[derive(Parser)]
 pub struct Graph {
@@ -26,7 +25,6 @@ pub enum GraphCommands {
     GetError(GraphGetError),
     Explore(GraphExplore),
     ExploreDelta(GraphExploreDelta),
-    Upload(GraphUpload),
     Cut(GraphCut),
     Scc(GraphScc),
 }
@@ -39,7 +37,6 @@ impl UnigraphCLISubcommand for Graph {
             GraphCommands::GetError(cmd) => cmd.run(ctx, task).await,
             GraphCommands::Explore(cmd) => cmd.run(ctx, task).await,
             GraphCommands::ExploreDelta(cmd) => cmd.run(ctx, task).await,
-            GraphCommands::Upload(cmd) => cmd.run(ctx, task).await,
             GraphCommands::Cut(cmd) => cmd.run(ctx, task).await,
             GraphCommands::Scc(cmd) => cmd.run(ctx, task).await,
         }
