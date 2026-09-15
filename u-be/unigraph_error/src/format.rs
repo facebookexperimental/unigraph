@@ -82,10 +82,7 @@ pub fn format_with_colors(err: &anyhow::Error) -> String {
 /// Or when we log errors to both STDOUT and Scuba and don't want colors in scuba.
 pub fn format_strip_ansi(err: &anyhow::Error) -> String {
     let formatted = format_for_user(err);
-    let plain_bytes =
-        strip_ansi_escapes::strip(formatted.as_bytes()).expect("failed to strip ansi");
-    let stripped = String::from_utf8_lossy(&plain_bytes);
-    stripped.into_owned()
+    strip_ansi_escapes::strip_str(&formatted)
 }
 
 /// Similar to `format_for_user`, but it also packs it into a JSON containing
