@@ -119,7 +119,7 @@ fn colored_test() -> Result<()> {
     let err = more_anyhow_context().unwrap_err();
 
     snapshot!(
-        format!("{}", format_with_colors(&err)),
+        format_with_colors(&err).to_string(),
         r"
 \u{1b}[1;31mRoot cause that used anyhow::bail!()\u{1b}[0m
 \u{1b}[2m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\u{1b}[0m
@@ -141,7 +141,7 @@ fn json_test() -> Result<()> {
     let err = more_anyhow_context().unwrap_err();
 
     snapshot!(
-        format!("{}", to_json(&err)?),
+        to_json(&err)?.to_string(),
         r#"
 {
   "display": "Root cause that used anyhow::bail!()\
