@@ -16,7 +16,7 @@ hyper-util = { version = "0.1.20", features = ["client-legacy", "http1", "http2"
 ll = "10.0.0"
 serde_json = { version = "1.0.151", features = ["alloc", "float_roundtrip", "raw_value", "unbounded_depth"] }
 tokio = { version = "1.53.1", features = ["full", "test-util", "tracing"] }
-tower-http = { version = "0.7.1", features = ["auth", "compression-full", "cors", "fs", "limit", "request-id", "set-header", "timeout", "trace"] }
+tower-http = { version = "0.7.1", features = ["auth", "catch-panic", "compression-full", "cors", "fs", "limit", "request-id", "set-header", "timeout", "trace"] }
 tracing = { version = "0.1.41", features = ["attributes", "valuable"] }
 unigraph_app = { version = "0.1.1-alpha.0", path = "../unigraph_app" }
 unigraph_core = { version = "0.1.1-alpha.0", path = "../unigraph_core" }
