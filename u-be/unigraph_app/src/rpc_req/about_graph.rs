@@ -20,8 +20,9 @@ use unigraph_storage_core::GraphKey;
 use unigraph_storage_core::TimelineID;
 
 use crate::Unigraph;
+use crate::graph_cache::PerfStats;
 use crate::graph_handle::GraphHandle;
-use crate::graph_handle::resolve_graph_handle_with_key;
+use crate::graph_handle::resolve_graph_handle;
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -70,6 +71,12 @@ pub struct AboutGraphOutput {
     /// Optimized for LLM consumption — use this field to understand the graph
     /// before exploring it with ExploreGraph.
     pub text: String,
+
+    /// Where this request spent its time. `None` from a server predating the
+    /// field — absent rather than zeroed, so it is never mistaken for a
+    /// measurement.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub perf_stats: Option<PerfStats>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TypeGen)]
@@ -87,16 +94,29 @@ impl RpcExec<Unigraph> for AboutGraphInput {
 
     async fn exec(self, ctx: &Unigraph, task: &ll::Task) -> Result<AboutGraphOutput> {
         let ttl = Duration::from_secs(5 * 60);
-        let (key, ag) = resolve_graph_handle_with_key(&self.handle, ctx, task, ttl).await?;
-        task.data("resolved_graph_key", key.to_string());
+        let cached = resolve_graph_handle(&self.handle, ctx, task, ttl).await?;
+        task.data("resolved_graph_key", cached.graph_key.to_string());
         let handle_str = self.handle.to_string();
-        tokio::task::spawn_blocking(move || build_about(&ag, &handle_str, &key)).await?
+        tokio::task::spawn_blocking(move || {
+            build_about(
+                &cached.graph,
+                &handle_str,
+                &cached.graph_key,
+                cached.perf_stats,
+            )
+        })
+        .await?
     }
 }
 
 // ── Build output ────────────────────────────────────────────
 
-fn build_about(ag: &Arc<ArrayGraph>, handle: &str, key: &GraphKey) -> Result<AboutGraphOutput> {
+fn build_about(
+    ag: &Arc<ArrayGraph>,
+    handle: &str,
+    key: &GraphKey,
+    perf_stats: PerfStats,
+) -> Result<AboutGraphOutput> {
     let stats = ag.stats();
     let description = extract_description(ag);
     let available = ag.available_metric_views();
@@ -123,6 +143,7 @@ fn build_about(ag: &Arc<ArrayGraph>, handle: &str, key: &GraphKey) -> Result<Abo
         graph_settings,
         properties,
         text,
+        perf_stats: Some(perf_stats),
     })
 }
 

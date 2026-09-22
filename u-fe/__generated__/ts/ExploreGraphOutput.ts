@@ -1,11 +1,12 @@
 /**
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
- * @generated SignedSource<<4413ce7bb2a0882c3acf5c32707a5802>>
+ * @generated SignedSource<<d0cebbf255731c75333716a07aba45be>>
  */
 
 
 import type { ExploreGraphArrow } from './ExploreGraphArrow.ts';
+import type { PerfStats } from './PerfStats.ts';
 
 export interface ExploreGraphOutput {
   /** The node being explored, with its own metrics. None when showing entry points. */
@@ -23,4 +24,10 @@ export interface ExploreGraphOutput {
    * `include_ascii` is set to true in the request.
    */
   ascii?: string | undefined;
+  /**
+   * Where this request spent its time. `None` from a server predating the
+   * field — absent rather than zeroed, so it is never mistaken for a
+   * measurement.
+   */
+  perf_stats?: PerfStats | undefined;
 }

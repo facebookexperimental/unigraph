@@ -1,11 +1,12 @@
 /**
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
- * @generated SignedSource<<4c33bdd2f1e7ce3be4d1fae0916feaf8>>
+ * @generated SignedSource<<e686ab66ec0eedf5700c635bf2b76240>>
  */
 
 
 import type { MinCutNamedEdge } from './MinCutNamedEdge.ts';
+import type { PerfStats } from './PerfStats.ts';
 
 export interface MinCutOutput {
   /**
@@ -32,4 +33,10 @@ export interface MinCutOutput {
    * `include_ascii` is set to true in the request.
    */
   ascii?: string | undefined;
+  /**
+   * Where this request spent its time. `None` from a server predating the
+   * field — absent rather than zeroed, so it is never mistaken for a
+   * measurement.
+   */
+  perf_stats?: PerfStats | undefined;
 }

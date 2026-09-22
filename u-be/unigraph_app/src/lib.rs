@@ -16,7 +16,9 @@ mod rpc_req;
 
 pub use config_cache::ConfigCache;
 pub use config_cache::DEFAULT_CONFIG_CACHE_CAPACITY;
+pub use graph_cache::CachedGraph;
 pub use graph_cache::GraphCache;
+pub use graph_cache::PerfStats;
 pub use graph_handle::GraphHandle;
 pub use rpc_req::*;
 

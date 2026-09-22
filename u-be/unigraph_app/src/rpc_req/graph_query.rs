@@ -15,6 +15,7 @@ use unigraph_core::config_query::TraversalOverride;
 use unigraph_rpc::RpcExec;
 
 use crate::Unigraph;
+use crate::graph_cache::PerfStats;
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -36,6 +37,11 @@ pub struct GraphQueryOutput {
     /// follow-up links to the exact version rendered, and resolve
     /// timeline-specific behaviour once the graph is known.
     pub graph_key: String,
+    /// Where this request spent its time. `None` from a server predating the
+    /// field — absent rather than zeroed, so it is never mistaken for a
+    /// measurement.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub perf_stats: Option<PerfStats>,
 }
 
 // ── Handler ──────────────────────────────────────────────────
@@ -45,10 +51,8 @@ impl RpcExec<Unigraph> for GraphQueryInput {
 
     async fn exec(self, ctx: &Unigraph, task: &ll::Task) -> Result<GraphQueryOutput> {
         let ttl = Duration::from_mins(5);
-        let (graph_key, ag) = ctx
-            .graph_cache
-            .get_explored_with_key(&self.query, task, ttl)
-            .await?;
+        let cached = ctx.graph_cache.get_explored(&self.query, task, ttl).await?;
+        let ag = cached.graph;
 
         let resolved_gqc = resolve_query_config(self.query, &ag);
 
@@ -71,7 +75,8 @@ impl RpcExec<Unigraph> for GraphQueryInput {
         Ok(GraphQueryOutput {
             package: package.into_base_64(),
             graph_query_config: resolved_gqc,
-            graph_key: graph_key.to_string(),
+            graph_key: cached.graph_key.to_string(),
+            perf_stats: Some(cached.perf_stats),
         })
     }
 }

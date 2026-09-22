@@ -12,6 +12,7 @@ use unigraph_core::config_query::GraphQueryConfig;
 use unigraph_rpc::RpcExec;
 
 use crate::Unigraph;
+use crate::graph_cache::PerfStats;
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -37,6 +38,11 @@ pub struct GraphQueryMapGraphOutput {
     /// always carries the concrete `graph_id`, even when a bare (latest) handle
     /// was sent. Lets clients pin follow-up links to the exact version rendered.
     pub graph_key: String,
+    /// Where this request spent its time. `None` from a server predating the
+    /// field — absent rather than zeroed, so it is never mistaken for a
+    /// measurement.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub perf_stats: Option<PerfStats>,
 }
 
 // ── Handler ──────────────────────────────────────────────────
@@ -46,10 +52,8 @@ impl RpcExec<Unigraph> for GraphQueryMapGraphInput {
 
     async fn exec(self, ctx: &Unigraph, task: &ll::Task) -> Result<GraphQueryMapGraphOutput> {
         let ttl = Duration::from_mins(5);
-        let (graph_key, ag) = ctx
-            .graph_cache
-            .get_explored_with_key(&self.query, task, ttl)
-            .await?;
+        let cached = ctx.graph_cache.get_explored(&self.query, task, ttl).await?;
+        let ag = cached.graph;
 
         let resolved_gqc = super::graph_query::resolve_query_config(self.query, &ag);
 
@@ -66,12 +70,11 @@ impl RpcExec<Unigraph> for GraphQueryMapGraphInput {
 
         // `GraphKey`'s `Display` renders the canonical `"{timeline}~{graph_id}"`
         // handle (e.g. `www-budget~223`) used across the app.
-        let graph_key = graph_key.to_string();
-
         Ok(GraphQueryMapGraphOutput {
             map_graph,
             graph_query_config: resolved_gqc,
-            graph_key,
+            graph_key: cached.graph_key.to_string(),
+            perf_stats: Some(cached.perf_stats),
         })
     }
 }

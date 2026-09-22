@@ -37,6 +37,7 @@ use unigraph_core::min_cut;
 use unigraph_rpc::RpcExec;
 
 use crate::Unigraph;
+use crate::graph_cache::PerfStats;
 use crate::rpc_req::ascii_table::trim_trailing_spaces;
 use crate::rpc_req::ascii_table::write_cell;
 use crate::rpc_req::ascii_table::write_separator;
@@ -109,6 +110,12 @@ pub struct MinCutOutput {
     /// `include_ascii` is set to true in the request.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ascii: Option<String>,
+
+    /// Where this request spent its time. `None` from a server predating the
+    /// field — absent rather than zeroed, so it is never mistaken for a
+    /// measurement.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub perf_stats: Option<PerfStats>,
 }
 
 // ── Handler ──────────────────────────────────────────────────
@@ -125,12 +132,14 @@ impl RpcExec<Unigraph> for MinCutInput {
             bail!("at least one sink node is required");
         }
         let ttl = Duration::from_mins(5);
-        let ag = ctx.graph_cache.get_explored(&self.query, task, ttl).await?;
+        let cached = ctx.graph_cache.get_explored(&self.query, task, ttl).await?;
         let input = self;
         task.spawn("min_cut", |task| async move {
-            tokio::task::spawn_blocking(move || compute_min_cut(ag, &input, &task))
-                .await
-                .context("spawn_blocking panicked")?
+            tokio::task::spawn_blocking(move || {
+                compute_min_cut(cached.graph, cached.perf_stats, &input, &task)
+            })
+            .await
+            .context("spawn_blocking panicked")?
         })
         .await
     }
@@ -140,6 +149,7 @@ impl RpcExec<Unigraph> for MinCutInput {
 
 fn compute_min_cut(
     ag: Arc<ArrayGraph>,
+    perf_stats: PerfStats,
     input: &MinCutInput,
     task: &ll::Task,
 ) -> Result<MinCutOutput> {
@@ -164,6 +174,7 @@ fn compute_min_cut(
         uncuttable_sinks,
         blocked_by_protected: cut.blocked_by_protected,
         ascii: None,
+        perf_stats: Some(perf_stats),
     };
     if input.include_ascii.unwrap_or(false) {
         output.ascii = Some(render_ascii(input, &output));

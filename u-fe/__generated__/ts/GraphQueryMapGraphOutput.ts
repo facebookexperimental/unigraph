@@ -1,12 +1,13 @@
 /**
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
- * @generated SignedSource<<0f11f05a001c0e64ef8a169aa5563fd6>>
+ * @generated SignedSource<<5998cf3fdf6eb5c3a87d12dc4db596d0>>
  */
 
 
 import type { GraphQueryConfig } from './GraphQueryConfig.ts';
 import type { MapGraph } from './MapGraph.ts';
+import type { PerfStats } from './PerfStats.ts';
 
 /**
  * Like [`GraphQueryOutput`](super::GraphQueryOutput), but returns the graph as a
@@ -27,4 +28,10 @@ export interface GraphQueryMapGraphOutput {
    * was sent. Lets clients pin follow-up links to the exact version rendered.
    */
   graph_key: string;
+  /**
+   * Where this request spent its time. `None` from a server predating the
+   * field — absent rather than zeroed, so it is never mistaken for a
+   * measurement.
+   */
+  perf_stats?: PerfStats | undefined;
 }

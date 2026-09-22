@@ -18,6 +18,7 @@ use unigraph_core::graph_settings::GraphStructure;
 use unigraph_rpc::RpcExec;
 
 use crate::Unigraph;
+use crate::graph_cache::PerfStats;
 use crate::graph_handle::GraphHandle;
 use crate::graph_handle::resolve_graph_handle;
 
@@ -59,6 +60,11 @@ pub struct FindPathOutput {
     /// Human-readable summary. Only populated when `include_ascii` is true.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ascii: Option<String>,
+    /// Where this request spent its time. `None` from a server predating the
+    /// field — absent rather than zeroed, so it is never mistaken for a
+    /// measurement.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub perf_stats: Option<PerfStats>,
 }
 
 // ── Handler ──────────────────────────────────────────────────
@@ -70,10 +76,10 @@ impl RpcExec<Unigraph> for FindPathInput {
 
     async fn exec(self, ctx: &Unigraph, task: &ll::Task) -> Result<FindPathOutput> {
         let ttl = Duration::from_secs(DEFAULT_TTL_SECS);
-        let ag = resolve_graph_handle(&self.handle, ctx, task, ttl).await?;
+        let cached = resolve_graph_handle(&self.handle, ctx, task, ttl).await?;
         let input = self;
         task.spawn("find_path", |_task| async move {
-            tokio::task::spawn_blocking(move || find_path(ag, &input))
+            tokio::task::spawn_blocking(move || find_path(cached.graph, cached.perf_stats, &input))
                 .await
                 .context("spawn_blocking panicked")?
         })
@@ -83,7 +89,11 @@ impl RpcExec<Unigraph> for FindPathInput {
 
 // ── Core logic (runs in spawn_blocking) ─────────────────────
 
-fn find_path(ag: Arc<ArrayGraph>, input: &FindPathInput) -> Result<FindPathOutput> {
+fn find_path(
+    ag: Arc<ArrayGraph>,
+    perf_stats: PerfStats,
+    input: &FindPathInput,
+) -> Result<FindPathOutput> {
     let from_idx = resolve_node(&ag, &input.from)?;
     let to_idx = resolve_node(&ag, &input.to)?;
 
@@ -108,7 +118,12 @@ fn find_path(ag: Arc<ArrayGraph>, input: &FindPathInput) -> Result<FindPathOutpu
         None
     };
 
-    Ok(FindPathOutput { path, found, ascii })
+    Ok(FindPathOutput {
+        path,
+        found,
+        ascii,
+        perf_stats: Some(perf_stats),
+    })
 }
 
 fn resolve_node(ag: &ArrayGraph, name: &str) -> Result<NodeIDX> {

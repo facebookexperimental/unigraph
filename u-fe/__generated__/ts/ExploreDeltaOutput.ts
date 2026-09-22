@@ -1,11 +1,12 @@
 /**
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
- * @generated SignedSource<<355e7ee61d48289ddff6509dea7ca0a7>>
+ * @generated SignedSource<<a9d22c889e8a91b480edc5f66e61e97d>>
  */
 
 
 import type { ExploreDeltaArrow } from './ExploreDeltaArrow.ts';
+import type { PerfStats } from './PerfStats.ts';
 
 export interface ExploreDeltaOutput {
   /**
@@ -28,4 +29,10 @@ export interface ExploreDeltaOutput {
    * `include_ascii` is set to true in the request.
    */
   ascii?: string | undefined;
+  /**
+   * Where this request spent its time. `None` from a server predating the
+   * field — absent rather than zeroed, so it is never mistaken for a
+   * measurement.
+   */
+  perf_stats?: PerfStats | undefined;
 }

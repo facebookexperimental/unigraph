@@ -17,6 +17,7 @@ use unigraph_core::PropertyIndices;
 use unigraph_rpc::RpcExec;
 
 use crate::Unigraph;
+use crate::graph_cache::PerfStats;
 use crate::graph_handle::GraphHandle;
 use crate::graph_handle::resolve_graph_handle;
 
@@ -57,6 +58,11 @@ pub struct FindAncestorsOutput {
     /// Human-readable summary. Only populated when `include_ascii` is true.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ascii: Option<String>,
+    /// Where this request spent its time. `None` from a server predating the
+    /// field — absent rather than zeroed, so it is never mistaken for a
+    /// measurement.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub perf_stats: Option<PerfStats>,
 }
 
 // ── Handler ──────────────────────────────────────────────────
@@ -70,12 +76,14 @@ impl RpcExec<Unigraph> for FindAncestorsInput {
     async fn exec(self, ctx: &Unigraph, task: &ll::Task) -> Result<FindAncestorsOutput> {
         validate_has_predicates(&self)?;
         let ttl = Duration::from_secs(DEFAULT_TTL_SECS);
-        let ag = resolve_graph_handle(&self.handle, ctx, task, ttl).await?;
+        let cached = resolve_graph_handle(&self.handle, ctx, task, ttl).await?;
         let input = self;
         task.spawn("find_ancestors", |task| async move {
-            tokio::task::spawn_blocking(move || find_ancestors(ag, &input, &task))
-                .await
-                .context("spawn_blocking panicked")?
+            tokio::task::spawn_blocking(move || {
+                find_ancestors(cached.graph, cached.perf_stats, &input, &task)
+            })
+            .await
+            .context("spawn_blocking panicked")?
         })
         .await
     }
@@ -96,6 +104,7 @@ fn validate_has_predicates(input: &FindAncestorsInput) -> Result<()> {
 
 fn find_ancestors(
     ag: Arc<ArrayGraph>,
+    perf_stats: PerfStats,
     input: &FindAncestorsInput,
     _task: &ll::Task,
 ) -> Result<FindAncestorsOutput> {
@@ -116,6 +125,7 @@ fn find_ancestors(
         ancestors: page,
         total_count,
         ascii,
+        perf_stats: Some(perf_stats),
     })
 }
 

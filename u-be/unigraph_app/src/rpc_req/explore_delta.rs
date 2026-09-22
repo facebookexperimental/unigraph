@@ -46,6 +46,7 @@ use unigraph_rpc::RpcExec;
 
 use super::ExploreGraphTarget;
 use crate::Unigraph;
+use crate::graph_cache::PerfStats;
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -125,6 +126,11 @@ pub struct ExploreDeltaOutput {
     /// `include_ascii` is set to true in the request.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ascii: Option<String>,
+    /// Where this request spent its time. `None` from a server predating the
+    /// field — absent rather than zeroed, so it is never mistaken for a
+    /// measurement.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub perf_stats: Option<PerfStats>,
 }
 
 /// The edge leading to a node, as it exists on one side of the twin graph.
@@ -187,13 +193,13 @@ impl RpcExec<Unigraph> for ExploreDeltaInput {
 
     async fn exec(self, ctx: &Unigraph, task: &ll::Task) -> Result<ExploreDeltaOutput> {
         let ttl = Duration::from_mins(5);
-        let tg = ctx
+        let (perf_stats, tg) = ctx
             .graph_cache
             .get_twin(&self.left, &self.right, task, ttl)
             .await?;
         let input = self;
         task.spawn("explore_delta", |task| async move {
-            tokio::task::spawn_blocking(move || explore_delta(tg, &input, &task))
+            tokio::task::spawn_blocking(move || explore_delta(tg, perf_stats, &input, &task))
                 .await
                 .context("spawn_blocking panicked")?
         })
@@ -205,6 +211,7 @@ impl RpcExec<Unigraph> for ExploreDeltaInput {
 
 fn explore_delta(
     tg: Arc<TwinGraph>,
+    perf_stats: PerfStats,
     input: &ExploreDeltaInput,
     task: &ll::Task,
 ) -> Result<ExploreDeltaOutput> {
@@ -271,6 +278,7 @@ fn explore_delta(
         total_arrows_count,
         hidden_unchanged_count: resolved.hidden_unchanged_count,
         ascii,
+        perf_stats: Some(perf_stats),
     })
 }
 

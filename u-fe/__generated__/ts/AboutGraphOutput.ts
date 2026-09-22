@@ -1,7 +1,7 @@
 /**
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
- * @generated SignedSource<<c39554c24258333e5d15d7b2f3695ebf>>
+ * @generated SignedSource<<346166408bc7ab42754d121bfa4a9fbb>>
  */
 
 
@@ -9,6 +9,7 @@ import type { AboutGraphMetricInfo } from './AboutGraphMetricInfo.ts';
 import type { ArrayGraphStats } from './ArrayGraphStats.ts';
 import type { GraphID } from './GraphID.ts';
 import type { GraphSettings } from './GraphSettings.ts';
+import type { PerfStats } from './PerfStats.ts';
 import type { TimelineID } from './TimelineID.ts';
 
 export interface AboutGraphOutput {
@@ -41,4 +42,10 @@ export interface AboutGraphOutput {
    * before exploring it with ExploreGraph.
    */
   text: string;
+  /**
+   * Where this request spent its time. `None` from a server predating the
+   * field — absent rather than zeroed, so it is never mistaken for a
+   * measurement.
+   */
+  perf_stats?: PerfStats | undefined;
 }

@@ -29,6 +29,7 @@ use unigraph_core::graph_settings::SortOrder;
 use unigraph_rpc::RpcExec;
 
 use crate::Unigraph;
+use crate::graph_cache::PerfStats;
 use crate::rpc_req::ascii_table::SORT_ARROW_DISPLAY_LEN;
 use crate::rpc_req::ascii_table::build_format_map;
 use crate::rpc_req::ascii_table::describe_selection;
@@ -127,6 +128,11 @@ pub struct ExploreGraphOutput {
     /// `include_ascii` is set to true in the request.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ascii: Option<String>,
+    /// Where this request spent its time. `None` from a server predating the
+    /// field — absent rather than zeroed, so it is never mistaken for a
+    /// measurement.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub perf_stats: Option<PerfStats>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TypeGen)]
@@ -174,12 +180,14 @@ impl RpcExec<Unigraph> for ExploreGraphInput {
 
     async fn exec(self, ctx: &Unigraph, task: &ll::Task) -> Result<ExploreGraphOutput> {
         let ttl = Duration::from_mins(5);
-        let ag = ctx.graph_cache.get_explored(&self.query, task, ttl).await?;
+        let cached = ctx.graph_cache.get_explored(&self.query, task, ttl).await?;
         let input = self;
         task.spawn("explore_graph", |task| async move {
-            tokio::task::spawn_blocking(move || explore_node(ag, &input, &task))
-                .await
-                .context("spawn_blocking panicked")?
+            tokio::task::spawn_blocking(move || {
+                explore_node(cached.graph, cached.perf_stats, &input, &task)
+            })
+            .await
+            .context("spawn_blocking panicked")?
         })
         .await
     }
@@ -189,6 +197,7 @@ impl RpcExec<Unigraph> for ExploreGraphInput {
 
 fn explore_node(
     ag: Arc<ArrayGraph>,
+    perf_stats: PerfStats,
     input: &ExploreGraphInput,
     task: &ll::Task,
 ) -> Result<ExploreGraphOutput> {
@@ -248,6 +257,7 @@ fn explore_node(
         tier_names,
         total_arrows_count,
         ascii,
+        perf_stats: Some(perf_stats),
     })
 }
 

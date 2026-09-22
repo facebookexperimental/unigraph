@@ -39,11 +39,15 @@ use std::fmt::Debug;
 use std::hash::Hash;
 use std::sync::Arc;
 use std::time::Duration;
+use std::time::Instant;
 
 use anyhow::Context;
 use anyhow::Result;
 use lru::LruCache;
+use serde::Deserialize;
+use serde::Serialize;
 use tokio::sync::Mutex;
+use typegen::TypeGen;
 use unigraph_core::ArrayGraph;
 use unigraph_core::ExploreCacheKey;
 use unigraph_core::TraversalConfig;
@@ -53,6 +57,34 @@ use unigraph_db::UnigraphDb;
 use unigraph_db::apply_traversal;
 use unigraph_storage_core::GraphKey;
 use unigraph_storage_core::TimelineID;
+
+/// Where a request's time went. Every field is prefixed by the stage it
+/// measures, so new stages can be added alongside these without renaming them.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, TypeGen)]
+pub struct PerfStats {
+    /// True when the graph came out of the LRU without touching storage.
+    pub cache_hit: bool,
+
+    /// Wall time the caller spent inside the cache lookup.
+    ///
+    /// This includes time spent blocked behind another caller's in-flight fetch
+    /// for the same key, so a hit is not automatically fast — a slow hit means
+    /// the entry was being computed by someone else while this caller waited.
+    pub cache_elapsed_ms: f64,
+}
+
+/// A graph obtained through [`GraphCache`], with the key it resolved to and the
+/// stats for the lookup that produced it.
+pub struct CachedGraph {
+    pub graph: Arc<ArrayGraph>,
+
+    /// The concrete graph snapshot the query/handle resolved to. Bare timelines
+    /// and GQC keys both move as frames are ingested, so callers that report
+    /// back to a human need this to say *what they actually read*.
+    pub graph_key: GraphKey,
+
+    pub perf_stats: PerfStats,
+}
 
 /// A cached graph — the value stored in each LRU slot.
 struct ArrayGraphCacheEntry {
@@ -128,55 +160,43 @@ impl GraphCache {
     ///
     /// The returned graph has roots filtering and traversal config already applied.
     /// It is shared via `Arc` — all callers get the same immutable instance.
+    ///
+    /// The resolved [`GraphKey`] and the [`PerfStats`] for the lookup come back
+    /// alongside it; the key is available on hits too, since it is stored on the
+    /// cache entry.
     pub async fn get_explored(
         &self,
         gqc: &GraphQueryConfig,
         task: &ll::Task,
         ttl: Duration,
-    ) -> Result<Arc<ArrayGraph>> {
-        let (_graph_key, graph) = self.get_explored_with_key(gqc, task, ttl).await?;
-        Ok(graph)
-    }
-
-    /// Like [`get_explored`](Self::get_explored), but also returns the resolved
-    /// [`GraphKey`] identifying the concrete graph snapshot the query config
-    /// resolved to (e.g. `www-budget~223` for a bare `www-budget` handle).
-    ///
-    /// The resolved key is available on cache hits and misses alike, since it is
-    /// stored on the cache entry.
-    pub async fn get_explored_with_key(
-        &self,
-        gqc: &GraphQueryConfig,
-        task: &ll::Task,
-        ttl: Duration,
-    ) -> Result<(GraphKey, Arc<ArrayGraph>)> {
+    ) -> Result<CachedGraph> {
         let cache_key = gqc.cache_key();
         let this = self.clone();
         let gqc = gqc.clone();
         task.spawn("get_explored", |task| async move {
+            let started = Instant::now();
             task.data("cache_key", cache_key.to_string());
             let slot = get_or_create_slot(&this.explore, &cache_key).await;
             let mut guard = slot.lock().await;
 
             if let Some(entry) = guard.as_ref() {
-                task.data("cache", "hit");
-                return Ok((entry.graph_key.clone(), Arc::clone(&entry.graph)));
+                return Ok(entry.to_cached(record(&task, true, started)));
             }
 
-            task.data("cache", "miss");
             let (graph_key, graph) = this
                 .db
                 .resolve_graph_query_config(&gqc, true, &task)
                 .await?;
-            let graph = Arc::new(graph);
-            *guard = Some(ArrayGraphCacheEntry {
-                graph: Arc::clone(&graph),
-                graph_key: graph_key.clone(),
-            });
+            let entry = ArrayGraphCacheEntry {
+                graph: Arc::new(graph),
+                graph_key,
+            };
+            let cached = entry.to_cached(record(&task, false, started));
+            *guard = Some(entry);
 
             schedule_eviction(&this.explore, cache_key, ttl);
 
-            Ok((graph_key, graph))
+            Ok(cached)
         })
         .await
     }
@@ -190,27 +210,10 @@ impl GraphCache {
         timeline_id: &TimelineID,
         task: &ll::Task,
         ttl: Duration,
-    ) -> Result<Arc<ArrayGraph>> {
-        let (_graph_key, graph) = self
-            .get_latest_by_timeline_with_key(timeline_id, task, ttl)
-            .await?;
-        Ok(graph)
-    }
-
-    /// Like [`get_latest_by_timeline`](Self::get_latest_by_timeline), but also
-    /// returns the [`GraphKey`] of the snapshot "latest" resolved to.
-    ///
-    /// Which snapshot that is moves as frames are ingested, so a caller that
-    /// reports on a bare timeline needs the key to say *what it actually read*.
-    /// Available on cache hits too, since it is stored on the cache entry.
-    pub async fn get_latest_by_timeline_with_key(
-        &self,
-        timeline_id: &TimelineID,
-        task: &ll::Task,
-        ttl: Duration,
-    ) -> Result<(GraphKey, Arc<ArrayGraph>)> {
+    ) -> Result<CachedGraph> {
+        let started = Instant::now();
         let slot = get_or_create_slot(&self.by_timeline_latest, timeline_id).await;
-        self.resolve_timeline_slot(slot, timeline_id, task, ttl)
+        self.resolve_timeline_slot(slot, timeline_id, task, ttl, started)
             .await
     }
 
@@ -233,28 +236,27 @@ impl GraphCache {
         right: &GraphQueryConfig,
         task: &ll::Task,
         ttl: Duration,
-    ) -> Result<Arc<TwinGraph>> {
+    ) -> Result<(PerfStats, Arc<TwinGraph>)> {
         let cache_key = TwinCacheKey(left.cache_key(), right.cache_key());
         let this = self.clone();
         let (left, right) = (left.clone(), right.clone());
 
         task.spawn("get_twin", |task| async move {
+            let started = Instant::now();
             task.data("cache_key", cache_key.to_string());
             let slot = get_or_create_slot(&this.twins, &cache_key).await;
             let mut guard = slot.lock().await;
 
             if let Some(twin) = guard.as_ref() {
-                task.data("cache", "hit");
-                return Ok(Arc::clone(twin));
+                return Ok((record(&task, true, started), Arc::clone(twin)));
             }
 
-            task.data("cache", "miss");
             let twin = Arc::new(this.build_twin(&left, &right, &task).await?);
             *guard = Some(Arc::clone(&twin));
 
             schedule_eviction(&this.twins, cache_key, ttl);
 
-            Ok(twin)
+            Ok((record(&task, false, started), twin))
         })
         .await
     }
@@ -270,23 +272,25 @@ impl GraphCache {
         timeline_id: &TimelineID,
         task: &ll::Task,
         ttl: Duration,
-    ) -> Result<(GraphKey, Arc<ArrayGraph>)> {
+        started: Instant,
+    ) -> Result<CachedGraph> {
         let mut guard = slot.lock().await;
 
         if let Some(entry) = guard.as_ref() {
-            return Ok((entry.graph_key.clone(), Arc::clone(&entry.graph)));
+            return Ok(entry.to_cached(record(task, true, started)));
         }
 
         let (graph_key, graph) = self.fetch_latest_graph(timeline_id, task).await?;
-        let graph = Arc::new(graph);
-        *guard = Some(ArrayGraphCacheEntry {
-            graph: Arc::clone(&graph),
-            graph_key: graph_key.clone(),
-        });
+        let entry = ArrayGraphCacheEntry {
+            graph: Arc::new(graph),
+            graph_key,
+        };
+        let cached = entry.to_cached(record(task, false, started));
+        *guard = Some(entry);
 
         schedule_eviction(&self.by_timeline_latest, timeline_id.clone(), ttl);
 
-        Ok((graph_key, graph))
+        Ok(cached)
     }
 }
 
@@ -352,6 +356,29 @@ fn merge_twin(
     apply_traversal(&mut l, l_traversal.as_ref())?;
     apply_traversal(&mut r, r_traversal.as_ref())?;
     TwinGraph::from_prepared(l, r)
+}
+
+// ── Stats ───────────────────────────────────────────────────────
+
+impl ArrayGraphCacheEntry {
+    fn to_cached(&self, perf_stats: PerfStats) -> CachedGraph {
+        CachedGraph {
+            graph: Arc::clone(&self.graph),
+            graph_key: self.graph_key.clone(),
+            perf_stats,
+        }
+    }
+}
+
+/// Build the [`PerfStats`] for a finished lookup and mirror them into the task log.
+fn record(task: &ll::Task, cache_hit: bool, started: Instant) -> PerfStats {
+    let cache_elapsed_ms = started.elapsed().as_secs_f64() * 1000.0;
+    task.data("cache", if cache_hit { "hit" } else { "miss" });
+    task.data("cache_elapsed_ms", format!("{cache_elapsed_ms:.1}"));
+    PerfStats {
+        cache_hit,
+        cache_elapsed_ms,
+    }
 }
 
 // ── Generic LRU helpers ─────────────────────────────────────────

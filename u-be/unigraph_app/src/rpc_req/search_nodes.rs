@@ -16,6 +16,7 @@ use unigraph_rpc::RpcExec;
 use unigraph_storage_core::TimelineID;
 
 use crate::Unigraph;
+use crate::graph_cache::PerfStats;
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -48,6 +49,11 @@ pub struct SearchNodeMatch {
 #[derive(Debug, Clone, Serialize, Deserialize, TypeGen)]
 pub struct SearchNodesOutput {
     pub matches: Vec<SearchNodeMatch>,
+    /// Where this request spent its time. `None` from a server predating the
+    /// field — absent rather than zeroed, so it is never mistaken for a
+    /// measurement.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub perf_stats: Option<PerfStats>,
 }
 
 // ── Handler ──────────────────────────────────────────────────
@@ -60,15 +66,17 @@ impl RpcExec<Unigraph> for SearchNodesInput {
 
     async fn exec(self, ctx: &Unigraph, task: &ll::Task) -> Result<SearchNodesOutput> {
         let ttl = Duration::from_hours(DEFAULT_TTL_HOURS);
-        let ag = ctx
+        let cached = ctx
             .graph_cache
             .get_latest_by_timeline(&self.timeline_id, task, ttl)
             .await?;
         let input = self;
         task.spawn("search_nodes", |task| async move {
-            tokio::task::spawn_blocking(move || search_nodes(ag, &input, &task))
-                .await
-                .context("spawn_blocking panicked")?
+            tokio::task::spawn_blocking(move || {
+                search_nodes(cached.graph, cached.perf_stats, &input, &task)
+            })
+            .await
+            .context("spawn_blocking panicked")?
         })
         .await
     }
@@ -80,6 +88,7 @@ impl RpcExec<Unigraph> for SearchNodesInput {
 /// pruned — you can search for something to find out it was excluded.
 fn search_nodes(
     ag: Arc<ArrayGraph>,
+    perf_stats: PerfStats,
     input: &SearchNodesInput,
     task: &ll::Task,
 ) -> Result<SearchNodesOutput> {
@@ -97,5 +106,6 @@ fn search_nodes(
                 node: ag.get_map_node(idx),
             })
             .collect(),
+        perf_stats: Some(perf_stats),
     })
 }
