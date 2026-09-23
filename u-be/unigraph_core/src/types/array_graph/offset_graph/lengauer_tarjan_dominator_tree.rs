@@ -206,11 +206,8 @@ mod tests {
     use k9::assert_equal;
     use k9::snapshot;
 
-    use super::make_dominator_tree;
-    use crate::NodeIDX;
     use crate::tests::test_graphs::make_test_array_graph_2;
     use crate::tests::test_utils::name_to_idx;
-    use crate::types::array_graph::offset_graph::edge_flags::EdgeFlags;
 
     #[test]
     fn test_dominator_tree() -> Result<()> {
