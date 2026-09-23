@@ -75,9 +75,9 @@ pub struct GraphExplore {
     /// Metrics to compute for each arrow (repeatable).
     ///
     /// Format: `name`, `name~transitive`, `name~dominated`,
-    /// `name#TIER`, `name#TIER~dominated`, `name#TIER~conjoint`,
+    /// `name#TIER`, `name#TIER~dominated`,
     /// or built-ins `parents-count`, `node-count~transitive`,
-    /// `node-count~dominated`, `node-count~conjoint`.
+    /// `node-count~dominated`.
     #[arg(long = "metric", num_args = 1)]
     metrics: Vec<String>,
 
