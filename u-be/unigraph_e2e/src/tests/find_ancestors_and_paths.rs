@@ -3,9 +3,7 @@
 //! E2E tests for `FindAncestors` and `FindPath` RPCs.
 //!
 //! Tests the full flow: ingest a graph with properties, find ancestors by
-//! property predicates or parentless, then find shortest paths back.
-
-use std::collections::BTreeMap;
+//! node selection or parentless, then find shortest paths back.
 
 use anyhow::Result;
 use k9::snapshot;
@@ -13,6 +11,7 @@ use unigraph_app::FindAncestorsInput;
 use unigraph_app::FindPathInput;
 use unigraph_app::GraphHandle;
 use unigraph_app::call_rpc;
+use unigraph_core::NodeSelection;
 
 use crate::support::app::init_app;
 use crate::support::fixtures::ingest_explore_graph;
@@ -29,7 +28,7 @@ async fn find_ancestors_by_parentless() -> Result<()> {
         FindAncestors(FindAncestorsInput {
             handle: handle.clone(),
             node_name: "utils".to_string(),
-            properties: None,
+            selection: NodeSelection::default(),
             parentless: Some(true),
             offset: None,
             limit: None,
@@ -61,10 +60,7 @@ async fn find_ancestors_no_match() -> Result<()> {
         FindAncestors(FindAncestorsInput {
             handle: handle.clone(),
             node_name: "utils".to_string(),
-            properties: Some(BTreeMap::from([(
-                "type".to_string(),
-                "nonexistent".to_string()
-            )])),
+            selection: NodeSelection::by_property("type", Some("nonexistent".to_string())),
             parentless: None,
             offset: None,
             limit: None,
@@ -88,7 +84,7 @@ async fn find_ancestors_by_properties() -> Result<()> {
         FindAncestors(FindAncestorsInput {
             handle: handle.clone(),
             node_name: "leaf".to_string(),
-            properties: Some(BTreeMap::from([("type".to_string(), "budget".to_string())])),
+            selection: NodeSelection::by_property("type", Some("budget".to_string())),
             parentless: None,
             offset: None,
             limit: None,
@@ -121,7 +117,7 @@ async fn find_ancestors_parentless_and_properties() -> Result<()> {
         FindAncestors(FindAncestorsInput {
             handle: handle.clone(),
             node_name: "leaf".to_string(),
-            properties: Some(BTreeMap::from([("type".to_string(), "budget".to_string())])),
+            selection: NodeSelection::by_property("type", Some("budget".to_string())),
             parentless: Some(true),
             offset: None,
             limit: None,
@@ -152,7 +148,7 @@ async fn find_ancestors_pagination() -> Result<()> {
         FindAncestors(FindAncestorsInput {
             handle: handle.clone(),
             node_name: "leaf".to_string(),
-            properties: Some(BTreeMap::from([("type".to_string(), "budget".to_string())])),
+            selection: NodeSelection::by_property("type", Some("budget".to_string())),
             parentless: None,
             offset: Some(0),
             limit: Some(1),
@@ -398,7 +394,7 @@ async fn ancestors_then_paths() -> Result<()> {
         FindAncestors(FindAncestorsInput {
             handle: handle.clone(),
             node_name: "leaf".to_string(),
-            properties: Some(BTreeMap::from([("type".to_string(), "budget".to_string())])),
+            selection: NodeSelection::by_property("type", Some("budget".to_string())),
             parentless: None,
             offset: None,
             limit: None,
@@ -455,7 +451,7 @@ async fn parentless_ancestors_then_paths() -> Result<()> {
         FindAncestors(FindAncestorsInput {
             handle: handle.clone(),
             node_name: "leaf".to_string(),
-            properties: None,
+            selection: NodeSelection::default(),
             parentless: Some(true),
             offset: None,
             limit: None,

@@ -1,6 +1,6 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::fmt::Write;
 use std::sync::Arc;
 use std::time::Duration;
@@ -13,7 +13,8 @@ use serde::Serialize;
 use typegen::TypeGen;
 use unigraph_core::ArrayGraph;
 use unigraph_core::NodeIDX;
-use unigraph_core::PropertyIndices;
+use unigraph_core::NodeSelection;
+use unigraph_core::SelectOptions;
 use unigraph_rpc::RpcExec;
 
 use crate::Unigraph;
@@ -30,10 +31,14 @@ pub struct FindAncestorsInput {
     /// The node to find ancestors of.
     pub node_name: String,
 
-    /// Property predicates — all must match (AND). e.g. `{"type": "budget"}`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub properties: Option<BTreeMap<String, String>>,
+    /// Which ancestors to keep — the same predicate `SearchNodes` and the
+    /// `Matching` explore target take. An empty selection keeps every ancestor.
+    #[serde(default)]
+    pub selection: NodeSelection,
     /// When true, only return ancestors with no parents (graph entrypoints).
+    ///
+    /// Not a [`NodeSelection`] condition: that describes edges a node *has*,
+    /// and this is a condition on the absence of every incoming edge.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parentless: Option<bool>,
 
@@ -92,10 +97,8 @@ impl RpcExec<Unigraph> for FindAncestorsInput {
 // ── Validation ──────────────────────────────────────────────
 
 fn validate_has_predicates(input: &FindAncestorsInput) -> Result<()> {
-    let has_properties = input.properties.as_ref().is_some_and(|p| !p.is_empty());
-    let has_parentless = input.parentless.unwrap_or(false);
-    if !has_properties && !has_parentless {
-        bail!("at least one predicate is required (properties or parentless)");
+    if input.selection.is_empty() && !input.parentless.unwrap_or(false) {
+        bail!("at least one predicate is required (a node selection, or parentless)");
     }
     Ok(())
 }
@@ -106,10 +109,10 @@ fn find_ancestors(
     ag: Arc<ArrayGraph>,
     perf_stats: PerfStats,
     input: &FindAncestorsInput,
-    _task: &ll::Task,
+    task: &ll::Task,
 ) -> Result<FindAncestorsOutput> {
     let start_idx = resolve_start_node(&ag, &input.node_name)?;
-    let all_matches = collect_matching_ancestors(&ag, start_idx, input)?;
+    let all_matches = collect_matching_ancestors(&ag, start_idx, input, task)?;
     let total_count = all_matches.len();
     let page = paginate(
         &all_matches,
@@ -140,56 +143,44 @@ fn collect_matching_ancestors(
     ag: &ArrayGraph,
     start_idx: NodeIDX,
     input: &FindAncestorsInput,
+    task: &ll::Task,
 ) -> Result<Vec<String>> {
-    // A requested property that doesn't exist in the graph can't ever match.
-    let Some(property_indices) = bind_properties(ag, input) else {
-        return Ok(Vec::new());
-    };
+    let selected = selected_nodes(ag, &input.selection, task)?;
     let check_parentless = input.parentless.unwrap_or(false);
-
     let reverse = ag.edges_reverse();
 
-    let mut matches = Vec::new();
-    for node_idx in reverse.dfs_unconfigured(&[start_idx]) {
-        if node_idx == start_idx {
-            continue;
-        }
-        if !matches_predicates(ag, node_idx, &property_indices, check_parentless) {
-            continue;
-        }
-        matches.push(ag.idx_to_name(node_idx).to_string());
-    }
+    let mut matches: Vec<String> = reverse
+        .dfs_unconfigured(&[start_idx])
+        .filter(|&idx| idx != start_idx)
+        .filter(|&idx| selected.as_ref().is_none_or(|set| set.contains(&idx)))
+        .filter(|&idx| !check_parentless || reverse.edges(idx).next().is_none())
+        .map(|idx| ag.idx_to_name(idx).to_string())
+        .collect();
 
     matches.sort();
     Ok(matches)
 }
 
-/// Bind the requested properties to the graph's inverted indices.
+/// The nodes the selection admits, or `None` when it admits all of them.
 ///
-/// `None` means a requested property name doesn't exist in the graph at all,
-/// so no node can match every predicate.
-fn bind_properties<'a>(
-    ag: &'a ArrayGraph,
-    input: &'a FindAncestorsInput,
-) -> Option<PropertyIndices<'a>> {
-    let conditions = input
-        .properties
-        .iter()
-        .flatten()
-        .map(|(name, value)| (name.as_str(), Some(value.as_str())));
-    PropertyIndices::bind(ag, conditions)
-}
-
-fn matches_predicates(
+/// Evaluated once over the whole graph rather than re-derived at each ancestor:
+/// the selection's conditions are index-backed, so a single pass is cheaper
+/// than binding them per hop. `None` skips even that pass, which is what keeps
+/// a `parentless`-only query from materializing every node in the graph.
+fn selected_nodes(
     ag: &ArrayGraph,
-    node_idx: NodeIDX,
-    property_indices: &PropertyIndices<'_>,
-    check_parentless: bool,
-) -> bool {
-    if check_parentless && ag.edges_reverse().edges(node_idx).next().is_some() {
-        return false;
+    selection: &NodeSelection,
+    task: &ll::Task,
+) -> Result<Option<BTreeSet<NodeIDX>>> {
+    if selection.is_empty() {
+        return Ok(None);
     }
-    property_indices.matches(node_idx)
+    let opts = SelectOptions {
+        limit: None,
+        reachable_only: false,
+    };
+    let selected = ag.select_nodes(selection, &opts, task)?;
+    Ok(Some(selected.into_iter().collect()))
 }
 
 fn paginate(all: &[String], offset: usize, limit: usize) -> Vec<String> {
@@ -228,14 +219,33 @@ fn format_ascii(
 }
 
 fn format_predicates(input: &FindAncestorsInput) -> String {
+    let selection = &input.selection;
     let mut parts = Vec::new();
-    if let Some(props) = &input.properties {
-        for (k, v) in props {
-            parts.push(format!("{}={}", k, v));
+
+    if let Some(name) = selection.name_condition() {
+        parts.push(format!("name {:?} {:?}", name.mode, name.pattern));
+    }
+    for (name, condition) in &selection.properties {
+        match &condition.value {
+            Some(value) => parts.push(format!("{}={}", name, value)),
+            None => parts.push(name.clone()),
         }
+    }
+    for tag in &selection.incoming_tags {
+        parts.push(format!("incoming-tag={}", tag));
+    }
+    for tag in &selection.outgoing_tags {
+        parts.push(format!("outgoing-tag={}", tag));
+    }
+    for key in &selection.incoming_dynamic_type_keys {
+        parts.push(format!("incoming-dynamic={}", key));
+    }
+    for key in &selection.outgoing_dynamic_type_keys {
+        parts.push(format!("outgoing-dynamic={}", key));
     }
     if input.parentless.unwrap_or(false) {
         parts.push("parentless".to_string());
     }
+
     format!("{{{}}}", parts.join(", "))
 }
