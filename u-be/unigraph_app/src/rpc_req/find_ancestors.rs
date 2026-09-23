@@ -231,6 +231,9 @@ fn format_predicates(input: &FindAncestorsInput) -> String {
             None => parts.push(name.clone()),
         }
     }
+    for (name, value) in &selection.metrics {
+        parts.push(format!("{}={}", name, value));
+    }
     for tag in &selection.incoming_tags {
         parts.push(format!("incoming-tag={}", tag));
     }

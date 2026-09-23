@@ -467,7 +467,104 @@ async fn parentless_ancestors_then_paths() -> Result<()> {
     Ok(())
 }
 
+/// The enum-metric case: pick the ancestor that belongs to one package.
+///
+/// Also pins the rounding contract. `rounds_up` stores 5.7, which
+/// `MetricFormat::format_value` would label as variant 6 — so a `package=6`
+/// condition has to match it, or the predicate would disagree with the number
+/// the table renders next to it.
+#[tokio::test]
+async fn find_ancestors_by_enum_metric() -> Result<()> {
+    let t = init_app();
+    let handle: GraphHandle = ingest_with_metrics(&t).await?.parse()?;
+
+    let out = call_rpc!(
+        t,
+        FindAncestors(FindAncestorsInput {
+            handle: handle.clone(),
+            node_name: "shared".to_string(),
+            selection: NodeSelection::by_metric("package", 6),
+            parentless: None,
+            offset: None,
+            limit: None,
+            include_ascii: Some(true),
+        })
+    );
+
+    snapshot!(
+        out.ascii.expect("include_ascii was asked for"),
+        r#"
+Found 2 ancestors of "shared" matching {package=6}:
+
+  1. prod_root
+  2. rounds_up
+
+"#
+    );
+
+    Ok(())
+}
+
+/// Negative case: a metric the graph does not carry can never match, rather
+/// than being quietly ignored and returning every ancestor.
+#[tokio::test]
+async fn find_ancestors_by_unknown_metric_matches_nothing() -> Result<()> {
+    let t = init_app();
+    let handle: GraphHandle = ingest_with_metrics(&t).await?.parse()?;
+
+    let out = call_rpc!(
+        t,
+        FindAncestors(FindAncestorsInput {
+            handle: handle.clone(),
+            node_name: "shared".to_string(),
+            selection: NodeSelection::by_metric("no_such_metric", 6),
+            parentless: None,
+            offset: None,
+            limit: None,
+            include_ascii: None,
+        })
+    );
+
+    assert_eq!(out.total_count, 0);
+    assert!(out.ancestors.is_empty());
+
+    Ok(())
+}
+
 // ── Fixtures ────────────────────────────────────────────────
+
+/// Three roots into one shared node, told apart by an enum-formatted `package`
+/// metric — the shape of the real Hack graph, where 6 is the `prod` package.
+///
+/// ```text
+///   prod_root   (package 6)   ──┐
+///   intern_root (package 5)   ──┼──> shared
+///   rounds_up   (package 5.7) ──┘
+/// ```
+///
+/// `rounds_up` is the interesting one: stored fractional, it renders as variant
+/// 6 and so has to match `package=6`.
+async fn ingest_with_metrics(t: &crate::support::app::TestApp) -> Result<String> {
+    let json = r#"{
+        "nodes": {
+            "prod_root": {
+                "metrics": {"package": 6},
+                "edges_directed": ["shared"]
+            },
+            "intern_root": {
+                "metrics": {"package": 5},
+                "edges_directed": ["shared"]
+            },
+            "rounds_up": {
+                "metrics": {"package": 5.7},
+                "edges_directed": ["shared"]
+            },
+            "shared": {}
+        }
+    }"#;
+    crate::support::fixtures::ingest_map_graph_json(t, "metrics_test", json).await?;
+    Ok("metrics_test".to_string())
+}
 
 /// Graph with properties, tagged edges, dynamic edges, and a cycle.
 ///

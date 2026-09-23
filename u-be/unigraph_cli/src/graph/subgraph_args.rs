@@ -16,6 +16,7 @@ use unigraph_core::NodeSelection;
 use unigraph_core::PropertyValueMatch;
 use unigraph_core::config_query::GraphQueryConfig;
 use unigraph_core::config_query::TraversalOverride;
+use unigraph_core::parse_metric_condition;
 use unigraph_storage_core::GraphKey;
 
 use crate::UnigraphCLIContext;
@@ -138,6 +139,14 @@ pub struct NodeMatchArgs {
     #[arg(long = "match-property", num_args = 1, value_name = "NAME[=VALUE]")]
     pub match_properties: Vec<String>,
 
+    /// Match nodes whose metric equals this value (repeatable, ANDed).
+    ///
+    /// The value is compared as an integer, rounded the way the metric's
+    /// display formatter rounds it — so for an enum-formatted metric this
+    /// selects a variant by its number, e.g. `--match-metric package=6`.
+    #[arg(long = "match-metric", num_args = 1, value_name = "NAME=VALUE")]
+    pub match_metrics: Vec<String>,
+
     /// Match nodes with an incoming edge carrying this tag (repeatable, ANDed).
     #[arg(long = "match-incoming-tag", num_args = 1)]
     pub match_incoming_tags: Vec<String>,
@@ -162,6 +171,11 @@ impl NodeMatchArgs {
                     let (name, value) = split_property(condition)?;
                     Ok((name, PropertyValueMatch { value }))
                 })
+                .collect::<anyhow::Result<_>>()?,
+            metrics: self
+                .match_metrics
+                .iter()
+                .map(|condition| parse_metric_condition(condition))
                 .collect::<anyhow::Result<_>>()?,
             incoming_tags: self.match_incoming_tags.iter().cloned().collect(),
             incoming_dynamic_type_keys: BTreeSet::new(),

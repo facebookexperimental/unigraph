@@ -5,8 +5,8 @@
 //! Backs the tree table's [`ArrayGraphUISettingsTreeTableEntryPoints::Filtered`]
 //! flat list, the `SearchNodes` RPC, and the `Matching` target of
 //! `ExploreGraph` / `ExploreDelta`. A node has to satisfy every condition in the
-//! selection — name, properties, incoming edges and outgoing edges are ANDed
-//! together, as are the entries within each.
+//! selection — name, properties, metrics, incoming edges and outgoing edges are
+//! ANDed together, as are the entries within each.
 //!
 //! # Seed, then retain
 //!
@@ -25,6 +25,9 @@
 //!        |
 //!        v
 //!   reachable  ->  drop nodes the traversal config pruned (opt-in)
+//!        |
+//!        v
+//!   metrics    ->  O(1) dense lookup per candidate per metric
 //!        |
 //!        v
 //!   name       ->  Substring/Regex only: one compiled regex per candidate name
@@ -140,6 +143,9 @@ pub fn select_nodes(
         candidates.retain(|&node_idx| !ag.is_node_unreachable(node_idx));
     }
 
+    let Some(candidates) = retain_by_metrics(ag, candidates, selection) else {
+        return Ok(Vec::new());
+    };
     let candidates = retain_by_name(ag, candidates, selection)?;
     let candidates = retain_by_edges(
         ag,
@@ -257,6 +263,50 @@ fn bind_properties<'a>(
 }
 
 // ── Retaining ───────────────────────────────────────────────────
+
+/// Drop candidates whose metric values don't match, binding each metric's
+/// column once.
+///
+/// `None` when a requested metric name is absent from the graph: like an absent
+/// property name, that condition can never hold, so the whole selection is
+/// unsatisfiable.
+///
+/// Reads the raw stored value rather than going through [`MetricView`], because
+/// a condition names a metric and not a view — and the enum metrics this exists
+/// for are self-view only anyway. Comparison happens in `i64` after the same
+/// `round()` the formatter applies, so a node matches exactly when its cell
+/// would render as the requested variant.
+///
+/// [`MetricView`]: crate::MetricView
+fn retain_by_metrics(
+    ag: &ArrayGraph,
+    mut candidates: Vec<NodeIDX>,
+    selection: &NodeSelection,
+) -> Option<Vec<NodeIDX>> {
+    if selection.metrics.is_empty() {
+        return Some(candidates);
+    }
+
+    let columns: Vec<(&Vec<f64>, i64)> = selection
+        .metrics
+        .iter()
+        .map(|(name, &wanted)| {
+            ag.data
+                .node_metadata
+                .metrics
+                .get(name)
+                .map(|values| (values, wanted))
+        })
+        .collect::<Option<Vec<_>>>()?;
+
+    candidates.retain(|&node_idx| {
+        columns
+            .iter()
+            .all(|(values, wanted)| values[node_idx].round() as i64 == *wanted)
+    });
+
+    Some(candidates)
+}
 
 /// Drop candidates whose name doesn't match, compiling the pattern once.
 ///

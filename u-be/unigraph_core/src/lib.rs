@@ -104,6 +104,7 @@ pub use crate::types::array_graph::node_selection::NameMatch;
 pub use crate::types::array_graph::node_selection::NameMatchMode;
 pub use crate::types::array_graph::node_selection::NodeSelection;
 pub use crate::types::array_graph::node_selection::PropertyValueMatch;
+pub use crate::types::array_graph::node_selection::parse_metric_condition;
 pub use crate::types::array_graph::offset_graph::EdgeOverrides;
 pub use crate::types::array_graph::offset_graph::TraversalType;
 pub use crate::types::array_graph::property_index::PropertyIndices;

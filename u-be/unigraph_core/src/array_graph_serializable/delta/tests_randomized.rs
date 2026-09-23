@@ -312,6 +312,7 @@ mod tests {
     fn random_entry_points_filter(rng: &mut XorShift64) -> NodeSelection {
         let property_names = ["budget_type", "team", "oncall"];
         let property_values = ["ROUTE", "PAGE", "ads"];
+        let metric_names = ["size", "package"];
         let tag_names = ["lazy", "async", "sync", "eager"];
         let dynamic_type_keys = ["rc:gk", "ddd"];
 
@@ -331,6 +332,14 @@ mod tests {
                         .next_bool(70)
                         .then(|| rng.pick(&property_values).to_string());
                     (name, PropertyValueMatch { value })
+                })
+                .collect(),
+            metrics: (0..rng.next() % 3)
+                .map(|_| {
+                    // Negative and zero included: an enum variant is just an
+                    // integer key, and the delta encoder must not assume a sign.
+                    let value = (rng.next() % 9) as i64 - 4;
+                    (rng.pick(&metric_names).to_string(), value)
                 })
                 .collect(),
             incoming_tags: (0..rng.next() % 3)
@@ -591,7 +600,7 @@ mod tests {
 pair_00: 4dc3767772f0c1db
 pair_01: 9c229d465a595694
 pair_02: 02c7db2854a102fc
-pair_03: 59d23f53dc9dc4f0
+pair_03: ab11b545859d6cc9
 pair_04: 798758ee055bbe41
 pair_05: 92245372e4878666
 pair_06: 9c012d55a738aa83

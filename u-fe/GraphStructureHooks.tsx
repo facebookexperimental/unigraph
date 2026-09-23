@@ -10,6 +10,7 @@ import { useSelectedNodeIDX } from "./context/SelectedPathContext";
 
 export const EMPTY_ENTRY_POINTS_FILTER: NodeSelection = {
   properties: {},
+  metrics: {},
   incoming_tags: [],
   incoming_dynamic_type_keys: [],
   outgoing_tags: [],
