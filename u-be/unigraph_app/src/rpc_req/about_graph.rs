@@ -31,6 +31,18 @@ pub struct AboutGraphInput {
     /// Graph handle: a timeline_id ("cargo"), graph_key ("cargo~356"),
     /// or gqc_key ("gqc_abc123").
     pub handle: GraphHandle,
+
+    /// When false, leave `text` empty and skip rendering it. Every other field
+    /// is unaffected, so a caller that only wants `properties` or `stats` can
+    /// stop paying to build a summary it discards.
+    ///
+    /// **Absent means true here**, unlike the `include_ascii` on the explore
+    /// RPCs, which defaults to false. Those shipped with the flag; this one is
+    /// being added to an RPC whose `text` was unconditional, and a caller
+    /// predating the flag — including an older `meta` binary — still expects
+    /// it. Defaulting off would blank their output mid-rollout.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub include_ascii: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TypeGen)]
@@ -70,7 +82,12 @@ pub struct AboutGraphOutput {
     /// Human-readable markdown summary of the graph.
     /// Optimized for LLM consumption — use this field to understand the graph
     /// before exploring it with ExploreGraph.
-    pub text: String,
+    ///
+    /// `None` when the request set `include_ascii` to false. Optional rather
+    /// than an empty string so "not asked for" stays distinguishable from a
+    /// graph that genuinely rendered to nothing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
 
     /// Where this request spent its time. `None` from a server predating the
     /// field — absent rather than zeroed, so it is never mistaken for a
@@ -97,12 +114,14 @@ impl RpcExec<Unigraph> for AboutGraphInput {
         let cached = resolve_graph_handle(&self.handle, ctx, task, ttl).await?;
         task.data("resolved_graph_key", cached.graph_key.to_string());
         let handle_str = self.handle.to_string();
+        let include_ascii = self.include_ascii.unwrap_or(true);
         tokio::task::spawn_blocking(move || {
             build_about(
                 &cached.graph,
                 &handle_str,
                 &cached.graph_key,
                 cached.perf_stats,
+                include_ascii,
             )
         })
         .await?
@@ -116,6 +135,7 @@ fn build_about(
     handle: &str,
     key: &GraphKey,
     perf_stats: PerfStats,
+    include_ascii: bool,
 ) -> Result<AboutGraphOutput> {
     let stats = ag.stats();
     let description = extract_description(ag);
@@ -124,14 +144,16 @@ fn build_about(
     let metric_views: Vec<String> = available.iter().map(|v| v.to_string()).collect();
     let graph_settings = ag.graph_settings().cloned();
     let properties = ag.data.properties.clone();
-    let text = render_markdown(
-        handle,
-        key,
-        description.as_deref(),
-        &stats,
-        &metrics,
-        &metric_views,
-    );
+    let text = include_ascii.then(|| {
+        render_markdown(
+            handle,
+            key,
+            description.as_deref(),
+            &stats,
+            &metrics,
+            &metric_views,
+        )
+    });
 
     Ok(AboutGraphOutput {
         timeline_id: key.timeline_id.clone(),

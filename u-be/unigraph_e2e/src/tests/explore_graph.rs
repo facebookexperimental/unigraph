@@ -960,6 +960,7 @@ async fn unavailable_metrics_excluded_from_about() -> Result<()> {
         t,
         AboutGraph(AboutGraphInput {
             handle: handle.parse()?,
+            include_ascii: None,
         })
     );
 
@@ -1156,6 +1157,7 @@ async fn about_graph_by_timeline() -> Result<()> {
         t,
         AboutGraph(AboutGraphInput {
             handle: handle.parse()?,
+            include_ascii: None,
         })
     );
 
@@ -1188,7 +1190,8 @@ tier
     );
 
     snapshot!(
-        out.text,
+        out.text
+            .expect("include_ascii defaults on, so the summary is rendered"),
         "
 # Graph: explore_test
 
@@ -1243,6 +1246,7 @@ async fn about_graph_by_gqc_key() -> Result<()> {
         t,
         AboutGraph(AboutGraphInput {
             handle: GraphHandle::GqcKey(gqc_key.clone()),
+            include_ascii: None,
         })
     );
 
@@ -1252,7 +1256,8 @@ async fn about_graph_by_gqc_key() -> Result<()> {
     // The GQC-resolved graph has the same stats, but the handle in the text
     // is the gqc_key string. We just verify the structured fields above
     // and check that the text starts with the right heading.
-    assert!(out.text.starts_with("# Graph: gqc_"));
+    let text = out.text.expect("include_ascii defaults on");
+    assert!(text.starts_with("# Graph: gqc_"));
 
     Ok(())
 }

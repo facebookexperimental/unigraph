@@ -1,7 +1,7 @@
 /**
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
- * @generated SignedSource<<346166408bc7ab42754d121bfa4a9fbb>>
+ * @generated SignedSource<<54f12e78e044dc6f36141f8fe1f24ec2>>
  */
 
 
@@ -40,8 +40,12 @@ export interface AboutGraphOutput {
    * Human-readable markdown summary of the graph.
    * Optimized for LLM consumption — use this field to understand the graph
    * before exploring it with ExploreGraph.
+   * 
+   * `None` when the request set `include_ascii` to false. Optional rather
+   * than an empty string so "not asked for" stays distinguishable from a
+   * graph that genuinely rendered to nothing.
    */
-  text: string;
+  text?: string | undefined;
   /**
    * Where this request spent its time. `None` from a server predating the
    * field — absent rather than zeroed, so it is never mistaken for a

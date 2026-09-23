@@ -1,7 +1,7 @@
 /**
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
- * @generated SignedSource<<ab97bfc58dd9e0c6cb557cf092ad0e3a>>
+ * @generated SignedSource<<b52a5cbe4773a0d2658e543abed5c15a>>
  */
 
 
@@ -13,4 +13,16 @@ export interface AboutGraphInput {
    * or gqc_key ("gqc_abc123").
    */
   handle: GraphHandle;
+  /**
+   * When false, leave `text` empty and skip rendering it. Every other field
+   * is unaffected, so a caller that only wants `properties` or `stats` can
+   * stop paying to build a summary it discards.
+   * 
+   * **Absent means true here**, unlike the `include_ascii` on the explore
+   * RPCs, which defaults to false. Those shipped with the flag; this one is
+   * being added to an RPC whose `text` was unconditional, and a caller
+   * predating the flag — including an older `meta` binary — still expects
+   * it. Defaulting off would blank their output mid-rollout.
+   */
+  include_ascii?: boolean | undefined;
 }

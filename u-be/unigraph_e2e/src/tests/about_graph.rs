@@ -20,6 +20,7 @@ async fn returns_graph_settings() -> Result<()> {
         t,
         AboutGraph(AboutGraphInput {
             handle: handle.parse()?,
+            include_ascii: None,
         })
     );
 
@@ -55,6 +56,7 @@ async fn returns_properties() -> Result<()> {
         t,
         AboutGraph(AboutGraphInput {
             handle: "props_test".parse()?,
+            include_ascii: None,
         })
     );
 
@@ -80,11 +82,13 @@ async fn text_summary() -> Result<()> {
         t,
         AboutGraph(AboutGraphInput {
             handle: handle.parse()?,
+            include_ascii: None,
         })
     );
 
     snapshot!(
-        out.text,
+        out.text
+            .expect("include_ascii defaults on, so the summary is rendered"),
         "
 # Graph: explore_test
 
@@ -148,11 +152,13 @@ async fn text_summary_with_properties() -> Result<()> {
         t,
         AboutGraph(AboutGraphInput {
             handle: "props_text_test".parse()?,
+            include_ascii: None,
         })
     );
 
     snapshot!(
-        out.text,
+        out.text
+            .expect("include_ascii defaults on, so the summary is rendered"),
         "
 # Graph: props_text_test
 
@@ -191,6 +197,7 @@ async fn reports_the_snapshot_a_bare_timeline_resolved_to() -> Result<()> {
         t,
         AboutGraph(AboutGraphInput {
             handle: handle.parse()?,
+            include_ascii: None,
         })
     );
 
@@ -203,10 +210,10 @@ async fn reports_the_snapshot_a_bare_timeline_resolved_to() -> Result<()> {
         out.graph_id.0, 0,
         "the bare handle resolved to the only ingested snapshot"
     );
+    let text = out.text.expect("include_ascii defaults on");
     assert!(
-        out.text.contains("Resolved to `explore_test~0`"),
-        "an indirect handle should say what it landed on, got:\n{}",
-        out.text
+        text.contains("Resolved to `explore_test~0`"),
+        "an indirect handle should say what it landed on, got:\n{text}"
     );
 
     Ok(())
@@ -221,17 +228,52 @@ async fn pinned_handle_reports_itself_and_adds_no_resolved_line() -> Result<()> 
         t,
         AboutGraph(AboutGraphInput {
             handle: "explore_test~0".parse()?,
+            include_ascii: None,
         })
     );
 
     assert_eq!(out.timeline_id.0, "explore_test");
     assert_eq!(out.graph_id.0, 0);
     // Negative case: the handle already IS the key, so restating it is noise.
+    let text = out.text.expect("include_ascii defaults on");
     assert!(
-        !out.text.contains("Resolved to"),
-        "an already-pinned handle should not get a resolved line, got:\n{}",
-        out.text
+        !text.contains("Resolved to"),
+        "an already-pinned handle should not get a resolved line, got:\n{text}"
     );
+
+    Ok(())
+}
+
+/// The whole point of the flag: a caller that only wants `properties` stops
+/// paying to render a summary it discards, and loses nothing else.
+#[tokio::test]
+async fn include_ascii_false_drops_only_the_text() -> Result<()> {
+    let t = init_app();
+    let json = r#"{
+        "nodes": {
+            "a": { "metrics": { "size": 10 }, "edges_directed": ["b"] },
+            "b": { "metrics": { "size": 20 } }
+        },
+        "properties": { "owner": "infra-team" }
+    }"#;
+    ingest_map_graph_json(&t, "no_text_test", json).await?;
+
+    let out = call_rpc!(
+        t,
+        AboutGraph(AboutGraphInput {
+            handle: "no_text_test".parse()?,
+            include_ascii: Some(false),
+        })
+    );
+
+    assert!(out.text.is_none(), "the summary was not asked for");
+    assert_eq!(
+        out.properties.get("owner").map(String::as_str),
+        Some("infra-team"),
+        "every other field still answers"
+    );
+    assert_eq!(out.timeline_id.0, "no_text_test");
+    assert_eq!(out.stats.num_all_nodes, 2);
 
     Ok(())
 }
@@ -245,6 +287,7 @@ async fn empty_properties_when_absent() -> Result<()> {
         t,
         AboutGraph(AboutGraphInput {
             handle: handle.parse()?,
+            include_ascii: None,
         })
     );
 
