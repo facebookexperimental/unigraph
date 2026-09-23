@@ -48,6 +48,12 @@
 //! skipped when its condition is absent, so a properties-only selection never
 //! builds the reverse graph and never compiles a regex.
 //!
+//! The two expensive passes — the name regex and the edge scans — fan out
+//! across rayon via [`retain_candidates`]; the cheap ones stay sequential
+//! because parallelising them measured slower. Fanning out does not make a pass
+//! cheaper, so the ordering above still matters: a pass that shrinks the set
+//! early saves every later pass the work on those nodes.
+//!
 //! # Ordering
 //!
 //! Results come back ascending by [`NodeIDX`] — except under `Fuzzy`, which is
@@ -81,6 +87,7 @@
 
 use anyhow::Context;
 use anyhow::Result;
+use rayon::prelude::*;
 use regex::Regex;
 use regex::RegexBuilder;
 
@@ -100,6 +107,57 @@ use crate::types::array_graph::property_index::PropertyIndices;
 /// `search_name_fuzzy` sizes a `BinaryHeap` per rayon thread from this, so it
 /// has to stay a number and can never be `usize::MAX`.
 pub const DEFAULT_FUZZY_CAP: usize = 1_000;
+
+/// Candidate count below which even an expensive pass stays on one thread.
+///
+/// The tree table re-runs the whole evaluation on every filter change, often
+/// against a small graph, and the split is not worth it there.
+const PARALLEL_RETAIN_THRESHOLD: usize = 4096;
+
+/// Drop candidates that fail `keep`, fanning out across rayon once there are
+/// enough of them to pay for the split.
+///
+/// **Only for passes whose per-candidate work is substantial.** The deciding
+/// factor is the cost of one `keep` call, not how many candidates there are:
+/// `collect`ing a filtered parallel iterator allocates a buffer per thread and
+/// concatenates them, which is itself about the cost of a cheap predicate. Over
+/// 200k nodes on a 2-tagged-edge-per-node graph:
+///
+/// ```text
+///                      sequential   parallel
+///   name regex            682 ms      40 ms    17x   <- parallel
+///   edge tags             431 ms      68 ms   6.3x   <- parallel
+///   properties           29.9 ms    30.5 ms    1.0x
+///   metric equality      15.2 ms    22.8 ms    0.7x
+///   + reachable_only     27.6 ms    70.3 ms    0.4x
+/// ```
+///
+/// So the name and edge passes fan out and the rest deliberately do not —
+/// parallelising them measured *slower*, because a single array read or
+/// `BTreeMap` probe is cheaper than the machinery around it.
+///
+/// Order is preserved on both paths: rayon's `collect` into a `Vec` restores
+/// the input order, and the passes' contract is that results stay ascending by
+/// [`NodeIDX`] (shortest-name-first under `Fuzzy`). `keep` runs on many threads,
+/// so anything it touches must already be initialised — see [`retain_by_edges`],
+/// which builds its edge view before calling in.
+///
+/// On WASM rayon has no thread pool and this degrades to sequential, which is
+/// the same fallback the rest of the crate relies on.
+fn retain_candidates<F>(mut candidates: Vec<NodeIDX>, keep: F) -> Vec<NodeIDX>
+where
+    F: Fn(NodeIDX) -> bool + Sync + Send,
+{
+    if candidates.len() < PARALLEL_RETAIN_THRESHOLD {
+        candidates.retain(|&node_idx| keep(node_idx));
+        return candidates;
+    }
+
+    candidates
+        .into_par_iter()
+        .filter(|&node_idx| keep(node_idx))
+        .collect()
+}
 
 /// Evaluator knobs. Deliberately not part of [`NodeSelection`] — these are
 /// call-site concerns, not something worth persisting or sending over the wire.
@@ -299,6 +357,8 @@ fn retain_by_metrics(
         })
         .collect::<Option<Vec<_>>>()?;
 
+    // Sequential on purpose: one array read per candidate is cheaper than
+    // rayon's split and re-collect. See [`retain_candidates`].
     candidates.retain(|&node_idx| {
         columns
             .iter()
@@ -313,7 +373,7 @@ fn retain_by_metrics(
 /// A no-op for `Exact` and `Fuzzy`, which already seeded from the name list.
 fn retain_by_name(
     ag: &ArrayGraph,
-    mut candidates: Vec<NodeIDX>,
+    candidates: Vec<NodeIDX>,
     selection: &NodeSelection,
 ) -> Result<Vec<NodeIDX>> {
     let Some(name_match) = selection.name_condition() else {
@@ -323,8 +383,9 @@ fn retain_by_name(
         return Ok(candidates);
     };
 
-    candidates.retain(|&node_idx| regex.is_match(ag.idx_to_name(node_idx)));
-    Ok(candidates)
+    Ok(retain_candidates(candidates, |node_idx| {
+        regex.is_match(ag.idx_to_name(node_idx))
+    }))
 }
 
 /// The regex for the predicate modes; `None` for the modes that seed instead.
@@ -353,7 +414,7 @@ fn compile_name_match(name_match: &NameMatch) -> Result<Option<Regex>> {
 /// the edge view — the reverse graph in particular — is never built for nothing.
 fn retain_by_edges(
     ag: &ArrayGraph,
-    mut candidates: Vec<NodeIDX>,
+    candidates: Vec<NodeIDX>,
     structure: GraphStructure,
     conditions: EdgeConditions<'_>,
 ) -> Vec<NodeIDX> {
@@ -361,9 +422,13 @@ fn retain_by_edges(
         return candidates;
     }
 
+    // Built before the retain, not inside it: the reverse and dominator views
+    // are lazily derived, and that derivation is itself parallel.
     let view = ag.edge_view(structure);
-    candidates.retain(|&node_idx| matches_edges(&view, node_idx, &conditions));
-    candidates
+
+    retain_candidates(candidates, |node_idx| {
+        matches_edges(&view, node_idx, &conditions)
+    })
 }
 
 fn matches_edges(
