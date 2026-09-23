@@ -149,9 +149,9 @@ pub fn make_dominator_tree(
 }
 
 fn dsu_find(
-    dsu: &mut Vec<Option<TravIDX>>,
+    dsu: &mut [Option<TravIDX>],
     sdom: &[TravIDX],
-    label: &mut Vec<TravIDX>,
+    label: &mut [TravIDX],
     u: TravIDX,
 ) -> TravIDX {
     if dsu[u].is_none() {
@@ -161,19 +161,36 @@ fn dsu_find(
     }
 }
 
+/// Path compression, iteratively.
+///
+/// The textbook form recurses once per link, so its depth is the length of the
+/// DSU chain. At a few million nodes that is deeper than the 2 MiB stack a
+/// spawned thread gets, and the process takes a SIGSEGV rather than an error.
 fn dsu_compress(
-    dsu: &mut Vec<Option<TravIDX>>,
+    dsu: &mut [Option<TravIDX>],
     sdom: &[TravIDX],
-    label: &mut Vec<TravIDX>,
+    label: &mut [TravIDX],
     u: TravIDX,
 ) -> TravIDX {
-    let parent = dsu[u].expect("missing node in dsu");
-    if dsu[parent].is_some() {
-        let next = dsu_compress(dsu, sdom, label, parent);
-        if sdom[next] < sdom[label[u]] {
-            label[u] = next;
+    // Walk up to the DSU root, collecting every node that has a non-root
+    // parent. The updates then run top-down, because each node reads its
+    // parent's already-compressed `label` and `dsu`.
+    let mut chain = vec![u];
+    let mut above = dsu[u].expect("missing node in dsu");
+    while let Some(grandparent) = dsu[above] {
+        chain.push(above);
+        above = grandparent;
+    }
+
+    // `rev().skip(1)` drops the topmost node: its parent is the root, so the
+    // recursive form bottomed out there without touching it.
+    for &v in chain.iter().rev().skip(1) {
+        let parent = dsu[v].expect("missing node in dsu");
+        let next = label[parent];
+        if sdom[next] < sdom[label[v]] {
+            label[v] = next;
         }
-        dsu[u] = dsu[parent];
+        dsu[v] = dsu[parent];
     }
 
     *label.get(u).expect("missing node in labels")
@@ -189,8 +206,11 @@ mod tests {
     use k9::assert_equal;
     use k9::snapshot;
 
+    use super::make_dominator_tree;
+    use crate::NodeIDX;
     use crate::tests::test_graphs::make_test_array_graph_2;
     use crate::tests::test_utils::name_to_idx;
+    use crate::types::array_graph::offset_graph::edge_flags::EdgeFlags;
 
     #[test]
     fn test_dominator_tree() -> Result<()> {
