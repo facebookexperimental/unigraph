@@ -1,11 +1,13 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
+use std::collections::BTreeSet;
 use std::fmt::Write;
 use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Context;
 use anyhow::Result;
+use anyhow::bail;
 use serde::Deserialize;
 use serde::Serialize;
 use typegen::TypeGen;
@@ -32,6 +34,17 @@ pub struct FindPathInput {
     pub from: String,
     /// Target node name.
     pub to: String,
+    /// Nodes the path may not run through.
+    ///
+    /// Answers "is there another way?" — given `A -> B -> C -> D`, avoiding `C`
+    /// returns the best path that routes around it, or reports no path when `C`
+    /// is the only way through.
+    ///
+    /// These are *nodes*, where `MinCut` protects *edges*: the question here is
+    /// which intermediate steps are acceptable, not which specific links must
+    /// survive.
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub avoid_nodes: BTreeSet<String>,
     /// When true, include a human-readable ASCII summary in the response.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub include_ascii: Option<bool>,
@@ -96,12 +109,14 @@ fn find_path(
 ) -> Result<FindPathOutput> {
     let from_idx = resolve_node(&ag, &input.from)?;
     let to_idx = resolve_node(&ag, &input.to)?;
+    let avoid = resolve_avoided(&ag, input)?;
 
     let path_indices = ag.shortest_path(
         &[from_idx],
         to_idx,
         GraphStructure::Forward,
         TraversalType::Configured,
+        &avoid,
     );
 
     let (path, found) = match path_indices {
@@ -113,7 +128,7 @@ fn find_path(
     };
 
     let ascii = if input.include_ascii.unwrap_or(false) {
-        Some(format_ascii(&input.from, &input.to, &path, found))
+        Some(format_ascii(input, &path, found))
     } else {
         None
     };
@@ -131,6 +146,28 @@ fn resolve_node(ag: &ArrayGraph, name: &str) -> Result<NodeIDX> {
         .node_names_ordered
         .name_to_idx_log(name)
         .with_context(|| format!("node '{}' not found in graph", name))
+}
+
+/// The nodes to route around.
+///
+/// A name that is not in the graph is an error rather than a silent no-op: a
+/// typo would otherwise return the unchanged path and read as "there is no way
+/// around it", which is the opposite of what happened.
+///
+/// Avoiding an endpoint is rejected for the same reason — the answer would be
+/// "no path" whatever the graph looks like, which tells the caller nothing.
+fn resolve_avoided(ag: &ArrayGraph, input: &FindPathInput) -> Result<Vec<NodeIDX>> {
+    for endpoint in [&input.from, &input.to] {
+        if input.avoid_nodes.contains(endpoint) {
+            bail!("cannot avoid '{endpoint}' — it is one end of the path being searched for");
+        }
+    }
+
+    input
+        .avoid_nodes
+        .iter()
+        .map(|name| resolve_node(ag, name))
+        .collect()
 }
 
 /// Build PathHop entries for each node in the path, looking up edge metadata
@@ -200,18 +237,28 @@ fn find_edge_metadata(
 
 // ── ASCII formatting ────────────────────────────────────────
 
-fn format_ascii(from: &str, to: &str, path: &[PathHop], found: bool) -> String {
+fn format_ascii(input: &FindPathInput, path: &[PathHop], found: bool) -> String {
+    let FindPathInput { from, to, .. } = input;
     let mut out = String::new();
 
+    // Naming what was avoided is the difference between "these are not
+    // connected" and "they are, but only through something you ruled out".
+    let avoiding = if input.avoid_nodes.is_empty() {
+        String::new()
+    } else {
+        let names: Vec<&str> = input.avoid_nodes.iter().map(String::as_str).collect();
+        format!(", avoiding {}", names.join(", "))
+    };
+
     if !found {
-        let _ = write!(out, "No path from \"{from}\" to \"{to}\".");
+        let _ = write!(out, "No path from \"{from}\" to \"{to}\"{avoiding}.");
         return out;
     }
 
     let steps = path.len() - 1;
     let _ = writeln!(
         out,
-        "Shortest path from \"{from}\" to \"{to}\" ({steps} steps):\n"
+        "Shortest path from \"{from}\" to \"{to}\"{avoiding} ({steps} steps):\n"
     );
 
     for (i, hop) in path.iter().enumerate() {

@@ -199,6 +199,7 @@ impl<'a> EdgeGraphView<'a> {
         from: &[NodeIDX],
         to: NodeIDX,
         traversal_type: TraversalType,
+        avoid: &[NodeIDX],
     ) -> Option<Vec<NodeIDX>> {
         shortest_path::shortest_path(
             self.targets,
@@ -207,6 +208,7 @@ impl<'a> EdgeGraphView<'a> {
             from,
             to,
             traversal_type,
+            avoid,
         )
     }
 
@@ -298,6 +300,7 @@ impl OffsetGraph {
         from: &[NodeIDX],
         to: NodeIDX,
         traversal_type: TraversalType,
+        avoid: &[NodeIDX],
     ) -> Option<Vec<NodeIDX>> {
         shortest_path::shortest_path(
             &self.targets,
@@ -306,6 +309,7 @@ impl OffsetGraph {
             from,
             to,
             traversal_type,
+            avoid,
         )
     }
 }

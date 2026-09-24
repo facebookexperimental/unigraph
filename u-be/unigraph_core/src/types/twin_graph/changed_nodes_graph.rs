@@ -185,7 +185,10 @@ impl ChangedNodesGraphOneSide {
 
         // The changed-nodes graph operates in merged IDX space,
         // so from/to are already in the right space.
-        Ok(offset_graph.shortest_path(from, to, traversal_type))
+        //
+        // Nothing to avoid: only `FindPath` over a single graph takes that, and
+        // it never reaches the delta view.
+        Ok(offset_graph.shortest_path(from, to, traversal_type, &[]))
     }
 
     fn forward(&self, tg: &TwinGraph, side: GraphSide) -> Result<&ChangedNodesOffsetGraph> {

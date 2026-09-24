@@ -560,9 +560,10 @@ impl ArrayGraph {
         to: NodeIDX,
         graph_structure: GraphStructure,
         traversal_type: TraversalType,
+        avoid: &[NodeIDX],
     ) -> Option<Vec<NodeIDX>> {
         self.edge_view(graph_structure)
-            .shortest_path(from, to, traversal_type)
+            .shortest_path(from, to, traversal_type, avoid)
     }
 }
 

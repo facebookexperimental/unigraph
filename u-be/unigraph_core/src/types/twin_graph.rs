@@ -212,13 +212,15 @@ impl TwinGraph {
         let l_to = self.to_local(GraphSide::Left, to);
         let r_to = self.to_local(GraphSide::Right, to);
 
+        // Nothing to avoid: only `FindPath` over a single graph takes that, and
+        // it never reaches the delta view.
         let left_path = l_to.and_then(|to_local| {
             self.l
-                .shortest_path(&l_from, to_local, graph_structure, traversal_type)
+                .shortest_path(&l_from, to_local, graph_structure, traversal_type, &[])
         });
         let right_path = r_to.and_then(|to_local| {
             self.r
-                .shortest_path(&r_from, to_local, graph_structure, traversal_type)
+                .shortest_path(&r_from, to_local, graph_structure, traversal_type, &[])
         });
 
         let left_path = left_path.map(|p| self.translate_path(GraphSide::Left, &p));

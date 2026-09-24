@@ -7,6 +7,13 @@ use crate::NodeIDX;
 use crate::types::array_graph::offset_graph::TraversalType;
 use crate::types::array_graph::offset_graph::edge_flags::EdgeFlags;
 
+/// Shortest path from any of `from` to `to`, routing around every node in
+/// `avoid`.
+///
+/// `avoid` costs nothing per edge: `parents` below is already the visited set,
+/// so seeding it with the avoided nodes means they are never enqueued and never
+/// expanded, and the search routes around them without a second lookup in the
+/// inner loop.
 pub(crate) fn shortest_path(
     targets: &[NodeIDX],
     flags: &[EdgeFlags],
@@ -14,6 +21,7 @@ pub(crate) fn shortest_path(
     from: &[NodeIDX],
     to: NodeIDX,
     traversal_type: TraversalType,
+    avoid: &[NodeIDX],
 ) -> Option<Vec<NodeIDX>> {
     // here we will need to run a BFS on our directed graph in a very efficient way.
 
@@ -30,7 +38,16 @@ pub(crate) fn shortest_path(
     // This hashmap will also serve as a "visited" set, so we don't revisit nodes.
     // The initial values are `from` nodes pointing to themselves as parents, which signifies
     // the root of the BFS traversal and we can use it to break cycles if there are any.
-    let mut parents = from.iter().map(|&f| (f, f)).collect::<HashMap<_, _>>();
+    //
+    // Avoided nodes go in first and `from` overwrites them, so a start node is
+    // still searched from even if it was also named as avoided — you cannot
+    // route around where you begin. An avoided node is never expanded, so it
+    // never becomes anyone's parent and can never appear in the result.
+    let mut parents = avoid
+        .iter()
+        .map(|&n| (n, n))
+        .chain(from.iter().map(|&f| (f, f)))
+        .collect::<HashMap<_, _>>();
 
     let mut queue = from.iter().copied().collect::<VecDeque<_>>();
 
@@ -114,6 +131,7 @@ mod tests {
                 &[name_to_idx(&ag, "A")],
                 name_to_idx(&ag, "K"),
                 TraversalType::Configured,
+                &[],
             )
             .unwrap();
 
@@ -126,6 +144,7 @@ mod tests {
                 &[name_to_idx(&ag, "A")],
                 name_to_idx(&ag, "A"),
                 TraversalType::Configured,
+                &[],
             )
             .unwrap();
         assert_equal!(idx_to_names(&ag, p), vec!["A"]);
@@ -141,6 +160,7 @@ mod tests {
                 ],
                 name_to_idx(&ag, "N"),
                 TraversalType::Configured,
+                &[],
             )
             .unwrap();
         assert_equal!(idx_to_names(&ag, p), vec!["N"]);
@@ -152,6 +172,7 @@ mod tests {
                 &[name_to_idx(&ag, "M")],
                 name_to_idx(&ag, "I"),
                 TraversalType::Unconfigured,
+                &[],
             )
             .unwrap();
         assert_equal!(idx_to_names(&ag, p), vec!["M", "O", "F", "I"]);
@@ -162,6 +183,7 @@ mod tests {
                 &[name_to_idx(&ag, "A"), name_to_idx(&ag, "L")],
                 name_to_idx(&ag, "H"),
                 TraversalType::Configured,
+                &[],
             )
             .unwrap();
 
@@ -174,6 +196,7 @@ mod tests {
                 &[name_to_idx(&ag, "F"), name_to_idx(&ag, "H")],
                 name_to_idx(&ag, "A"),
                 TraversalType::Configured,
+                &[],
             )
             .unwrap();
 
@@ -184,9 +207,60 @@ mod tests {
             &[name_to_idx(&ag, "K"), name_to_idx(&ag, "E")],
             name_to_idx(&ag, "I"),
             TraversalType::Configured,
+            &[],
         );
 
         assert_equal!(p, None);
+
+        Ok(())
+    }
+
+    /// `A` reaches `K` two ways — through `B` and through `D`. Avoiding the
+    /// node the default path runs through has to produce the other one, not
+    /// give up.
+    #[test]
+    fn test_shortest_path_avoiding_nodes() -> Result<()> {
+        let ag = make_test_array_graph_2()?;
+        let path = |avoid: Vec<crate::NodeIDX>| {
+            ag.forward_edge_view()
+                .shortest_path(
+                    &[name_to_idx(&ag, "A")],
+                    name_to_idx(&ag, "K"),
+                    TraversalType::Unconfigured,
+                    &avoid,
+                )
+                .map(|p| idx_to_names(&ag, p))
+        };
+
+        assert_equal!(path(vec![]).unwrap(), vec!["A", "B", "J", "K"]);
+
+        // Reroute: B is out, so the search goes the long way round.
+        assert_equal!(
+            path(vec![name_to_idx(&ag, "B")]).unwrap(),
+            vec!["A", "D", "E", "K"]
+        );
+
+        // Avoiding an interior node of the alternative works the same way.
+        assert_equal!(
+            path(vec![name_to_idx(&ag, "J")]).unwrap(),
+            vec!["A", "D", "E", "K"]
+        );
+
+        // Both routes severed: no path, rather than one sneaking through.
+        assert_equal!(
+            path(vec![name_to_idx(&ag, "B"), name_to_idx(&ag, "E")]),
+            None
+        );
+
+        // Avoiding the destination cannot be satisfied.
+        assert_equal!(path(vec![name_to_idx(&ag, "K")]), None);
+
+        // Avoiding the start is ignored — you cannot route around where you
+        // begin, and the default path is unaffected.
+        assert_equal!(
+            path(vec![name_to_idx(&ag, "A")]).unwrap(),
+            vec!["A", "B", "J", "K"]
+        );
 
         Ok(())
     }

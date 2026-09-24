@@ -5,6 +5,8 @@
 //! Tests the full flow: ingest a graph with properties, find ancestors by
 //! node selection or parentless, then find shortest paths back.
 
+use std::collections::BTreeSet;
+
 use anyhow::Result;
 use k9::snapshot;
 use unigraph_app::FindAncestorsInput;
@@ -185,6 +187,7 @@ async fn find_path_simple() -> Result<()> {
             handle: handle.clone(),
             from: "app".to_string(),
             to: "utils".to_string(),
+            avoid_nodes: BTreeSet::new(),
             include_ascii: Some(true),
         })
     );
@@ -215,6 +218,7 @@ async fn find_path_with_tagged_edge() -> Result<()> {
             handle: handle.clone(),
             from: "ui".to_string(),
             to: "dialogs".to_string(),
+            avoid_nodes: BTreeSet::new(),
             include_ascii: Some(true),
         })
     );
@@ -245,6 +249,7 @@ async fn find_path_with_dynamic_edge() -> Result<()> {
             handle: handle.clone(),
             from: "components".to_string(),
             to: "button_ios".to_string(),
+            avoid_nodes: BTreeSet::new(),
             include_ascii: Some(true),
         })
     );
@@ -275,6 +280,7 @@ async fn find_path_no_path() -> Result<()> {
             handle: handle.clone(),
             from: "utils".to_string(),
             to: "app".to_string(),
+            avoid_nodes: BTreeSet::new(),
             include_ascii: Some(true),
         })
     );
@@ -297,6 +303,7 @@ async fn find_path_multi_hop() -> Result<()> {
             handle: handle.clone(),
             from: "app".to_string(),
             to: "button_ios".to_string(),
+            avoid_nodes: BTreeSet::new(),
             include_ascii: Some(true),
         })
     );
@@ -330,6 +337,7 @@ async fn find_path_through_tagged_and_dynamic() -> Result<()> {
             handle: handle.clone(),
             from: "route_a".to_string(),
             to: "ios_impl".to_string(),
+            avoid_nodes: BTreeSet::new(),
             include_ascii: Some(true),
         })
     );
@@ -362,6 +370,7 @@ async fn find_path_with_cycle_does_not_hang() -> Result<()> {
             handle: handle.clone(),
             from: "cycle_a".to_string(),
             to: "leaf".to_string(),
+            avoid_nodes: BTreeSet::new(),
             include_ascii: Some(true),
         })
     );
@@ -413,6 +422,7 @@ async fn ancestors_then_paths() -> Result<()> {
                 handle: handle.clone(),
                 from: ancestor.clone(),
                 to: "leaf".to_string(),
+                avoid_nodes: BTreeSet::new(),
                 include_ascii: Some(true),
             })
         );
@@ -527,6 +537,72 @@ async fn find_ancestors_by_unknown_metric_matches_nothing() -> Result<()> {
 
     assert_eq!(out.total_count, 0);
     assert!(out.ancestors.is_empty());
+
+    Ok(())
+}
+
+/// `hub` reaches `leaf` through either dynamic branch, so ruling one out has to
+/// produce the other rather than giving up.
+#[tokio::test]
+async fn find_path_avoiding_a_node_reroutes() -> Result<()> {
+    let t = init_app();
+    let handle: GraphHandle = ingest_with_properties(&t).await?.parse()?;
+
+    let direct = call_rpc!(
+        t,
+        FindPath(FindPathInput {
+            handle: handle.clone(),
+            from: "hub".to_string(),
+            to: "leaf".to_string(),
+            avoid_nodes: BTreeSet::new(),
+            include_ascii: Some(true),
+        })
+    );
+    assert!(direct.found);
+    let via: Vec<&str> = direct.path.iter().map(|h| h.node.as_str()).collect();
+    assert_eq!(via, vec!["hub", "android_impl", "leaf"]);
+
+    // Rule out the node the default answer went through.
+    let rerouted = call_rpc!(
+        t,
+        FindPath(FindPathInput {
+            handle: handle.clone(),
+            from: "hub".to_string(),
+            to: "leaf".to_string(),
+            avoid_nodes: BTreeSet::from(["android_impl".to_string()]),
+            include_ascii: Some(true),
+        })
+    );
+    assert!(rerouted.found, "ios_impl is still a way through");
+    snapshot!(
+        rerouted.ascii.expect("include_ascii was asked for"),
+        r#"
+Shortest path from "hub" to "leaf", avoiding android_impl (2 steps):
+
+hub [platform:widget/ios] ->
+ios_impl ->
+leaf
+
+"#
+    );
+
+    // Both ways out of `hub` ruled out: honestly no path, and the summary says
+    // what was avoided so it reads as a constraint rather than a disconnection.
+    let blocked = call_rpc!(
+        t,
+        FindPath(FindPathInput {
+            handle: handle.clone(),
+            from: "hub".to_string(),
+            to: "leaf".to_string(),
+            avoid_nodes: BTreeSet::from(["ios_impl".to_string(), "android_impl".to_string()]),
+            include_ascii: Some(true),
+        })
+    );
+    assert!(!blocked.found);
+    snapshot!(
+        blocked.ascii.expect("include_ascii was asked for"),
+        r#"No path from "hub" to "leaf", avoiding android_impl, ios_impl."#
+    );
 
     Ok(())
 }
