@@ -14,7 +14,7 @@ anyhow = "1.0.104"
 axum = { version = "0.8.9", features = ["macros", "multipart", "ws"] }
 hyper-util = { version = "0.1.21", features = ["client-legacy", "http1", "http2", "server-auto", "service", "tokio"] }
 ll = "10.0.0"
-serde_json = { version = "1.0.151", features = ["alloc", "float_roundtrip", "raw_value", "unbounded_depth"] }
+serde_json = { version = "1.0.154", features = ["alloc", "float_roundtrip", "raw_value", "unbounded_depth"] }
 tokio = { version = "1.53.2", features = ["full", "test-util", "tracing"] }
 tower-http = { version = "0.7.1", features = ["auth", "catch-panic", "compression-full", "cors", "fs", "limit", "request-id", "set-header", "timeout", "trace"] }
 tracing = { version = "0.1.41", features = ["attributes", "valuable"] }
