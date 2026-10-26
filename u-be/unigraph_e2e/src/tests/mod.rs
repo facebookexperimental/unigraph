@@ -2,6 +2,7 @@
 
 mod about_graph;
 mod config_storage;
+mod dominated_max_tier;
 mod dynamic_tier_transitions;
 mod explore_delta;
 mod explore_graph;
