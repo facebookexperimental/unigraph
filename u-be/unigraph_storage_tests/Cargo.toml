@@ -18,7 +18,7 @@ unigraph_timestamp = { path = "../unigraph_timestamp" }
 [dev-dependencies]
 anyhow = "1.0.104"
 async-trait = "0.1.92"
-k9 = { version = "0.12.0", features = ["custom_comparison_formatters", "regex"] }
+k9 = { git = "https://github.com/boujeepossum/k9", rev = "db63bcd7f6766051f3767b48b5e05cf1f8fffc7c", features = ["regex"] }
 ll = "10.0.0"
 tokio = { version = "1.54.1", features = ["full", "test-util", "tracing"] }
 unigraph_db = { path = "../unigraph_db" }

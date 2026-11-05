@@ -16,7 +16,7 @@ serde = { version = "1.0.229", features = ["derive", "rc"] }
 typegen = { version = "0.1.1-alpha.0", path = "../typegen" }
 
 [dev-dependencies]
-k9 = { version = "0.12.0", features = ["custom_comparison_formatters", "regex"] }
+k9 = { git = "https://github.com/boujeepossum/k9", rev = "db63bcd7f6766051f3767b48b5e05cf1f8fffc7c", features = ["regex"] }
 paste = "1.0.14"
 serde_json = { version = "1.0.154", features = ["alloc", "float_roundtrip", "raw_value", "unbounded_depth"] }
 tokio = { version = "1.54.1", features = ["full", "test-util", "tracing"] }

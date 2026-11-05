@@ -16,4 +16,4 @@ serde_json = { version = "1.0.154", features = ["alloc", "float_roundtrip", "raw
 unigraph_delta_derive = { version = "0.1.1-alpha.0", path = "../unigraph_delta_derive" }
 
 [dev-dependencies]
-k9 = { version = "0.12.0", features = ["custom_comparison_formatters", "regex"] }
+k9 = { git = "https://github.com/boujeepossum/k9", rev = "db63bcd7f6766051f3767b48b5e05cf1f8fffc7c", features = ["regex"] }
