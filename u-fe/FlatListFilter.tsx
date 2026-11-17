@@ -61,6 +61,7 @@ export function FlatListFilterButton() {
 
   return (
     <USplitToggleButton
+      label="Filter"
       tooltip={filterTooltip(conditionCount, filtering)}
       selected={filtering}
       onSelectedChange={toggleFiltering}

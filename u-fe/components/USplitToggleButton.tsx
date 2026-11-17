@@ -18,6 +18,7 @@ export default function USplitToggleButton({
   onSelectedChange,
   children,
   tooltip,
+  label,
   popoverContent,
   popoverClassName,
   toggleDisabled,
@@ -25,6 +26,7 @@ export default function USplitToggleButton({
   selected?: boolean;
   onSelectedChange?: (selected: boolean) => void;
   children: React.ReactNode;
+  label?: string;
   tooltip?: React.ReactNode;
   popoverContent: React.ReactNode;
   /** Override the popover's size. Defaults to `w-96 max-h-[80vh]`. */
@@ -45,9 +47,13 @@ export default function USplitToggleButton({
   const variant = selected ? "default" : "secondary";
 
   return (
-    <div className="inline-flex">
+    <div className="inline-flex shrink-0">
       <UTooltip tooltip={tooltip}>
         <Button
+          aria-label={
+            label ?? (typeof tooltip === "string" ? tooltip : undefined)
+          }
+          aria-pressed={selected === true}
           size="sm"
           // `focus-visible:z-10` so the focus ring paints over the adjacent
           // half instead of being clipped by it — the two halves overlap.
@@ -64,11 +70,13 @@ export default function USplitToggleButton({
           }}
         >
           {children}
+          {label != null && <span className="sm:hidden">{label}</span>}
         </Button>
       </UTooltip>
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Button
+            aria-label={`${label ?? "Toggle"} options`}
             size="sm"
             className="cursor-pointer rounded-l-none border-l border-l-background/20 px-1 relative focus-visible:z-10"
             variant={variant}
@@ -81,7 +89,7 @@ export default function USplitToggleButton({
           <PopoverPortal container={container?.current}>
             <PopoverContent
               className={cn(
-                "mx-6 overflow-y-auto",
+                "overflow-y-auto max-w-[calc(100vw-1rem)]",
                 popoverClassName ?? "w-96 max-h-[80vh]",
               )}
               onOpenAutoFocus={(e) => e.preventDefault()}

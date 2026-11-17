@@ -128,9 +128,9 @@ export default class NativeGraph {
 
   private metricCaches: MetricCaches;
   private statsCache: ArrayGraphStats | null = null;
-  private parentsCountCache: SingleMetricsCache;
-  private transitiveCountCache: SingleMetricsCache;
-  private transitiveCountDominatedCache: SingleMetricsCache;
+  private parentsCountCache: SingleMetricsCache | null = null;
+  private transitiveCountCache: SingleMetricsCache | null = null;
+  private transitiveCountDominatedCache: SingleMetricsCache | null = null;
 
   private entrypointsCache: NodeIDXVecSet | null = null;
 
@@ -175,27 +175,6 @@ export default class NativeGraph {
     this.nodeCount = get_graph_node_count(this.side);
     this.metricNames = get_metric_names(this.side);
     this.metricCaches = new MetricCaches(this.nodeCount, side);
-    this.parentsCountCache = new SingleMetricsCache(
-      this.nodeCount,
-      (nodeIDXs: NodeIDX[]) =>
-        new Float64Array(
-          get_reverse_edges_len(new Uint32Array(nodeIDXs), this.side),
-        ),
-    );
-    this.transitiveCountCache = new SingleMetricsCache(
-      this.nodeCount,
-      (nodeIDXs: NodeIDX[]) =>
-        new Float64Array(
-          get_transitive_count(new Uint32Array(nodeIDXs), this.side),
-        ),
-    );
-    this.transitiveCountDominatedCache = new SingleMetricsCache(
-      this.nodeCount,
-      (nodeIDXs: NodeIDX[]) =>
-        new Float64Array(
-          get_transitive_count_dominated(new Uint32Array(nodeIDXs), this.side),
-        ),
-    );
   }
 
   stats(): ArrayGraphStats {
@@ -382,14 +361,35 @@ export default class NativeGraph {
   }
 
   getParentsCount(nodeIDX: NodeIDX[]): Float64Array {
+    this.parentsCountCache ??= new SingleMetricsCache(
+      this.nodeCount,
+      (nodeIDXs) =>
+        new Float64Array(
+          get_reverse_edges_len(new Uint32Array(nodeIDXs), this.side),
+        ),
+    );
     return this.parentsCountCache.getForIDXs(nodeIDX);
   }
 
   getTransitiveCount(nodeIDX: NodeIDX[]): Float64Array {
+    this.transitiveCountCache ??= new SingleMetricsCache(
+      this.nodeCount,
+      (nodeIDXs) =>
+        new Float64Array(
+          get_transitive_count(new Uint32Array(nodeIDXs), this.side),
+        ),
+    );
     return this.transitiveCountCache.getForIDXs(nodeIDX);
   }
 
   getTransitiveCountDominated(nodeIDX: NodeIDX[]): Float64Array {
+    this.transitiveCountDominatedCache ??= new SingleMetricsCache(
+      this.nodeCount,
+      (nodeIDXs) =>
+        new Float64Array(
+          get_transitive_count_dominated(new Uint32Array(nodeIDXs), this.side),
+        ),
+    );
     return this.transitiveCountDominatedCache.getForIDXs(nodeIDX);
   }
 

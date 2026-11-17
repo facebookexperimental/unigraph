@@ -430,7 +430,7 @@ function ExplorerImpl(props: {
   }, [BUILTIN_PANELS, customPanels, hidden_panels, left.nativeGraph]);
 
   return (
-    <div className="h-screen flex flex-col unigraph-explorer bg-background">
+    <div className="h-dvh flex flex-col unigraph-explorer bg-background">
       <DebugModeContextProvider>
         <GlobalElementRefsContextProvider>
           <ErrorBoundary>
@@ -527,7 +527,7 @@ function Page({
 
   return (
     <div
-      className="flex grow-1 shrink flex-row bg-background text-foreground min-h-0"
+      className="relative flex grow-1 shrink flex-col sm:flex-row bg-background text-foreground min-h-0 min-w-0"
       ref={portalRef}
     >
       <Sidebar
@@ -536,8 +536,14 @@ function Page({
         panels={visiblePanels}
         source={source}
       />
-      {panelTab}
-      <div className="flex flex-col h-full grow-1 min-w-0">
+      {panelTab != null && (
+        <div className="unigraph-panel min-h-0 overflow-auto sm:contents">
+          {panelTab}
+        </div>
+      )}
+      <div
+        className={`flex flex-col h-full grow-1 min-h-0 min-w-0 ${panelTab != null ? "max-sm:hidden" : ""}`}
+      >
         <GraphTreeTable focusOnMount={true} roots={roots} />
         <ExplorerFooter />
       </div>

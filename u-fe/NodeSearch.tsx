@@ -33,8 +33,9 @@ export default function NodeSearch() {
   const selectedPath = useSelectedPath();
 
   return (
-    <div className="h-8 grow">
+    <div className="grow min-w-0 basis-full sm:basis-40">
       <Typeahead
+        placeholder="Find a dependency…"
         searchSource={searchSource}
         endComponent={
           <KeyboardShortcutLabel shortcut={KEYBOARD_SHORTCUTS.NODE_SEARCH} />
@@ -293,6 +294,7 @@ function Typeahead({
               {clearable && (
                 <button
                   type="button"
+                  aria-label="Clear dependency search"
                   onClick={handleClear}
                   className="h-4 w-4 opacity-50 hover:opacity-100"
                   disabled={disabled}

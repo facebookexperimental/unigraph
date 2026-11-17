@@ -72,7 +72,12 @@ export default function TreeCell(props: Props) {
     // unmounted the button and took the open dialog with it. Keeping both
     // mounted and only changing opacity also drops a re-render per row on
     // every pointer move across a 60k-row table.
-    <div className={clsx("group flex items-center w-full h-full gap-2", color)}>
+    <div
+      className={clsx(
+        "group flex items-center min-w-0 w-full h-full gap-2",
+        color,
+      )}
+    >
       {padding}
       <RowChevron
         canExpand={props.canExpand}
@@ -82,6 +87,7 @@ export default function TreeCell(props: Props) {
       <SkippedNodes twinGraph={twinGraph} twinArrow={twinArrow} />
       <ArrowBadge twinArrow={twinArrow} />
       <span
+        title={props.nodeName}
         className={clsx(
           "min-w-0 overflow-hidden text-ellipsis text-nowrap",
           isExcludedInBoth(twinGraph, twinArrow) && "text-foreground/50",
@@ -92,8 +98,8 @@ export default function TreeCell(props: Props) {
       </span>
       <NodeNameAfterPlugin twinArrow={twinArrow} />
       <ArrowDiffBadges twinArrow={twinArrow} arrowDiff={arrowDiff} />
-      <span className="flex items-center opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
-        <NodeInfoButton twinArrow={twinArrow} />
+      <NodeInfoButton twinArrow={twinArrow} />
+      <span className="hidden sm:flex items-center opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
         <CopyToClipboard text={props.nodeName} className="ml-2" />
       </span>
     </div>
@@ -108,9 +114,7 @@ function NodeNameAfterPlugin({ twinArrow }: { twinArrow: TwinArrow }) {
   return <Component twinArrow={twinArrow} />;
 }
 
-/// Opens the node's info dialog. Rendered only while the row is hovered —
-/// every row has something to show now that the dialog carries the node's
-/// whole `MapGraph` form, so a persistent icon on all 60k rows would be noise.
+/// Opens the full node name, dependency edge and change details on demand.
 function NodeInfoButton({ twinArrow }: { twinArrow: TwinArrow }) {
   return (
     <UDialog
@@ -118,14 +122,17 @@ function NodeInfoButton({ twinArrow }: { twinArrow: TwinArrow }) {
       // 80% of the viewport. `grid-rows` so the body — not the header — takes
       // the slack, and `minmax(0,1fr)` so it can actually shrink and scroll
       // rather than pushing the dialog past its own height.
-      className="h-[80vh] w-[80vw] max-w-[80vw] grid-rows-[auto_minmax(0,1fr)] overflow-hidden sm:max-w-[80vw]"
+      className="h-[80dvh] w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] grid-rows-[auto_minmax(0,1fr)] overflow-hidden sm:w-[80vw] sm:max-w-[80vw]"
       trigger={
-        // Stop propagation so opening the dialog doesn't also select the row.
-        <BadgeInfo
-          size={16}
-          className="cursor-pointer shrink-0"
+        <button
+          type="button"
+          aria-label="Node details"
+          className="flex items-center justify-center cursor-pointer shrink-0 sm:opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
           onClick={(e) => e.stopPropagation()}
-        />
+        >
+          <BadgeInfo size={16} aria-hidden="true" />
+          <span className="sr-only">Full name and impact details</span>
+        </button>
       }
     >
       <NodeInfoDialog twinArrow={twinArrow} />
@@ -385,29 +392,28 @@ function RowChevron({
   row: Row;
   onToggleExpand: (expanded: boolean) => void;
 }) {
-  if (canExpand) {
-    if (row.isCycle) {
-      return <RefreshCw size={16} className="mx-2" />;
-    }
-    return row.expanded ? (
-      <ChevronDown
-        size={16}
-        className="mx-2"
-        onClick={() => {
-          onToggleExpand(false);
-        }}
-      />
-    ) : (
-      <ChevronRight
-        size={16}
-        className="mx-2"
-        onClick={() => {
-          onToggleExpand(true);
-        }}
-      />
+  if (!canExpand) {
+    return <span className="size-11 shrink-0" />;
+  }
+  if (row.isCycle) {
+    return (
+      <RefreshCw size={16} className="mx-3.5 shrink-0" aria-label="Cycle" />
     );
   }
-  return <span className="mx-2 w-4" />;
+  const Chevron = row.expanded ? ChevronDown : ChevronRight;
+  return (
+    <button
+      type="button"
+      aria-label={
+        row.expanded ? "Collapse dependencies" : "Expand dependencies"
+      }
+      aria-expanded={row.expanded}
+      className="size-11 shrink-0 flex items-center justify-center cursor-pointer rounded focus-visible:outline-2"
+      onClick={() => onToggleExpand(!row.expanded)}
+    >
+      <Chevron size={16} aria-hidden="true" />
+    </button>
+  );
 }
 
 function RowBadge({ text, className }: { text: string; className?: string }) {

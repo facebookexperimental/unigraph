@@ -45,7 +45,7 @@ import { ENABLED, HIDDEN, MV } from "./tree_table/columns/ColumnUtils";
 
 export default function ExplorerFooter() {
   return (
-    <div className="flex h-16 shrink-0 bg-card border-t justify-between items-center px-4 gap-8">
+    <div className="flex flex-wrap shrink-0 bg-card border-t items-center px-2 py-2 gap-2 sm:px-4 sm:gap-4 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
       <Toggles />
       <NodeSearch />
       <SelectedNodesMetrics />
@@ -118,6 +118,7 @@ function SelectedNodesMetrics() {
     <div className="flex flex-wrap gap-4 mx-4 h-full items-center">
       <UTooltip tooltip="Clear node selection">
         <Button
+          aria-label="Clear node selection"
           className="h-8 cursor-pointer"
           variant="ghost"
           size="icon"
@@ -148,8 +149,9 @@ function Toggles() {
     useToggleDominatorTreeView();
 
   return (
-    <div className="flex gap-4 items-center">
+    <div className="flex w-full sm:w-auto gap-2 items-center overflow-x-auto py-1 shrink-0">
       <USplitToggleButton
+        label="Counts"
         tooltip="Show node count columns"
         selected={graphSettings.ui_settings?.columns?.show_counts === true}
         onSelectedChange={(checked) => {
@@ -171,6 +173,7 @@ function Toggles() {
 
       {hasMetrics && (
         <USplitToggleButton
+          label="Metrics"
           tooltip="Show metric columns"
           selected={graphSettings.ui_settings?.columns?.hide_metrics !== true}
           onSelectedChange={(checked) => {
@@ -194,6 +197,7 @@ function Toggles() {
       <SeparatorVertical />
 
       <UToggleButton
+        label="Parents"
         tooltip={
           <span>
             Show reverse graph (children to parents)
@@ -209,6 +213,7 @@ function Toggles() {
         <ArrowLeftRight />
       </UToggleButton>
       <UToggleButton
+        label="Dominator tree"
         tooltip={
           <span>
             Show as a dominator tree
@@ -225,6 +230,7 @@ function Toggles() {
       </UToggleButton>
 
       <UToggleButton
+        label="Flat list"
         tooltip={
           <span>
             Show as a flat list{" "}
@@ -301,6 +307,7 @@ function CountsHovercardContent() {
       <div className="flex flex-wrap gap-2">
         <UToggleButton
           size="sm"
+          label="Dependencies"
           tooltip="Show transitive children count"
           selected={resolver.isVisible(
             MV.countTransitive,
@@ -317,6 +324,7 @@ function CountsHovercardContent() {
         {singleGraph && (
           <>
             <UToggleButton
+              label="Parents"
               tooltip="Show number of parent nodes"
               size="sm"
               selected={resolver.isVisible(
@@ -332,6 +340,7 @@ function CountsHovercardContent() {
             </UToggleButton>
 
             <UToggleButton
+              label="Dominated"
               tooltip="Show dominated nodes counts"
               size="sm"
               selected={resolver.isVisible(
@@ -691,6 +700,7 @@ function BackToTopButton() {
   return (
     <UTooltip tooltip="Scroll Back to Top">
       <Button
+        aria-label="Back to top"
         className="cursor-pointer"
         disabled={!isEnabled}
         variant={"secondary"}
@@ -715,6 +725,7 @@ function ChangedNodesOnlyToggle() {
       <SeparatorVertical />
       <UToggleButton
         className="cursor-pointer"
+        label="Changed only"
         tooltip="Show only changed nodes"
         selected={
           graphSettings.ui_settings?.show_changed_nodes_only ===
@@ -749,6 +760,7 @@ function EnableSelfMetricToggle({ metricName }: { metricName: string }) {
     <UToggleButton
       key={`${metricName}`}
       size="sm"
+      label="Self"
       tooltip={`Show a column with the values of '${metricName}' metric`}
       selected={selected}
       onSelectedChange={(selected) => {
@@ -785,6 +797,7 @@ function EnableTransitiveMetricToggle({ metricName }: { metricName: string }) {
     <UToggleButton
       key={`${metricName}`}
       size="sm"
+      label="Dependencies"
       tooltip={`Show a column with transitive values of '${metricName}' metric`}
       selected={selected}
       onSelectedChange={(selected) => {
@@ -821,6 +834,7 @@ function EnableDominatedMetricToggle({ metricName }: { metricName: string }) {
     <UToggleButton
       key={`${metricName}`}
       size="sm"
+      label="Dominated"
       tooltip={`Show a column with dominated values for '${metricName}' metric`}
       selected={selected}
       onSelectedChange={(selected) => {

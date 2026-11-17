@@ -130,7 +130,7 @@ export function TreeTable(props: {
     }
   }, [props.focusOnMount, parentRef]);
 
-  const ITEM_SIZE = 35;
+  const ITEM_SIZE = 44;
 
   const rowVirtualizer = useVirtualizer({
     count: ctx.rows.length,
@@ -300,9 +300,9 @@ export function TreeTable(props: {
         style={{
           height: `${rowVirtualizer.getTotalSize() + headerHeight}px`,
           flexGrow: column.c.flexGrow ?? 0,
-          // Allow the flexible tree column to shrink below its content size so
-          // very long node names truncate instead of widening the whole table.
-          minWidth: column.t === "tree" ? 0 : undefined,
+          minWidth: column.t === "tree" ? "min(20rem, 80vw)" : undefined,
+          flexBasis: column.t === "tree" ? 0 : undefined,
+          flexShrink: 0,
         }}
       >
         <div

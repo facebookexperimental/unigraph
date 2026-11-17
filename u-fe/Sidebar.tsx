@@ -24,26 +24,27 @@ export default function Sidebar({
   const [debugMode, setDebugMode] = useDebugMode();
   const tg = useTwinGraph();
   return (
-    <div className="flex h-full flex-col px-2 bg-sidebar pt-4 pb-3 border-r justify-between">
-      <div className="flex flex-col items-center gap-2">
+    <div className="flex h-auto sm:h-full shrink-0 flex-row sm:flex-col p-2 bg-sidebar border-b sm:border-b-0 sm:border-r justify-between gap-2 overflow-x-auto">
+      <div className="flex flex-row sm:flex-col items-center gap-2">
         {homeHref != null && (
           <UTooltip tooltip="Back to timelines">
-            <Button
-              size="icon"
-              className="cursor-pointer"
-              variant="ghost"
-              asChild
-            >
-              <a href={homeHref}>
+            <Button className="cursor-pointer shrink-0" variant="ghost" asChild>
+              <a href={homeHref} aria-label="Back to timelines">
                 <Home />
+                <span className="sm:hidden">Timelines</span>
               </a>
             </Button>
           </UTooltip>
         )}
         {panels.map((panel) => (
           <UTooltip key={panel.id} tooltip={panel.tooltip ?? panel.id}>
-            <TabSelector tabName={panel.id} selectedPanelTab={selectedPanelTab}>
+            <TabSelector
+              tabName={panel.id}
+              label={panel.tooltip ?? panel.id}
+              selectedPanelTab={selectedPanelTab}
+            >
               {panel.icon}
+              <span className="sm:hidden">{panel.tooltip ?? panel.id}</span>
             </TabSelector>
           </UTooltip>
         ))}
@@ -53,8 +54,9 @@ export default function Sidebar({
       </div>
       <UTooltip tooltip="Toggle debug mode that shows additional info">
         <Button
-          size="icon"
-          className="cursor-pointer"
+          aria-label="Debug mode"
+          aria-pressed={debugMode}
+          className="cursor-pointer shrink-0"
           variant={debugMode ? "outline" : "ghost"}
           onClick={() => {
             const c = console;
@@ -64,6 +66,7 @@ export default function Sidebar({
           }}
         >
           <Wrench color={debugMode ? undefined : "#a7a3a4"} />
+          <span className="sm:hidden">Debug</span>
         </Button>
       </UTooltip>
     </div>
@@ -72,10 +75,12 @@ export default function Sidebar({
 
 function TabSelector({
   tabName,
+  label,
   selectedPanelTab,
   children,
 }: {
   tabName: string;
+  label: string;
   selectedPanelTab: string;
   children: React.ReactNode;
 }) {
@@ -84,28 +89,20 @@ function TabSelector({
 
   return (
     <Button
-      size="icon"
-      className="cursor-pointer"
+      aria-label={label}
+      aria-pressed={selected}
+      className="cursor-pointer shrink-0"
       variant={selected ? "default" : "ghost"}
       onClick={() => {
-        const selected = selectedPanelTab === tabName;
-        if (selected) {
-          setSettings({
-            ...settings,
-            ui_settings: {
-              ...settings.ui_settings,
-              selected_sidebar_panel: "None",
-            },
-          });
-        } else {
-          setSettings({
-            ...settings,
-            ui_settings: {
-              ...settings.ui_settings,
-              selected_sidebar_panel: tabName as SidebarPanel,
-            },
-          });
-        }
+        setSettings({
+          ...settings,
+          ui_settings: {
+            ...settings.ui_settings,
+            selected_sidebar_panel: selected
+              ? "None"
+              : (tabName as SidebarPanel),
+          },
+        });
       }}
     >
       {children}
