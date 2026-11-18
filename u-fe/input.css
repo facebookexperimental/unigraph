@@ -291,7 +291,46 @@
   }
 }
 
+.unigraph-tree-name-column {
+  min-width: min(20rem, 80vw);
+}
+
+.unigraph-tree-name-row {
+  height: 44px;
+}
+
 @media (max-width: 639px) {
+  .unigraph-tree-name-column {
+    min-width: calc(100vw - 16px);
+  }
+
+  .unigraph-tree-name-row {
+    height: auto;
+    min-height: 44px;
+    padding-block: 8px;
+  }
+
+  .unigraph-tree-name {
+    flex: 1;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    overflow: visible;
+    line-height: 20px;
+  }
+
+  .unigraph-tree-indent {
+    display: flex;
+    flex-shrink: 0;
+    max-width: 24px;
+    overflow: hidden;
+  }
+
+  .unigraph-tree-indent > svg {
+    width: 4px;
+    min-width: 4px;
+    margin-inline: 0;
+  }
+
   .unigraph-panel {
     flex: 1;
     min-width: 0;

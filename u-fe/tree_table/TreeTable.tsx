@@ -140,7 +140,6 @@ export function TreeTable(props: {
   ctx.scrollToIndex = rowVirtualizer.scrollToIndex;
 
   const virtualItems = rowVirtualizer.getVirtualItems();
-  const virtualIndexes = rowVirtualizer.getVirtualIndexes();
 
   // If we're too far in and all the depths are huge we don't wanna render
   // all of the padding dots and we can trim them to the minimum
@@ -239,15 +238,18 @@ export function TreeTable(props: {
         <div
           className={clsx(
             "border-b box-border-gray-200 flex items-center cursor-pointer",
+            column.t === "tree" && "unigraph-tree-name-row",
             selected && "bg-gray-200",
           )}
           data-testid={testId}
+          data-index={virtualItem.index}
+          ref={column.t === "tree" ? rowVirtualizer.measureElement : undefined}
           onMouseDown={(_e) => {
             ctx.setSelectedRowIDX(rowIDX);
           }}
           key={virtualItem.key}
           style={{
-            height: `${virtualItem.size}px`,
+            height: column.t === "tree" ? undefined : `${virtualItem.size}px`,
           }}
         >
           {cell}
@@ -297,10 +299,12 @@ export function TreeTable(props: {
       <div
         // biome-ignore lint/suspicious/noArrayIndexKey: because
         key={columnIDX}
+        className={
+          column.t === "tree" ? "unigraph-tree-name-column" : undefined
+        }
         style={{
           height: `${rowVirtualizer.getTotalSize() + headerHeight}px`,
           flexGrow: column.c.flexGrow ?? 0,
-          minWidth: column.t === "tree" ? "min(20rem, 80vw)" : undefined,
           flexBasis: column.t === "tree" ? 0 : undefined,
           flexShrink: 0,
         }}
@@ -328,7 +332,7 @@ export function TreeTable(props: {
         </div>
         <div
           style={{
-            height: `${(virtualIndexes[0] ?? 0) * ITEM_SIZE}px`,
+            height: `${virtualItems[0]?.start ?? 0}px`,
           }}
         />
         {columnCells}

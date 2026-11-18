@@ -78,7 +78,9 @@ export default function TreeCell(props: Props) {
         color,
       )}
     >
-      {padding}
+      <span className="unigraph-tree-indent contents" aria-hidden="true">
+        {padding}
+      </span>
       <RowChevron
         canExpand={props.canExpand}
         row={props.row}
@@ -89,7 +91,7 @@ export default function TreeCell(props: Props) {
       <span
         title={props.nodeName}
         className={clsx(
-          "min-w-0 overflow-hidden text-ellipsis text-nowrap",
+          "unigraph-tree-name min-w-0 overflow-hidden text-ellipsis text-nowrap",
           isExcludedInBoth(twinGraph, twinArrow) && "text-foreground/50",
           lineThrough,
         )}
