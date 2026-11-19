@@ -101,10 +101,7 @@ pub fn apply_traversal_config_to_array_graph(
                 &tag_to_tier,
                 &m,
             )?;
-            let labels_for_node = collect_labels_for_node(labels, edge.points_to);
-            if !labels_for_node.is_empty() {
-                match_label_predicates(label_predicates, &mut edge, &labels_for_node, &m)?;
-            }
+            match_label_predicates(label_predicates, &mut edge, labels, &m)?;
             match_force_edges(force_edges, parent_idx, &mut edge, &m)?;
             match_force_nodes(force_nodes, &mut edge, &m)?;
 
@@ -298,12 +295,15 @@ fn match_force_edges(
 fn match_label_predicates(
     label_predicates: &BTreeMap<String, NodeLabelPredicate>,
     edge: &mut Edge,
-    labels_for_node: &BTreeMap<&str, &BTreeSet<String>>,
+    labels: &BTreeMap<LabelName, BTreeMap<NodeIDX, BTreeSet<LabelValue>>>,
     indexed_messages: &IndexedMessages,
 ) -> Result<()> {
     for predicate in label_predicates.values() {
         #[allow(clippy::collapsible_if)]
-        if let Some(values) = labels_for_node.get(predicate.label_name.as_str()) {
+        if let Some(values) = labels
+            .get(&predicate.label_name)
+            .and_then(|nodes| nodes.get(&edge.points_to))
+        {
             if values.contains(&predicate.label_value) == predicate.contains {
                 match predicate.decision.include {
                     true => edge
@@ -496,21 +496,4 @@ fn match_tagged(
         }
     }
     Ok(())
-}
-
-/// Collect all labels for a specific node from the inverted labels index.
-/// This is a free function (not a method on ArrayGraph) to avoid borrow conflicts
-/// when used inside `iter_edges_mut()`.
-fn collect_labels_for_node(
-    labels: &BTreeMap<LabelName, BTreeMap<NodeIDX, BTreeSet<LabelValue>>>,
-    node_idx: NodeIDX,
-) -> BTreeMap<&str, &BTreeSet<String>> {
-    labels
-        .iter()
-        .filter_map(|(label_name, node_map)| {
-            node_map
-                .get(&node_idx)
-                .map(|values| (label_name.as_str(), values))
-        })
-        .collect()
 }

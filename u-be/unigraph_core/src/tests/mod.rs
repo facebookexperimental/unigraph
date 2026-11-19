@@ -367,6 +367,15 @@ fn test_dfs_with_traversal_config_tag_sets() -> Result<()> {
     let set_global_value = |tc: &mut TraversalConfig, value: &str| {
         tc.label_predicates = Some(BTreeMap::from([
             (
+                "missing_labels".to_string(),
+                NodeLabelPredicate {
+                    label_name: "missing_tags".into(),
+                    label_value: value.into(),
+                    contains: false,
+                    decision: Decision::exclude(),
+                },
+            ),
+            (
                 "assert_not_contains".to_string(),
                 NodeLabelPredicate {
                     label_name: "assert_tags".into(),
